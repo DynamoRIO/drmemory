@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -41,10 +41,13 @@ malloc.c:203
 %if WINDOWS_8
 malloc.c:205
 %endif
+%if WINDOWS
+Error #8: UNADDRESSABLE ACCESS: writing 4 byte(s)
+malloc.c:211
+%endif
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 # for now just removing error#
-%endif
 # must be outside of if..endif
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes

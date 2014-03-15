@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1482,6 +1482,10 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
         }
         /* clobber the pattern to avoid duplicate reports for this same addr
          * or possible ud2a if the 2nd memref is also unaddressable.
+         * XXX i#1476: full mode no longer avoids dup reports for unaddr:
+         * so we could perhaps remove this, though I don't know what the
+         * 2nd half of the above sentence means.  Plus, pattern can't detect
+         * any more errors after a write, as the app clobbers the pattern value.
          */
         /* should this be a safe_write?
          * we reach here which means safe_read works and

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,12 +27,16 @@ Error #1: UNADDRESSABLE ACCESS:
 registers.c:367
 Error #2: UNADDRESSABLE ACCESS:
 registers.c:379
+Error #3: UNADDRESSABLE ACCESS:
+registers.c:392
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS:
 registers.c:409
 Error #2: UNADDRESSABLE ACCESS:
 registers.c:420
+Error #3: UNADDRESSABLE ACCESS:
+registers.c:435
 %endif
-Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes
+Error #5: LEAK 15 direct bytes + 0 indirect bytes

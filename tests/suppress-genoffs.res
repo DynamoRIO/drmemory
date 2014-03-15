@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -255,7 +255,16 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #19: INVALID HEAP ARGUMENT
+Error #19: UNADDRESSABLE ACCESS: reading 4 byte(s)
+# non-det so disabling: Note: next higher malloc:
+suppress!invalid_free_test1
+suppress.c:200
+suppress!test
+suppress.c
+suppress!main
+suppress.c
+
+Error #20: INVALID HEAP ARGUMENT
 suppress!invalid_free_test1
 suppress.c:206
 suppress!test

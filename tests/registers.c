@@ -430,8 +430,7 @@ addronly_test(void)
     asm("foo2:");
 
     /* Undo the modifications our unaddrs made to make glibc happy when running
-     * natively.  After the first two writes, the memory is marked as defined,
-     * so these don't get reported.
+     * natively.
      */
     asm("decb  124(%eax)");
     asm("decb  128(%eax)");

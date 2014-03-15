@@ -1,6 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# Copyright (c) 2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,16 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-size=4 capacity=15
-getval: childAB
-myfunc: parB
-hi
-bye
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       5 unique,     5 total unaddressable access(es)
-~~Dr.M~~       1 unique,     1 total uninitialized access(es)
-~~Dr.M~~       5 unique,     5 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-# Windows: FIXME PR 587093: string code disabled for now
-~~Dr.M~~       1 unique,     1 total,      4 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+Error #1: UNADDRESSABLE ACCESS: writing 4 byte(s)
+multierror.cpp:33
+Error #2: UNADDRESSABLE ACCESS: reading 4 byte(s)
+multierror.cpp:33

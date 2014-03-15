@@ -1708,7 +1708,7 @@ combine_shadows(uint shadow1, uint shadow2)
      * This routine only looks at two one-byte values in any case.
      * We ignore BITLEVEL for now.
      * We assume UNADDR will be reported, and we want to propagate
-     * defined afterward in any case to avoid chained errors.
+     * defined afterward in any case to avoid chained errors (xref i#1476).
      */
     return (shadow1 == SHADOW_UNDEFINED || shadow2 == SHADOW_UNDEFINED) ?
         SHADOW_UNDEFINED : SHADOW_DEFINED;
@@ -4204,13 +4204,15 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     } /* else extend current bad */
                     bad_end = addr + i;
                     /* We follow Memcheck's lead and set to defined to avoid too
-                     * many subsequent errors.  However, if it's on the stack but
-                     * beyond TOS, we leave it as undefined to avoid our own
-                     * asserts.
+                     * many subsequent errors, for undefined.  However, for unaddr,
+                     * we leave it that way (to avoid our own asserts if it's on
+                     * the stack, and to report later but different accesses to it) --
+                     * which works out b/c combine_shadows() will propagate it as
+                     * though it were defined (i#1476).
                      */
                     if (addr_on_stack) {
                         LOG(2, "unaddressable beyond TOS: leaving unaddressable\n");
-                    } else {
+                    } else if (bad_type != SHADOW_UNADDRESSABLE) {
                         shadow_set_byte(&info, addr+i, SHADOW_DEFINED);
                     }
                     allgood = false;

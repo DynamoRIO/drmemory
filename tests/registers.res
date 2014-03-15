@@ -27,11 +27,11 @@ registers.c:108
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1175
+registers.c_asm.asm:1174
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1192
+registers.c_asm.asm:1191
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1222
+registers.c_asm.asm:1221
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
@@ -50,6 +50,10 @@ Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c:367
 Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c:379
+Error #16: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:392
+Error #17: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:393
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
@@ -59,11 +63,11 @@ registers.c:125
 Error #3: UNINITIALIZED READ: reading register eax
 registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:770
+registers.c_asm.asm:769
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:787
+registers.c_asm.asm:786
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:817
+registers.c_asm.asm:816
 Error #7: UNINITIALIZED READ: reading register eax
 registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
@@ -82,11 +86,15 @@ Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c:409
 Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c:420
+Error #16: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:435
+Error #17: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:436
 %endif
-Error #16: UNINITIALIZED READ: reading register eax
-registers.c:484
-Error #17: UNINITIALIZED READ: reading register
-registers.c:547
+Error #18: UNINITIALIZED READ: reading register eax
+registers.c:483
+Error #19: UNINITIALIZED READ: reading register
+registers.c:546
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
 : LEAK 15 direct bytes + 0 indirect bytes

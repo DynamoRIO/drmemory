@@ -32,7 +32,7 @@ after eflags test!
 before addronly test!
 after addronly test!
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       2 unique,     2 total unaddressable access(es)
+~~Dr.M~~       4 unique,     8 total unaddressable access(es)
 ~~Dr.M~~      15 unique,    15 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)

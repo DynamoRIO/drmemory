@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -39,7 +39,7 @@ done
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 ~~Dr.M~~ ERRORS IGNORED:
-~~Dr.M~~      20 user-suppressed error(s)
+~~Dr.M~~      21 user-suppressed error(s)
 # i#292: There are 5 leaks and 2 possible leaks, all of which we suppress.  The
 # 5th leak is still reachable from RtlpHeapFailureInfo on Vista+.  If we have
 # ntdll.pdb we find and ignore roots in RtlpHeapFailureInfo, giving us 7

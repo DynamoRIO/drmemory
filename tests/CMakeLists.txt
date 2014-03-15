@@ -415,6 +415,10 @@ newtest(hello hello.c)
 newtest(malloc malloc.c)
 newtest(free free.c)
 newtest(registers registers.c)
+if (TOOL_DR_MEMORY)
+  # Doesn't make sense for DrHeapstat
+  newtest(multierror multierror.cpp)
+endif (TOOL_DR_MEMORY)
 if (WIN32)
   # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
   # I believe I have the proper prologue+epilogue but I still the error, so:
@@ -764,7 +768,7 @@ if (TOOL_DR_MEMORY)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
-  newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
+  newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "registers.pattern")
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
 else (TOOL_DR_MEMORY)

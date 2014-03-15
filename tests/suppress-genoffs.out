@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -31,7 +31,7 @@ testing warning
 testing invalid free
 done
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       6 unique,     6 total unaddressable access(es)
+~~Dr.M~~       7 unique,     7 total unaddressable access(es)
 ~~Dr.M~~      13 unique,    13 total uninitialized access(es)
 ~~Dr.M~~       1 unique,     1 total invalid heap argument(s)
 ~~Dr.M~~       1 unique,     1 total warning(s)

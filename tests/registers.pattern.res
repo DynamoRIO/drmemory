@@ -19,16 +19,20 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-size=4 capacity=15
-getval: childAB
-myfunc: parB
-hi
-bye
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       5 unique,     5 total unaddressable access(es)
-~~Dr.M~~       1 unique,     1 total uninitialized access(es)
-~~Dr.M~~       5 unique,     5 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-# Windows: FIXME PR 587093: string code disabled for now
-~~Dr.M~~       1 unique,     1 total,      4 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+# FIXME: for instr "inc 0x00000080(%eax) -> 0x00000080(%eax)"
+# shadow mode reports "reading 1 byte(s)" error
+# while pattern mode reports "writing 1 byte(s)" error.
+%if WINDOWS
+Error #1: UNADDRESSABLE ACCESS:
+registers.c:367
+Error #2: UNADDRESSABLE ACCESS:
+registers.c:379
+%endif
+%if UNIX
+Error #1: UNADDRESSABLE ACCESS:
+registers.c:409
+Error #2: UNADDRESSABLE ACCESS:
+registers.c:420
+%endif
+Error #3: LEAK 15 direct bytes + 0 indirect bytes
+Error #4: LEAK 15 direct bytes + 0 indirect bytes

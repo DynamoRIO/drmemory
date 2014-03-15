@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -22,6 +22,8 @@
 : UNINITIALIZED READ
 cs2bug.cpp:87
 : UNADDRESSABLE ACCESS: reading 4 byte(s)
+cs2bug.cpp:95
+: UNADDRESSABLE ACCESS: writing 4 byte(s)
 cs2bug.cpp:95
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:97
