@@ -4417,7 +4417,8 @@ handle_cwstring(sysarg_iter_info_t *ii, const char *id,
         if (c == L'\0')
             break;
     }
-    if (!report_memarg_type(ii, ordinal, arg_flags, start, i + sizeof(wchar_t), id,
+    if (!report_memarg_type(ii, ordinal, arg_flags, start,
+                            i < maxsz ? (i + sizeof(wchar_t)) : maxsz, id,
                             DRSYS_TYPE_CSTRING, NULL))
         return true;
     return true;
