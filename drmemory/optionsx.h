@@ -290,6 +290,9 @@ OPTION_CLIENT_BOOL(client, callstack_conservative, false,
 OPTION_CLIENT(client, callstack_max_scan, uint, 2048, 0, 16384,
               "How far to scan to locate the first or next stack frame",
               "How far to scan to locate the first stack frame when starting in a frameless function, or to locate the next stack frame when crossing loader or glue stub thunks or a signal or exception frame.  Increasing this can produce better callstacks but may incur noticeable overhead for applications that make many allocation calls.")
+OPTION_CLIENT_STRING(client, callstack_bad_fp_list, IF_WINDOWS_ELSE("", "libstdc++*"),
+              ",-separated list of path patterns where frame pointers are untrustworthy",
+              "When walking frame pointers and transitioning from any module on this list to a frame not in the same module, the frame pointer chain is assumed to be suspect and a stack scan is performed.  Use this option to avoid missing frames in your application's code that are skipped due to frame pointer optimizations in other libraries.")
 
 #ifdef TOOL_DR_MEMORY
 OPTION_CLIENT_BOOL(client, check_leaks, true,

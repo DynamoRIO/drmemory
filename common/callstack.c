@@ -153,6 +153,8 @@ typedef struct _modname_info_t {
     bool hide_modname;
     /* Avoid repeated warnings about symbols */
     bool warned_no_syms;
+    /* Whether to abort an fp walk out of this module (i#703) */
+    bool abort_fp_walk;
     /* i#1310: support user data */
     void *user_data;
 } modname_info_t;
@@ -471,22 +473,10 @@ event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
 static void
 init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
 {
+    memset(frame, 0, sizeof(*frame));
     frame->num = frame_num;
-    memset(&frame->loc, 0, sizeof(frame->loc));
-    frame->is_module = false;
-    frame->hide_modname = false;
-    frame->has_symbols = false;
-    frame->modid = 0;
-    frame->modbase = NULL;
-    frame->modname[0] = '\0';
-    frame->modoffs[0] = '\0';
     frame->func[0] = '?';
     frame->func[1] = '\0';
-    frame->funcoffs = 0;
-    frame->fname[0] = '\0';
-    frame->line = 0;
-    frame->lineoffs = 0;
-    frame->user_data = NULL;
 }
 
 #ifdef USE_DRSYMS
@@ -1085,7 +1075,7 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
  * If it can't tell, it returns true.
  */
 static bool
-check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr)
+check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk)
 {
     app_pc frame_mod_start, ra_mod_start;
     modname_info_t *frame_name, *ra_name;
@@ -1110,6 +1100,11 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr)
         } else if (frame_mod_start == ra_mod_start) {
             if (TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
                 return true; /* only supposed to check cross-module */
+        } else if (fp_walk && frame_name->abort_fp_walk) {
+            /* i#703: break fp chain on exiting suspect libs */
+            LOG(3, "%s: breaking fp chain as module %s is suspect\n", __FUNCTION__,
+                frame_name->name);
+            return false;
         } else if (!TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags)) {
             /* Only allow a cross-module transition that's an indirect call.
              * When done only on scans (and not fp walks), this has minimal
@@ -1192,6 +1187,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr)
         if (!res)
             STATS_INC(cstack_is_retaddr_tgt_mismatch);
     });
+    LOG(4, "%s: returning %d\n", __FUNCTION__, res);
     return res;
 #else
     return true; /* no info */
@@ -1408,7 +1404,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
             }
             if (match && prior_ra != NULL &&
                 !TEST(FP_DO_NOT_VERIFY_TARGET_IN_SCAN, ops.fp_flags) &&
-                !check_retaddr_targets_frame(prior_ra, slot1))
+                !check_retaddr_targets_frame(prior_ra, slot1, false))
                 match = false;
             if (match) {
                 app_pc parent_ret_ptr = slot0 + ret_offs;
@@ -1698,8 +1694,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                     break;
                 }
             } else if (TEST(FP_DO_NOT_WALK_FP, ops.fp_flags) ||
-                       (TEST(FP_VERIFY_TARGET_IN_WALK, ops.fp_flags) &&
-                        !check_retaddr_targets_frame(prior_ra, appdata.retaddr))) {
+                       (!TEST(FP_DO_NOT_VERIFY_TARGET_IN_WALK, ops.fp_flags) &&
+                        !check_retaddr_targets_frame(prior_ra, appdata.retaddr, true))) {
                 LOG(4, "find_next_fp "PFX" b/c not walking fp, or skips "PFX"\n",
                     ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
                 pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
@@ -2437,6 +2433,10 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->hide_modname =
             (ops.modname_hide != NULL &&
              text_matches_any_pattern(name_info->name, ops.modname_hide,
+                                      FILESYS_CASELESS));
+        name_info->abort_fp_walk =
+            (ops.bad_fp_list != NULL &&
+             text_matches_any_pattern(name_info->name, ops.bad_fp_list,
                                       FILESYS_CASELESS));
         if (ops.module_load != NULL)
             name_info->user_data = ops.module_load(name_info->path, name, info->start);

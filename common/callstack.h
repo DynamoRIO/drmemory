@@ -133,13 +133,13 @@ enum {
      * that the next retaddr actually calls the current one's
      * containing function.  This adds overhead of course.
      * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
-     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
+     * FP_DO_NOT_VERIFY_TARGET_IN_WALK must be unset, in order to enable this.
      */
     FP_VERIFY_CALL_TARGET             = 0x00000800,
     /* Identical to FP_VERIFY_CALL_TARGET except this only checks targets on
      * cross-module calls.
      * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
-     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
+     * FP_DO_NOT_VERIFY_TARGET_IN_WALK must be unset, in order to enable this.
      */
     FP_VERIFY_CROSS_MODULE_TARGET     = 0x00001000,
     /* This controls whether to verify call targets while scanning, as
@@ -153,12 +153,12 @@ enum {
      * by FP_VERIFY_CALL_TARGET, FP_VERIFY_CROSS_MODULE_TARGET, and
      * FP_DO_NOT_VERIFY_CROSS_MOD_IND.
      */
-    FP_VERIFY_TARGET_IN_WALK          = 0x00004000,
+    FP_DO_NOT_VERIFY_TARGET_IN_WALK    = 0x00004000,
     /* If not disabled, all cross-module frame transitions are checked to
      * ensure an indirect call (or normal inter-library transition) is used,
      * to rule out false positive frames.
      * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
-     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
+     * FP_DO_NOT_VERIFY_TARGET_IN_WALK must be unset, in order to enable this.
      */
     FP_DO_NOT_VERIFY_CROSS_MOD_IND    = 0x00008000,
     /* By default we only consider retaddrs that are after call instructions
@@ -260,6 +260,7 @@ typedef struct _callstack_options_t {
     void (*missing_syms_cb)(const char *);
     bool old_retaddrs_zeroed;
     const char *tool_lib_ignore;
+    const char *bad_fp_list;
     uint dump_app_stack;       /* debug-build-only */
 
     /* Callbacks invoked on module load and unload, allowing the user to store

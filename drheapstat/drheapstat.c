@@ -2266,6 +2266,7 @@ dr_init(client_id_t client_id)
      */
     callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
     callstack_ops.tool_lib_ignore = IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*");
+    callstack_ops.bad_fp_list = options.callstack_bad_fp_list;
     callstack_init(&callstack_ops);
 
     heap_region_init(client_heap_add, client_heap_remove);

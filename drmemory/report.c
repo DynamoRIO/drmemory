@@ -1480,9 +1480,7 @@ report_init(void)
          * perf win over FP_VERIFY_CALL_TARGET (see i#703 numbers) -- so should we
          * have -callstack_mostly_conservative?.
          */
-        callstack_ops.fp_flags |=
-            FP_VERIFY_CALL_TARGET |
-            FP_VERIFY_TARGET_IN_WALK;
+        callstack_ops.fp_flags |= FP_VERIFY_CALL_TARGET;
     }
     callstack_ops.fp_scan_sz = options.callstack_max_scan;
     callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,
@@ -1510,6 +1508,7 @@ report_init(void)
     /* i#1231: we don't zero for full mode but we want the cache */
     callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
     callstack_ops.tool_lib_ignore = DRMEMORY_LIBNAME;
+    callstack_ops.bad_fp_list = options.callstack_bad_fp_list;
     callstack_ops.dump_app_stack = options.callstack_dump_stack;
     callstack_ops.module_load = callstack_module_load_cb;
     callstack_ops.module_unload = callstack_module_unload_cb;
