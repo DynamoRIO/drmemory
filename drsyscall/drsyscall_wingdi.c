@@ -7749,8 +7749,7 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
 {
     /* handlers here do not check for success so we check up front */
     if (!ii->arg->pre) {
-        if (!os_syscall_succeeded(ii->arg->sysnum, pt->sysinfo,
-                                  dr_syscall_get_result(drcontext)))
+        if (!os_syscall_succeeded(ii->arg->sysnum, pt->sysinfo, ii->arg->mc))
             return;
     }
     if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserSystemParametersInfo)) {

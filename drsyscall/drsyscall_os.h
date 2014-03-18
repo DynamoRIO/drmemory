@@ -393,7 +393,7 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
                                   app_pc start, uint size);
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res);
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc);
 
 #ifdef WINDOWS
 bool

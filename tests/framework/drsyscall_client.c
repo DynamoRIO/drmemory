@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -173,7 +173,7 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
         ASSERT(false, "drsys_iterate_args failed");
 
-    if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success) !=
+    if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) !=
         DRMF_SUCCESS || !success) {
         ASSERT(false, "no syscalls in this app should fail");
     } else {

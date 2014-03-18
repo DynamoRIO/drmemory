@@ -238,7 +238,7 @@ typedef struct _drsys_arg_t {
     /* System call argument information ****************************/
     /** The ordinal of the parameter.  Set to -1 for a return value. */
     int ordinal;
-    /** The mode (whether read or written) of the parameter. */
+    /** The mode (whether inlined, or read or written memory, etc.) of the parameter. */
     drsys_param_mode_t mode;
     /** The type of the parameter. */
     drsys_param_type_t type;
@@ -536,14 +536,23 @@ drsys_syscall_is_known(drsys_syscall_t *syscall, OUT bool *known);
 
 DR_EXPORT
 /**
- * Identifies whether the given value is a successful return value
- * for the given system call.
+ * For Windows or Linux, identifies whether the given value is a
+ * successful return value for the given system call.
+ *
+ * \warning On MacOS, this routine always fails with
+ * DRMF_ERROR_FEATURE_NOT_AVAILABLE, as success depends on the
+ * condition codes and not on the value itself.  Furthermore, the
+ * value can be 64 bits for a 32-bit application.  Use
+ * drsys_cur_syscall_result() instead.
+
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
  * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
- * On Windows, System calls that return an error code like
- * STATUS_BUFFER_TOO_SMALL OUT but that still write an param are
+ * The system call result can be obtained from dr_syscall_get_result().
+ *
+ * On Windows, system calls that return an error code like
+ * STATUS_BUFFER_TOO_SMALL OUT but that still write an output param are
  * considered to have succeeded.
  *
  * @param[in]  syscall  The handle for the system call to query.
@@ -647,10 +656,43 @@ drsys_cur_syscall(void *drcontext, OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
+ * Returns whether the just-completed system call succeeded along with
+ * the value and error code returned.  Must be called from a
+ * post-system-call event.
+ *
+ * This routine distinguishes itself from dr_syscall_get_result_ex()
+ * by providing accurate results for all system calls, in particular
+ * including Windows win32k.sys graphical (NtGdi) and user (NtUser)
+ * system calls.  It also knows which system calls return 64-bit
+ * results, elminating the need for the caller to specifically request
+ * the top 32 bits in such cases.
+ *
+ * On Windows, system calls that return an error code like
+ * STATUS_BUFFER_TOO_SMALL OUT but that still write an output param are
+ * considered to have succeeded.
+ *
+ * @param[in]  drcontext  The current DynamoRIO thread context.
+ * @param[out] success  Whether the system call succeeded.  This parameter is
+ *     optional and may be NULL.
+ * @param[out] value    The value returned.  This parameter is
+ *     optional and may be NULL.
+ * @param[out] error_code  If the system call failed, this holds the error code
+ *     returned by the kernel, normalized to a positive value (i.e., on Linux it
+ *     is negated from the raw value returned by the kernel).  If the system call
+ *     succeeded, *error_code is set to 0.  This parameter is optional and may be NULL.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
+                         OUT uint *error_code);
+
+DR_EXPORT
+/**
  * Identifies the value of a system call argument as passed to the
  * current in-progress system call.  The value is cached in the
  * pre-syscall event only for those system calls that are filtered via
- * drsys_filter_syscall() drsys_filter_all_syscalls().  Must be called
+ * drsys_filter_syscall() or drsys_filter_all_syscalls().  Must be called
  * from a system call pre- or post-event.
  *
  * @param[in]  drcontext  The current DynamoRIO thread context.

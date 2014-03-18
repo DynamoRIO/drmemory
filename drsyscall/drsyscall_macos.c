@@ -211,8 +211,7 @@ drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 }
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
 {
-    /* FIXME i#1440: need to pass in mcxt for eflags CF */
-    return true;
+    return !TEST(EFLAGS_CF, mc->eflags);
 }

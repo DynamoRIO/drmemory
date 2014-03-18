@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -247,7 +247,7 @@ wingdi_shared_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
     /* handlers here do not check for success so we check up front */
     if (!pre) {
         bool success;
-        if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success)
+        if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL)
             != DRMF_SUCCESS || !success)
             return true;
     }

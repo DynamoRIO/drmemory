@@ -3956,9 +3956,10 @@ os_syscall_ret_small_write_last(syscall_info_t *info, ptr_int_t res)
 }
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
 {
     bool success;
+    ptr_int_t res = (ptr_int_t) mc->xax;
     if (wingdi_syscall_succeeded(sysnum, info, res, &success))
         return success;
     /* if info==NULL we assume specially handled and we don't need to look it up */
@@ -5734,8 +5735,7 @@ handle_DeviceIoControlFile_helper(void *drcontext, cls_syscall_t *pt,
          * watch NtWait* and tracking event objects, though we'll
          * over-estimate the amount written in some cases.
          */
-        if (!os_syscall_succeeded(ii->arg->sysnum, NULL,
-                                  dr_syscall_get_result(drcontext)))
+        if (!os_syscall_succeeded(ii->arg->sysnum, NULL, ii->arg->mc))
             return;
     }
 

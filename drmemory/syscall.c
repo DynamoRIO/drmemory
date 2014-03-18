@@ -535,14 +535,15 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (options.shadowing) {
         bool success = false;
+        uint errno;
 
         /* post-syscall, eax is defined */
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
-        if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success)
+        if (drsys_cur_syscall_result(drcontext, &success, NULL, &errno)
             != DRMF_SUCCESS || !success) {
-            LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
-                sysnum, get_syscall_name(sysnum_full), dr_syscall_get_result(drcontext));
+            LOG(SYSCALL_VERBOSE, "system call %i %s failed with error "PIFX"\n",
+                sysnum, get_syscall_name(sysnum_full), errno);
         } else {
             /* commit the writes via MEMREF_WRITE */
             if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) !=

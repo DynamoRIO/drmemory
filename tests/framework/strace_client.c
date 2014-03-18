@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -161,8 +161,8 @@ event_post_syscall(void *drcontext, int sysnum)
         dr_fprintf(STDERR, "\tsyscall returned "PFX"\n",
                    dr_syscall_get_result(drcontext));
     }
-    if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success) !=
-        DRMF_SUCCESS || !success) {
+    if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) != DRMF_SUCCESS ||
+        !success) {
         if (verbose)
             dr_fprintf(STDERR, "\tsyscall failed\n");
     } else {

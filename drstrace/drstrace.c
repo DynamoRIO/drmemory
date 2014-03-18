@@ -93,6 +93,7 @@ print_unicode_string(buf_info_t *buf, UNICODE_STRING *us)
     }
 }
 
+void
 print_simple_value(buf_info_t *buf, drsys_arg_t *arg, bool leading_zeroes)
 {
     bool pointer = !TEST(DRSYS_PARAM_INLINED, arg->mode);
@@ -231,6 +232,7 @@ event_post_syscall(void *drcontext, int sysnum)
 {
     drsys_syscall_t *syscall;
     bool success = false;
+    uint errno;
     drmf_status_t res;
     buf_info_t buf;
     buf.sofar = 0;
@@ -238,11 +240,13 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
 
-    if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success) !=
-        DRMF_SUCCESS)
-        ASSERT(false, "drsys_syscall_succeeded failed");
+    if (drsys_cur_syscall_result(drcontext, &success, NULL, &errno) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_cur_syscall_result failed");
 
-    OUTPUT(&buf, "    %s =>\n", success ? "succeeded" : "failed");
+    if (success)
+        OUTPUT(&buf, "    succeeded =>\n");
+    else
+        OUTPUT(&buf, "    failed (error="IF_WINDOWS_ELSE(PIFX, "%d")") =>\n", errno);
     res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, &buf);
     if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
         ASSERT(false, "drsys_iterate_args failed post-syscall");

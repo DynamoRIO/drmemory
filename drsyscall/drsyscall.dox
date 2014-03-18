@@ -105,4 +105,14 @@ system call in its dr_init() routine and decide which system calls it wants
 to monitor.  It should then request that \p drsyscall filter those system
 calls.  Only filtered system calls can be dynamically queried.
 
+When dealing with system call results and identifying whether a system call
+succeeded, drsys_cur_syscall_result() distinguishes itself from
+dr_syscall_get_result_ex() by providing accurate results for all system
+calls, in particular including Windows win32k.sys graphical (NtGdi) and
+user (NtUser) system calls.  It also knows which system calls return 64-bit
+results, elminating the need for the caller to specifically request the top
+32 bits in such cases.  For setting the result value of a system call,
+currently \p drsyscall does not provide its own routine and
+dr_syscall_set_result_ex() should be used.
+
 */

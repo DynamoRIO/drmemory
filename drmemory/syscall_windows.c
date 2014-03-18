@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -501,11 +501,10 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
     }
     /* for handle leak checks */
     if (options.check_handle_leaks) {
-        reg_t res = dr_syscall_get_result(drcontext);
         drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
         bool success = false;
         int  idx;
-        if (drsys_syscall_succeeded(syscall, res, &success) != DRMF_SUCCESS)
+        if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall success\n");
         if (drsys_syscall_type(syscall, &syscall_type) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall type\n");

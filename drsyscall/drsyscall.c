@@ -602,10 +602,56 @@ DR_EXPORT
 drmf_status_t
 drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT)
 {
+#ifdef MACOS
+    return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
+#else
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    dr_mcontext_t mc;
     if (syscall == NULL || success == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    *success = os_syscall_succeeded(sysinfo->num, sysinfo, result);
+    mc.xax = result;
+    *success = os_syscall_succeeded(sysinfo->num, sysinfo, &mc);
+    return DRMF_SUCCESS;
+#endif
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
+                         OUT uint *error_code)
+{
+    cls_syscall_t *pt;
+    syscall_info_t *sysinfo;
+    bool res;
+    if (drcontext == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    sysinfo = (syscall_info_t *) get_cur_syscall(pt);
+    res = os_syscall_succeeded(sysinfo->num, sysinfo, &pt->mc);
+    if (success != NULL)
+        *success = res;
+    if (value != NULL) {
+#ifdef X64
+        *value = pt->mc.rax;
+#else
+        /* yes, reg_t is unsigned so we have no sign-extension here */
+        if (TEST(SYSINFO_RET_64BIT, sysinfo->flags))
+            *value = (uint64)pt->mc.eax | ((uint64)pt->mc.edx << 32);
+        else
+            *value = (uint64)pt->mc.eax;
+#endif
+    }
+    if (error_code != NULL) {
+        if (res)
+            *error_code = 0;
+        else {
+#ifdef LINUX
+            *error_code = (uint)-(int)pt->mc.xax;
+#else
+            *error_code = (uint)pt->mc.xax;
+#endif
+        }
+    }
     return DRMF_SUCCESS;
 }
 
@@ -1536,8 +1582,7 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
             driver_process_writes(drcontext, sysnum);
 #endif
         if (pt->sysinfo != NULL) {
-            if (!os_syscall_succeeded(pt->sysnum, pt->sysinfo,
-                                      (ptr_int_t)dr_syscall_get_result(drcontext))) {
+            if (!os_syscall_succeeded(pt->sysnum, pt->sysinfo, &pt->mc)) {
                 LOG(SYSCALL_VERBOSE,
                     "system call #"SYSNUM_FMT"."SYSNUM_FMT" %s failed with "PFX"\n",
                     pt->sysnum.number, pt->sysnum.secondary,
