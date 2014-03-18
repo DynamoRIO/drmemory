@@ -449,6 +449,7 @@ newtest_ex(operators operators.cpp "" "" "" OFF ""
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
+newtest_ex(state state.c "" "" "" OFF "" ON)
 
 if (UNIX)
   newtest(signal signal.c)
@@ -774,6 +775,7 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "registers.pattern")
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
+  newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" ON "")
 else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "" OFF)
 
