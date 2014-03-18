@@ -27,11 +27,11 @@ registers.c:108
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1174
+registers.c_asm.asm:1177
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1191
+registers.c_asm.asm:1194
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1221
+registers.c_asm.asm:1224
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
