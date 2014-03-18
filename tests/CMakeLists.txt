@@ -606,6 +606,9 @@ if (TOOL_DR_MEMORY)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
+  if (APPLE)
+    append_test_compile_flags(suppress "-Wno-uninitialized")
+  endif ()
   if (WIN32)
     tobuild_lib(suppress-mod-foo suppress-mod-foo.c "" "/nodefaultlib /noentry")
     tobuild_lib(suppress-mod-bar suppress-mod-bar.c "" "/nodefaultlib /noentry")
