@@ -100,7 +100,7 @@ OPTION_FRONT_BOOL(front, top_stats, false,
                   "Primarily for use by developers of the tool.  Shows time taken and memory usage of the whole process at the end of the run")
 OPTION_FRONT_BOOL(front, fetch_symbols, false,
                   "Fetch missing symbol files at the end of the run",
-                  "Fetch missing symbol files at the end of the run")
+                  "Fetch missing symbol files at the end of the run.  While fetching of arbitrary symbols is off by default, auto-fetching of C library symbols is enabled unless -no_fetch_symbols is explicitly requested.")
 # endif
 #endif /* TOOL_DR_MEMORY */
 OPTION_FRONT_BOOL(front, follow_children, true,
