@@ -615,30 +615,22 @@ drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OU
 #endif
 }
 
-DR_EXPORT
-drmf_status_t
-drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
-                         OUT uint *error_code)
+static void
+get_syscall_result(syscall_info_t *sysinfo, dr_mcontext_t *mc,
+                   OUT bool *success, OUT uint64 *value, OUT uint *error_code)
 {
-    cls_syscall_t *pt;
-    syscall_info_t *sysinfo;
-    bool res;
-    if (drcontext == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
-    pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    sysinfo = (syscall_info_t *) get_cur_syscall(pt);
-    res = os_syscall_succeeded(sysinfo->num, sysinfo, &pt->mc);
+    bool res = os_syscall_succeeded(sysinfo->num, sysinfo, mc);
     if (success != NULL)
         *success = res;
     if (value != NULL) {
 #ifdef X64
-        *value = pt->mc.rax;
+        *value = mc->rax;
 #else
         /* yes, reg_t is unsigned so we have no sign-extension here */
         if (TEST(SYSINFO_RET_64BIT, sysinfo->flags))
-            *value = (uint64)pt->mc.eax | ((uint64)pt->mc.edx << 32);
+            *value = (uint64)mc->eax | ((uint64)mc->edx << 32);
         else
-            *value = (uint64)pt->mc.eax;
+            *value = (uint64)mc->eax;
 #endif
     }
     if (error_code != NULL) {
@@ -646,18 +638,43 @@ drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
             *error_code = 0;
         else {
 #ifdef LINUX
-            *error_code = (uint)-(int)pt->mc.xax;
+            *error_code = (uint)-(int)mc->xax;
 #else
-            *error_code = (uint)pt->mc.xax;
+            *error_code = (uint)mc->xax;
 #endif
         }
     }
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
+                         OUT uint *error_code)
+{
+    cls_syscall_t *pt;
+    syscall_info_t *sysinfo;
+    if (drcontext == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    sysinfo = (syscall_info_t *) get_cur_syscall(pt);
+    get_syscall_result(sysinfo, &pt->mc, success, value, error_code);
     return DRMF_SUCCESS;
 }
 
 DR_EXPORT
 drmf_status_t
 drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (value == NULL || argnum >= SYSCALL_NUM_ARG_STORE)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *value = (ptr_uint_t) pt->sysarg[argnum];
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_pre_syscall_arg64(void *drcontext, uint argnum, uint64 *value OUT)
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     if (value == NULL || argnum >= SYSCALL_NUM_ARG_STORE)
@@ -923,10 +940,14 @@ set_return_arg_vals(void *drcontext, drsys_arg_t *arg/*IN/OUT*/, bool have_retva
     arg->size = sz;
     arg->reg = DR_REG_NULL;
     arg->start_addr = NULL;
-    if (have_retval)
-        arg->value = dr_syscall_get_result(drcontext);
-    else
+    if (have_retval) {
+        get_syscall_result((syscall_info_t *)arg->syscall, arg->mc,
+                           NULL, &arg->value64, NULL);
+        arg->value = (ptr_uint_t) arg->value64;
+    } else {
         arg->value = 0;
+        arg->value64 = 0;
+    }
     arg->type = type;
     arg->type_name = arg_type_name(type, type_name);
     arg->mode = DRSYS_PARAM_RETVAL | DRSYS_PARAM_INLINED;
@@ -949,7 +970,8 @@ report_sysarg_type(sysarg_iter_info_t *ii, int ordinal, uint arg_flags,
     arg->ordinal = ordinal;
     arg->size = sz;
     drsyscall_os_get_sysparam_location(ii->pt, ordinal, arg);
-    arg->value = ii->pt->sysarg[ordinal];
+    arg->value = (ptr_uint_t) ii->pt->sysarg[ordinal];
+    arg->value64 = ii->pt->sysarg[ordinal];
     arg->type = type;
     arg->type_name = arg_type_name(type, type_name);
     arg->mode = mode_from_flags(arg_flags);
@@ -1245,7 +1267,7 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
             ASSERT(sysinfo->arg[sz_argnum].size > 0, "in/out size must be immed");
             ASSERT(sysinfo->arg[sz_argnum].size <= sizeof(size),
                    "in/out size must be <= sizeof(size_t)");
-            ptr = (size_t *) pt->sysarg[-arg->size];
+            ptr = SYSARG_AS_PTR(pt, -arg->size, size_t *);
             size = 0; /* fill in top bytes */
             /* XXX: in some cases, ptr isn't checked for definedness until
              * after this de-ref (b/c the SYSARG_READ entry is after this
@@ -1299,7 +1321,7 @@ should_ignore_arg(cls_syscall_t *pt, sysarg_iter_info_t *ii,
     ASSERT(if_null_arg >= 0 && if_null_arg < MAX_ARGS_IN_ENTRY,
            "sysarg index out of bound");
     return (if_null_arg >= 0 && if_null_arg < MAX_ARGS_IN_ENTRY &&
-            (app_pc) pt->sysarg[sysinfo->arg[if_null_arg].param] == NULL);
+            SYSARG_AS_PTR(pt, sysinfo->arg[if_null_arg].param, app_pc) == NULL);
 }
 
 /* Walks the param entries stored in the syscall table and processes them
@@ -1343,7 +1365,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         if (TESTANY(SYSARG_INLINED | SYSARG_NON_MEMARG, sysinfo->arg[i].flags))
             continue;
 
-        start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
+        start = SYSARG_AS_PTR(pt, sysinfo->arg[i].param, app_pc);
         size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, true/*pre*/, start);
         pt->sysarg_known_sz[sysinfo->arg[i].param] = size;
         LOG(SYSCALL_VERBOSE, "\t  pre storing size "PIFX" for arg %d\n",
@@ -1424,7 +1446,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             continue;
 #endif
 
-        start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
+        start = SYSARG_AS_PTR(pt, sysinfo->arg[i].param, app_pc);
         size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, false/*!pre*/, start);
         if (ii->abort)
             break;
@@ -1508,10 +1530,12 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 }
 
 static syscall_info_t *
-get_sysinfo(cls_syscall_t *pt, int initial_num, drsys_sysnum_t *sysnum OUT)
+get_sysinfo(void *drcontext, cls_syscall_t *pt, int initial_num,
+            drsys_sysnum_t *sysnum OUT)
 {
     syscall_info_t *sysinfo;
     ASSERT(sysnum != NULL, "invalid param");
+    ASSERT(pt->pre, "not support for post: need pt->sysarg there");
     sysnum->number = initial_num;
     sysnum->secondary = 0;
     sysinfo = syscall_lookup(*sysnum, false/*don't resolve 2ndary yet*/);
@@ -1519,15 +1543,19 @@ get_sysinfo(cls_syscall_t *pt, int initial_num, drsys_sysnum_t *sysnum OUT)
         if (TEST(SYSINFO_SECONDARY_TABLE, sysinfo->flags)) {
             uint code;
             ASSERT(sysinfo->arg_count >= 1, "at least 1 arg for code");
-            code = pt->sysarg[sysinfo->arg[0].param];
+            /* We're called only from pre, before pt->sysarg is set, and not
+             * used for syscalls w/ 64-bit params in 32-bit, so we can use
+             * dr_syscall_get_param().
+             */
+            code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[0].param);
 #ifdef WINDOWS
             /* i#1394: special handling for NtUserCall{One/Two}Param */
             if (initial_num == sysnum_UserCallOneParam.number) {
                 ASSERT(sysinfo->arg_count == 2, "2nd arg for code");
-                code = pt->sysarg[sysinfo->arg[1].param];
+                code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[1].param);
             } else if (initial_num == sysnum_UserCallTwoParam.number) {
                 ASSERT(sysinfo->arg_count == 3, "3rd arg for code");
-                code = pt->sysarg[sysinfo->arg[2].param];
+                code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[2].param);
             }
 #endif
             sysnum->secondary = code;
@@ -1567,6 +1595,7 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
     arg.mc = &pt->mc;
     arg.valid = true;
     arg.value = 0; /* only used for arg iterator */
+    arg.value64 = 0; /* only used for arg iterator */
 
     if (pt->pre) {
         if (pt->sysinfo != NULL) {
@@ -1641,9 +1670,11 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             arg->reg = DR_REG_NULL;
             arg->start_addr = NULL;
             arg->value = 0;
+            arg->value64 = 0;
         } else {
             drsyscall_os_get_sysparam_location(pt, i, arg);
-            arg->value = pt->sysarg[i];
+            arg->value64 = pt->sysarg[i];
+            arg->value = (ptr_uint_t) pt->sysarg[i];
         }
         arg->type = DRSYS_TYPE_UNKNOWN;
         arg->mode = DRSYS_PARAM_IN;
@@ -1675,6 +1706,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                         arg->value &= 0xffff;
                     else if (arg->size == 4)
                         arg->value &= 0xffffffff;
+                    arg->value64 = arg->value;
                 }
             }
             arg->mode = mode_from_flags(sysinfo->arg[compacted].flags);
@@ -1792,21 +1824,6 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     pt->mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &pt->mc);
 
-    /* Save params for post-syscall access.
-     * We are reading beyond the # of args of some syscalls and we can
-     * (and do: i#1419) read beyond the base of the stack so we use a try.
-     */
-    LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", pt->mc.xsp);
-    DR_TRY_EXCEPT(drcontext, {
-        for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
-            pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
-            LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
-        }
-    }, { /* EXCEPT */
-        /* Do nothing: we assume we're beyond the real # of args. */
-    });
-
-
     DODEBUG({
         /* release_extra_info() calls can be bypassed if syscalls or safe reads
          * fail so we always clear up front
@@ -1815,9 +1832,45 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     });
 
     /* now that we have pt->sysarg set, get sysinfo and sysnum */
-    pt->sysinfo = get_sysinfo(pt, initial_num, &pt->sysnum);
+    pt->sysinfo = get_sysinfo(drcontext, pt, initial_num, &pt->sysnum);
     pt->known = (pt->sysinfo != NULL &&
                  TEST(SYSINFO_ALL_PARAMS_KNOWN, pt->sysinfo->flags));
+
+    /* Save params for post-syscall access.
+     * We are reading beyond the # of args of some syscalls and we can
+     * (and do: i#1419) read beyond the base of the stack so we use a try.
+     */
+    LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", pt->mc.xsp);
+    DR_TRY_EXCEPT(drcontext, {
+        int dr_slot;
+        IF_NOT_X64(int compacted = 0;)
+        for (dr_slot = 0, i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
+            pt->sysarg[i] = (ptr_uint_t) dr_syscall_get_param(drcontext, dr_slot);
+            IF_NOT_X64({
+                /* Handle 32-bit MacOS syscalls that have 64-bit params, which DR
+                 * treats as two slots (params are on the stack).
+                 */
+                while (pt->sysinfo != NULL &&
+                       !sysarg_invalid(&pt->sysinfo->arg[compacted]) &&
+                       pt->sysinfo->arg[compacted].param < i)
+                    compacted++;
+                ASSERT(compacted <= MAX_ARGS_IN_ENTRY, "error in table entry");
+                if (pt->sysinfo != NULL &&
+                    !sysarg_invalid(&pt->sysinfo->arg[compacted]) &&
+                    TEST(SYSARG_INLINED, pt->sysinfo->arg[compacted].flags) &&
+                    pt->sysinfo->arg[compacted].size == 8) {
+                    /* This arg takes up two slots */
+                    dr_slot++;
+                    pt->sysarg[i] |= ((uint64)dr_syscall_get_param(drcontext, dr_slot)
+                                      << 32);
+                }
+            });
+            dr_slot++;
+            LOG(SYSCALL_VERBOSE, "\targ %d = "ARGFMT"\n", i, pt->sysarg[i]);
+        }
+    }, { /* EXCEPT */
+        /* Do nothing: we assume we're beyond the real # of args. */
+    });
 
 #ifdef SYSCALL_DRIVER
     /* do this as late as possible to avoid our own syscalls from corrupting

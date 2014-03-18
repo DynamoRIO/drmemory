@@ -286,13 +286,28 @@ typedef struct _drsys_arg_t {
     /**
      * For the arg iterator, holds the value of the parameter.
      * Unused for the memarg iterator.
+     *
+     * \deprecated For 32-bit applications, some platforms (namely
+     * MacOS) support 64-bit arguments.  For such cases, this field
+     * will hold only the bottom 32 bits of the value.  Use the \p
+     * value64 field to retrieve the whole value.  For cross-platform
+     * code, we recommend using \p value64 rather than this field.
      */
     ptr_uint_t value;
     /**
-     * For the memarg iterator, specifies the size of the memory region.
-     * For the arg iterator, specifies the size of the parameter.
+     * For the memarg iterator, specifies the size in bytes of the memory region.
+     * For the arg iterator, specifies the size in bytes of the parameter.
      */
     size_t size;
+    /**
+     * Identical to \p value, except it holds the full value of the
+     * parameter for the arg iterator for 32-bit applications on MacOS
+     * when the value is an 8-byte type.  For cross-plaform code, we
+     * recommend using this field rather than \p value.
+     *
+     * Unused for the memarg iterator.
+     */
+    uint64 value64;
 } drsys_arg_t;
 
 /** Indicates the category of system call.  Relevant to Windows only. */
@@ -703,14 +718,46 @@ DR_EXPORT
  * drsys_filter_syscall() or drsys_filter_all_syscalls().  Must be called
  * from a system call pre- or post-event.
  *
+ * \deprecated For 32-bit applications, some platforms (namely MacOS)
+ * support 64-bit arguments.  For such cases, the value returned here
+ * will hold only the bottom 32 bits of the value.  We recommend using
+ * drsys_pre_syscall_arg64() instead for cross-platform code.
+ *
  * @param[in]  drcontext  The current DynamoRIO thread context.
  * @param[in]  argnum     The ordinal of the parameter to query.
  * @param[out] value      The value of the parameter.
  *
  * \return success code.
+ *
+ * \note On 32-bit MacOS, the ordinal differs from that used in
+ * dr_syscall_get_param(), as dr_syscall_get_param() splits 64-bit
+ * arguments into two pieces.  Here, 64-bit arguments occupy just one
+ * slot.
  */
 drmf_status_t
 drsys_pre_syscall_arg(void *drcontext, uint argnum, OUT ptr_uint_t *value);
+
+DR_EXPORT
+/**
+ * Identifies the value of a system call argument as passed to the
+ * current in-progress system call.  The value is cached in the
+ * pre-syscall event only for those system calls that are filtered via
+ * drsys_filter_syscall() or drsys_filter_all_syscalls().  Must be called
+ * from a system call pre- or post-event.
+ *
+ * @param[in]  drcontext  The current DynamoRIO thread context.
+ * @param[in]  argnum     The ordinal of the parameter to query.
+ * @param[out] value      The value of the parameter.
+ *
+ * \return success code.
+ *
+ * \note On 32-bit MacOS, the ordinal differs from that used in
+ * dr_syscall_get_param(), as dr_syscall_get_param() splits 64-bit
+ * arguments into two pieces.  Here, 64-bit arguments occupy just one
+ * slot.
+ */
+drmf_status_t
+drsys_pre_syscall_arg64(void *drcontext, uint argnum, OUT uint64 *value);
 
 DR_EXPORT
 /**

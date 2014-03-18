@@ -62,10 +62,23 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
     return true; /* keep going */
 }
 
+static uint64
+truncate_int_to_size(uint64 val, uint size)
+{
+    if (size == 1)
+        val &= 0xff;
+    else if (size == 2)
+        val &= 0xffff;
+    else if (size == 4)
+        val &= 0xffffffff;
+    return val;
+}
+
 static bool
 drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 {
     ptr_uint_t val;
+    uint64 val64;
 
     ASSERT(arg->valid, "no args should be invalid in this app");
     ASSERT(arg->mc != NULL, "mc check");
@@ -77,21 +90,33 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
                "mem args should be on stack");
     }
 
+    if (verbose) {
+        dr_fprintf(STDERR, "\targ %d: name=%s, type=%d %s, value=0x"
+                   HEX64_FORMAT_STRING", size="PIFX"\n",
+                   arg->ordinal, arg->arg_name == NULL ? "\"\"" : arg->arg_name,
+                   arg->type, arg->type_name == NULL ? "\"\"" : arg->type_name,
+                   arg->value64, arg->size);
+    }
+
     if (TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
-        ASSERT(arg->pre || arg->value == dr_syscall_get_result(dr_get_current_drcontext()),
+        ASSERT(arg->pre ||
+               arg->value == dr_syscall_get_result(dr_get_current_drcontext()),
                "return val wrong");
+        if (!arg->pre &&
+            drsys_cur_syscall_result(dr_get_current_drcontext(), NULL, &val64, NULL)
+            == DRMF_SUCCESS)
+            ASSERT(arg->value64 == val64, "return val wrong");
     } else {
         if (drsys_pre_syscall_arg(arg->drcontext, arg->ordinal, &val) != DRMF_SUCCESS)
             ASSERT(false, "drsys_pre_syscall_arg failed");
+        if (drsys_pre_syscall_arg64(arg->drcontext, arg->ordinal, &val64) != DRMF_SUCCESS)
+            ASSERT(false, "drsys_pre_syscall_arg64 failed");
         if (arg->size < sizeof(val)) {
-            if (arg->size == 1)
-                val &= 0xff;
-            else if (arg->size == 2)
-                val &= 0xffff;
-            else if (arg->size == 4)
-                val &= 0xffffffff;
+            val = truncate_int_to_size(val, arg->size);
+            val64 = truncate_int_to_size(val64, arg->size);
         }
         ASSERT(val == arg->value, "values do not match");
+        ASSERT(val64 == arg->value64, "values do not match");
     }
 
     /* We could test drsys_handle_is_current_process() but we'd have to

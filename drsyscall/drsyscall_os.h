@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -53,6 +53,13 @@
 #else
 # define SYSNUM_FMT PIFX
 #endif
+
+/* With the widening to 64-bit, 32-bit code needs a lot of ugly casts so we try
+ * to simplify via this macro:
+ */
+#define SYSARG_AS_PTR(pt, ord, type) (type)(ptr_uint_t)(pt)->sysarg[(ord)]
+
+#define ARGFMT "0x" HEX64_FORMAT_STRING
 
 /* extra_info slot usage */
 enum {
@@ -275,8 +282,11 @@ typedef struct _cls_syscall_t {
     dr_mcontext_t mc;
     bool pre;
 
-    /* for recording args so post-syscall can examine */
-    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+    /* For recording args so post-syscall can examine.
+     * To maintain ordinals for 32-bit Mac, where syscalls can take 64-bit
+     * args, we have to widen what we store for 64-bit.
+     */
+    uint64 sysarg[SYSCALL_NUM_ARG_STORE];
 #ifdef WINDOWS
     reg_t param_base;
 #endif

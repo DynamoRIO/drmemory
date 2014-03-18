@@ -86,8 +86,9 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
  - Added preliminary shadowing of xmm registers for better Visual Studio
    2013 support
  - Added preliminary shadowing of mmx registers
- - Augmented Dr. Syscall to provide MacOS support by adding
-   drsys_cur_syscall_result().
+ - Augmented the Dr. Syscall API for MacOS support by adding
+   drsys_cur_syscall_result(), drsys_arg_t.value64, and
+   drsys_pre_syscall_arg64().
  - The pause in cmd on a frontend error is now bypassable by -batch
  - Various bug fixes
 

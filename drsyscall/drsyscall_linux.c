@@ -2246,7 +2246,7 @@ handle_clone(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
      * We check the writes here to avoid races (xref PR 408540).
      */
     if (TEST(CLONE_PARENT_SETTID, flags)) {
-        pid_t *ptid = (pid_t *) pt->sysarg[2];
+        pid_t *ptid = SYSARG_AS_PTR(pt, 2, pid_t *);
         if (!report_sysarg(ii, 2, SYSARG_WRITE))
             return;
         if (ptid != NULL) {
@@ -2262,7 +2262,7 @@ handle_clone(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 #else
         typedef struct user_desc user_desc_t;
 #endif
-        user_desc_t *tls = (user_desc_t *) pt->sysarg[3];
+        user_desc_t *tls = SYSARG_AS_PTR(pt, 3, user_desc_t *);
         if (!report_sysarg(ii, 3, SYSARG_READ))
             return;
         if (tls != NULL) {
@@ -2277,7 +2277,7 @@ handle_clone(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
          * didn't support the param but the kernel did, the kernel will store
          * this address so we should complain.
          */
-        pid_t *ptid = (pid_t *) pt->sysarg[4];
+        pid_t *ptid = SYSARG_AS_PTR(pt, 4, pid_t *);
         if (!report_sysarg(ii, 4, SYSARG_WRITE))
             return;
         if (ptid != NULL) {
@@ -2307,7 +2307,7 @@ static void
 handle_pre_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     int request = (int) pt->sysarg[1];
-    void *arg = (void *) pt->sysarg[IOCTL_BUF_ARGNUM];
+    void *arg = SYSARG_AS_PTR(pt, IOCTL_BUF_ARGNUM, void *);
     if (arg == NULL)
         return;
     /* easier to safe_read the whole thing at once
@@ -2389,7 +2389,7 @@ static void
 handle_post_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     int request = (int) pt->sysarg[1];
-    void *arg = (ptr_uint_t *) pt->sysarg[2];
+    void *arg = SYSARG_AS_PTR(pt, 2, ptr_uint_t *);
     ptr_int_t result = dr_syscall_get_result(drcontext);
     if (arg == NULL)
         return;
@@ -2608,7 +2608,7 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
     uint request = (uint) pt->sysarg[0];
     /* The first sysparam is an array of args of varying length */
 #   define SOCK_ARRAY_ARG 1
-    ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[SOCK_ARRAY_ARG];
+    ptr_uint_t *arg = SYSARG_AS_PTR(pt, SOCK_ARRAY_ARG, ptr_uint_t *);
     app_pc ptr1, ptr2;
     socklen_t val_socklen;
     size_t val_size;
@@ -2833,7 +2833,7 @@ static void
 handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
-    ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[SOCK_ARRAY_ARG];
+    ptr_uint_t *arg = SYSARG_AS_PTR(pt, SOCK_ARRAY_ARG, ptr_uint_t *);
     ptr_int_t result = dr_syscall_get_result(drcontext);
     app_pc ptr2;
     socklen_t val_socklen;
@@ -2853,7 +2853,7 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
-            check_sockaddr(pt, ii, (app_pc)pt->sysarg[2], val_socklen, SOCK_ARRAY_ARG,
+            check_sockaddr(pt, ii, SYSARG_AS_PTR(pt, 2, app_pc), val_socklen, SOCK_ARRAY_ARG,
                            SYSARG_WRITE, id);
             if (ii->abort)
                 return;
@@ -2864,7 +2864,7 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (result <= pt->sysarg[5]/*buflen*/) ? result : pt->sysarg[5];
             if (len > 0) {
-                if (!report_memarg_type(ii, 4, SYSARG_WRITE, (app_pc)pt->sysarg[4],
+                if (!report_memarg_type(ii, 4, SYSARG_WRITE, SYSARG_AS_PTR(pt, 4, app_pc),
                                         len, "recv", DRSYS_TYPE_STRUCT, NULL))
                     return;
             }
@@ -2875,7 +2875,7 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (result <= pt->sysarg[5]/*buflen*/) ? result : pt->sysarg[5];
             if (len > 0) {
-                if (!report_memarg_type(ii, 4, SYSARG_WRITE, (app_pc)pt->sysarg[4],
+                if (!report_memarg_type(ii, 4, SYSARG_WRITE, SYSARG_AS_PTR(pt, 4, app_pc),
                                         len, "recvfrom buf", DRSYS_TYPE_STRUCT, NULL))
                     return;
             }
@@ -2885,7 +2885,7 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
             safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen) &&
             val_socklen > 0) {
-            check_sockaddr(pt, ii, (app_pc)pt->sysarg[2], val_socklen, 2, SYSARG_WRITE,
+            check_sockaddr(pt, ii, SYSARG_AS_PTR(pt, 2, app_pc), val_socklen, 2, SYSARG_WRITE,
                            "recvfrom addr");
             if (ii->abort)
                 return;
@@ -2898,14 +2898,14 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (val_socklen <= pt->sysarg[3]) ? val_socklen : pt->sysarg[3];
-            if (!report_memarg_type(ii, 2, SYSARG_WRITE, (app_pc)pt->sysarg[2],
+            if (!report_memarg_type(ii, 2, SYSARG_WRITE, SYSARG_AS_PTR(pt, 2, app_pc),
                                     len, "getsockopt", DRSYS_TYPE_STRUCT, NULL))
                 return;
         }
         break;
     case SYS_RECVMSG: {
         if (pt->sysarg[2] != 0) { /* if 0, error on safe_read in pre */
-            check_msghdr(drcontext, pt, ii, (byte *) pt->sysarg[2], sizeof(struct msghdr),
+            check_msghdr(drcontext, pt, ii, SYSARG_AS_PTR(pt, 2, byte *), sizeof(struct msghdr),
                          SOCK_ARRAY_ARG, SYSARG_WRITE);
             if (ii->abort)
                 return;
@@ -3058,7 +3058,7 @@ handle_msgctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
               int argnum_msqid, int argnum_cmd, int argnum_buf)
 {
     uint cmd = (uint) pt->sysarg[argnum_cmd];
-    byte *ptr = (byte *) pt->sysarg[argnum_buf];
+    byte *ptr = SYSARG_AS_PTR(pt, argnum_buf, byte *);
     if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
     if (ii->arg->pre) {
@@ -3128,7 +3128,7 @@ handle_shmctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
               int argnum_shmid, int argnum_cmd, int argnum_buf)
 {
     uint cmd = (uint) pt->sysarg[argnum_cmd];
-    byte *ptr = (byte *) pt->sysarg[argnum_buf];
+    byte *ptr = SYSARG_AS_PTR(pt, argnum_buf, byte *);
     if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
     if (ii->arg->pre) {
@@ -3196,7 +3196,7 @@ handle_pre_process_vm_readv_writev(void *drcontext, sysarg_iter_info_t *ii)
         pid_t pid = (pid_t)(ii->pt->sysarg[0]);
         if (pid == dr_get_process_id()) {
             struct iovec *riov;
-            riov = (struct iovec *)(ii->pt->sysarg[3]);
+            riov = SYSARG_AS_PTR(ii->pt, 3, struct iovec *);
             unsigned long riovcnt = ii->pt->sysarg[4];
 
             /* size_t-1 is the max size_t value */
@@ -3208,7 +3208,7 @@ handle_pre_process_vm_readv_writev(void *drcontext, sysarg_iter_info_t *ii)
     }
 
     struct iovec *liov;
-    liov = (struct iovec *)(ii->pt->sysarg[1]);
+    liov = SYSARG_AS_PTR(ii->pt, 1, struct iovec *);
     unsigned long liovcnt = ii->pt->sysarg[2];
 
     /* XXX: Passing (size_t)-1 (max size_t val) we check every member of the array,
@@ -3226,7 +3226,7 @@ handle_post_process_vm_readv(void *drcontext, sysarg_iter_info_t *ii)
 
     if (res > 0) {
         struct iovec *liov;
-        liov = (struct iovec *)(ii->pt->sysarg[1]);
+        liov = SYSARG_AS_PTR(ii->pt, 1, struct iovec *);
         unsigned long liovcnt = ii->pt->sysarg[2];
 
         check_iov(ii->pt, ii, liov, (size_t)liovcnt, res, 1, SYSARG_WRITE,
@@ -3242,7 +3242,7 @@ handle_post_process_vm_writev(void *drcontext, sysarg_iter_info_t *ii)
 
     if (res > 0 && pid == dr_get_process_id()) {
         struct iovec *riov;
-        riov = (struct iovec *)(ii->pt->sysarg[3]);
+        riov = SYSARG_AS_PTR(ii->pt, 3, struct iovec *);
         unsigned long riovcnt = ii->pt->sysarg[4];
 
         check_iov(ii->pt, ii, riov, (size_t)riovcnt, res, 3, SYSARG_WRITE,
@@ -3277,7 +3277,7 @@ handle_pre_ipc(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
     int arg2 = (int) pt->sysarg[2];
-    ptr_uint_t *ptr = (ptr_uint_t *) pt->sysarg[4];
+    ptr_uint_t *ptr = SYSARG_AS_PTR(pt, 4, ptr_uint_t *);
     ptr_int_t arg5 = (int) pt->sysarg[5];
     /* They all use param #0, which is checked via table specifying 1 arg */
     /* Note that we can't easily use SYSINFO_SECONDARY_TABLE for these
@@ -3403,7 +3403,7 @@ static void
 handle_post_ipc(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
-    ptr_uint_t *ptr = (ptr_uint_t *) pt->sysarg[4];
+    ptr_uint_t *ptr = SYSARG_AS_PTR(pt, 4, ptr_uint_t *);
     ptr_int_t result = dr_syscall_get_result(drcontext);
     switch (request) {
     case SEMCTL: {
@@ -3439,25 +3439,25 @@ handle_pre_select(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
      * No post-syscall action needed b/c no writes to previously-undef mem.
      */
     size_t sz = nfds / 8; /* 8 bits per byte, size is in bytes */
-    app_pc ptr = (app_pc) pt->sysarg[1];
+    app_pc ptr = SYSARG_AS_PTR(pt, 1, app_pc);
     if (ptr != NULL) {
         if (!report_memarg_type(ii, 1, SYSARG_READ, ptr, sz,
                                 "select readfds", DRSYS_TYPE_STRUCT, NULL))
             return;
     }
-    ptr = (app_pc) pt->sysarg[2];
+    ptr = SYSARG_AS_PTR(pt, 2, app_pc);
     if (ptr != NULL) {
         if (!report_memarg_type(ii, 2, SYSARG_READ, ptr, sz,
                                 "select writefds", DRSYS_TYPE_STRUCT, NULL))
             return;
     }
-    ptr = (app_pc) pt->sysarg[3];
+    ptr = SYSARG_AS_PTR(pt, 3, app_pc);
     if (ptr != NULL) {
         if (!report_memarg_type(ii, 3, SYSARG_READ, ptr, sz,
                                 "select exceptfds", DRSYS_TYPE_STRUCT, NULL))
             return;
     }
-    ptr = (app_pc) pt->sysarg[4];
+    ptr = SYSARG_AS_PTR(pt, 4, app_pc);
     if (ptr != NULL) {
         if (!report_memarg_type(ii, 4, SYSARG_READ, ptr,
                                 (ii->arg->sysnum.number == SYS_select ?
@@ -3466,7 +3466,7 @@ handle_pre_select(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
             return;
     }
     if (ii->arg->sysnum.number == SYS_pselect6) {
-        ptr = (app_pc) pt->sysarg[5];
+        ptr = SYSARG_AS_PTR(pt, 5, app_pc);
         if (ptr != NULL) {
             if (!report_memarg_type(ii, 5, SYSARG_READ, ptr,
                                     sizeof(kernel_sigset_t), "pselect sigmask",
@@ -3554,14 +3554,14 @@ handle_post_prctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     case PR_GET_TSC:
     case PR_GET_ENDIAN:
         if (result >= 0) {
-            if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) pt->sysarg[1],
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE, SYSARG_AS_PTR(pt, 1, app_pc),
                                     sizeof(int), NULL, DRSYS_TYPE_INT, NULL))
                 return;
         }
         break;
     case PR_GET_NAME:
         /* FIXME PR 408539: actually only writes up to null char */
-        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) pt->sysarg[1],
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, SYSARG_AS_PTR(pt, 1, app_pc),
                                 PRCTL_NAME_SZ, NULL, DRSYS_TYPE_CARRAY, NULL))
             return;
         break;
@@ -3576,7 +3576,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_clone(drcontext, pt, ii);
         break;
     case SYS__sysctl: {
-        struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
+        struct __sysctl_args *args = SYSARG_AS_PTR(pt, 0, struct __sysctl_args *);
         if (args != NULL) {
             /* just doing reads here: writes in post */
             if (!report_memarg_type(ii, 0, SYSARG_READ, (app_pc) args->name,
@@ -3663,7 +3663,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_pre_select(drcontext, pt, ii);
         break;
     case SYS_poll: {
-        struct pollfd *fds = (struct pollfd *) pt->sysarg[0];
+        struct pollfd *fds = SYSARG_AS_PTR(pt, 0, struct pollfd *);
         nfds_t nfds = (nfds_t) pt->sysarg[1];
         if (fds != NULL) {
             int i;
@@ -3684,7 +3684,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         /* restorer field not always filled in.  we ignore the old (pre-2.1.68)
          * kernel sigaction struct layout.
          */
-        kernel_sigaction_t *sa = (kernel_sigaction_t *) pt->sysarg[1];
+        kernel_sigaction_t *sa = SYSARG_AS_PTR(pt, 1, kernel_sigaction_t *);
         if (sa != NULL) {
             if (TEST(SA_RESTORER, sa->flags)) {
                 if (!report_memarg_type(ii, 1, SYSARG_READ, (app_pc) sa, sizeof(*sa),
@@ -3710,7 +3710,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         if (op == FUTEX_WAKE || op == FUTEX_FD) {
             /* just the 3 params */
         } else if (op == FUTEX_WAIT) {
-            struct timespec *timeout = (struct timespec *) pt->sysarg[3];
+            struct timespec *timeout = SYSARG_AS_PTR(pt, 3, struct timespec *);
             if (!report_sysarg(ii, 3, SYSARG_READ))
                 return;
             if (timeout != NULL) {
@@ -3725,7 +3725,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
                 if (!report_sysarg(ii, 5, SYSARG_READ))
                     return;
             }
-            if (!report_memarg_type(ii, 4, SYSARG_READ, (app_pc) pt->sysarg[4],
+            if (!report_memarg_type(ii, 4, SYSARG_READ, SYSARG_AS_PTR(pt, 4, app_pc),
                                     sizeof(uint), NULL, DRSYS_TYPE_INT, NULL))
                 return;
         }
@@ -3745,7 +3745,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
     /* each handler checks result for success */
     switch (ii->arg->sysnum.number) {
     case SYS__sysctl: {
-        struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
+        struct __sysctl_args *args = SYSARG_AS_PTR(pt, 0, struct __sysctl_args *);
         size_t len;
         if (dr_syscall_get_result(drcontext) == 0 && args != NULL) {
             /* xref PR 408540: here we wait until post so we can use the
@@ -3782,7 +3782,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         break;
 #endif
     case SYS_poll: {
-        struct pollfd *fds = (struct pollfd *) pt->sysarg[0];
+        struct pollfd *fds = SYSARG_AS_PTR(pt, 0, struct pollfd *);
         nfds_t nfds = (nfds_t) pt->sysarg[1];
         if (fds != NULL) {
             int i;
