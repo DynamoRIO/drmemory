@@ -118,6 +118,14 @@ typedef struct _drsys_sysnum_t {
      * Either the sole system call number by itself (in which case \p
      * secondary will be zero), or the primary component of a two-part
      * system call number \p number.secondary.
+     *
+     * For MacOS, whether 32-bit or 64-bit, we normalize the system
+     * call number to a positive integer with the top 8 bits set to
+     * 0x1 for a Mach system call, 0x3 for Machdep, and 0x0 for BSD
+     * (allowing the direct use of SYS_ constants).  Access the raw
+     * eax register in the pre-syscall event to view the unmodified
+     * number, whose encoding varies depending on the bitwidth and
+     * interrupt vector used.
      */
     int number;
     int secondary;   /**< Secondary component of \p number.secondary, or zero. */
