@@ -1427,16 +1427,24 @@ client_pre_syscall(void *drcontext, int sysnum)
          * and wait until enter a handler.  Can ignore SIG_IGN and SIG_DFL.
          */
         void *handler = NULL;
-        if (sysnum == IF_MACOS_ELSE(SYS_sigaction, SYS_rt_sigaction)) {
+# ifdef MACOS
+        if (sysnum == SYS_sigaction) {
+            /* 2nd arg is ptr to struct w/ app handler as 1st field, but libc
+             * trampoline as 2nd field.
+             */
+            safe_read((byte *)syscall_get_param(drcontext, 1) + sizeof(handler),
+                      sizeof(handler), &handler);
+        }
+# else
+        if (sysnum == SYS_rt_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
             safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
-# ifdef X86_32
+#  ifdef X86_32
         else if (sysnum == SYS_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
             safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
-#  ifdef LINUX
         else if (sysnum == SYS_signal) {
             /* 2nd arg is handler */
             handler = (void *) syscall_get_param(drcontext, 1);
