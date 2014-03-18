@@ -174,10 +174,15 @@ else (PERL_TO_EXE OR USE_DRSYMS)
 endif (PERL_TO_EXE OR USE_DRSYMS)
 if (WIN32)
   string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=Windows" string "${string}")
+else ()
+  if (APPLE)
+    string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=MacOS" string "${string}")
+  else ()
+    if (VMKERNEL)
+      string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=ESXi" string "${string}")
+    endif (VMKERNEL)
+  endif (APPLE)
 endif (WIN32)
-if (VMKERNEL)
-  string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=ESXi" string "${string}")
-endif (VMKERNEL)
 
 string(REGEX REPLACE
   "(ENABLED_SECTIONS[ \t]*=)"

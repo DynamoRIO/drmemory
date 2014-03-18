@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -145,7 +145,7 @@ myranlib.dll!GenRan*
 
 For users with existing Valgrind Memcheck suppression files, Dr. Memory
 supports Valgrind-style suppressions, but not with mangled C++ symbols.
-On Linux, a script called \p valgrind2drmemory.pl is provided in the bin
+On Linux and Mac, a script called \p valgrind2drmemory.pl is provided in the bin
 directory that can be used to convert a legacy Valgrind suppression file to
 the Dr. Memory format.  It uses heuristics to convert mangled C++ symbols
 that contain wildcards and may not succeed on complex types (it prints a
@@ -189,6 +189,9 @@ strlen in the C library.
 On Linux, Dr. Memory will look in the default debug directories for symbols
 for a library: a <tt>.debug</tt> subdirectory of the library's directory or
 in <tt>/usr/lib/debug</tt>.
+
+On Mac, Dr. Memory will look in the default debug directories for symbols
+for a library: a <tt>.dSYM</tt> subdirectory of the library's directory.
 
 On Windows, the <tt>_NT_SYMBOL_PATH</tt> environment variable is honored by
 Dr. Memory as a local cache of \p pdb files.  However, Dr. Memory does not

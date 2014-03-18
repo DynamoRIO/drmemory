@@ -60,7 +60,7 @@ Quick start for Windows:
 2) bin\drmemory.exe -- myapp.exe args_to_my_app
 
 --------------------------------------------------
-Quick start for MacOS:
+Quick start for Mac:
 
 1) c++ -m32 -g -fno-inline -fno-omit-frame-pointer *.cpp -o myapp
 2) bin/drmemory.pl -- ./myapp args_to_myapp

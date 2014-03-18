@@ -42,8 +42,8 @@ This section is divided into the following subsections:
 
 The Dr. Memory distribution contains the following:
 
- - The front-end script to launch Dr. Memory: \p drmemory.pl on Linux and
-   Cygwin, \p drmemory.exe on Windows.
+ - The front-end script to launch Dr. Memory: \p drmemory.pl on Linux, Mac,
+   and Cygwin, \p drmemory.exe on Windows.
  - The back-end of Dr. Memory, contained in the \p bin and \p dynamorio
    subdirectories.  Dr. Memory runs on top of the DynamoRIO tool engine
    (see http://dynamorio.org for more information on DynamoRIO).
@@ -60,6 +60,9 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.6.1 include:
+ - Added a Beta version of Dr. Memory for Mac.  Be aware that this
+   is a work in progress, but is far enough along to use on small
+   applications.
  - Changed Windows PDB symbols to collapse template parameters to "<>"
    to shrink and simplify callstacks and suppressions.  The old behavior
    can be requested by passing 0x1000 to the -callstack_style option.

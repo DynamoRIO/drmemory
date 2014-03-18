@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -38,6 +38,7 @@ Select your platform for instructions on how to install Dr. Memory onto
 your computer:
 
  - \subpage page_install_linux
+ - \subpage page_install_macos
  - \subpage page_install_windows
 
 ***************************************************************************
@@ -64,6 +65,31 @@ directory of your choice:
 
 \verbatim
 tar xzf DrMemory-Linux-X.X.X-X.tar.gz
+\endverbatim
+
+Now either place the \p bin subdirectory of the Dr. Memory directory
+structure on your PATH, or invoke Dr. Memory via its full path.
+
+***************************************************************************
+\page page_install_macos Installing on Mac
+
+********************
+\section sec_macos_utils System Requirements
+
+Ensure your Mac machine has perl installed, as it is used for the current
+front-end to Dr. Memory.
+
+Ensure your compiler is able to build 32-bit applications.  XCode by
+default is able to do so.
+
+********************
+\section sec_macos_install Installing
+
+Download the \p .tar.gz version of Dr. Memory.  Untar the package into a
+directory of your choice:
+
+\verbatim
+tar xzf DrMemory-MacOS-X.X.X-X.tar.gz
 \endverbatim
 
 Now either place the \p bin subdirectory of the Dr. Memory directory
@@ -108,7 +134,7 @@ before giving specific compiler parameters for each platform.
 ********************
 \section sec_prep_general For All Platforms
 
-These cross-platform steps apply to both Linux and Windows.
+These cross-platform steps apply to Linux, Mac, and Windows.
 
 ********************
 \subsection sec_prep_32bit 32-bit
@@ -121,7 +147,8 @@ compile your target application as 32-bit.
 
 In order to obtain line number information, compile your target
 application with debugging information enabled.
-On Linux, Dr. Memory supports ELF files with DWARF2 line information.  On
+On Linux, Dr. Memory supports ELF files with DWARF2 line information.
+On Mac, Dr. Memory supports Mach-O files with DWARF2 line information.  On
 Windows, Dr. Memory supports PDB debug information (produced by Visual
 Studio) as well as PECOFF files with DWARF2 line information (produced by
 MinGW gcc).
@@ -153,6 +180,21 @@ sudo apt-get install ia32-libs g++-multilib
 
 Dr. Memory currently only supports DWARF2 line information, not stabs.
 DWARF2 is the default for modern versions of \p gcc.
+
+Here is a sample command line for compiling your application that combines
+all of the above recommendations:
+
+\verbatim
+g++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+\endverbatim
+
+********************
+\section sec_prep_mac Mac
+
+Ensure your compiler is able to build 32-bit applications.
+
+Dr. Memory currently only supports DWARF2 line information, not stabs.
+DWARF2 is the default for modern versions of \p gcc as well as \p clang.
 
 Here is a sample command line for compiling your application that combines
 all of the above recommendations:
@@ -323,7 +365,7 @@ On Windows:
 drmemory.exe -- c:/path/to/my/app args to my app
 \endverbatim
 
-On Linux:
+On Linux or Mac:
 \verbatim
 drmemory.pl -- /path/to/my/app args to my app
 \endverbatim

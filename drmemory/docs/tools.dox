@@ -111,8 +111,8 @@ if complete output is required.
  ****************************************************************************
 \page page_symquery Symbol Query Tool
 
-\p symquery is a symbol querying tool that operates on both Linux and
-Windows and supports the Windows PDB, Linux ELF, and Windows PECOFF formats
+\p symquery is a symbol querying tool that operates on Linux, Mac, and
+Windows and supports the Windows PDB, Linux ELF, Mac Mach-O, and Windows PECOFF formats
 with DWARF2 line information.
 
 The usage summary is as follows:
@@ -172,6 +172,14 @@ On Linux:
 <debug info: type=ELF symtab, has symbols, has line numbers>
 main+0xb9
 /home/user/checkout/src/tests/free.c:61+0x7
+\endcode
+
+On Mac:
+\code
+% bin/symquery -e ./a.out -v -f -a 0x33a1
+<debug info: type=Mach-O symtab, has symbols, has line numbers>
+TrainCar::isEngine+0xf
+/Users/username/project/traincar.h:17+0x5
 \endcode
 
 Looking for symbols with wildcards:
