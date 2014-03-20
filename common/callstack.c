@@ -1082,7 +1082,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
     app_pc pc = next_retaddr, call_target = NULL;
     bool res = true;
     symbolized_frame_t frame_sym;
-    LOG(3, "%s: checking does "PFX" => "PFX"\n", __FUNCTION__, next_retaddr, frame_addr);
+    LOG(4, "%s: checking does "PFX" => "PFX"\n", __FUNCTION__, next_retaddr, frame_addr);
     if (TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags) &&
         !TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
         return true; /* no checks were requested */
@@ -1124,7 +1124,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
                 LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
                 STATS_INC(cstack_is_retaddr_unreadable);
             });
-            LOG(3, "%s: candidate cross-module retaddr "PFX" has %s call\n", __FUNCTION__,
+            LOG(4, "%s: candidate cross-module retaddr "PFX" has %s call\n", __FUNCTION__,
                 next_retaddr, res ? "indirect" : "direct");
             DOSTATS({
                 if (!res)
@@ -1160,7 +1160,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
         } else if (*(pc - 6) == OP_CALL_IND && *(pc - 5) == 0x15) {
             int disp32 = *(int*)(pc - 4);
             app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
-            LOG(3, "%s: call* @ "PFX" targets poi("PFX")\n", __FUNCTION__,
+            LOG(4, "%s: call* @ "PFX" targets poi("PFX")\n", __FUNCTION__,
                 pc - 6, indir);
             call_target = *(app_pc*)indir;
             /* Account for forwarding stubs like kernel32!HeapCreateStub */
@@ -1179,7 +1179,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
         STATS_INC(cstack_is_retaddr_unreadable);
     });
     if (res && call_target != NULL) {
-        LOG(3, "check: frame="PFX" (func "PFX"), ra="PFX", ra targets "PFX"\n",
+        LOG(4, "check: frame="PFX" (func "PFX"), ra="PFX", ra targets "PFX"\n",
             frame_addr, frame_addr - frame_sym.funcoffs, next_retaddr, call_target);
         res = (frame_sym.funcoffs != 0 && call_target == frame_addr - frame_sym.funcoffs);
     }

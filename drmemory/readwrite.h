@@ -170,12 +170,11 @@ bool
 opnd_uses_nonignorable_memory(opnd_t opnd);
 
 bool
-check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-               dr_mcontext_t *mc, uint *shadow_vals);
+check_mem_opnd_nouninit(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
+                        dr_mcontext_t *mc);
 
 bool
-handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc,
-               uint *shadow_vals);
+handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc);
 
 bool
 check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,

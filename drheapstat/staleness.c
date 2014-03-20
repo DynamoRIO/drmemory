@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -241,7 +241,7 @@ slow_path_for_staleness(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         opnd = instr_get_src(inst, i);
         if (opnd_is_memory_reference(opnd)) {
             opnd = adjust_memop(inst, opnd, false, &sz, &pushpop_stackop);
-            check_mem_opnd(opc, 0, loc, opnd, sz, mc, NULL);
+            check_mem_opnd_nouninit(opc, 0, loc, opnd, sz, mc);
         }
     }
 
@@ -250,7 +250,7 @@ slow_path_for_staleness(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         opnd = instr_get_dst(inst, i);
         if (opnd_is_memory_reference(opnd)) {
             opnd = adjust_memop(inst, opnd, true, &sz, &pushpop_stackop);
-            check_mem_opnd(opc, 0, loc, opnd, sz, mc, NULL);
+            check_mem_opnd_nouninit(opc, 0, loc, opnd, sz, mc);
         }
     }
 
@@ -261,8 +261,7 @@ slow_path_for_staleness(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 }
 
 bool
-handle_mem_ref(uint flags, app_loc_t *loc, byte *addr, size_t sz, dr_mcontext_t *mc,
-               uint *shadow_vals)
+handle_mem_ref(uint flags, app_loc_t *loc, byte *addr, size_t sz, dr_mcontext_t *mc)
 {
     byte *ptr;
     /* We're piggybacking on Dr. Memory syscall, etc. code.  For reads

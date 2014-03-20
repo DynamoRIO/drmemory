@@ -366,7 +366,7 @@ check_sysmem(uint flags, drsys_sysnum_t sysnum, app_pc ptr, size_t sz, dr_mconte
          */
         if (sz > 64*1024)
             flags |= MEMREF_ABORT_AFTER_UNADDR;
-        handle_mem_ref(flags, &loc, ptr, sz, mc, NULL);
+        handle_mem_ref(flags, &loc, ptr, sz, mc);
     }
 }
 

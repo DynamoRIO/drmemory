@@ -85,6 +85,40 @@ typedef struct _stringop_entry_t {
 #define MAX_DWORDS_TRANSFER 8
 #define OPND_SHADOW_ARRAY_LEN (MAX_DWORDS_TRANSFER * sizeof(uint))
 
+typedef struct _shadow_combine_t {
+    /* Array of shadow vals from sources to dests: each uint entry in the
+     * array is a shadow for one byte being transferred from source(s) to dest.
+     * Larger mem refs either have no transfer (e.g., fxsave), or if
+     * they do (rep movs) we handle them specially.
+     */
+    uint raw[OPND_SHADOW_ARRAY_LEN];
+    /* Indirection, to support laying out all srcs side-by-side and not combining any.
+     * All references to the array should go through dst instead of raw.
+     */
+    uint *dst;
+    /* Shadow value to write to eflags */
+    uint eflags;
+    /* The instr we're processing.  This is optional: it can be NULL, but then
+     * the code using this struct needs to handle all special data movement
+     * on its own, must still set the opcode, and must propagate shadow eflags.
+     */
+    instr_t *inst;
+    /* Must be set */
+    uint opcode;
+    /* These must be set when processing sources, and thus when calling
+     * check_mem_opnd() or integrate_register_shadow() for non-eflag sources.
+     * These exist to support artificial constructions.  They should not be
+     * extract from inst (it's a little fragile -- we kind of rely on only
+     * accessing inst for certain types of instrs that we never fake).
+     */
+#ifdef DEBUG
+    bool opnd_valid; /* whether opnd and opsz are set */
+#endif
+    opnd_t opnd;
+    size_t opsz; /* in bytes */
+    /* XXX: add movs_addr and replace the dst[0] hack */
+} shadow_combine_t;
+
 #ifdef STATISTICS
 /* per-opcode counts */
 uint64 slowpath_count[OP_LAST+1];
@@ -198,6 +232,10 @@ enum {
 };
 #  endif /* WINDOWS */
 #endif /* TOOL_DR_MEMORY */
+
+static bool
+check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
+               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT);
 
 /***************************************************************************
  * Registers
@@ -1700,68 +1738,234 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
     return match;
 }
 
-static uint
+static inline uint
 combine_shadows(uint shadow1, uint shadow2)
 {
-    /* FIXME PR 408551: for now we are not considering propagation to
-     * more-significant bytes.
-     * This routine only looks at two one-byte values in any case.
+    /* This routine only looks at two one-byte values.
      * We ignore BITLEVEL for now.
      * We assume UNADDR will be reported, and we want to propagate
      * defined afterward in any case to avoid chained errors (xref i#1476).
      */
+    ASSERT((shadow1 & ~0xf) == 0 && (shadow2 & ~0xf) == 0, "non-byte shadows");
     return (shadow1 == SHADOW_UNDEFINED || shadow2 == SHADOW_UNDEFINED) ?
         SHADOW_UNDEFINED : SHADOW_DEFINED;
 }
 
-/* Adjusts the shadow_vals for a source op.
- * Returns whether eflags should be marked as defined.
- */
-static bool
-adjust_source_shadow(instr_t *inst, int opnum, uint shadow_vals[OPND_SHADOW_ARRAY_LEN])
+static inline void
+accum_shadow(uint *shadow1, uint shadow2)
 {
-    int opc = instr_get_opcode(inst);
-    bool eflags_defined = true;
-    if (opc_is_gpr_shift(opc)) {
-        uint val = 0;
-        reg_t shift;
-        uint opsz = opnd_size_in_bytes(opnd_get_size(instr_get_src(inst, opnum)));
-        if (!get_cur_src_value(dr_get_current_drcontext(), inst,
-                               opc_is_gpr_shift_src0(opc) ? 0 : 1, &shift)) {
-            ASSERT(false, "failed to get shift amount");
-            return eflags_defined;
-        }
-        if (shift > opsz*8)
-            shift = opsz*8;
-        if (shift == 0)
-            return eflags_defined;
-        /* pull out of array into single uint, process, and then put back */
-        val = set_2bits(val, shadow_vals[0], 0*2);
-        val = set_2bits(val, shadow_vals[1], 1*2);
-        val = set_2bits(val, shadow_vals[2], 2*2);
-        val = set_2bits(val, shadow_vals[3], 3*2);
-        if (opc == OP_shl) {
-            eflags_defined = (shadow_vals[opsz - ((shift-1)/8 + 1)] == SHADOW_DEFINED);
-            /* handle overlap between 2 bytes by or-ing both quantized shifts */
-            val = (val << ((((shift-1) / 8)+1)*2)) | (val << ((shift / 8)*2));
-        } else if (opc == OP_shr || opc == OP_sar) {
-            uint orig_val = val;
-            eflags_defined = (shadow_vals[(shift-1)/8] == SHADOW_DEFINED);
-            /* handle overlap between 2 bytes by or-ing both quantized shifts */
-            val = (val >> ((((shift-1) / 8)+1)*2)) | (val >> ((shift / 8)*2));
-            if (opc == OP_sar) {
-                /* shift-in bits come from top bit so leave those in place */
-                val |= orig_val;
-            }
-        } else {
-            /* FIXME PR 406539: add rotate opcodes + shrd/shld */
-        }
-        shadow_vals[0] = SHADOW_DWORD2BYTE(val, 0);
-        shadow_vals[1] = SHADOW_DWORD2BYTE(val, 1);
-        shadow_vals[2] = SHADOW_DWORD2BYTE(val, 2);
-        shadow_vals[3] = SHADOW_DWORD2BYTE(val, 3);
+    *shadow1 = combine_shadows(*shadow1, shadow2);
+}
+
+static void
+shadow_combine_init(shadow_combine_t *comb, instr_t *inst, uint opcode, uint max)
+{
+    uint i;
+    comb->dst = comb->raw;
+    /* Initialize to defined so we can aggregate operands as we go.
+     * This works with no-source instrs (rdtsc, etc.)
+     * This also makes small->large work out w/o any special processing
+     * (movsz, movzx, cwde, etc.): but XXX: are there any src/dst size
+     * mismatches where we do NOT want to set dst bytes beyond count
+     * of src bytes to defined?
+     */
+    for (i = 0; i < max; i++)
+        comb->dst[i] = SHADOW_DEFINED;
+    comb->eflags = SHADOW_DEFINED;
+    comb->inst = inst;
+    comb->opcode = opcode;
+}
+
+static inline void
+shadow_combine_set_opnd(shadow_combine_t *comb, opnd_t opnd, uint opsz)
+{
+    comb->opnd = opnd;
+    comb->opsz = opsz;
+#ifdef DEBUG
+    comb->opnd_valid = true;
+#endif
+}
+
+#ifdef DEBUG
+# define SHADOW_COMBINE_CHECK_OPND(comb, bytenum) do {\
+    ASSERT((comb)->opnd_valid, "have to set opnd");   \
+    if ((bytenum) + 1 == (comb)->opsz)                \
+        (comb)->opnd_valid = false;                   \
+} while (0)
+#else
+# define SHADOW_COMBINE_CHECK_OPND(comb, bytenum) /* nothing */
+#endif
+
+/* Same interface as map_src_to_dst() */
+static bool
+map_src_to_dst_gpr_shift(shadow_combine_t *comb INOUT, int opnum, int src_bytenum,
+                         uint shadow)
+{
+    reg_t shift;
+    uint opc = comb->opcode;
+    uint opsz = comb->opsz;
+    LOG(4, " src bytenum %d\n", src_bytenum);
+    if (!get_cur_src_value(dr_get_current_drcontext(), comb->inst,
+                           opc_is_gpr_shift_src0(opc) ? 0 : 1, &shift)) {
+        ASSERT(false, "failed to get shift amount");
+        /* graceful failure */
+        return false;
     }
-    return eflags_defined;
+    if (shift > opsz*8)
+        shift = opsz*8;
+    if (shift == 0) {
+        /* no flags are changed for shift==0 */
+        accum_shadow(&comb->dst[src_bytenum], shadow);
+        return true;
+    }
+    if (opc == OP_shl) {
+        /* If shift % 8 != 0 we touch two bytes: */
+        int map1 = src_bytenum + shift/8;
+        int map2 = src_bytenum + (shift-1)/8 + 1;
+        if (map1 >= opsz) {
+            if (map1 == opsz) {
+                /* bit shifted off goes to CF */
+                LOG(4, "  accum eflags %d + %d\n", comb->eflags, shadow);
+                accum_shadow(&comb->eflags, shadow);
+            }
+            /* shifted off the end */
+            return true;
+        }
+        LOG(4, "  accum @%d %d + %d\n", map1, comb->dst[map1], shadow);
+        accum_shadow(&comb->dst[map1], shadow);
+        if (map1 != map2 && map2 < opsz) {
+            LOG(4, "  accum @%d %d + %d\n", map2, comb->dst[map2], shadow);
+            accum_shadow(&comb->dst[map2], shadow);
+        }
+        accum_shadow(&comb->eflags, shadow);
+        return true;
+    } else if (opc == OP_shr || opc == OP_sar) {
+        /* If shift % 8 != 0 we touch two bytes: */
+        int map1 = src_bytenum - shift/8;
+        int map2 = src_bytenum - ((shift-1)/8 + 1);
+        if (opc == OP_sar && src_bytenum == opsz - 1) {
+            /* Top bit is what's shifted in */
+            int i;
+            for (i = 0; i <= shift/8 && i < opsz; i ++)
+                accum_shadow(&comb->dst[opsz - 1 - i], shadow);
+            accum_shadow(&comb->eflags, shadow);
+            return true;
+        }
+        if (map1 >= 0) { /* if not shifted off the end */
+            LOG(4, "  accum @%d %d + %d\n", map1, comb->dst[map1], shadow);
+            accum_shadow(&comb->dst[map1], shadow);
+        }
+        if (map1 != map2 && map2 >= 0) {
+            LOG(4, "  accum @%d %d + %d\n", map2, comb->dst[map2], shadow);
+            accum_shadow(&comb->dst[map2], shadow);
+        }
+        accum_shadow(&comb->eflags, shadow);
+        /* We assume we don't need to proactively mark the top now-0 bits
+         * as defined for OP_shr b/c our method of combining starts w/ defined
+         */
+        return true;
+    } else {
+        /* FIXME i#101: add rotate opcodes + shrd/shld */
+    }
+    return false; /* unhandled */
+}
+
+/* Takes the shadow value \p shadow for the \p src_bytenum-th byte in
+ * the source operand ordinal \p opnum of instruction \p inst and
+ * places it into comb's dst and eflags repositories, combining with
+ * what's already there.
+ */
+static void
+map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint shadow)
+{
+    int opc = comb->opcode;
+    uint opsz = comb->opsz;
+    uint shift = 0;
+    if (opc_is_gpr_shift(opc)) {
+        if (map_src_to_dst_gpr_shift(comb, opnum, src_bytenum, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        }
+    }
+    /* XXX PR 408551: for now we are not considering propagation to
+     * more-significant bytes from arithmetic ops.
+     */
+    /* For instrs w/ multiple GPR/mem dests, or concatenated sources,
+     * we need to make sure we lay out the dests side by side in the array.
+     *
+     * Here we check for srcs that do NOT simply go into the lowest slot:
+     */
+    switch (opc) {
+        case OP_xchg:
+        case OP_xadd:
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            accum_shadow(&comb->dst[opsz*(1 - opnum) + src_bytenum], shadow);
+            break;
+        case OP_cmpxchg8b:
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
+             * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
+             * we just combine all 3 sources and write the result to both dests.
+             */
+            switch (opnum) {
+                case 0: shift = 0; break;
+                case 1: shift = 0; break;
+                case 2: shift = 1; break;
+                case 3: shift = 1; break;
+                case 4: shift = 0; break;
+                default: ASSERT(false, "invalid opnum");
+            }
+            accum_shadow(&comb->dst[opsz*shift + src_bytenum], shadow);
+            break;
+        case OP_bswap:
+            ASSERT(opsz == 4, "invalid bswap opsz");
+            accum_shadow(&comb->dst[3 - src_bytenum], shadow);
+            return;
+#ifndef X64
+        case OP_pusha:
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            if (opnd_is_reg(comb->opnd)) {
+                reg_id_t reg = opnd_get_reg(comb->opnd);
+                shift = opsz*(reg_to_pointer_sized(reg) - DR_REG_EAX);
+                accum_shadow(&comb->dst[shift + src_bytenum], shadow);
+            }
+            break;
+#endif
+        case OP_punpcklbw:
+        case OP_punpcklwd:
+        case OP_punpckldq:
+        case OP_punpcklqdq:
+            /* XXX i#243: until we have real mirroring of the data interleaving,
+             * we make do with at least not raising false positives on the ignored
+             * half of the sources.
+             */
+            if (src_bytenum >= opsz/2)
+                return;
+            accum_shadow(&comb->dst[src_bytenum], shadow);
+            break;
+        case OP_punpckhbw:
+        case OP_punpckhwd:
+        case OP_punpckhdq:
+        case OP_punpckhqdq:
+            /* XXX i#243: see comment above */
+            if (src_bytenum < opsz/2)
+                return;
+            accum_shadow(&comb->dst[src_bytenum], shadow);
+            break;
+        /* cpuid: who cares if collapse to eax */
+        /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */
+        /* mul, imul, div, idiv: FIXME PR 408551: should split: for now we collapse */
+        default:
+            accum_shadow(&comb->dst[src_bytenum], shadow);
+           break;
+    }
+
+    /* By default all source bytes influence eflags.  If an opcode wants to do
+     * otherwise it needs to return prior to here.
+     */
+    if (comb->inst != NULL && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(comb->inst)))
+        accum_shadow(&comb->eflags, shadow);
+    return;
 }
 #endif /* TOOL_DR_MEMORY */
 
@@ -1792,8 +1996,7 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
  */
 static bool
 check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                   uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
-                   size_t sz, app_pc next_pc)
+                   shadow_combine_t *comb INOUT, size_t sz, app_pc next_pc)
 {
     bool matches = false;
     instr_t xor;
@@ -1822,10 +2025,10 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
             STATS_INC(bitfield_xor_exception);
             /* Caller already collapsed the 2nd src so we just set bottom indices */
             for (i = 0; i < sz; i++) {
-                if (shadow_vals[i] == SHADOW_UNDEFINED)
-                    shadow_vals[i] = SHADOW_DEFINED;
+                if (comb->dst[i] == SHADOW_UNDEFINED)
+                    comb->dst[i] = SHADOW_DEFINED;
             }
-            /* Eflags will be marked defined since shadow_vals is all defined */
+            /* Eflags will be marked defined since comb->dst is all defined */
             /* i#878: we mark both xor dst and xor src b/c this pattern match code
              * is executed at the OP_and and marking dst defined doesn't help b/c
              * the xor then executes and propagates the uninit bits from the src.
@@ -1925,10 +2128,9 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
 
 static bool
 check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                    uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
-                    app_pc next_pc)
+                    shadow_combine_t *comb INOUT, app_pc next_pc)
 {
-    /* The two sources have been laid out side-by-side in shadow_vals.
+    /* The two sources have been laid out side-by-side in comb->dst.
      * We need to combine, with special rules that suppress undefinedness
      * based on 0 or 1 values.
      */
@@ -2012,8 +2214,8 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
             STATS_INC(strcpy_exception);
 #endif
         for (i = 0; i < sz; i++) {
-            shadow_vals[i] = SHADOW_DEFINED;
-            shadow_vals[i+sz] = SHADOW_DEFINED;
+            comb->dst[i] = SHADOW_DEFINED;
+            comb->dst[i+sz] = SHADOW_DEFINED;
         }
         return true;
     }
@@ -2023,92 +2225,64 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 
     for (i = 0; i < sz; i++) {
         LOG(4, "%s: have_vals=%d i=%d def=%d %d val=%d %d\n",
-            __FUNCTION__, have_vals, i, shadow_vals[i], shadow_vals[i+sz],
+            __FUNCTION__, have_vals, i, comb->dst[i], comb->dst[i+sz],
             DWORD2BYTE(val1, i), DWORD2BYTE(val0, i));
-        if (shadow_vals[i] == SHADOW_UNDEFINED) {
-            if (have_vals && shadow_vals[i+sz] == SHADOW_DEFINED &&
+        if (comb->dst[i] == SHADOW_UNDEFINED) {
+            if (have_vals && comb->dst[i+sz] == SHADOW_DEFINED &&
                 check_andor_vals(opc, val1, i, bitmask_immed)) {
                 /* The 0/1 byte makes the source undefinedness not matter */
-                shadow_vals[i] = SHADOW_DEFINED;
+                comb->dst[i] = SHADOW_DEFINED;
                 STATS_INC(andor_exception);
                 LOG(3, "0/1 byte %d suppresses undefined and/or source\n", i);
             } else
                 all_defined = false;
         } else {
-            ASSERT(shadow_vals[i] == SHADOW_DEFINED, "shadow val inconsistency");
-            if (shadow_vals[i+sz] == SHADOW_UNDEFINED) {
+            ASSERT(comb->dst[i] == SHADOW_DEFINED, "shadow val inconsistency");
+            if (comb->dst[i+sz] == SHADOW_UNDEFINED) {
                 if (have_vals && check_andor_vals(opc, val0, i, bitmask_immed)) {
                     /* The 0/1 byte makes the source undefinedness not matter */
                     STATS_INC(andor_exception);
                     LOG(3, "0/1 byte %d suppresses undefined and/or source\n", i);
                 } else {
                     all_defined = false;
-                    shadow_vals[i] = SHADOW_UNDEFINED;
+                    comb->dst[i] = SHADOW_UNDEFINED;
                 }
             } else
-                ASSERT(shadow_vals[i+sz] == SHADOW_DEFINED, "shadow val inconsistency");
+                ASSERT(comb->dst[i+sz] == SHADOW_DEFINED, "shadow val inconsistency");
         }
         /* Throw out the 2nd source vals now that we've integrated */
-        shadow_vals[i+sz] = SHADOW_DEFINED;
+        comb->dst[i+sz] = SHADOW_DEFINED;
     }
 
     if (opc == OP_and)
-        all_defined = check_xor_bitfield(drcontext, mc, inst, shadow_vals, sz, next_pc);
+        all_defined = check_xor_bitfield(drcontext, mc, inst, comb, sz, next_pc);
 
     return all_defined;
 }
 
-/* Shifts for srcs that can be both mem or reg */
-static uint
-shadow_val_source_shift(instr_t *inst, int opc, int opnum, uint opsz)
-{
-    uint shift = 0;
-    /* For instrs w/ multiple GPR/mem dests, or concatenated sources,
-     * we need to make sure we lay out the dests side by side in the array.
-     *
-     * Here we check for srcs that do NOT simply go into the lowest slot:
-     */
-    switch (opc) {
-        case OP_xchg:
-        case OP_xadd:
-            /* we leave potential memop (dst#0) as 0 so no shifting required there */
-            shift = 1 - opnum;
-            break;
-        case OP_cmpxchg8b:
-            /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
-             * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
-             * we just combine all 3 sources and write the result to both dests.
-             */
-            switch (opnum) {
-                case 0: shift = 0; break;
-                case 1: shift = 0; break;
-                case 2: shift = 1; break;
-                case 3: shift = 1; break;
-                case 4: shift = 0; break;
-                default: ASSERT(false, "invalid opnum");
-            }
-            break;
-        default: /* no shift: leave as 0 */
-            break;
-    }
-    return (shift * opsz);
-}
-
-/* Adds a new source operand's value to the array of shadow_vals to be assigned
- * to the destination.
+/* Adds a new source operand's value to the array of shadow vals in
+ * comb->dst to be assigned to the destination.
  */
 static void
-integrate_register_shadow(instr_t *inst, int opnum,
-                          uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
+integrate_register_shadow(shadow_combine_t *comb INOUT, int opnum,
                           reg_id_t reg, uint shadow, bool pushpop)
 {
     uint i;
-    uint shift = 0;
-    /* XXX: shouldn't eflags shadow affect all of the bytes, not just 1st?
-     * I.e., pretend eflags is same size as other opnds?
-     */
-    uint regsz = (reg == REG_EFLAGS) ? 1 : opnd_size_in_bytes(reg_get_size(reg));
-    int opc = instr_get_opcode(inst);
+    uint regsz;
+    uint opc = comb->opcode;
+
+    if (reg == REG_EFLAGS) {
+        /* eflags propagates to all bytes */
+        uint dstsz;
+        accum_shadow(&comb->eflags, SHADOW_DWORD2BYTE(shadow, 0));
+        if (instr_num_dsts(comb->inst) == 0)
+            return;
+        dstsz = opnd_size_in_bytes(opnd_get_size(instr_get_dst(comb->inst, 0)));
+        for (i = 0; i < dstsz; i++)
+            accum_shadow(&comb->dst[i], SHADOW_DWORD2BYTE(shadow, i));
+        return;
+    }
+
     /* PR 426162: ignore stack register source if instr also has memref
      * using same register as addressing register, since memref will do a
      * definedness check for us, and if the reg is undefined we do NOT want
@@ -2120,61 +2294,19 @@ integrate_register_shadow(instr_t *inst, int opnum,
         ((opc == OP_leave || opc == OP_enter) && reg_overlap(reg, DR_REG_XBP)))
         return;
 
-    switch (opc) {
-#ifndef X64
-        case OP_pusha:
-            shift = regsz*(reg_to_pointer_sized(reg) - REG_EAX);
-            break;
-#endif
-        case OP_punpcklbw:
-        case OP_punpcklwd:
-        case OP_punpckldq:
-        case OP_punpcklqdq:
-            /* XXX i#243: until we have real mirroring of the data interleaving,
-             * we make do with at least not raising false positives on the ignored
-             * half of the sources.
-             */
-            for (i = regsz/2; i < regsz; i++)
-                shadow_vals[i] = SHADOW_DEFINED;
-            break;
-        case OP_punpckhbw:
-        case OP_punpckhwd:
-        case OP_punpckhdq:
-        case OP_punpckhqdq:
-            /* XXX i#243: see comment above */
-            for (i = 0; i < regsz/2; i++)
-                shadow_vals[i] = SHADOW_DEFINED;
-            break;
-        default:
-            shift = shadow_val_source_shift(inst, opc, opnum, regsz);
-            break;
-        /* cpuid: who cares if collapse to eax */
-    }
-
-    /* Note that we don't need to un-little-endian b/c our array is
-     * filled in one byte at a time in order: no words */
-    shadow_vals[shift + 0] =
-        combine_shadows(shadow_vals[shift + 0],
-                        SHADOW_DWORD2BYTE(shadow, reg_offs_in_dword(reg)));
-    if (regsz > 1) {
-        ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
-        for (i = 1; i < regsz; i++) {
-            ASSERT(shift + i < OPND_SHADOW_ARRAY_LEN, "shadow_vals overflow");
-            shadow_vals[shift + i] =
-                combine_shadows(shadow_vals[shift + i], SHADOW_DWORD2BYTE(shadow, i));
-        }
-    }
+    regsz = opnd_size_in_bytes(reg_get_size(reg));
+    for (i = 0; i < regsz; i++)
+        map_src_to_dst(comb, opnum, i, SHADOW_DWORD2BYTE(shadow, i));
 }
 
 /* Assigns the array of source shadow_vals to the destination register shadow */
 static void
-assign_register_shadow(instr_t *inst, int opnum,
-                       uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
+assign_register_shadow(shadow_combine_t *comb INOUT, int opnum,
                        reg_id_t reg, bool pushpop)
 {
     uint shift = 0;
     uint regsz = opnd_size_in_bytes(reg_get_size(reg));
-    int opc = instr_get_opcode(inst);
+    int opc = comb->opcode;
     /* Here we need to de-mux from the side-by-side dests in the array
      * into individual register dests.
      * We ignore some dests:
@@ -2194,6 +2326,7 @@ assign_register_shadow(instr_t *inst, int opnum,
                 reg_overlap(reg, DR_REG_XBP))) {
         return;
     } else {
+        /* We need special handling for multi-dest opcodes */
         switch (opc) {
             case OP_popa:
                 shift = (reg_to_pointer_sized(reg) - DR_REG_XAX);
@@ -2214,27 +2347,17 @@ assign_register_shadow(instr_t *inst, int opnum,
                     default: ASSERT(false, "invalid opnum");
                 }
                 break;
-            case OP_bswap:
-                ASSERT(regsz == 4, "invalid bswap opsz");
-                register_shadow_set_byte(reg, 0, shadow_vals[3]);
-                register_shadow_set_byte(reg, 1, shadow_vals[2]);
-                register_shadow_set_byte(reg, 2, shadow_vals[1]);
-                register_shadow_set_byte(reg, 3, shadow_vals[0]);
-                return;
-            /* cpuid: who cares if collapse to eax */
-            /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */
-            /* mul, imul, div, idiv: FIXME PR 408551: should split: for now we collapse */
         }
     }
 
     shift *= regsz;
-    register_shadow_set_byte(reg, reg_offs_in_dword(reg), shadow_vals[shift + 0]);
+    register_shadow_set_byte(reg, reg_offs_in_dword(reg), comb->dst[shift + 0]);
     if (regsz > 1) {
         uint i;
         ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
         for (i = 1; i < regsz; i++) {
             ASSERT(shift + i < OPND_SHADOW_ARRAY_LEN, "shadow_vals overflow");
-            register_shadow_set_byte(reg, i, shadow_vals[shift + i]);
+            register_shadow_set_byte(reg, i, comb->dst[shift + i]);
         }
     }
 }
@@ -2314,8 +2437,8 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     /* since esi and edi are used as base regs, we are checking
      * definedness, so we ignore the reg operands
      */
-    uint shadow_vals[4];
     int i;
+    shadow_combine_t comb;
     umbra_shadow_memory_info_t info;
     umbra_shadow_memory_info_init(&info);
     LOG(3, "medium_path movs4 "PFX" src="PFX" %d%d%d%d dst="PFX" %d%d%d%d\n",
@@ -2350,15 +2473,15 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
             STATS_INC(movs4_med_fast);
             return;
         }
-        /* no need to initialize shadow_vals for MEMREF_CHECK_ADDRESSABLE */
+        /* no need to pass shadow_combine_t for MEMREF_CHECK_ADDRESSABLE */
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                                  REG_NULL, 0, 0, OPSZ_PTR),
-                       4, mc, shadow_vals);
+                       4, mc, 0, NULL);
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_ES, DR_REG_XDI
                                                  , REG_NULL, 0, 0, OPSZ_PTR),
-                       4, mc, shadow_vals);
+                       4, mc, 0, NULL);
         return;
     }
 
@@ -2394,18 +2517,17 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
         }
     }
 
-    for (i = 0; i < 4; i++)
-        shadow_vals[i] = SHADOW_DEFINED;
+    shadow_combine_init(&comb, NULL, OP_movs, 4);
     check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc,
                    opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                              REG_NULL, 0, 0, OPSZ_4),
-                   4, mc, shadow_vals);
+                   4, mc, 0, &comb);
     for (i = 0; i < 4; i++)
-        shadow_vals[i] = combine_shadows(shadow_vals[i], get_shadow_eflags());
+        accum_shadow(&comb.dst[i], get_shadow_eflags());
     check_mem_opnd(OP_movs, MEMREF_WRITE | MEMREF_USE_VALUES, loc,
                    opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
                                              REG_NULL, 0, 0, OPSZ_4),
-                   4, mc, shadow_vals);
+                   4, mc, 0, &comb);
 }
 
 /* See comments for medium_path_movs4().  For cmps1, because it has 2 memory
@@ -2418,8 +2540,8 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
     /* since esi and edi are used as base regs, we are checking
      * definedness, so we ignore the reg operands
      */
-    uint shadow_vals[1];
     uint flags;
+    shadow_combine_t comb;
     umbra_shadow_memory_info_t info;
     umbra_shadow_memory_info_init(&info);
     LOG(3, "medium_path cmps1 "PFX" src1="PFX" %d%d%d%d src2="PFX" %d%d%d%d\n",
@@ -2456,11 +2578,11 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
         check_mem_opnd(OP_cmps, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                                  REG_NULL, 0, 0, OPSZ_1),
-                       1, mc, shadow_vals);
+                       1, mc, 0, NULL);
         check_mem_opnd(OP_cmps, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
                                                  REG_NULL, 0, 0, OPSZ_1),
-                       1, mc, shadow_vals);
+                       1, mc, 0, NULL);
         return;
     }
 
@@ -2486,17 +2608,18 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
     flags = MEMREF_USE_VALUES;
     if (options.check_uninit_cmps)
         flags |= MEMREF_CHECK_DEFINEDNESS;
-    shadow_vals[0] = SHADOW_DEFINED;
+    shadow_combine_init(&comb, NULL, OP_cmps, 1);
     check_mem_opnd(OP_cmps, flags, loc,
                    opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                              REG_NULL, 0, 0, OPSZ_1),
-                   1, mc, shadow_vals);
+                   1, mc, 0, &comb);
     check_mem_opnd(OP_cmps, flags, loc,
                    opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
                                              REG_NULL, 0, 0, OPSZ_1),
-                   1, mc, shadow_vals);
-    shadow_vals[0] = combine_shadows(shadow_vals[0], get_shadow_eflags());
-    set_shadow_eflags(shadow_vals[0]);
+                   1, mc, 1, &comb);
+    /* b/c we set inst to NULL, map_src_to_dst won't do this for us */
+    accum_shadow(&comb.dst[0], get_shadow_eflags());
+    set_shadow_eflags(comb.dst[0]);
 }
 
 bool
@@ -2538,7 +2661,7 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
             else
                 flags = MEMREF_CHECK_ADDRESSABLE | MEMREF_IS_READ;
             memop = opnd;
-            check_mem_opnd(opc, flags, loc, opnd, sz, mc, NULL);
+            check_mem_opnd_nouninit(opc, flags, loc, opnd, sz, mc);
         }
     }
 
@@ -2552,7 +2675,7 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
             else
                 flags = MEMREF_CHECK_ADDRESSABLE;
             memop = opnd;
-            check_mem_opnd(opc, flags, loc, opnd, sz, mc, NULL);
+            check_mem_opnd_nouninit(opc, flags, loc, opnd, sz, mc);
         }
     }
 
@@ -2565,7 +2688,26 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
 }
 #endif /* TOOL_DR_MEMORY */
 
-/* Does everything in C code, except for handling non-push/pop writes to esp
+/* Does everything in C code, except for handling non-push/pop writes to esp.
+ *
+ * General design:
+ * + comb.dest[] array holds the shadow values for the destinations.
+ *   If there are multiple dests, they are laid out side-by-side.
+ * + Shadow values are combined via combine_shadows() which does OR-combining.
+ *
+ * First we walk the sources and add each in turn to the shadow array via:
+ * + integrate_register_shadow() for regs
+ * + handle_mem_ref() with MEMREF_USE_VALUES for memrefs
+ * Both call map_src_to_dst() which determines where in
+ * the dst shadow array to put each source, thus handling arbitrary
+ * opcodes with weird data movements.
+ *
+ * Then we walk the dests and call handle_mem_ref() or
+ * assign_register_shadow() on each, which pulls from comb.dest[]'s shadow vals.
+ *
+ * XXX: can we change handle_mem_ref() and map_src_to_dst() to not operate on
+ * one byte at a time, so we can make the slowpath more closely match the
+ * fastpath code, and thus make it easier to transition opcodes to the fastpath?
  */
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc)
@@ -2576,13 +2718,8 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     opnd_t opnd;
     int i, num_srcs, num_dsts;
     uint sz;
-    /* Array of shadow vals from sources to dests: each uint entry in the
-     * array is a shadow for one byte being transferred from source(s) to dest.
-     * Larger mem refs either have no transfer (e.g., fxsave), or if
-     * they do (rep movs) we handle them specially.
-     */
-    uint shadow_vals[OPND_SHADOW_ARRAY_LEN];
-    bool check_definedness, pushpop, pushpop_stackop, src_undef = false;
+    shadow_combine_t comb;
+    bool check_definedness, pushpop, pushpop_stackop;
     bool check_srcs_after;
     bool always_defined;
     opnd_t memop = opnd_create_null();
@@ -2766,7 +2903,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
      *
      * Usually there's one destination we need to transfer
      * definedness to.  If there are more, we can fit them side by
-     * side in our 8-dword-capacity shadow_vals array.
+     * side in our 8-dword-capacity comb->dst array.
      */
     check_definedness = instr_check_definedness(&inst);
     always_defined = result_is_always_defined(&inst, false/*us*/);
@@ -2775,28 +2912,20 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     if (check_srcs_after) {
         /* We need to check definedness of addressing registers, and so we do
          * our normal src loop but we do not check undefinedness or combine
-         * sources.  Below we pass pointers to later in shadow_vals to
+         * sources.  Below we pass pointers to later in comb->dst to
          * check_mem_opnd() and integrate_register_shadow(), causing the 2
-         * sources to be laid out side-by-side in shadow_vals.
+         * sources to be laid out side-by-side in comb->dst.
          */
         ASSERT(instr_num_srcs(&inst) == 2, "and/or special handling error");
         check_definedness = false;
+        IF_DEBUG(comb.opsz = 0;) /* for asserts below */
     }
 
-    /* Initialize to defined so we can aggregate operands as we go.
-     * This works with no-source instrs (rdtsc, etc.)
-     * This also makes small->large work out w/o any special processing
-     * (movsz, movzx, cwde, etc.): but FIXME: are there any src/dst size
-     * mismatches where we do NOT want to set dst bytes beyond count
-     * of src bytes to defined?
-     */
-    for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
-        shadow_vals[i] = SHADOW_DEFINED;
+    shadow_combine_init(&comb, &inst, opc, OPND_SHADOW_ARRAY_LEN);
 
     num_srcs = (opc == OP_lea) ? 2 : num_true_srcs(&inst, mc);
  check_srcs:
     for (i = 0; i < num_srcs; i++) {
-        bool regular_op = false;
         if (opc == OP_lea) {
             /* special case: treat address+base as propagatable sources
              * code below can handle REG_NULL
@@ -2806,13 +2935,17 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             else
                 opnd = opnd_create_reg(opnd_get_index(instr_get_src(&inst, 0)));
         } else {
-            regular_op = true;
             opnd = instr_get_src(&inst, i);
         }
         if (opnd_is_memory_reference(opnd)) {
             int flags = 0;
-            uint shift;
             opnd = adjust_memop(&inst, opnd, false, &sz, &pushpop_stackop);
+            /* do not combine srcs if checking after */
+            if (check_srcs_after) {
+                ASSERT(i == 0 || sz >= comb.opsz, "check-after needs >=-size srcs");
+                comb.dst = &comb.raw[i*sz]; /* shift the dst in the array */
+            }
+            shadow_combine_set_opnd(&comb, opnd, sz);
             /* check_mem_opnd() checks definedness of base registers,
              * addressability of address, and if necessary checks definedness
              * and adjusts addressability of address.
@@ -2833,90 +2966,77 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                  * Conveniently all the large operand sizes always
                  * have check_definedness since they involve fp or sse.
                  */
-                ASSERT(sz <= sizeof(shadow_vals), "internal shadow val error");
+                ASSERT(sz <= sizeof(comb.raw), "internal shadow val error");
                 flags |= MEMREF_USE_VALUES;
             }
-            shift = shadow_val_source_shift(&inst, opc, i, sz);
             memop = opnd;
-            check_mem_opnd(opc, flags, &loc, opnd, sz, mc,
-                           /* do not combine srcs if checking after */
-                           check_srcs_after ? &shadow_vals[i*sz] : &shadow_vals[shift]);
+            check_mem_opnd(opc, flags, &loc, opnd, sz, mc, i, &comb);
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
             if (reg_is_shadowed(opc, reg)) {
                 uint shadow = get_shadow_register(reg);
                 sz = opnd_size_in_bytes(reg_get_size(reg));
+                /* do not combine srcs if checking after */
+                if (check_srcs_after) {
+                    ASSERT(i == 0 || sz >= comb.opsz, "check-after needs >=-size srcs");
+                    comb.dst = &comb.raw[i*sz]; /* shift the dst in the array */
+                }
+                shadow_combine_set_opnd(&comb, opnd, sz);
                 if (always_defined) {
                     /* if result defined regardless, don't propagate (is
                      * equivalent to propagating SHADOW_DEFINED) or check */
                 } else if (check_definedness || always_check_definedness(&inst, i)) {
                     check_register_defined(drcontext, reg, &loc, sz, mc, &inst);
                     if (options.leave_uninit) {
-                        integrate_register_shadow
-                            (&inst, i,
-                             /* do not combine srcs if checking after */
-                             check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
-                             reg, shadow, pushpop);
+                        integrate_register_shadow(&comb, i, reg, shadow, pushpop);
                     }
                 } else {
                     /* See above: we only propagate when not checking */
-                    integrate_register_shadow
-                        (&inst, i,
-                         /* do not combine srcs if checking after */
-                         check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
-                         reg, shadow, pushpop);
+                    integrate_register_shadow(&comb, i, reg, shadow, pushpop);
                 }
             } /* else always defined */
         } else /* always defined */
             ASSERT(opnd_is_immed_int(opnd) || opnd_is_pc(opnd), "unexpected opnd");
-        if (regular_op)
-            src_undef = !adjust_source_shadow(&inst, i, shadow_vals);
-        LOG(4, "shadow_vals after src %d ", i);
         DOLOG(4, {
             int j;
+            LOG(4, "shadows after src %d ", i);
             opnd_disassemble(drcontext, opnd, LOGFILE_GET(drcontext));
             LOG(4, ": ");
             for (j = 0; j < OPND_SHADOW_ARRAY_LEN; j++)
-                LOG(4, "%d", shadow_vals[j]);
-            LOG(4, "\n");
+                LOG(4, "%d", comb.raw[j]);
+            LOG(4, ", eflags: %d\n", comb.eflags);
         });
     }
 
     /* eflags source */
     if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst))) {
         uint shadow = get_shadow_eflags();
+        /* for check_srcs_after we leave comb.dst where it last was */
         if (always_defined) {
             /* if result defined regardless, don't propagate (is
              * equivalent to propagating SHADOW_DEFINED) or check */
         } else if (check_definedness) {
             check_register_defined(drcontext, REG_EFLAGS, &loc, 1, mc, &inst);
-            if (options.leave_uninit) {
-                integrate_register_shadow
-                    (&inst, 0,
-                     /* do not combine srcs if checking after */
-                     check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
-                     REG_EFLAGS, shadow, pushpop);
-            }
+            if (options.leave_uninit)
+                integrate_register_shadow(&comb, 0, REG_EFLAGS, shadow, pushpop);
         } else {
             /* See above: we only propagate when not checking */
-            integrate_register_shadow
-                (&inst, 0,
-                 /* do not combine srcs if checking after */
-                 check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
-                 REG_EFLAGS, shadow, pushpop);
+            integrate_register_shadow(&comb, 0, REG_EFLAGS, shadow, pushpop);
         }
     } else if (num_srcs == 0) {
-        /* do not propagate from shadow_vals since dst size could be large (i#458)
+        /* do not propagate from comb.dst since dst size could be large (i#458)
          * (fxsave, etc.)
          */
         always_defined = true;
     }
 
+    if (check_srcs_after)
+        comb.dst = comb.raw; /* restore */
+
     if (check_srcs_after && !check_definedness/*avoid recursing after goto below*/) {
         /* turn back on for dsts */
         check_definedness = instr_check_definedness(&inst);
-        if (!check_andor_sources(drcontext, mc, &inst, shadow_vals,
-                                 decode_pc + instr_sz) &&
+        if (!check_andor_sources(drcontext, mc, &inst, &comb, decode_pc + instr_sz) &&
             check_definedness) {
             /* We do not bother to suppress reporting the particular bytes that
              * may have been "defined" due to 0/1 in the other operand since
@@ -2925,15 +3045,9 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
              * slightly less ugly.
              */
             for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
-                shadow_vals[i] = SHADOW_DEFINED;
+                comb.dst[i] = SHADOW_DEFINED;
+            comb.eflags = SHADOW_DEFINED;
             goto check_srcs;
-        }
-    }
-
-    for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++) {
-        if (shadow_vals[i] == SHADOW_UNDEFINED) {
-            src_undef = true;
-            break;
         }
     }
 
@@ -2961,7 +3075,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                 /* XXX: switch this hack to a proper data structure */
                 ASSERT_NOT_IMPLEMENTED();
 #else
-                shadow_vals[0] = (uint) cpt->mem2fpmm_source;
+                comb.dst[0] = (uint) cpt->mem2fpmm_source;
 #endif
                 flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
                 cpt->mem2fpmm_source = NULL;
@@ -2973,24 +3087,24 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                     flags |= MEMREF_USE_VALUES;
                 /* since checking, we mark as SHADOW_DEFINED (see above) */
             } else {
-                ASSERT(sz <= sizeof(shadow_vals), "internal shadow val error");
+                ASSERT(sz <= sizeof(comb.raw), "internal shadow val error");
                 flags |= MEMREF_USE_VALUES;
             }
             /* check addressability, and propagate
              * we arranged xchg/xadd to not need shifting; nothing else does either.
              */
             memop = opnd;
-            check_mem_opnd(opc, flags, &loc, opnd, sz, mc, shadow_vals);
+            check_mem_opnd(opc, flags, &loc, opnd, sz, mc, i, &comb);
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
             if (reg_is_shadowed(opc, reg)) {
-                assign_register_shadow(&inst, i, shadow_vals, reg, pushpop);
+                assign_register_shadow(&comb, i, reg, pushpop);
             }
         } else
             ASSERT(opnd_is_immed_int(opnd) || opnd_is_pc(opnd), "unexpected opnd");
     }
     if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst))) {
-        set_shadow_eflags(src_undef ? SHADOW_DWORD_UNDEFINED : SHADOW_DWORD_DEFINED);
+        set_shadow_eflags(comb.eflags);
     }
 
     LOG(4, "shadow registers after instr:\n");
@@ -3932,159 +4046,16 @@ loc_to_print(app_loc_t *loc)
     }
 }
 
-bool
-check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-               dr_mcontext_t *mc, uint *shadow_vals)
-{
-    app_pc addr = NULL, end;
-#ifdef TOOL_DR_MEMORY
-    int i;
-#endif
-
-    ASSERT(opc != OP_lea, "lea should not get here");
-
-#ifdef TOOL_DR_MEMORY
-    if (options.check_uninitialized) {
-        /* First check definedness of base+index regs */
-        for (i = 0; i < opnd_num_regs_used(opnd); i++) {
-            reg_id_t reg = opnd_get_reg_used(opnd, i);
-            if (!reg_is_segment(reg) &&
-                !is_shadow_register_defined(get_shadow_register(reg))) {
-                /* FIXME: report which bytes within reg via container params? */
-                report_undefined_read
-                    (loc, (app_pc)(ptr_int_t)reg,
-                     opnd_size_in_bytes(reg_get_size(reg)), NULL, NULL, mc);
-                /* Set to defined to avoid duplicate errors */
-                register_shadow_mark_defined(reg);
-            }
-        }
-    }
-#endif
-
-    if (opc_is_stringop_loop(opc) &&
-        /* with -repstr_to_loop, a decoded repstr is really a non-rep str */
-        !options.repstr_to_loop) {
-        /* We assume flat segments for es and ds */
-        /* FIXME: support addr16!  we're assuming 32-bit edi, esi! */
-        ASSERT(reg_get_size(opnd_get_base(opnd)) == OPSZ_4,
-               "no support yet for addr16 string operations!");
-        if (opc == OP_rep_stos || opc == OP_rep_lods) {
-            /* store from al/ax/eax into es:edi; load from es:esi into al/ax/eax */
-            get_stringop_range(opc == OP_rep_stos ? mc->xdi : mc->xsi,
-                               mc->xcx, mc->xflags, sz, &addr, &end);
-            LOG(3, "rep %s "PFX"-"PFX"\n", opc == OP_rep_stos ? "stos" : "lods",
-                addr, end);
-            flags |= (sz == 1 ? MEMREF_SINGLE_BYTE :
-                      (sz == 2 ? MEMREF_SINGLE_WORD : MEMREF_SINGLE_DWORD));
-            sz = end - addr;
-        } else if (opc == OP_rep_movs) {
-            /* move from ds:esi to es:edi */
-            LOG(3, "rep movs "PFX" "PFX" "PIFX"\n", mc->xdi, mc->xsi, mc->xcx);
-            /* FIXME: if checking definedness of sources, really
-             * should do read+write in lockstep, since an earlier
-             * write could make a later read ok; for now we punt on
-             * that.  We do an overlap check and warn below.
-             * If we're propagating and not checking sources, then the
-             * overlap is fine: we'll go through the source, ensure addressable
-             * but do nothing if undefined, and then go through dest copying
-             * from source in lockstep.
-             */
-            get_stringop_range(mc->xsi, mc->xcx, mc->xflags, sz, &addr, &end);
-            if (!TEST(MEMREF_WRITE, flags)) {
-                flags &= ~MEMREF_USE_VALUES;
-            } else {
-                ASSERT(shadow_vals != NULL, "assuming have shadow if marked write");
-                flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
-#ifdef X64
-                ASSERT_NOT_IMPLEMENTED();
-#else
-                shadow_vals[0] = (uint) addr;
-                get_stringop_range(mc->xdi, mc->xcx, mc->xflags, sz, &addr, &end);
-                if (TEST(MEMREF_CHECK_DEFINEDNESS, flags) &&
-                    /* i#889: a simple type cast for 64-bit build */
-                    end > (app_pc)shadow_vals[0] &&
-                    /* i#889: a simple type cast for 64-bit build */
-                    addr < ((app_pc)shadow_vals[0]) + (end - addr))
-                    ELOG(0, "WARNING: rep movs overlap while checking definedness not fully supported!\n");
-#endif
-            }
-            sz = end - addr;
-        } else if (opc == OP_rep_scas || opc == OP_repne_scas) {
-            /* compare es:edi to al/ax/eax */
-            /* we can't just do post-instr check since we want to warn of
-             * unaddressable refs prior to their occurrence, so we emulate
-             * FIXME: we aren't aggregating errors in adjacent bytes */
-            LOG(3, "rep scas @"PFX" "PFX" "PIFX"\n", loc_to_print(loc), mc->xdi, mc->xcx);
-            while (mc->xcx != 0) { /* note the != instead of > */
-                uint val;
-                bool eq;
-                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc, shadow_vals);
-                /* remember that our notion of unaddressable is not real so we have
-                 * to check with the OS to see if this will fault
-                 */
-                ASSERT(sz <= sizeof(uint), "internal error");
-                if (safe_read((void *)mc->xdi, sz, &val)) {
-                    /* Assume the real instr will fault here.
-                     * FIXME: if the instr gets resumed our check won't re-execute! */
-                    break;
-                }
-                eq = stringop_equal(val, mc->xax, sz);
-                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
-                mc->xcx--;
-                if ((opc == OP_rep_scas && !eq) ||
-                    (opc == OP_repne_scas && eq))
-                    break;
-            }
-            return true;
-        } else if (opc == OP_rep_cmps || opc == OP_repne_cmps) {
-            /* compare ds:esi to es:edi */
-            /* FIXME: we aren't aggregating errors in adjacent bytes */
-            if (reg_overlap(opnd_get_base(opnd), DR_REG_XDI))
-                return true; /* we check both when passed esi base */
-            LOG(3, "rep cmps @"PFX" "PFX" "PFX" "PIFX"\n",
-                loc_to_print(loc), mc->xdi, mc->xsi, mc->xcx);
-            while (mc->xcx != 0) { /* note the != instead of > */
-                uint val1, val2;
-                bool eq;
-                handle_mem_ref(flags, loc, (app_pc)mc->xsi, sz, mc, shadow_vals);
-                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc, shadow_vals);
-                /* remember that our notion of unaddressable is not real so we have
-                 * to check with the OS to see if this will fault
-                 */
-                ASSERT(sz <= sizeof(uint), "internal error");
-                if (!safe_read((void *)mc->xsi, sz, &val1) ||
-                    !safe_read((void *)mc->xdi, sz, &val2)) {
-                    /* Assume the real instr will fault here.
-                     * FIXME: if the instr gets resumed our check won't re-execute! */
-                    break;
-                }
-                eq = stringop_equal(val1, val2, sz);
-                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
-                mc->xsi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
-                mc->xcx--;
-                if ((opc == OP_rep_cmps && !eq) ||
-                    (opc == OP_repne_cmps && eq))
-                    break;
-            }
-            return true;
-        } else
-            ASSERT(false, "unknown string operation");
-    } else {
-        addr = opnd_compute_address(opnd, mc);
-    }
-    if (sz == 0)
-        return true;
-    return handle_mem_ref(flags, loc, addr, sz, mc, shadow_vals);
-}
-
 #ifdef TOOL_DR_MEMORY
 /* handle_mem_ref checks addressability and if necessary checks
  * definedness and adjusts addressability
  * returns true if no errors were found
  */
-bool
-handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc,
-               uint *shadow_vals)
+static bool
+handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
+                        dr_mcontext_t *mc,
+                        /* these 2 are required for MEMREF_USE_VALUES */
+                        int opnum, shadow_combine_t *comb INOUT)
 {
     uint i;
     bool allgood = true;
@@ -4123,7 +4094,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     /* note that gap compiled by cl has an 18MB rep stos (PR 502506) */
     ASSERT(TEST(MEMREF_ABORT_AFTER_UNADDR, flags) ||
            sz < 32*1024*1024, "suspiciously large size");
-    ASSERT(!TEST(MEMREF_USE_VALUES, flags) || shadow_vals != NULL,
+    ASSERT(!TEST(MEMREF_USE_VALUES, flags) || comb != NULL,
            "internal invalid parameters");
     /* if no uninit, should only write to shadow mem for push/pop */
     ASSERT(options.check_uninitialized ||
@@ -4158,7 +4129,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
             if (TEST(MEMREF_PUSHPOP, flags) && TEST(MEMREF_WRITE, flags)) {
                 ASSERT(!TEST(MEMREF_MOVS, flags), "internal movs error");
                 shadow_set_byte(&info, addr + i, TEST(MEMREF_USE_VALUES, flags) ?
-                                shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED);
+                                comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED);
             } else {
                 /* We check stack bounds here and cache to avoid
                  * check_undefined_exceptions having to do it over and over (did
@@ -4292,11 +4263,11 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 newval = 0;
                 ASSERT_NOT_IMPLEMENTED();
 #else
-                newval = shadow_get_byte(&info, ((app_pc)shadow_vals[0]) + i);
+                newval = shadow_get_byte(&info, ((app_pc)comb->dst[0]) + i);
 #endif
             } else {
                 newval = TEST(MEMREF_USE_VALUES, flags) ?
-                    shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED;
+                    comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED;
             }
             if (shadow == SHADOW_DEFINED_BITLEVEL ||
                 newval == SHADOW_DEFINED_BITLEVEL) {
@@ -4314,12 +4285,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         }
         if (!TEST(MEMREF_WRITE, flags) && TEST(MEMREF_USE_VALUES, flags)) {
             ASSERT(!TEST(MEMREF_MOVS, flags), "internal movs error");
-            /* combine with current value
-             * FIXME: this is a simplistic way to combine multiple sources: we're
-             * ignoring promotion to more-significant bytes, etc.
-             */
-            shadow_vals[memref_idx(flags, i)] =
-                combine_shadows(shadow_vals[memref_idx(flags, i)], shadow);
+            /* combine with current value */
+            map_src_to_dst(comb, opnum, memref_idx(flags, i), shadow);
         }
         if (MAP_4B_TO_1B) {
             /* only need to process each 4-byte address region once */
@@ -4379,7 +4346,175 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     }
     return allgood;
 }
+
+/* handle_mem_ref checks addressability and if necessary checks
+ * definedness and adjusts addressability
+ * returns true if no errors were found
+ */
+bool
+handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc)
+{
+    ASSERT(!TEST(MEMREF_USE_VALUES, flags), "using values requires shadow_combine_t");
+    return handle_mem_ref_internal(flags, loc, addr, sz, mc, 0, NULL);
+}
 #endif /* TOOL_DR_MEMORY */
+
+static bool
+check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
+               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT)
+{
+    app_pc addr = NULL, end;
+#ifdef TOOL_DR_MEMORY
+    int i;
+#endif
+
+    ASSERT(opc != OP_lea, "lea should not get here");
+
+#ifdef TOOL_DR_MEMORY
+    if (options.check_uninitialized) {
+        /* First check definedness of base+index regs */
+        for (i = 0; i < opnd_num_regs_used(opnd); i++) {
+            reg_id_t reg = opnd_get_reg_used(opnd, i);
+            if (!reg_is_segment(reg) &&
+                !is_shadow_register_defined(get_shadow_register(reg))) {
+                /* FIXME: report which bytes within reg via container params? */
+                report_undefined_read
+                    (loc, (app_pc)(ptr_int_t)reg,
+                     opnd_size_in_bytes(reg_get_size(reg)), NULL, NULL, mc);
+                /* Set to defined to avoid duplicate errors */
+                register_shadow_mark_defined(reg);
+            }
+        }
+    }
+#endif
+
+    if (opc_is_stringop_loop(opc) &&
+        /* with -repstr_to_loop, a decoded repstr is really a non-rep str */
+        !options.repstr_to_loop) {
+        /* We assume flat segments for es and ds */
+        /* FIXME: support addr16!  we're assuming 32-bit edi, esi! */
+        ASSERT(reg_get_size(opnd_get_base(opnd)) == OPSZ_4,
+               "no support yet for addr16 string operations!");
+        if (opc == OP_rep_stos || opc == OP_rep_lods) {
+            /* store from al/ax/eax into es:edi; load from es:esi into al/ax/eax */
+            get_stringop_range(opc == OP_rep_stos ? mc->xdi : mc->xsi,
+                               mc->xcx, mc->xflags, sz, &addr, &end);
+            LOG(3, "rep %s "PFX"-"PFX"\n", opc == OP_rep_stos ? "stos" : "lods",
+                addr, end);
+            flags |= (sz == 1 ? MEMREF_SINGLE_BYTE :
+                      (sz == 2 ? MEMREF_SINGLE_WORD : MEMREF_SINGLE_DWORD));
+            sz = end - addr;
+        } else if (opc == OP_rep_movs) {
+            /* move from ds:esi to es:edi */
+            LOG(3, "rep movs "PFX" "PFX" "PIFX"\n", mc->xdi, mc->xsi, mc->xcx);
+            /* FIXME: if checking definedness of sources, really
+             * should do read+write in lockstep, since an earlier
+             * write could make a later read ok; for now we punt on
+             * that.  We do an overlap check and warn below.
+             * If we're propagating and not checking sources, then the
+             * overlap is fine: we'll go through the source, ensure addressable
+             * but do nothing if undefined, and then go through dest copying
+             * from source in lockstep.
+             */
+            get_stringop_range(mc->xsi, mc->xcx, mc->xflags, sz, &addr, &end);
+            if (!TEST(MEMREF_WRITE, flags)) {
+                flags &= ~MEMREF_USE_VALUES;
+            } else {
+                ASSERT(comb != NULL, "assuming have shadow if marked write");
+                flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
+#ifdef X64
+                ASSERT_NOT_IMPLEMENTED();
+#else
+                comb->dst[0] = (uint) addr;
+                get_stringop_range(mc->xdi, mc->xcx, mc->xflags, sz, &addr, &end);
+                if (TEST(MEMREF_CHECK_DEFINEDNESS, flags) &&
+                    /* i#889: a simple type cast for 64-bit build */
+                    end > (app_pc)comb->dst[0] &&
+                    /* i#889: a simple type cast for 64-bit build */
+                    addr < ((app_pc)comb->dst[0]) + (end - addr))
+                    ELOG(0, "WARNING: rep movs overlap while checking definedness not fully supported!\n");
+#endif
+            }
+            sz = end - addr;
+        } else if (opc == OP_rep_scas || opc == OP_repne_scas) {
+            /* compare es:edi to al/ax/eax */
+            /* we can't just do post-instr check since we want to warn of
+             * unaddressable refs prior to their occurrence, so we emulate
+             * FIXME: we aren't aggregating errors in adjacent bytes */
+            LOG(3, "rep scas @"PFX" "PFX" "PIFX"\n", loc_to_print(loc), mc->xdi, mc->xcx);
+            while (mc->xcx != 0) { /* note the != instead of > */
+                uint val;
+                bool eq;
+                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc);
+                /* remember that our notion of unaddressable is not real so we have
+                 * to check with the OS to see if this will fault
+                 */
+                ASSERT(sz <= sizeof(uint), "internal error");
+                if (safe_read((void *)mc->xdi, sz, &val)) {
+                    /* Assume the real instr will fault here.
+                     * FIXME: if the instr gets resumed our check won't re-execute! */
+                    break;
+                }
+                eq = stringop_equal(val, mc->xax, sz);
+                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xcx--;
+                if ((opc == OP_rep_scas && !eq) ||
+                    (opc == OP_repne_scas && eq))
+                    break;
+            }
+            return true;
+        } else if (opc == OP_rep_cmps || opc == OP_repne_cmps) {
+            /* compare ds:esi to es:edi */
+            /* FIXME: we aren't aggregating errors in adjacent bytes */
+            if (reg_overlap(opnd_get_base(opnd), DR_REG_XDI))
+                return true; /* we check both when passed esi base */
+            LOG(3, "rep cmps @"PFX" "PFX" "PFX" "PIFX"\n",
+                loc_to_print(loc), mc->xdi, mc->xsi, mc->xcx);
+            while (mc->xcx != 0) { /* note the != instead of > */
+                uint val1, val2;
+                bool eq;
+                handle_mem_ref(flags, loc, (app_pc)mc->xsi, sz, mc);
+                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc);
+                /* remember that our notion of unaddressable is not real so we have
+                 * to check with the OS to see if this will fault
+                 */
+                ASSERT(sz <= sizeof(uint), "internal error");
+                if (!safe_read((void *)mc->xsi, sz, &val1) ||
+                    !safe_read((void *)mc->xdi, sz, &val2)) {
+                    /* Assume the real instr will fault here.
+                     * FIXME: if the instr gets resumed our check won't re-execute! */
+                    break;
+                }
+                eq = stringop_equal(val1, val2, sz);
+                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xsi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xcx--;
+                if ((opc == OP_rep_cmps && !eq) ||
+                    (opc == OP_repne_cmps && eq))
+                    break;
+            }
+            return true;
+        } else
+            ASSERT(false, "unknown string operation");
+    } else {
+        addr = opnd_compute_address(opnd, mc);
+    }
+    if (sz == 0)
+        return true;
+#ifdef TOOL_DR_MEMORY
+    return handle_mem_ref_internal(flags, loc, addr, sz, mc, opnum, comb);
+#else
+    return handle_mem_ref(flags, loc, addr, sz, mc);
+#endif
+}
+
+bool
+check_mem_opnd_nouninit(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
+                        dr_mcontext_t *mc)
+{
+    ASSERT(!TEST(MEMREF_USE_VALUES, flags), "using values requires shadow_combine_t");
+    return check_mem_opnd(opc, flags, loc, opnd, sz, mc, 0, NULL);
+}
 
 bool
 check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
