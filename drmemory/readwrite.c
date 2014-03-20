@@ -676,9 +676,12 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
         /* We save first thing and restore prior to last instr.
          * Our restore clobbers the eflags value in our tls slot, so
          * on a fault in the last instr we should do nothing.
-         * FIXME: NOT TESTED: need carefully constructed test to hit this
+         * FIXME: NOT ENOUGH TESTED:
+         * need carefully constructed tests like tests/state.c
          */
-        if (info->mcontext->pc != save->last_instr) {
+        if (info->mcontext->pc != save->last_instr &&
+            /* i#1466: only restore after first_restore_pc */
+            info->mcontext->pc >= save->first_restore_pc) {
             /* Use drcontext's shadow, not executing thread's shadow! (PR 475211) */
             ptr_uint_t regval;
             if (save->eflags_saved) {
@@ -3824,6 +3827,9 @@ bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
      */
     bb_saved_info_t *save = (bb_saved_info_t *) payload;
     ASSERT(hashtable_lock_self_owns(&bb_table), "missing lock");
+    save->first_restore_pc =
+        save->first_restore_pc == NULL ?
+        NULL : (app_pc) ((ptr_int_t)save->first_restore_pc + shift);
     save->last_instr = (app_pc) ((ptr_int_t)save->last_instr + shift);
     bb_save_add_entry((app_pc) key, save);
     return true;

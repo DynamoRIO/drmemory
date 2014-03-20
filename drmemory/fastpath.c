@@ -1864,10 +1864,24 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         if (bi->aflags_where == AFLAGS_UNKNOWN) {
 #ifdef TOOL_DR_MEMORY
-# if 0 /* FIXME i#1466 */
-            /* FIXME i#1466: I am disabling this as it is buggy for certain
-             * cases of eax being used in an instruction that faults.
-             * i#1466 covers the proper longer-term fix to re-enable.
+            /* i#1466: remember where to start restore state for pattern mode.
+             * In pattern mode, we only save eax if we save aflags. i#1466 is a bug
+             * that tries to restore eax on a fault before we saving eax, so we use
+             * first_restore_pc to remember where eax is saved and only restore eax
+             * for fault happening after that pc.
+             * For shadow mode, it should always start from the first pc, and we
+             * set first_restore_pc to be NULL.
+             */
+            if (options.pattern != 0) {
+                ASSERT(bi->first_restore_pc == NULL,
+                       "first_restore_pc must be NULL if aflags_where is not set");
+                bi->first_restore_pc = instr_get_app_pc(inst);
+                ASSERT(bi->first_restore_pc != NULL, "instr app_pc must not be NULL");
+            }
+            /* We can avoid saving eflags to TLS and restoring app %eax if we know that
+             * %eax is not used later in the bb. This might be called in the middle of
+             * a bb, so we need use first_restore_pc to remember where we start stealing
+             * %eax (#i1466).
              */
             if (!xax_is_used_subsequently(inst) && options.pattern != 0) {
                 /* To keep aflags in %eax, we need a permanent TLS store for
@@ -1885,7 +1899,6 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                  */
                 bi->aflags_where = AFLAGS_IN_EAX;
             } else
-# endif
 #endif
                 bi->aflags_where = AFLAGS_IN_TLS;
         }
@@ -5510,6 +5523,26 @@ void
 fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
 {
     instr_t *inst = instrlist_first(bb);
+#ifdef DEBUG
+    app_pc prev_pc = dr_fragment_app_pc(tag);
+    ASSERT(prev_pc != NULL, "bb tag must not be NULL");
+    /* i#260 and i#1466: bbs must be contiguous */
+    if (inst != NULL && whole_bb_spills_enabled() &&
+        /* bi->is_repstr_to_loop is set in app2app and may mess up the instr pc */
+        !bi->is_repstr_to_loop) {
+        for (; inst != NULL; inst = instr_get_next(inst)) {
+            app_pc cur_pc = instr_get_app_pc(inst);
+            if (cur_pc == NULL)
+                continue;
+            /* relax the check here instead of "cur_pc == prev_pc + instr_length"
+             * to allow client adding fake app instr
+             */
+            ASSERT(cur_pc >= prev_pc, "bb is not contiguous");
+            prev_pc = cur_pc;
+        }
+        inst = instrlist_first(bb);
+    }
+#endif
     if (inst == NULL || !whole_bb_spills_enabled() ||
         /* pattern mode only uses whole-bb for eflags, so no scratch reg picks */
         options.pattern != 0) {
@@ -5821,6 +5854,8 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
             save->last_instr = NULL;
         else
             save->last_instr = bi->last_app_pc;
+        /* i#1466: remember the first_restore_pc for restore state in pattern mode */
+        save->first_restore_pc = bi->first_restore_pc;
         save->check_ignore_unaddr = check_ignore_unaddr;
         /* i#826: share_xl8_max_diff can change, save it. */
         save->share_xl8_max_diff = bi->share_xl8_max_diff;
