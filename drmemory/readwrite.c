@@ -1089,6 +1089,8 @@ opc_should_propagate_xmm(int opc)
     case OP_punpckldq:  case OP_punpcklqdq:
     case OP_punpckhbw:  case OP_punpckhwd:
     case OP_punpckhdq:  case OP_punpckhqdq:
+    case OP_unpcklps:   case OP_unpcklpd:
+    case OP_unpckhps:   case OP_unpckhpd:
         return true;
     }
     return false;
@@ -1948,12 +1950,14 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             }
             break;
         case OP_punpckldq:
+        case OP_unpcklps:
             if (src_bytenum < opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum/4) *8 + (src_bytenum % 4) +
                                         4*(1 - opnum)], shadow);
             }
             break;
         case OP_punpcklqdq:
+        case OP_unpcklpd:
             if (src_bytenum < opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum/8) *16 + (src_bytenum % 8) +
                                         8*(1 - opnum)], shadow);
@@ -1971,12 +1975,14 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             }
             break;
         case OP_punpckhdq:
+        case OP_unpckhps:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[((src_bytenum-opsz/2)/4) *8 + (src_bytenum % 4) +
                                         4*(1 - opnum)], shadow);
             }
             break;
         case OP_punpckhqdq:
+        case OP_unpckhpd:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[((src_bytenum-opsz/2)/8) *16 + (src_bytenum % 8) +
                                         8*(1 - opnum)], shadow);

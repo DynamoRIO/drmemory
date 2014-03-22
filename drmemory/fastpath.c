@@ -691,21 +691,6 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
          * Bail for now.
          */
         return false;
-    case OP_punpcklbw:
-    case OP_punpcklwd:
-    case OP_punpckldq:
-    case OP_punpcklqdq:
-    case OP_punpckhbw:
-    case OP_punpckhwd:
-    case OP_punpckhdq:
-    case OP_punpckhqdq:
-        /* i#243: tricky to implement in fastpath for partially-defined */
-        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
-            return false;
-        if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 0), 0, true, mi))
-            return false;
-        mi->check_definedness = true;
-        return true;
     default: {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
@@ -1055,6 +1040,24 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
         (!opnd_is_immed_int(instr_get_src(inst, 0)) ||
          opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0))
          mi->check_definedness = true;
+
+    /* i#243: these are tricky to implement in fastpath for partially-defined */
+    switch (opc) {
+        case OP_punpcklbw:
+        case OP_punpcklwd:
+        case OP_punpckldq:
+        case OP_punpcklqdq:
+        case OP_punpckhbw:
+        case OP_punpckhwd:
+        case OP_punpckhdq:
+        case OP_punpckhqdq:
+        case OP_unpcklps:
+        case OP_unpcklpd:
+        case OP_unpckhps:
+        case OP_unpckhpd:
+            mi->check_definedness = true;
+            break;
+    }
 }
 
 /* Identifies other cases where we check definedness rather than propagating.
