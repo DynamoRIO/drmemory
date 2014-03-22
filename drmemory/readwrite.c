@@ -1100,6 +1100,9 @@ opc_should_propagate_xmm(int opc)
     case OP_pinsrw:
     case OP_pinsrd:
     case OP_insertps:
+    case OP_movhps:
+    case OP_movhpd:
+    case OP_movlps:
         return true;
     }
     return false;
@@ -1787,6 +1790,8 @@ opc_dst_subreg_nonlow(int opc)
     case OP_pinsrw:
     case OP_pinsrd:
     case OP_insertps:
+    case OP_movhps:
+    case OP_movhpd:
         return true;
     }
     return false;
@@ -2103,6 +2108,29 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             }
             break;
         }
+        case OP_movhps:
+        case OP_movhpd:
+            ASSERT(comb->inst != NULL, "need comb->inst for movhps");
+            if (opnd_is_memory_reference(comb->opnd)) {
+                accum_shadow(&comb->dst[src_bytenum + (opsz - 8)], shadow);
+            } else if (opnd_is_reg(instr_get_dst(comb->inst, 0))) {
+                /* reg-reg is OP_movlhps */
+                if (src_bytenum < 8)
+                    accum_shadow(&comb->dst[src_bytenum + (opsz - 8)], shadow);
+            } else {
+                if (src_bytenum >= opsz - 8) /* high quadword */
+                    accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
+            }
+            break;
+        case OP_movlps:
+            ASSERT(comb->inst != NULL, "need comb->inst for movlps");
+            if (opnd_is_reg(comb->opnd) && opnd_is_reg(instr_get_dst(comb->inst, 0))) {
+                /* reg-reg is OP_movhlps */
+                if (src_bytenum >= opsz - 8) /* high quadword */
+                    accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
+            } else if (src_bytenum < 8)
+                accum_shadow(&comb->dst[src_bytenum], shadow);
+            break;
 
         /* XXX i#243: add more xmm opcodes here.  Also add to
          * opc_should_propagate_xmm() and possibly to

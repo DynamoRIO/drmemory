@@ -692,6 +692,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     case OP_pextrd:
     case OP_extractps:
     case OP_insertps:
+    case OP_movhps: /* would need to add check_definedness of dst too */
+    case OP_movhpd: /* would need to add check_definedness of dst too */
+    case OP_movlps: /* would need to add check_definedness of dst too */
         /* XXX i#243: these are tricky as they access sub-dword parts of xmm.
          * Bail for now.
          */

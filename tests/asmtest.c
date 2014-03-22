@@ -82,6 +82,20 @@ GLOBAL_LABEL(FUNCNAME:)
         pinsrd   xmm0, ecx, 0
         comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
 
+        movdqu   xmm0, [REG_XAX] /* undef */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        movlhps  xmm0, xmm1
+        pextrw   ecx, xmm0, 7 /* word came from xmm1 so defined */
+        cmp      ecx, HEX(3)
+
+        movdqu   xmm0, [REG_XAX] /* undef */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        movhlps  xmm0, xmm1
+        pextrw   ecx, xmm0, 1 /* word came from xmm1 so defined */
+        cmp      ecx, HEX(3)
+
         /* XXX: add more tests here */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
