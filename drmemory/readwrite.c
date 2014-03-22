@@ -1149,6 +1149,7 @@ xax_is_used_subsequently(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
+/* drcontext can be NULL if the operand is an immed int */
 static bool
 get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
 {
@@ -1156,6 +1157,11 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
     opnd_t src = instr_get_src(inst, i);
     if (val == NULL)
         return false;
+    if (opnd_is_immed_int(src)) {
+        *val = (reg_t) opnd_get_immed_int(src);
+        return true;
+    }
+    ASSERT(drcontext != NULL, "need drcontext for non-immed opnd");
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
@@ -1167,9 +1173,6 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
         return (safe_read(addr, sz, val));
     } else if (opnd_is_reg(src)) {
         *val = reg_get_value(opnd_get_reg(src), &mc);
-        return true;
-    } else if (opnd_is_immed_int(src)) {
-        *val = (reg_t) opnd_get_immed_int(src);
         return true;
     }
     return false;
@@ -5411,5 +5414,111 @@ should_mark_stack_frames_defined(app_pc pc)
     return false;
 #endif
 }
+
+/***************************************************************************
+ * Unit tests
+ */
+
+#ifdef BUILD_UNIT_TESTS
+void
+test_punpck(void)
+{
+    shadow_combine_t comb;
+    int i;
+    uint sz = opnd_size_in_bytes(reg_get_size(DR_REG_XMM0));
+    comb.opsz = sz;
+
+    shadow_combine_init(&comb, NULL, OP_punpcklbw, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpcklwd, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpckldq, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpcklqdq, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpckhbw, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpckhwd, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpckhdq, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+
+    shadow_combine_init(&comb, NULL, OP_punpckhqdq, OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+    for (i = 0; i < sz; i++) {
+        ASSERT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+    }
+}
+
+int
+main(int argc, char *argv[])
+{
+    test_punpck();
+
+    /* add more tests here */
+
+    dr_printf("success\n");
+    return 0;
+}
+#endif
 
 #endif /* TOOL_DR_MEMORY */

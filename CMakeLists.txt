@@ -1464,6 +1464,37 @@ target_link_libraries(${client_target} umbra_int)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
+
+  if (TOOL_DR_MEMORY)
+    # unit tests
+    add_executable(unit_tests ${srcs})
+    set_property(TARGET unit_tests PROPERTY COMPILE_DEFINITIONS
+      "${DEFINES_NO_D};BUILD_UNIT_TESTS")
+    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      # ensure race-free parallel builds
+      add_dependencies(unit_tests ${asm_utils_tgt})
+    endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    if (DEFINED DynamoRIO_RPATH)
+      set(old_rpath ${DynamoRIO_RPATH})
+    else ()
+      set(old_rpath OFF)
+    endif ()
+    set(DynamoRIO_RPATH ON)
+    configure_DynamoRIO_standalone(unit_tests)
+    use_DynamoRIO_extension(unit_tests drmgr_static)
+    use_DynamoRIO_extension(unit_tests drcontainers)
+    use_DynamoRIO_extension(unit_tests drmgr_static)
+    use_DynamoRIO_extension(unit_tests drx_static)
+    use_DynamoRIO_extension(unit_tests drutil_static)
+    use_DynamoRIO_extension(unit_tests drwrap_static)
+    use_DynamoRIO_extension(unit_tests drsyms_static)
+    target_link_libraries(unit_tests drsyscall_int)
+    target_link_libraries(unit_tests umbra_int)
+    target_link_libraries(unit_tests drsymcache_int)
+    set(DynamoRIO_RPATH ${old_rpath})
+    add_test(unit_tests "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/unit_tests")
+  endif (TOOL_DR_MEMORY)
+
 endif (BUILD_TOOL_TESTS)
 
 if (TOOL_DR_MEMORY AND WIN32)
