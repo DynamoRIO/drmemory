@@ -116,7 +116,8 @@ typedef struct _shadow_combine_t {
 #endif
     opnd_t opnd;
     size_t opsz; /* in bytes */
-    /* XXX: add movs_addr and replace the dst[0] hack */
+    /* For handling OP_movs */
+    byte *movs_addr;
 } shadow_combine_t;
 
 #ifdef STATISTICS
@@ -3272,12 +3273,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                  */
                 umbra_shadow_memory_info_init(&info);
                 shadow_set_byte(&info, cpt->mem2fpmm_dest, cpt->mem2fpmm_prev_shadow);
-#ifdef X64
-                /* XXX: switch this hack to a proper data structure */
-                ASSERT_NOT_IMPLEMENTED();
-#else
-                comb.dst[0] = (uint) cpt->mem2fpmm_source;
-#endif
+                comb.movs_addr = cpt->mem2fpmm_source;
                 flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
                 cpt->mem2fpmm_source = NULL;
             } else if (always_defined) {
@@ -4463,12 +4459,7 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
             if (TEST(MEMREF_MOVS, flags)) {
                 ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
                 ASSERT(memref_idx(flags, i) == i, "internal movs error");
-#ifdef X64
-                newval = 0;
-                ASSERT_NOT_IMPLEMENTED();
-#else
-                newval = shadow_get_byte(&info, ((app_pc)comb->dst[0]) + i);
-#endif
+                newval = shadow_get_byte(&info, comb->movs_addr + i);
             } else {
                 newval = TEST(MEMREF_USE_VALUES, flags) ?
                     comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED;
@@ -4626,18 +4617,12 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
             } else {
                 ASSERT(comb != NULL, "assuming have shadow if marked write");
                 flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
-#ifdef X64
-                ASSERT_NOT_IMPLEMENTED();
-#else
-                comb->dst[0] = (uint) addr;
+                comb->movs_addr = addr;
                 get_stringop_range(mc->xdi, mc->xcx, mc->xflags, sz, &addr, &end);
                 if (TEST(MEMREF_CHECK_DEFINEDNESS, flags) &&
-                    /* i#889: a simple type cast for 64-bit build */
-                    end > (app_pc)comb->dst[0] &&
-                    /* i#889: a simple type cast for 64-bit build */
-                    addr < ((app_pc)comb->dst[0]) + (end - addr))
+                    end > comb->movs_addr &&
+                    addr < comb->movs_addr + (end - addr))
                     ELOG(0, "WARNING: rep movs overlap while checking definedness not fully supported!\n");
-#endif
             }
             sz = end - addr;
         } else if (opc == OP_rep_scas || opc == OP_repne_scas) {
