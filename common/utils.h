@@ -384,6 +384,18 @@ extern int tls_idx_util;
 # define ASSERT_NOT_TESTED(msg) /* nothing */
 #endif
 
+#ifdef BUILD_UNIT_TESTS
+/* Don't use ASSERT as it will crash trying to get TLS fields.
+ * We should move these to a shared header once we had tests elsewhere.
+ */
+# define EXPECT(x) do { \
+    if (!(x)) { \
+        dr_fprintf(STDERR, "CHECK FAILED: %s:%d: %s", __FILE__,  __LINE__, #x); \
+        drmemory_abort(); \
+    } \
+} while (0)
+#endif
+
 #ifdef DEBUG
 # define LOGF ELOGF
 # define LOGPT ELOGPT

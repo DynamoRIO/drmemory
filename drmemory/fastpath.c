@@ -1078,6 +1078,9 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
         case OP_vunpcklpd:
         case OP_vunpckhps:
         case OP_vunpckhpd:
+        case OP_vpinsrb:
+        case OP_vpinsrw:
+        case OP_vpinsrd:
             mi->check_definedness = true;
             break;
     }

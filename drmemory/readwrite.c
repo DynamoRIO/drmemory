@@ -1108,6 +1108,9 @@ opc_should_propagate_xmm(int opc)
     case OP_pinsrb:
     case OP_pinsrw:
     case OP_pinsrd:
+    case OP_vpinsrb:
+    case OP_vpinsrw:
+    case OP_vpinsrd:
     case OP_insertps:
     case OP_movhps:
     case OP_movhpd:
@@ -2108,6 +2111,10 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                     if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
                         accum_shadow(&comb->dst[immed], shadow);
                     break;
+                case OP_vpinsrb:
+                    if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
+                        accum_shadow(&comb->dst[immed], shadow);
+                    break;
                 case OP_pinsrw:
                     if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes for reg */
                         accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
@@ -2135,6 +2142,39 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                         }
                     }
                 }
+            }
+            break;
+        }
+        case OP_vpinsrb:
+        case OP_vpinsrw:
+        case OP_vpinsrd: {
+            ptr_uint_t immed = 0;
+            ASSERT(comb->inst != NULL, "need inst for OP_vpinsr*");
+            /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
+            if (!get_cur_src_value(NULL, comb->inst, 2, &immed))
+                ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
+            switch (opc) {
+                case OP_vpinsrb:
+                    if (opnum == 0) {
+                        if (src_bytenum != immed)
+                            accum_shadow(&comb->dst[src_bytenum], shadow);
+                    } else if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte */
+                        accum_shadow(&comb->dst[immed], shadow);
+                    break;
+                case OP_vpinsrw:
+                    if (opnum == 0) {
+                        if (src_bytenum < immed*2 || src_bytenum >= (immed+1)*2)
+                            accum_shadow(&comb->dst[src_bytenum], shadow);
+                    } else if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes */
+                        accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
+                    break;
+                case OP_vpinsrd:
+                    if (opnum == 0) {
+                        if (src_bytenum < immed*4 || src_bytenum >= (immed+1)*4)
+                            accum_shadow(&comb->dst[src_bytenum], shadow);
+                    } else
+                        accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
+                    break;
             }
             break;
         }
@@ -5643,8 +5683,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpcklwd, OPND_SHADOW_ARRAY_LEN);
@@ -5653,8 +5693,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpckldq, OPND_SHADOW_ARRAY_LEN);
@@ -5663,8 +5703,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpcklqdq, OPND_SHADOW_ARRAY_LEN);
@@ -5673,8 +5713,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i < sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpckhbw, OPND_SHADOW_ARRAY_LEN);
@@ -5683,8 +5723,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT((i % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               (i % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpckhwd, OPND_SHADOW_ARRAY_LEN);
@@ -5693,8 +5733,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 2) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 2) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpckhdq, OPND_SHADOW_ARRAY_LEN);
@@ -5703,8 +5743,8 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 4) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 4) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
 
     shadow_combine_init(&comb, NULL, OP_punpckhqdq, OPND_SHADOW_ARRAY_LEN);
@@ -5713,15 +5753,61 @@ test_punpck(void)
     for (i = 0; i < sz; i++)
         map_src_to_dst(&comb, 1, i, i >= sz/2 ? SHADOW_DEFINED : SHADOW_UNDEFINED);
     for (i = 0; i < sz; i++) {
-        ASSERT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
-               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED), "test failed");
+        EXPECT(((i / 8) % 2 == 0 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i / 8) % 2 == 1 && comb.dst[i] == SHADOW_UNDEFINED));
     }
+}
+
+void
+test_pinsr(void *dc)
+{
+    shadow_combine_t comb;
+    int i;
+    uint sz = opnd_size_in_bytes(reg_get_size(DR_REG_XMM0));
+    instr_t *inst;
+    comb.opsz = sz;
+
+    /* XXX: it's hard to test pinsr* as they need real shadow vals */
+
+    inst = INSTR_CREATE_vpinsrw(dc, opnd_create_reg(DR_REG_XMM0),
+                                opnd_create_reg(DR_REG_XMM1),
+                                opnd_create_reg(DR_REG_EAX),
+                                OPND_CREATE_INT8(4));
+    shadow_combine_init(&comb, inst, instr_get_opcode(inst), OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < 4; i++)
+        map_src_to_dst(&comb, 1, i, SHADOW_DEFINED);
+    for (i = 0; i < sz; i++) {
+        EXPECT(((i == 8 || i == 9) && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i < 8 || i >= 10) && comb.dst[i] == SHADOW_UNDEFINED));
+    }
+    instr_destroy(dc, inst);
+
+    inst = INSTR_CREATE_vpinsrd(dc, opnd_create_reg(DR_REG_XMM0),
+                                opnd_create_reg(DR_REG_XMM1),
+                                opnd_create_reg(DR_REG_EAX),
+                                OPND_CREATE_INT8(2));
+    shadow_combine_init(&comb, inst, instr_get_opcode(inst), OPND_SHADOW_ARRAY_LEN);
+    for (i = 0; i < sz; i++)
+        map_src_to_dst(&comb, 0, i, SHADOW_UNDEFINED);
+    for (i = 0; i < 4; i++)
+        map_src_to_dst(&comb, 1, i, SHADOW_DEFINED);
+    for (i = 0; i < sz; i++) {
+        EXPECT((i >= 8 && i < 12 && comb.dst[i] == SHADOW_DEFINED) ||
+               ((i < 8 || i >= 12) && comb.dst[i] == SHADOW_UNDEFINED));
+    }
+    instr_destroy(dc, inst);
 }
 
 int
 main(int argc, char *argv[])
 {
+    void *drcontext = dr_standalone_init();
+
     test_punpck();
+
+    test_pinsr(drcontext);
 
     /* add more tests here */
 
