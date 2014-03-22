@@ -83,6 +83,13 @@ GLOBAL_LABEL(FUNCNAME:)
         comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
 
         movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, DWORD [REG_XDX] /* def */
+        pinsrd   xmm0, ecx, 0
+        pinsrd   xmm0, ecx, 1
+        comisd   xmm0, xmm1 /* only looks at bottom 64 bits */
+
+        movdqu   xmm0, [REG_XAX] /* undef */
         mov      ecx, DWORD [REG_XAX] /* undef */
         pxor     xmm1, xmm1
         movlhps  xmm0, xmm1

@@ -794,6 +794,10 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 {
     int opc = instr_get_opcode(inst);
     ASSERT(mi != NULL, "invalid args");
+
+    if (!mi->check_definedness) /* sometimes set in instr_ok_for_instrument_fastpath */
+        mi->check_definedness = instr_check_definedness(inst);
+
     if (opnd_is_reg(mi->src[0].app))
         mi->src_reg = opnd_get_reg(mi->src[0].app);
     if (opnd_is_reg(mi->dst[0].app))
@@ -4119,9 +4123,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef TOOL_DR_MEMORY
     ASSERT(!opc_is_stringop_loop(opc), "internal error"); /* handled elsewhere */
 #endif
-    if (!mi->check_definedness) /* sometimes set in instr_ok_for_instrument_fastpath */
-        mi->check_definedness = instr_check_definedness(inst);
-
     /* we assume caller has called instr_ok_for_instrument_fastpath() */
     if (!adjust_opnds_for_fastpath(inst, mi)) {
         instrument_slowpath(drcontext, bb, inst, NULL);
