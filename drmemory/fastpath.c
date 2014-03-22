@@ -1078,6 +1078,10 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
         case OP_vunpcklpd:
         case OP_vunpckhps:
         case OP_vunpckhpd:
+        case OP_shufps:
+        case OP_shufpd:
+        case OP_vshufps:
+        case OP_vshufpd:
         case OP_vpinsrb:
         case OP_vpinsrw:
         case OP_vpinsrd:

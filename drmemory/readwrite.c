@@ -1098,6 +1098,8 @@ opc_should_propagate_xmm(int opc)
     case OP_unpckhps:   case OP_unpckhpd:
     case OP_vunpcklps:  case OP_vunpcklpd:
     case OP_vunpckhps:  case OP_vunpckhpd:
+    case OP_shufps:     case OP_shufpd:
+    case OP_vshufps:    case OP_vshufpd:
     case OP_pextrb:
     case OP_pextrw:
     case OP_pextrd:
@@ -2073,6 +2075,54 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                                         8*(1 - opnum)], shadow);
             }
             break;
+        case OP_shufps:
+        case OP_shufpd:
+        case OP_vshufps:
+        case OP_vshufpd: {
+            ptr_uint_t immed = 0;
+            ASSERT(comb->inst != NULL, "need inst for OP_shuf*");
+            if (!get_cur_src_value(NULL, comb->inst,
+                                   (opc == OP_vshufps || opc == OP_vshufpd) ? 2 : 1,
+                                   &immed))
+                ASSERT(false, "failed to get immed"); /* rel build: keep going */
+            switch (opc) {
+                case OP_shufps:
+                case OP_vshufps: {
+                    uint mod = src_bytenum % 4;
+                    uint shift = src_bytenum >= 16 ? 16 : 0;
+                    if (opnum == 0) { /* the src */
+                        uint dst2 = (immed >> 4) & 0x3;
+                        uint dst3 = (immed >> 6) & 0x3;
+                        if (dst2 == (src_bytenum % 16)/4)
+                            accum_shadow(&comb->dst[shift + 8 + mod], shadow);
+                        if (dst3 == (src_bytenum % 16)/4)
+                            accum_shadow(&comb->dst[shift + 12 + mod], shadow);
+                    } else { /* the dst, or 2nd src for vshufps */
+                        uint dst0 = immed & 0x3;
+                        uint dst1 = (immed >> 2) & 0x3;
+                        if (dst0 == (src_bytenum % 16)/4)
+                            accum_shadow(&comb->dst[shift + mod], shadow);
+                        if (dst1 == (src_bytenum % 16)/4)
+                            accum_shadow(&comb->dst[shift + 4 + mod], shadow);
+                    }
+                    break;
+                }
+                case OP_shufpd:
+                case OP_vshufpd: {
+                    uint mod = src_bytenum % 8;
+                    uint shift = src_bytenum >= 16 ? 16 : 0;
+                    if (opnum == 0) { /* the src */
+                        if (immed == (src_bytenum % 16)/8)
+                            accum_shadow(&comb->dst[shift + 8 + mod], shadow);
+                    } else { /* the dst, or 2nd src for vshufps */
+                        if (immed == (src_bytenum % 16)/8)
+                            accum_shadow(&comb->dst[shift + mod], shadow);
+                    }
+                    break;
+                }
+            }
+            break;
+        }
         case OP_pextrb:
         case OP_pextrw:
         case OP_pextrd:

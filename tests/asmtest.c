@@ -96,6 +96,13 @@ GLOBAL_LABEL(FUNCNAME:)
         pextrw   ecx, xmm0, 1 /* word came from xmm1 so defined */
         cmp      ecx, HEX(3)
 
+        movdqu   xmm0, [REG_XAX] /* undef */
+        mov      ecx, DWORD [REG_XDX] /* def */
+        pinsrd   xmm0, ecx, 0
+        shufps   xmm0, xmm0, 0 /* bottom 4 bytes fill the whole thing */
+        pextrw   ecx, xmm0, 7
+        cmp      ecx, HEX(4)
+
         /* XXX: add more tests here */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
