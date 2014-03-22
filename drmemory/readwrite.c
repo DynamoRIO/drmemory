@@ -1069,72 +1069,11 @@ opc_2nd_dst_is_extension(uint opc)
 }
 
 bool
-opc_should_propagate_xmm(int opc)
-{
-    switch (opc) {
-    /* XXX i#1453: full propagation is not yet in place so we only
-     * shadow for same-size moves in and out
-     */
-    case OP_movdqu:     case OP_movdqa:
-    case OP_movss:      case OP_movsd:
-    /* We also have to handle sub-16-byte moves for VS2013 */
-    case OP_movd:       case OP_movq:
-    /* We also have to instrument clearing of xmm regs, used to zero
-     * data structures.  Note that with the current mark-definedness of
-     * everything else xmm related (see result_is_always_defined()) we
-     * don't need this here now, but we will want it long-term.
-     */
-    case OP_pxor:       case OP_xorps: case OP_xorpd:
-    /* Partial support is in place for these now: */
-    case OP_punpcklbw:  case OP_punpcklwd:
-    case OP_punpckldq:  case OP_punpcklqdq:
-    case OP_punpckhbw:  case OP_punpckhwd:
-    case OP_punpckhdq:  case OP_punpckhqdq:
-    case OP_vpunpcklbw: case OP_vpunpcklwd:
-    case OP_vpunpckldq: case OP_vpunpcklqdq:
-    case OP_vpunpckhbw: case OP_vpunpckhwd:
-    case OP_vpunpckhdq: case OP_vpunpckhqdq:
-    case OP_unpcklps:   case OP_unpcklpd:
-    case OP_unpckhps:   case OP_unpckhpd:
-    case OP_vunpcklps:  case OP_vunpcklpd:
-    case OP_vunpckhps:  case OP_vunpckhpd:
-    case OP_shufps:     case OP_shufpd:
-    case OP_vshufps:    case OP_vshufpd:
-    case OP_pextrb:
-    case OP_pextrw:
-    case OP_pextrd:
-    case OP_vpextrb:
-    case OP_vpextrw:
-    case OP_vpextrd:
-    case OP_extractps:
-    case OP_pinsrb:
-    case OP_pinsrw:
-    case OP_pinsrd:
-    case OP_vpinsrb:
-    case OP_vpinsrw:
-    case OP_vpinsrd:
-    case OP_insertps:
-    case OP_movhps:
-    case OP_movhpd:
-    case OP_movlps:
-        return true;
-    }
-    return false;
-}
-
-bool
 reg_is_shadowed(int opc, reg_id_t reg)
 {
     /* i#471: we don't yet shadow floating-point regs */
-    /* i#243: we don't yet shadow ymm regs */
     return (reg_is_gpr(reg) ||
-            /* XXX i#1453: full propagation is not yet in place so we only
-             * shadow for same-size moves in and out.  However, we have
-             * to mark everything else as defined, so we have to return
-             * true here for all opcodes.  We could remove the opc param, then,
-             * which was plumbed through several fastpath routines that call
-             * into here.
-             */
+            /* i#243: we don't yet shadow ymm regs */
             (reg_is_xmm(reg) && !reg_is_ymm(reg)) ||
             /* i#1473: propagate mmx */
             reg_is_mmx(reg));
@@ -1148,9 +1087,8 @@ instr_propagatable_dsts(instr_t *inst)
     int opc = instr_get_opcode(inst);
     for (i = 0; i < instr_num_dsts(inst); i++) {
         opnd_t opnd = instr_get_dst(inst, i);
-        /* i#1543, i#243: while we don't yet perform the right shuffling of the
-         * intra-xmm shadow values, we go ahead and shadow and propagate
-         * all xmm operations.  We can incrementally add the operation mirroring.
+        /* i#1543, i#243: we now shadow xmm regs and propagate and mirror xmm
+         * operations (at least most of them: work in progress).
          */
         if ((opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd))) ||
             opnd_is_memory_reference(opnd)) {
@@ -1351,18 +1289,7 @@ result_is_always_defined(instr_t *inst, bool natively)
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          opnd_get_immed_int(instr_get_src(inst, 0)) == ~0) ||
         ((opc == OP_xor || opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
-         opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1))) ||
-        /* i#243: until we have full operation mirroring we have to proactively
-         * mark as defined operations that have xmm regs as both sources and
-         * dests, to avoid false positives from our partial xmm propagation.  We
-         * should gradually add to opc_should_propagate_xmm and once we can
-         * propagate on everything we can remove this check here.
-         */
-        (!natively && /* not true natively */
-         instr_num_dsts(inst) > 0 &&
-         opnd_is_reg(instr_get_dst(inst, 0)) &&
-         reg_is_xmm(opnd_get_reg(instr_get_dst(inst, 0))) &&
-         !opc_should_propagate_xmm(instr_get_opcode(inst)))) {
+         opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))) {
         STATS_INC(andor_exception);
         return true;
     }
@@ -2123,6 +2050,21 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             }
             break;
         }
+        case OP_pshufw:
+        case OP_pshufd:
+        case OP_pshufhw:
+        case OP_pshuflw:
+        case OP_vpshufhw:
+        case OP_vpshufd:
+        case OP_vpshuflw:
+            /* FIXME i#243: fill in proper shuffling */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+            break;
+        case OP_pshufb:
+        case OP_vpshufb:
+            /* FIXME i#243: this one is complex, bailing for now */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+            break;
         case OP_pextrb:
         case OP_pextrw:
         case OP_pextrd:
@@ -2252,9 +2194,15 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                 accum_shadow(&comb->dst[src_bytenum], shadow);
             break;
 
-        /* XXX i#243: add more xmm opcodes here.  Also add to
-         * opc_should_propagate_xmm() and possibly to
-         * set_check_definedness_pre_regs() if fastpath can't handle them.
+        /* XXX i#243: add more xmm opcodes here.  Also add to either
+         * set_check_definedness_pre_regs() (if check_definedness is
+         * enough) or instr_ok_for_instrument_fastpath() if fastpath
+         * can't handle them.
+         *
+         * Opcodes that need extra handling: and + or operations with constants;
+         * shifts (OP_psr*, OP_psl*); widening/narrowing (OP_cvt*); conditional
+         * moves (OP_*blend*); shifting and selecting (OP_palignr, OP_phminposuw,
+         * OP_pcmpestr*).
          */
 
         /* cpuid: who cares if collapse to eax */

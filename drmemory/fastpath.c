@@ -314,9 +314,7 @@ static bool
 reg_ignore_for_fastpath(int opc, opnd_t reg, bool dst)
 {
     reg_id_t r = opnd_get_reg(reg);
-    return (!reg_is_shadowed(opc, r) ||
-            /* Ignore xmm sources when not propagating xmm values */
-            ((reg_is_xmm(r) || reg_is_mmx(r)) && !dst && !opc_should_propagate_xmm(opc)));
+    return (!reg_is_shadowed(opc, r));
 }
 
 static bool
@@ -1082,6 +1080,15 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
         case OP_shufpd:
         case OP_vshufps:
         case OP_vshufpd:
+        case OP_pshufw:
+        case OP_pshufd:
+        case OP_pshufhw:
+        case OP_pshuflw:
+        case OP_pshufb:
+        case OP_vpshufhw:
+        case OP_vpshufd:
+        case OP_vpshuflw:
+        case OP_vpshufb:
         case OP_vpinsrb:
         case OP_vpinsrw:
         case OP_vpinsrd:
@@ -2911,18 +2918,16 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     instr_t *skip_write_tgt = INSTR_CREATE_label(drcontext);
     app_pc xl8 = instr_get_app_pc(inst);
     if (src_opsz > dst_opsz) {
-        /* XXX i#243: what we really want is DRi#1382 to avoid hitting this
-         * at all.  This happens due to sub-register xmm operations.
-         * OP_movq doesn't come here as it ends up as check_definedness
-         * due to the 8-byte memory ref on a store, so we're here for OP_movd
-         * or OP_pextrw or things like that.
+        /* We now have DRi#1382 but we still hit this for cases like
+         * OP_cvtsd2si.
          */
-        ASSERT(opnd_is_reg(src.shadow) && src_opsz == 16 &&
+        reg_id_t reg_ptr = reg_to_pointer_sized(opnd_get_reg(src.shadow));
+        ASSERT(opnd_is_reg(src.shadow) && (src_opsz == 16 || src_opsz == 8) &&
                (dst_opsz == 8 || dst_opsz == 4), "invalid srcsz <= dstsz case");
         if (dst_opsz == 8)
-            src.shadow = opnd_create_reg(reg_ptrsz_to_16(opnd_get_reg(src.shadow)));
+            src.shadow = opnd_create_reg(reg_ptrsz_to_16(reg_ptr));
         else if (dst_opsz == 4)
-            src.shadow = opnd_create_reg(reg_ptrsz_to_8(opnd_get_reg(src.shadow)));
+            src.shadow = opnd_create_reg(reg_ptrsz_to_8(reg_ptr));
         src_opsz = dst_opsz;
     }
     ASSERT(src_opsz <= dst_opsz, "invalid opsz");
