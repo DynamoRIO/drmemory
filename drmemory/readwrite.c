@@ -1272,6 +1272,7 @@ result_is_always_defined(instr_t *inst, bool natively)
      *   - and with 0
      *   - or with ~0
      *   - xor with self
+     *   - packed subtract with self
      *   - sbb with self (PR 425498): now handled via num_true_srcs since must
      *     propagate eflags (PR 425622)
      */
@@ -1288,7 +1289,8 @@ result_is_always_defined(instr_t *inst, bool natively)
         (opc == OP_or &&
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          opnd_get_immed_int(instr_get_src(inst, 0)) == ~0) ||
-        ((opc == OP_xor || opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
+        ((opc == OP_xor || opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd ||
+          opc == OP_psubq || opc == OP_subps || opc == OP_subpd) &&
          opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))) {
         STATS_INC(andor_exception);
         return true;
