@@ -1935,25 +1935,52 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             break;
 #endif
         case OP_punpcklbw:
-        case OP_punpcklwd:
-        case OP_punpckldq:
-        case OP_punpcklqdq:
-            /* XXX i#243: until we have real mirroring of the data interleaving,
-             * we make do with at least not raising false positives on the ignored
-             * half of the sources.
+            /* Dst is opnum==1 and its 0-n/2 => 0, 2, 4, 6, ....
+             * Src is opnum==0 and its 0-n/2 => 1, 3, 5, 7, ...
              */
-            if (src_bytenum >= opsz/2)
-                return;
-            accum_shadow(&comb->dst[src_bytenum], shadow);
+            if (src_bytenum < opsz/2)
+                accum_shadow(&comb->dst[src_bytenum*2 + (1 - opnum)], shadow);
+            break;
+        case OP_punpcklwd:
+            if (src_bytenum < opsz/2) {
+                accum_shadow(&comb->dst[(src_bytenum/2) *4 + (src_bytenum % 2) +
+                                        2*(1 - opnum)], shadow);
+            }
+            break;
+        case OP_punpckldq:
+            if (src_bytenum < opsz/2) {
+                accum_shadow(&comb->dst[(src_bytenum/4) *8 + (src_bytenum % 4) +
+                                        4*(1 - opnum)], shadow);
+            }
+            break;
+        case OP_punpcklqdq:
+            if (src_bytenum < opsz/2) {
+                accum_shadow(&comb->dst[(src_bytenum/8) *16 + (src_bytenum % 8) +
+                                        8*(1 - opnum)], shadow);
+            }
             break;
         case OP_punpckhbw:
+            if (src_bytenum >= opsz/2) {
+                accum_shadow(&comb->dst[(src_bytenum-opsz/2)*2 + (1 - opnum)], shadow);
+            }
+            break;
         case OP_punpckhwd:
+            if (src_bytenum >= opsz/2) {
+                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/2) *4 + (src_bytenum % 2) +
+                                        2*(1 - opnum)], shadow);
+            }
+            break;
         case OP_punpckhdq:
+            if (src_bytenum >= opsz/2) {
+                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/4) *8 + (src_bytenum % 4) +
+                                        4*(1 - opnum)], shadow);
+            }
+            break;
         case OP_punpckhqdq:
-            /* XXX i#243: see comment above */
-            if (src_bytenum < opsz/2)
-                return;
-            accum_shadow(&comb->dst[src_bytenum], shadow);
+            if (src_bytenum >= opsz/2) {
+                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/8) *16 + (src_bytenum % 8) +
+                                        8*(1 - opnum)], shadow);
+            }
             break;
         /* cpuid: who cares if collapse to eax */
         /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */

@@ -446,7 +446,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         return false;
 #endif
 
-    if (opc == OP_push || opc == OP_push_imm || opc == OP_call || opc == OP_call_ind) {
+    switch (opc) {
+    case OP_push:
+    case OP_push_imm:
+    case OP_call:
+    case OP_call_ind:
         /* all have dst0=esp, dst1=(esp), src0=imm/reg/pc/mem, src1=esp */
         if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_dst(inst, 1)) != OPSZ_4)
@@ -486,7 +490,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                     return false;
             }
         }
-    } else if (opc == OP_pushf) {
+        return false;
+    case OP_pushf:
         if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_dst(inst, 1)) != OPSZ_4)
             return false;
@@ -496,7 +501,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->store = true;
         mi->pushpop = true;
         return true;
-    } else if (opc == OP_pop) {
+    case OP_pop:
         if (opnd_get_reg(instr_get_dst(inst, 1)) != DR_REG_XSP ||
             opnd_get_size(instr_get_src(inst, 1)) != OPSZ_4)
             return false;
@@ -519,7 +524,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
              */
             return false;
         }
-    } else if (opc == OP_popf) {
+        return false;
+    case OP_popf:
         if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_src(inst, 1)) != OPSZ_4)
             return false;
@@ -529,7 +535,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->load = true;
         mi->pushpop = true;
         return true;
-    } else if (opc == OP_leave) {
+    case OP_leave:
         /* both a reg-reg move and a pop */
         if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_reg(instr_get_dst(inst, 1)) != DR_REG_XBP ||
@@ -551,7 +557,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->load = true;
         mi->pushpop = true;
         return true;
-    } else if (opc == OP_ret) {
+    case OP_ret:
         /* OP_ret w/ immed is treated as single pop here: esp
          * adjustment is handled separately (it doesn't read those bytes)
          */
@@ -570,7 +576,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->load = true;
         mi->pushpop = true;
         return true;
-    } else if (opc == OP_lea) {
+    case OP_lea: {
         /* For lea we treat base+index as sources to be
          * propagated, instead of as addressing registers
          */
@@ -590,7 +596,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                !reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/),
                "lea handling error");
         return true;
-    } else if (opc == OP_cmpxchg) {
+    }
+    case OP_cmpxchg:
         /* We keep in fastpath by treating as a 3-source 0-dest instr
          * and using check_definedness, bailing to slowpath if any operand
          * is other than fully defined.
@@ -603,7 +610,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         mi->check_definedness = true;
         return true;
-    } else if (opc == OP_cmpxchg8b) {
+    case OP_cmpxchg8b:
         /* We keep in fastpath by treating as a 5-source 0-dest instr
          * and using check_definedness, bailing to slowpath if any operand
          * is other than fully defined.
@@ -617,7 +624,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         ASSERT(opnd_is_reg(instr_get_src(inst, 4)), "cmpxchg8b srcs changed in DR?");
         mi->check_definedness = true;
         return true;
-    } else if (opc == OP_xadd || opc == OP_xchg) {
+    case OP_xadd:
+    case OP_xchg:
         /* PR 495277: since dsts==srcs, if srcs are defined can stay on fastpath */
         if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
             return false;
@@ -625,7 +633,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         mi->check_definedness = true;
         return true;
-    } else if (opc == OP_movs || opc == OP_stos || opc == OP_lods) {
+    case OP_movs:
+    case OP_stos:
+    case OP_lods:
         /* the edi/esi reg opnds are also base regs so we're already checking
          * for definedness: thus we can ignore and get on the fastpath,
          * though w/ check_definedness unless word-sized, like all mem2mem
@@ -642,7 +652,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 return false;
         }
         return true;
-    } else if (opc == OP_cmps || opc == OP_scas) {
+    case OP_cmps:
+    case OP_scas:
         /* the other reg opnds are also base regs so we're already checking
          * for definedness: thus we can ignore and get on the fastpath
          */
@@ -660,22 +671,42 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             mi->load2x = true;
         }
         return true;
-    } else if ((opc == OP_idiv || opc == OP_div) &&
-               opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
-        /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
-        if (!opnd_ok_for_fastpath(opc, opnd_create_reg(REG_AX), 0, true, mi))
-            return false;
-        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
-            return false;
-        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
-            return false;
-        return true;
-    } else if (opc == OP_pinsrb || opc == OP_pinsrw || opc == OP_pinsrd) {
+    case OP_idiv:
+    case OP_div:
+        if (opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
+            /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
+            if (!opnd_ok_for_fastpath(opc, opnd_create_reg(REG_AX), 0, true, mi))
+                return false;
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
+                return false;
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
+                return false;
+            return true;
+        }
+        return false;
+    case OP_pinsrb:
+    case OP_pinsrw:
+    case OP_pinsrd:
         /* XXX i#243: these are tricky as they write to small parts of xmm.
          * Bail for now.
          */
         return false;
-    } else {
+    case OP_punpcklbw:
+    case OP_punpcklwd:
+    case OP_punpckldq:
+    case OP_punpcklqdq:
+    case OP_punpckhbw:
+    case OP_punpckhwd:
+    case OP_punpckhdq:
+    case OP_punpckhqdq:
+        /* i#243: tricky to implement in fastpath for partially-defined */
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
+            return false;
+        if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 0), 0, true, mi))
+            return false;
+        mi->check_definedness = true;
+        return true;
+    default: {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
         int num_dsts = num_true_dsts(inst, NULL);
@@ -748,6 +779,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         }
 
         return true;
+    }
     }
     return false;
 }
@@ -2087,14 +2119,6 @@ needs_shadow_op(instr_t *inst)
     case OP_shl:
     case OP_shr:
     case OP_sar:
-    case OP_punpcklbw:
-    case OP_punpcklwd:
-    case OP_punpckldq:
-    case OP_punpcklqdq:
-    case OP_punpckhbw:
-    case OP_punpckhwd:
-    case OP_punpckhdq:
-    case OP_punpckhqdq:
         return true;
     default: return false;
     }
@@ -2204,30 +2228,6 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
         }
         break;
     }
-    case OP_punpcklbw:
-    case OP_punpcklwd:
-    case OP_punpckldq:
-    case OP_punpcklqdq: {
-        /* XXX i#243: until we have real mirroring of the data interleaving,
-         * we make do with at least not raising false positives on the ignored
-         * half of the sources.
-         */
-        PRE(bb, inst,
-            INSTR_CREATE_shl(drcontext, opnd_create_reg(reg),
-                             OPND_CREATE_INT8(opnd_size_in_bytes(reg_get_size(reg))/2)));
-    }
-    case OP_punpckhbw:
-    case OP_punpckhwd:
-    case OP_punpckhdq:
-    case OP_punpckhqdq: {
-        /* XXX i#243: until we have real mirroring of the data interleaving,
-         * we make do with at least not raising false positives on the ignored
-         * half of the sources.
-         */
-        PRE(bb, inst,
-            INSTR_CREATE_shr(drcontext, opnd_create_reg(reg),
-                             OPND_CREATE_INT8(opnd_size_in_bytes(reg_get_size(reg))/2)));
-    }
     }
 }
 
@@ -2241,16 +2241,7 @@ merge_src_shadows(void *dc, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
 {
     int opc = instr_get_opcode(inst);
     switch (opc) {
-    case OP_punpcklbw: {
-        /* FIXME i#243: we need to mirror the actual data interleaving, which
-         * is too complex for the fastpath (requires at least one more
-         * scratch register) -- we should do a check_defined and bail to
-         * slowpath.  For now we at least ignore the half that's unused
-         * in insert_shadow_op() (we should remove that once we do the right
-         * thing here).
-         */
-        /* Fall-through */
-    }
+    /* XXX i#243: add more complex data movements to the fastpath */
     default:
         PRE(bb, inst, INSTR_CREATE_or(dc, opnd_create_reg(regsrc), memsrc));
     }
