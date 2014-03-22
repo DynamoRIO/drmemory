@@ -1604,8 +1604,12 @@ report_init(void)
         aux_cstack_pfx  = INFO_PFX;
     }
 
-    /* We need our instruction= line to match old DR disasm style for compatibility */
+#ifndef DEBUG
+    /* We need our instruction= line to match old DR disasm style for compatibility.
+     * For debug, we only do this around each report, so our logs have full info.
+     */
     disassemble_set_syntax(DR_DISASM_NO_OPND_SIZE);
+#endif
 }
 
 #ifdef UNIX
@@ -2520,6 +2524,8 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
         etp->loc != NULL && etp->loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(etp->loc);
         if (cur_pc != NULL) {
+            /* We need to match old DR disasm style for compatibility */
+            IF_DEBUG(disassemble_set_syntax(DR_DISASM_NO_OPND_SIZE));
             DR_TRY_EXCEPT(drcontext, {
                 int dis_len;
                 disassemble_to_buffer(drcontext, cur_pc, cur_pc, false/*!show pc*/,
@@ -2543,6 +2549,8 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
             }, { /* EXCEPT */
                 /* nothing: just skip it */
             });
+            /* Restore for our debugging logs */
+            IF_DEBUG(disassemble_set_syntax(0));
         }
     }
 
