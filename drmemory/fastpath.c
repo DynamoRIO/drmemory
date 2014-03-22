@@ -690,6 +690,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     case OP_pextrb:
     case OP_pextrw:
     case OP_pextrd:
+    case OP_vpextrb:
+    case OP_vpextrw:
+    case OP_vpextrd:
     case OP_extractps:
     case OP_insertps:
     case OP_movhps: /* would need to add check_definedness of dst too */
@@ -1059,10 +1062,22 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
         case OP_punpckhwd:
         case OP_punpckhdq:
         case OP_punpckhqdq:
+        case OP_vpunpcklbw:
+        case OP_vpunpcklwd:
+        case OP_vpunpckldq:
+        case OP_vpunpcklqdq:
+        case OP_vpunpckhbw:
+        case OP_vpunpckhwd:
+        case OP_vpunpckhdq:
+        case OP_vpunpckhqdq:
         case OP_unpcklps:
         case OP_unpcklpd:
         case OP_unpckhps:
         case OP_unpckhpd:
+        case OP_vunpcklps:
+        case OP_vunpcklpd:
+        case OP_vunpckhps:
+        case OP_vunpckhpd:
             mi->check_definedness = true;
             break;
     }

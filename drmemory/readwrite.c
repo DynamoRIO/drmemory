@@ -1090,11 +1090,20 @@ opc_should_propagate_xmm(int opc)
     case OP_punpckldq:  case OP_punpcklqdq:
     case OP_punpckhbw:  case OP_punpckhwd:
     case OP_punpckhdq:  case OP_punpckhqdq:
+    case OP_vpunpcklbw: case OP_vpunpcklwd:
+    case OP_vpunpckldq: case OP_vpunpcklqdq:
+    case OP_vpunpckhbw: case OP_vpunpckhwd:
+    case OP_vpunpckhdq: case OP_vpunpckhqdq:
     case OP_unpcklps:   case OP_unpcklpd:
     case OP_unpckhps:   case OP_unpckhpd:
+    case OP_vunpcklps:  case OP_vunpcklpd:
+    case OP_vunpckhps:  case OP_vunpckhpd:
     case OP_pextrb:
     case OP_pextrw:
     case OP_pextrd:
+    case OP_vpextrb:
+    case OP_vpextrw:
+    case OP_vpextrd:
     case OP_extractps:
     case OP_pinsrb:
     case OP_pinsrw:
@@ -1785,6 +1794,9 @@ opc_dst_subreg_nonlow(int opc)
     case OP_pextrb:
     case OP_pextrw:
     case OP_pextrd:
+    case OP_vpextrb:
+    case OP_vpextrw:
+    case OP_vpextrd:
     case OP_extractps:
     case OP_pinsrb:
     case OP_pinsrw:
@@ -1995,6 +2007,7 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             break;
 #endif
         case OP_punpcklbw:
+        case OP_vpunpcklbw:
             /* Dst is opnum==1 and its 0-n/2 => 0, 2, 4, 6, ....
              * Src is opnum==0 and its 0-n/2 => 1, 3, 5, 7, ...
              */
@@ -2002,45 +2015,56 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                 accum_shadow(&comb->dst[src_bytenum*2 + (1 - opnum)], shadow);
             break;
         case OP_punpcklwd:
+        case OP_vpunpcklwd:
             if (src_bytenum < opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum/2) *4 + (src_bytenum % 2) +
                                         2*(1 - opnum)], shadow);
             }
             break;
         case OP_punpckldq:
+        case OP_vpunpckldq:
         case OP_unpcklps:
+        case OP_vunpcklps:
             if (src_bytenum < opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum/4) *8 + (src_bytenum % 4) +
                                         4*(1 - opnum)], shadow);
             }
             break;
         case OP_punpcklqdq:
+        case OP_vpunpcklqdq:
         case OP_unpcklpd:
+        case OP_vunpcklpd:
             if (src_bytenum < opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum/8) *16 + (src_bytenum % 8) +
                                         8*(1 - opnum)], shadow);
             }
             break;
         case OP_punpckhbw:
+        case OP_vpunpckhbw:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[(src_bytenum-opsz/2)*2 + (1 - opnum)], shadow);
             }
             break;
         case OP_punpckhwd:
+        case OP_vpunpckhwd:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[((src_bytenum-opsz/2)/2) *4 + (src_bytenum % 2) +
                                         2*(1 - opnum)], shadow);
             }
             break;
         case OP_punpckhdq:
+        case OP_vpunpckhdq:
         case OP_unpckhps:
+        case OP_vunpckhps:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[((src_bytenum-opsz/2)/4) *8 + (src_bytenum % 4) +
                                         4*(1 - opnum)], shadow);
             }
             break;
         case OP_punpckhqdq:
+        case OP_vpunpckhqdq:
         case OP_unpckhpd:
+        case OP_vunpckhpd:
             if (src_bytenum >= opsz/2) {
                 accum_shadow(&comb->dst[((src_bytenum-opsz/2)/8) *16 + (src_bytenum % 8) +
                                         8*(1 - opnum)], shadow);
@@ -2049,6 +2073,9 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
         case OP_pextrb:
         case OP_pextrw:
         case OP_pextrd:
+        case OP_vpextrb:
+        case OP_vpextrw:
+        case OP_vpextrd:
         case OP_extractps:
         case OP_pinsrb:
         case OP_pinsrw:
@@ -2062,14 +2089,17 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                 ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
             switch (opc) {
                 case OP_pextrb:
+                case OP_vpextrb:
                     if (src_bytenum == immed)
                         accum_shadow(&comb->dst[0], shadow);
                     break;
                 case OP_pextrw:
+                case OP_vpextrw:
                     if (src_bytenum >= immed*2 && src_bytenum < (immed+1)*2)
                         accum_shadow(&comb->dst[src_bytenum % 2], shadow);
                     break;
                 case OP_pextrd:
+                case OP_vpextrd:
                 case OP_extractps:
                     if (src_bytenum >= immed*4 && src_bytenum < (immed+1)*4)
                         accum_shadow(&comb->dst[src_bytenum % 4], shadow);
