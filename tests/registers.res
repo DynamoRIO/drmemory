@@ -27,11 +27,11 @@ registers.c:108
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1177
+registers.c_asm.asm:1179
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1194
+registers.c_asm.asm:1196
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1224
+registers.c_asm.asm:1226
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
@@ -63,11 +63,11 @@ registers.c:125
 Error #3: UNINITIALIZED READ: reading register eax
 registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:769
+registers.c_asm.asm:771
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:786
+registers.c_asm.asm:788
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:816
+registers.c_asm.asm:818
 Error #7: UNINITIALIZED READ: reading register eax
 registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
@@ -94,7 +94,9 @@ registers.c:436
 Error #18: UNINITIALIZED READ: reading register eax
 registers.c:483
 Error #19: UNINITIALIZED READ: reading register
-registers.c:546
+registers.c:527
+Error #20: UNINITIALIZED READ: reading register
+registers.c:548
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
 : LEAK 15 direct bytes + 0 indirect bytes

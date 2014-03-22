@@ -53,7 +53,7 @@ main(int argc, char *argv[])
 START_FILE
 
 #define FUNCNAME asm_test
-/* void asm_test(char *undef); */
+/* void asm_test(char *undef, char *def); */
         DECLARE_FUNC(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
@@ -75,6 +75,12 @@ GLOBAL_LABEL(FUNCNAME:)
         punpcklwd xmm0, xmm1
         pextrw   ecx, xmm0, 7 /* top word came from xmm1 so defined */
         cmp      ecx, HEX(2)
+
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, DWORD [REG_XDX] /* def */
+        pinsrd   xmm0, ecx, 0
+        comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
 
         /* XXX: add more tests here */
 

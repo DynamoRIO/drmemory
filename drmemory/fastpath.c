@@ -687,7 +687,12 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     case OP_pinsrb:
     case OP_pinsrw:
     case OP_pinsrd:
-        /* XXX i#243: these are tricky as they write to small parts of xmm.
+    case OP_pextrb:
+    case OP_pextrw:
+    case OP_pextrd:
+    case OP_extractps:
+    case OP_insertps:
+        /* XXX i#243: these are tricky as they access sub-dword parts of xmm.
          * Bail for now.
          */
         return false;

@@ -220,7 +220,7 @@ static bool
 should_mark_stack_frames_defined(app_pc pc);
 
 static void
-register_shadow_mark_defined(reg_id_t reg);
+register_shadow_mark_defined(reg_id_t reg, size_t sz);
 
 #  ifdef WINDOWS
 static ptr_uint_t note_base;
@@ -1091,6 +1091,14 @@ opc_should_propagate_xmm(int opc)
     case OP_punpckhdq:  case OP_punpckhqdq:
     case OP_unpcklps:   case OP_unpcklpd:
     case OP_unpckhps:   case OP_unpckhpd:
+    case OP_pextrb:
+    case OP_pextrw:
+    case OP_pextrd:
+    case OP_extractps:
+    case OP_pinsrb:
+    case OP_pinsrw:
+    case OP_pinsrd:
+    case OP_insertps:
         return true;
     }
     return false;
@@ -1765,10 +1773,50 @@ accum_shadow(uint *shadow1, uint shadow2)
     *shadow1 = combine_shadows(*shadow1, shadow2);
 }
 
+/* Opcodes that write to subreg at locations not fixed in the low part of the reg */
+static inline bool
+opc_dst_subreg_nonlow(int opc)
+{
+    switch (opc) {
+    case OP_pextrb:
+    case OP_pextrw:
+    case OP_pextrd:
+    case OP_extractps:
+    case OP_pinsrb:
+    case OP_pinsrw:
+    case OP_pinsrd:
+    case OP_insertps:
+        return true;
+    }
+    return false;
+}
+
 static void
 shadow_combine_init(shadow_combine_t *comb, instr_t *inst, uint opcode, uint max)
 {
     uint i;
+    uint init_shadow = SHADOW_DEFINED;
+    if (opc_dst_subreg_nonlow(opcode) &&
+        inst != NULL && instr_num_dsts(inst) == 1) {
+        opnd_t dst = instr_get_dst(inst, 0);
+        if (opnd_is_reg(dst)) {
+            reg_id_t reg = opnd_get_reg(dst);
+            uint opsz = opnd_size_in_bytes(opnd_get_size(dst));
+            uint regsz = opnd_size_in_bytes(reg_get_size(reg));
+            if (opsz < regsz) {
+                /* For opcodes that write to only part of the reg and leave the
+                 * rest unchanged and don't write to just the bottom of the reg,
+                 * we have to pass every byte of the register shadow to
+                 * map_src_to_dst().  We need to incorporate the prior reg
+                 * shadow values, which we can't solely do later as we need to
+                 * distinguish what was written by the opcode.  By using
+                 * BITLEVEL we ensure that shadow_combine() will clobber this
+                 * rather than OR it in.
+                 */
+                init_shadow = SHADOW_DEFINED_BITLEVEL;
+            }
+        }
+    }
     comb->dst = comb->raw;
     /* Initialize to defined so we can aggregate operands as we go.
      * This works with no-source instrs (rdtsc, etc.)
@@ -1778,7 +1826,7 @@ shadow_combine_init(shadow_combine_t *comb, instr_t *inst, uint opcode, uint max
      * of src bytes to defined?
      */
     for (i = 0; i < max; i++)
-        comb->dst[i] = SHADOW_DEFINED;
+        comb->dst[i] = init_shadow;
     comb->eflags = SHADOW_DEFINED;
     comb->inst = inst;
     comb->opcode = opcode;
@@ -1813,6 +1861,7 @@ map_src_to_dst_gpr_shift(shadow_combine_t *comb INOUT, int opnum, int src_bytenu
     uint opc = comb->opcode;
     uint opsz = comb->opsz;
     LOG(4, " src bytenum %d\n", src_bytenum);
+    ASSERT(comb->inst != NULL, "need inst for shifts");
     if (!get_cur_src_value(dr_get_current_drcontext(), comb->inst,
                            opc_is_gpr_shift_src0(opc) ? 0 : 1, &shift)) {
         ASSERT(false, "failed to get shift amount");
@@ -1991,9 +2040,78 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
                                         8*(1 - opnum)], shadow);
             }
             break;
+        case OP_pextrb:
+        case OP_pextrw:
+        case OP_pextrd:
+        case OP_extractps:
+        case OP_pinsrb:
+        case OP_pinsrw:
+        case OP_pinsrd:
+        case OP_insertps: {
+            ptr_uint_t immed = 0;
+            ASSERT(comb->inst != NULL, "need inst for OP_pextr*");
+            /* zero-extended so we only write bottom */
+            /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
+            if (!get_cur_src_value(NULL, comb->inst, 1, &immed))
+                ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
+            switch (opc) {
+                case OP_pextrb:
+                    if (src_bytenum == immed)
+                        accum_shadow(&comb->dst[0], shadow);
+                    break;
+                case OP_pextrw:
+                    if (src_bytenum >= immed*2 && src_bytenum < (immed+1)*2)
+                        accum_shadow(&comb->dst[src_bytenum % 2], shadow);
+                    break;
+                case OP_pextrd:
+                case OP_extractps:
+                    if (src_bytenum >= immed*4 && src_bytenum < (immed+1)*4)
+                        accum_shadow(&comb->dst[src_bytenum % 4], shadow);
+                    break;
+                case OP_pinsrb:
+                    if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
+                        accum_shadow(&comb->dst[immed], shadow);
+                    break;
+                case OP_pinsrw:
+                    if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes for reg */
+                        accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
+                    break;
+                case OP_pinsrd:
+                    accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
+                    break;
+                case OP_insertps: {
+                    uint count_s = opnd_is_reg(comb->opnd) ? (immed >> 6) : 0;
+                    uint count_d = (immed >> 4) & 0x3;
+                    uint zmask = immed & 0xf;
+                    uint i;
+                    if (src_bytenum >= count_s*4 && src_bytenum < (count_s+1)*4)
+                        accum_shadow(&comb->dst[count_d*4 + (src_bytenum % 4)], shadow);
+                    if (src_bytenum == 0) { /* arbitrary, just do it once */
+                        for (i = 0; i < 3; i++) {
+                            if (TEST(0x1, zmask))
+                                accum_shadow(&comb->dst[i], SHADOW_DEFINED);
+                            if (TEST(0x2, zmask))
+                                accum_shadow(&comb->dst[4+i], SHADOW_DEFINED);
+                            if (TEST(0x4, zmask))
+                                accum_shadow(&comb->dst[8+i], SHADOW_DEFINED);
+                            if (TEST(0x8, zmask))
+                                accum_shadow(&comb->dst[12+i], SHADOW_DEFINED);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
+        /* XXX i#243: add more xmm opcodes here.  Also add to
+         * opc_should_propagate_xmm() and possibly to
+         * set_check_definedness_pre_regs() if fastpath can't handle them.
+         */
+
         /* cpuid: who cares if collapse to eax */
         /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */
         /* mul, imul, div, idiv: FIXME PR 408551: should split: for now we collapse */
+
         default:
             accum_shadow(&comb->dst[src_bytenum], shadow);
            break;
@@ -2072,11 +2190,14 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
              * is executed at the OP_and and marking dst defined doesn't help b/c
              * the xor then executes and propagates the uninit bits from the src.
              */
-            if (opnd_is_reg(xor_src))
-                register_shadow_mark_defined(opnd_get_reg(xor_src));
-            if (opnd_is_reg(xor_dst))
-                register_shadow_mark_defined(opnd_get_reg(xor_dst));
-            else {
+            if (opnd_is_reg(xor_src)) {
+                register_shadow_mark_defined(opnd_get_reg(xor_src),
+                                             opnd_size_in_bytes(opnd_get_size(xor_src)));
+            }
+            if (opnd_is_reg(xor_dst)) {
+                register_shadow_mark_defined(opnd_get_reg(xor_dst),
+                                             opnd_size_in_bytes(opnd_get_size(xor_dst)));
+            } else {
                 ASSERT(opnd_is_memory_reference(xor_dst), "invalid xor dst");
                 /* No need for adjust_memop: not a push or pop */
                 /* Rule out OP_and's operands affecting base/index of xor (so we can
@@ -2306,8 +2427,7 @@ static void
 integrate_register_shadow(shadow_combine_t *comb INOUT, int opnum,
                           reg_id_t reg, uint shadow, bool pushpop)
 {
-    uint i;
-    uint regsz;
+    uint i, sz;
     uint opc = comb->opcode;
 
     if (reg == REG_EFLAGS) {
@@ -2333,18 +2453,26 @@ integrate_register_shadow(shadow_combine_t *comb INOUT, int opnum,
         ((opc == OP_leave || opc == OP_enter) && reg_overlap(reg, DR_REG_XBP)))
         return;
 
-    regsz = opnd_size_in_bytes(reg_get_size(reg));
-    for (i = 0; i < regsz; i++)
+    if (opc_dst_subreg_nonlow(comb->opcode)) {
+        /* Deliberately bypassing opnd_get_size() so we can pick the right bits out
+         * of the reg for opcodes that are sub-xmm but pull from higher than offset
+         * 0 (e.g., pextr*).
+         */
+        ASSERT(comb->opnd_valid, "need opnd valid for subreg-nonzero opcodes");
+        sz = opnd_size_in_bytes(reg_get_size(reg));
+    } else
+        sz = opnd_size_in_bytes(opnd_get_size(comb->opnd));
+    for (i = 0; i < sz; i++)
         map_src_to_dst(comb, opnum, i, SHADOW_DWORD2BYTE(shadow, i));
 }
 
 /* Assigns the array of source shadow_vals to the destination register shadow */
 static void
-assign_register_shadow(shadow_combine_t *comb INOUT, int opnum,
+assign_register_shadow(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
                        reg_id_t reg, bool pushpop)
 {
     uint shift = 0;
-    uint regsz = opnd_size_in_bytes(reg_get_size(reg));
+    uint sz, i;
     int opc = comb->opcode;
     /* Here we need to de-mux from the side-by-side dests in the array
      * into individual register dests.
@@ -2389,12 +2517,43 @@ assign_register_shadow(shadow_combine_t *comb INOUT, int opnum,
         }
     }
 
-    shift *= regsz;
+    if (comb->inst != NULL && proc_avx_enabled() && instr_zeroes_ymmh(comb->inst)) {
+        if (opnd_is_reg(instr_get_dst(comb->inst, 0))) {
+            reg_id_t reg = opnd_get_reg(instr_get_dst(comb->inst, 0));
+            if (reg_is_xmm(reg) && !reg_is_ymm(reg)) {
+                /* If instr doesn't zero (i.e., not VEX_encoded), and DR
+                 * presents its dst as just xmm, we'll naturally leave the
+                 * ymmh shadow as-is.  But if it zeroes we need to explicitly
+                 * define the ymmh shadow.
+                 */
+                int i;
+                reg = reg - DR_REG_XMM0 + DR_REG_YMM0;
+                for (i = 0; i < 16; i++)
+                    register_shadow_set_byte(reg, 16 + i, SHADOW_DEFINED);
+            }
+        }
+    }
+
+    if (opc_dst_subreg_nonlow(comb->opcode)) {
+        uint shadow = get_shadow_register(reg);
+        /* Deliberately bypassing opnd_get_size() so we can pick the right bits out
+         * of the reg for opcodes that are sub-xmm but pull from higher than offset
+         * 0 (e.g., pextr*).
+         */
+        sz = opnd_size_in_bytes(reg_get_size(reg));
+        /* Replace the BITLEVEL markers with the register's prior shadow value */
+        for (i = 0; i < sz; i++) {
+            if (comb->dst[i] == SHADOW_DEFINED_BITLEVEL)
+                comb->dst[i] = SHADOW_DWORD2BYTE(shadow, i);
+        }
+    } else
+        sz = opnd_size_in_bytes(opnd_get_size(opnd));
+
+    shift *= sz;
     register_shadow_set_byte(reg, reg_offs_in_dword(reg), comb->dst[shift + 0]);
-    if (regsz > 1) {
-        uint i;
+    if (sz > 1) {
         ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
-        for (i = 1; i < regsz; i++) {
+        for (i = 1; i < sz; i++) {
             ASSERT(shift + i < OPND_SHADOW_ARRAY_LEN, "shadow_vals overflow");
             register_shadow_set_byte(reg, i, comb->dst[shift + i]);
         }
@@ -2402,14 +2561,13 @@ assign_register_shadow(shadow_combine_t *comb INOUT, int opnum,
 }
 
 static void
-register_shadow_mark_defined(reg_id_t reg)
+register_shadow_mark_defined(reg_id_t reg, size_t sz)
 {
-    uint regsz = opnd_size_in_bytes(reg_get_size(reg));
     uint i;
-    if (regsz == 4 && reg_is_gpr(reg))
+    if (sz == 4 && reg_is_gpr(reg))
         register_shadow_set_dword(reg, SHADOW_DWORD_DEFINED);
     else {
-        for (i = 0; i < regsz; i++)
+        for (i = 0; i < sz; i++)
             register_shadow_set_byte(reg, i, SHADOW_DEFINED);
     }
 }
@@ -3014,7 +3172,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             reg_id_t reg = opnd_get_reg(opnd);
             if (reg_is_shadowed(opc, reg)) {
                 uint shadow = get_shadow_register(reg);
-                sz = opnd_size_in_bytes(reg_get_size(reg));
+                if (opc_dst_subreg_nonlow(opc)) {
+                    /* We need the whole reg as this opcode references high up */
+                    sz = opnd_size_in_bytes(reg_get_size(reg));
+                } else
+                    sz = opnd_size_in_bytes(opnd_get_size(opnd));
                 /* do not combine srcs if checking after */
                 if (check_srcs_after) {
                     ASSERT(i == 0 || sz >= comb.opsz, "check-after needs >=-size srcs");
@@ -3137,7 +3299,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
             if (reg_is_shadowed(opc, reg)) {
-                assign_register_shadow(&comb, i, reg, pushpop);
+                assign_register_shadow(&comb, i, opnd, reg, pushpop);
             }
         } else
             ASSERT(opnd_is_immed_int(opnd) || opnd_is_pc(opnd), "unexpected opnd");
@@ -4424,7 +4586,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
                     (loc, (app_pc)(ptr_int_t)reg,
                      opnd_size_in_bytes(reg_get_size(reg)), NULL, NULL, mc);
                 /* Set to defined to avoid duplicate errors */
-                register_shadow_mark_defined(reg);
+                register_shadow_mark_defined(reg, opnd_size_in_bytes(reg_get_size(reg)));
             }
         }
     }
@@ -4565,6 +4727,10 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 #ifdef TOOL_DR_MEMORY
     uint shadow = (reg == REG_EFLAGS) ? get_shadow_eflags() : get_shadow_register(reg);
     ASSERT(CHECK_UNINITS(), "shouldn't be called");
+    if (reg != REG_EFLAGS && sz < opnd_size_in_bytes(reg_get_size(reg))) {
+        /* only check sub-reg piece */
+        shadow &= (1 << (sz*2)) - 1;
+    }
     if (!is_shadow_register_defined(shadow)) {
         if (!check_undefined_reg_exceptions(drcontext, loc, reg, mc, inst)) {
             /* FIXME: report which bytes within reg via container params? */
@@ -4574,7 +4740,7 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
                 set_shadow_eflags(SHADOW_DWORD_DEFINED);
             } else {
                 /* Set to defined to avoid duplicate errors */
-                register_shadow_mark_defined(reg);
+                register_shadow_mark_defined(reg, sz);
             }
         }
     }

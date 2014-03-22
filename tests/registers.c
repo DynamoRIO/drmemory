@@ -522,7 +522,9 @@ copy_through_xmm_test(void)
     if (dst2[0] != 'x')
         printf("copy failed\n");
     xmm_operations(dst3, uninit);
-    if (dst3[15] == 'x')
+    if (dst3[14] == 'x')
+        printf("got x\n");
+    if (dst3[0] == 'x') /* uninit, from the movss pextrw series */
         printf("got x\n");
 }
 
@@ -541,7 +543,7 @@ mmx_test(void)
     if (dst1[0] != 'x')
         printf("copy failed\n");
     mmx_operations(dst2, uninit);
-    if (dst2[7] == 'x') /* no error b/c punpcklbw cleared the top */
+    if (dst2[6] == 'x') /* no error b/c punpcklbw cleared the 2nd-to-top */
         printf("got x\n");
     if (dst2[3] == 'x') /* uninit! */
         array[127] = 4;
@@ -882,6 +884,12 @@ GLOBAL_LABEL(FUNCNAME:)
         movdqa   xmm2, xmm1
         mov      REG_XCX, [REG_XBP - ARG_SZ]
         movdqu   [REG_XCX], xmm2 /* dst */
+
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        movss    xmm0, xmm1 /* leaves top half of xmm0 alone */
+        pextrw   edx, xmm0, 7 /* top word came from undef */
+        mov      [REG_XCX], edx /* uninit */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
