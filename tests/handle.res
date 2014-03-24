@@ -33,6 +33,11 @@ Error #9: HANDLE LEAK:
 Error #10: HANDLE LEAK:
 Error #11: HANDLE LEAK:
 Error #12: HANDLE LEAK:
+Error #13: HANDLE LEAK:
+Error #14: HANDLE LEAK:
+Error #15: HANDLE LEAK:
+Error #16: HANDLE LEAK:
+Error #17: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
@@ -46,6 +51,12 @@ system call NtUserCreateWindowEx
 system call NtCreateSection
 system call NtOpenProcess
 system call NtDuplicateObject
+system call NtUserOpenDesktop
+system call NtUserCreateDesktop
+system call NtUserOpenInputDesktop
+system call NtUserOpenWindowStation
+system call NtUserCreateWindowStation
+
 
 test_file_handles
 test_file_handles
@@ -57,6 +68,11 @@ test_thread_handles
 test_window_handles
 test_process_handles
 test_process_handles
+test_desktop_handles
+test_desktop_handles
+test_desktop_handles
+test_desktop_handles
+test_desktop_handles
 # NtGdiCreateBitmap and NtUserGetDC did not have test_gdi_handles on callstack
 
 main

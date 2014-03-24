@@ -224,6 +224,69 @@ test_process_handles(bool close)
     }
 }
 
+void
+test_desktop_handles(bool close)
+{
+    HWINSTA hWinSta1, hWinSta2, hWinSta3;
+    HDESK hDesk1, hDesk2, hDesk3, hDesk4;
+    SECURITY_ATTRIBUTES attr1 = {0}, attr2 = {0};
+    TCHAR buf[MAX_PATH];
+
+    hWinSta1 = CreateWindowStationW(NULL, 0, WINSTA_ALL_ACCESS, &attr1);
+    if (hWinSta1 == NULL) {
+        DWORD res = GetLastError();
+        printf("CreateWindowStationW failed, %d\n", res);
+        return;
+    }
+    hWinSta2 = OpenWindowStation(_T("winsta0"), FALSE, READ_CONTROL | WRITE_DAC);
+    if (hWinSta2 == NULL) {
+        DWORD res = GetLastError();
+        printf("OpenWindowStation failed, %d\n", res);
+        return;
+    }
+    hWinSta3 = GetProcessWindowStation();  /* return existing handle */
+    if (hWinSta3 == NULL) {
+        DWORD res = GetLastError();
+        printf("GetProcessWindowStation failed, %d\n", res);
+        return;
+    }
+    hDesk1 = CreateDesktop(_T("Desk1"), 0, 0, 0, GENERIC_ALL , &attr2);
+    if (hDesk1 == NULL) {
+        DWORD res = GetLastError();
+        printf("CreateDesktop failed, %d\n", res);
+        return;
+    }
+    hDesk2 = OpenInputDesktop(0, FALSE, READ_CONTROL);
+    if (hDesk2 == NULL) {
+        DWORD res = GetLastError();
+        printf("OpenInputDesktop failed, %d\n", res);
+        return;
+    }
+    hDesk3 = GetThreadDesktop(GetCurrentThreadId()); /* return existing handle */
+    if (hDesk3 == NULL) {
+        DWORD res = GetLastError();
+        printf("GetThreadDesktop failed, %d\n", res);
+        return;
+    }
+    if (!GetUserObjectInformation(hDesk3, 2, buf, MAX_PATH, NULL)) {
+        DWORD res = GetLastError();
+        printf("GetUserObjectInformation failed, %d\n", res);
+    }
+    hDesk4 = OpenDesktop(buf, 0, FALSE, READ_CONTROL | WRITE_DAC);
+    if (hDesk4 == NULL) {
+        DWORD res = GetLastError();
+        printf("OpenDesktop failed, %d\n", res);
+        return;
+    }
+    if (close) {
+        CloseDesktop(hDesk1);
+        CloseDesktop(hDesk2);
+        CloseDesktop(hDesk4);
+        CloseWindowStation(hWinSta1);
+        CloseWindowStation(hWinSta2);
+    }
+}
+
 int
 main()
 {
@@ -246,5 +309,8 @@ main()
     printf("test process handles\n");
     for (i = 0; i < 3; i++)
         test_process_handles((i == 0)/* close handle? */);
+    printf("test desktop handles\n");
+    for (i = 0; i < 3; i++)
+        test_desktop_handles((i == 0)/* close handle? */);
     return 0;
 }

@@ -71,6 +71,7 @@ static drsys_sysnum_t sysnum_UserSetClipboardData = {-1, 0};
 static drsys_sysnum_t sysnum_UserRemoveProp = {-1, 0};
 static drsys_sysnum_t sysnum_UserFindExistingCursorIcon = {-1, 0};
 static drsys_sysnum_t sysnum_UserGetThreadDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_GetThreadDesktop = {-1, 0}; /* i#487 */
 static drsys_sysnum_t sysnum_UserGetAncestor = {-1, 0};
 static drsys_sysnum_t sysnum_GdiExtSelectClipRgn = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectBrush = {-1, 0};
@@ -90,7 +91,14 @@ static drsys_sysnum_t sysnum_UserGetDC = {-1, 0};
 static drsys_sysnum_t sysnum_UserGetProcessWindowStation = {-1, 0};
 static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1, 0};
 static drsys_sysnum_t sysnum_UserOpenWindowStation = {-1, 0};
+static drsys_sysnum_t sysnum_UserCloseWindowStation = {-1, 0};
 static drsys_sysnum_t sysnum_UserGetWindowDC = {-1, 0};
+static drsys_sysnum_t sysnum_UserCloseDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_UserCreateDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_UserCreateDesktopEx = {-1, 0};
+static drsys_sysnum_t sysnum_UserOpenDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_UserOpenInputDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_UserOpenThreadDesktop = {-1, 0};
 
 static bool
 opc_is_in_syscall_wrapper(uint opc)
@@ -180,12 +188,13 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtUserFindExistingCursorIcon",
                &sysnum_UserFindExistingCursorIcon,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
-    get_sysnum("NtUserGetThreadDesktop",
-               &sysnum_UserGetThreadDesktop, false/*reqd*/);
+    get_sysnum("NtUserGetThreadDesktop", &sysnum_UserGetThreadDesktop,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("GetThreadDesktop", &sysnum_GetThreadDesktop, true/*ok to fail*/);
     get_sysnum("NtUserGetAncestor", &sysnum_UserGetAncestor, false/*reqd*/);
     get_sysnum("NtGdiExtSelectClipRgn", &sysnum_GdiExtSelectClipRgn,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
-    get_sysnum("NtGdiSelectBrush", &sysnum_GdiSelectBrush, true);
+    get_sysnum("NtGdiSelectBrush", &sysnum_GdiSelectBrush, true/*ok to fail*/);
     get_sysnum("NtGdiSelectPen", &sysnum_GdiSelectPen,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtGdiSelectBitmap", &sysnum_GdiSelectBitmap,
@@ -194,15 +203,26 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     /* i#1386: mismatch between system call type and handle type */
     get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
-    get_sysnum("NtUserGetProcessWindowStation",
-               &sysnum_UserGetProcessWindowStation, false/*reqd*/);
-    get_sysnum("NtUserCreateWindowStation",
-               &sysnum_UserCreateWindowStation,
-               get_windows_version() <= DR_WINDOWS_VERSION_2000/*reqd*/);
-    get_sysnum("NtUserOpenWindowStation",
-               &sysnum_UserOpenWindowStation,
-               get_windows_version() <= DR_WINDOWS_VERSION_2000/*reqd*/);
+    get_sysnum("NtUserGetProcessWindowStation", &sysnum_UserGetProcessWindowStation,
+               false/*reqd*/);
+    get_sysnum("NtUserCreateWindowStation", &sysnum_UserCreateWindowStation,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtUserOpenWindowStation", &sysnum_UserOpenWindowStation,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtUserCloseWindowStation", &sysnum_UserCloseWindowStation,
+               false/*reqd*/);
     get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
+    get_sysnum("NtUserCloseDesktop", &sysnum_UserCloseDesktop, false/*reqd*/);
+    get_sysnum("NtUserCreateDesktop", &sysnum_UserCreateDesktop,
+               true/*ok to fail*/);
+    get_sysnum("NtUserCreateDesktopEx", &sysnum_UserCreateDesktopEx,
+               true/*ok to fail*/);
+    get_sysnum("NtUserOpenDesktop", &sysnum_UserOpenDesktop,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtUserOpenInputDesktop", &sysnum_UserOpenInputDesktop,
+               false/*reqd*/);
+    get_sysnum("NtUserOpenThreadDesktop", &sysnum_UserOpenThreadDesktop,
+               true/*ok to faile*/);
 
     syscall_wingdi_init(drcontext, ntdll_base);
 
@@ -402,6 +422,8 @@ syscall_deletes_handle(void *drcontext, drsys_sysnum_t sysnum)
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyMenu) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyWindow) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserCloseDesktop) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserCloseWindowStation) ||
         drsys_sysnums_equal(&sysnum, &sysnum_GdiDeleteObjectApp) ||
         drsys_sysnums_equal(&sysnum, &sysnum_GdiDdReleaseDC))
         return 0;
@@ -423,6 +445,7 @@ syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
     if (drsys_sysnums_equal(&sysnum, &sysnum_UserRemoveProp) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserFindExistingCursorIcon) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserGetAncestor) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GetThreadDesktop) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserGetThreadDesktop) ||
         /* i#988-c#12: GdiSelect* system calls return existing handles */
         drsys_sysnums_equal(&sysnum, &sysnum_GdiExtSelectClipRgn) ||
@@ -558,6 +581,14 @@ syscall_handle_type(drsys_syscall_type_t drsys_type, drsys_sysnum_t sysnum)
         if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetProcessWindowStation) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserCreateWindowStation) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserOpenWindowStation) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCloseWindowStation) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCloseDesktop) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCreateDesktop) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCreateDesktopEx) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserOpenDesktop) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserOpenInputDesktop) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserOpenThreadDesktop) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_GetThreadDesktop) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserGetThreadDesktop))
             return HANDLE_TYPE_KERNEL;
         return HANDLE_TYPE_USER;

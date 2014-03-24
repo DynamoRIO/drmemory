@@ -2434,7 +2434,13 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserGetProp", OK, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserAddClipboardFormatListener", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserCheckAccessForIntegrityLevel", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
-    {{0,0},"NtUserCreateDesktopEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{0,0},"NtUserCreateDesktopEx", UNKNOWN, DRSYS_TYPE_HANDLE, 6,
+     {
+         /* we figured some out but don't know others */
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserDoSoundConnect", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserDoSoundDisconnect", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserDwmGetDxRgn", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
