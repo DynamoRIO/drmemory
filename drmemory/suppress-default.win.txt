@@ -717,13 +717,13 @@ USER32.dll!*
 
 UNINITIALIZED READ
 name=default i#1155 VS2012/VS2013 istream
-MSVCP1*.dll!std::_Find_elem<>
-MSVCP1*.dll!std::num_get<>::_Get?fld
+*!std::_Find_elem<>
+*!std::num_get<>::_Get?fld
 
 UNINITIALIZED READ
 name=default i#1155-nosyms VS2012/VS2013 istream
-MSVCP1*.dll!std::_Throw_future_error
-MSVCP1*.dll!std::num_get<>::_Get?fld
+*!std::_Throw_future_error
+*!std::num_get<>::_Get?fld
 
 ##################################################
 # i#960: real mismatches of Windows API layer vs C layer in CRT when we
@@ -949,3 +949,13 @@ name=default i#1437-c#3 handle leaks from callbacks of TppWorkerThread
 ntdll.dll!*Callback
 ntdll.dll!TppWorkerThread
 KERNEL32.dll!BaseThreadInitThunk
+
+##################################################
+# i#1474: real bug in VS2013 istringstream
+
+UNINITIALIZED READ
+name=default i#1474 VS2013 istringstream
+# we saw both _FXp_getw and FXp_getw (in c#7)
+*!*FXp_getw
+*!*FDtento
+*!*Stofx

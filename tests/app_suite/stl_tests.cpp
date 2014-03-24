@@ -36,3 +36,14 @@ TEST(StlTests, wostringstreamTest) {
     std::wostringstream wos;
     wos << L"BOO\n" << 1 << L"\n";
 }
+
+TEST(StlTests, istringstreamTest) {
+    // There are two uninit errors from msvc:
+    // - https://code.google.com/p/drmemory/issues/detail?id=1155
+    // - https://code.google.com/p/drmemory/issues/detail?id=1474
+    std::istringstream stream("0.25");
+    float value;
+    stream >> value;
+    ASSERT_TRUE(!stream.fail());
+    ASSERT_EQ(value, 0.25);
+}
