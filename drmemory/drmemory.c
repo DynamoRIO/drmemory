@@ -435,7 +435,7 @@ event_exit(void)
     if (options.shadowing) {
         shadow_exit();
         if (umbra_exit() != DRMF_SUCCESS)
-            ASSERT(false, "fail to init Umbra");
+            ASSERT(false, "fail to exit Umbra");
     }
     hashtable_delete(&known_table);
 
@@ -477,6 +477,12 @@ event_exit(void)
 #endif
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
+
+    /* There's no way to set the exit code other than exiting right away, so
+     * we do so only after all other cleanup (xref DRi#1400).
+     */
+    if (!options.perturb_only)
+        report_exit_if_errors();
 }
 
 static file_t

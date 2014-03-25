@@ -40,6 +40,9 @@ report_init(void);
 void
 report_exit(void);
 
+void
+report_exit_if_errors(void);
+
 #ifdef UNIX
 void
 report_fork_init(void);

@@ -267,7 +267,7 @@ set(cmd_script -P "./runtest.cmake")
 # The resbase arg support specifying a different .res and .out name
 # to use.
 function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resbase
-    ignore_exit_code path_append)
+    exit_code path_append)
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
@@ -352,7 +352,7 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
-    -D ignore_exit_code:BOOL=${ignore_exit_code}
+    -D exit_code:STRING=${exit_code}
     -D path_append:STRING=${path_append}
     # runtest.cmake will add the -profdir arg
     -D postcmd:STRING=${postcmd}
@@ -361,18 +361,18 @@ endfunction(newtest_nobuild_ex)
 
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   newtest_nobuild_ex(${test} ${exe} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}" OFF "")
+    "${postprocess}" "${resbase}" 0 "")
 endfunction(newtest_nobuild)
 
 function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase
-    ignore_exit_code)
+    exit_code)
   tobuild(${test} ${source})
   newtest_nobuild_ex(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}" ${ignore_exit_code} "")
+    "${postprocess}" "${resbase}" ${exit_code} "")
 endfunction(newtest_ex)
 
 function(newtest test source)
-  newtest_ex(${test} ${source} "" "" "" OFF "" OFF)
+  newtest_ex(${test} ${source} "" "" "" OFF "" 0)
 endfunction(newtest)
 
 function(append_test_compile_flags test cust_flags)
@@ -384,7 +384,7 @@ function(append_test_compile_flags test cust_flags)
 endfunction(append_test_compile_flags)
 
 function(newtest_custbuild test source cust_flags resbase)
-  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}" OFF)
+  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}" 0)
   append_test_compile_flags(${test} ${cust_flags})
 endfunction(newtest_custbuild)
 
@@ -404,7 +404,7 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
     VERBATIM # recommended: p260
     )
   newtest_nobuild_ex(${test} ${exepath} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}" OFF "${path_append}")
+    "${postprocess}" "${resbase}" 0 "${path_append}")
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
@@ -441,16 +441,16 @@ else ()
   set(cs2bug_res "cs2bugMTd")
   set(cs2bug_flags "/DSKIP_MISMATCH_DTR")
 endif ()
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} OFF)
+newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} 0)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
 newtest_ex(operators operators.cpp "" "" "" OFF ""
   # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
-  ON)
+  "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
-newtest_ex(state state.c "" "" "" OFF "" ON)
+newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
 if (UNIX)
   newtest(signal signal.c)
@@ -503,10 +503,10 @@ if (UNIX)
     newtest(clone clone.c)
   endif ()
   get_relative_location(malloc malloc_path)
-  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "" OFF)
+  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "" 0)
   # i#1264: the name "pthreads" on an executable breaks 2.8.11 find_package(Threads)
   # so we use "pthread_test".  The compare files are still "pthreads.*".
-  newtest_ex(pthread_test pthreads.c "" "" "" OFF "pthreads" OFF)
+  newtest_ex(pthread_test pthreads.c "" "" "" OFF "pthreads" 0)
   target_link_libraries(pthread_test pthread)
   if (APPLE)
     set(loaderlib_flags "-Wl,-U,_import_does_not_exist")
@@ -515,7 +515,7 @@ if (UNIX)
   endif (APPLE)
   tobuild_lib(loaderlib loader.lib.c "" "${loaderlib_flags}")
   get_relative_location(loaderlib loaderlib_path)
-  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "" OFF)
+  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "" 0)
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
@@ -525,7 +525,7 @@ if (TOOL_DR_MEMORY)
   # We turn off blacklist b/c it results in potential errors in the child,
   # causing runtest.cmake to pick the child's log instead of parent's
   # (it does it by size)!
-  newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" OFF)
+  newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" 0)
   if (WIN32)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
@@ -542,7 +542,7 @@ endif (UNIX)
 get_relative_location(unloadlib unloadlib_path)
 # We need 50 iters to hit i#545.
 # We name it "unloadtest" to avoid security software issues with "unload.exe".
-newtest_ex(unloadtest unload.c "${unloadlib_path};50" "" "" OFF "unload" OFF)
+newtest_ex(unloadtest unload.c "${unloadlib_path};50" "" "" OFF "unload" 0)
 if (UNIX)
   target_link_libraries(unloadtest dl)
 endif (UNIX)
@@ -591,6 +591,8 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
+  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
+  newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
 
   # -replace_malloc is now the default, so test wrapping
   newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
@@ -600,11 +602,11 @@ if (TOOL_DR_MEMORY)
       newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
     else ()
       # -no_replace_malloc raises unrecoverable heap errors (i#1161)
-      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
+      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} 0)
     endif ()
   endif ()
   newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-    "" OFF "operators" OFF "")
+    "" OFF "operators" 0 "")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -677,7 +679,7 @@ if (TOOL_DR_MEMORY)
 
   if (WIN32)
     # test i#1197.  With -replace_malloc default, we need to point at wincrt.replace.
-    newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" OFF)
+    newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" 0)
     newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
 
     # FIXME: Re-enable when it doesn't break the build.
@@ -708,9 +710,9 @@ if (TOOL_DR_MEMORY)
       append_test_compile_flags(operatorsMDd "/MDd")
       newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
         # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
-        ON "")
+        "ANY" "")
       newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
-          "-no_replace_malloc" "" OFF operators OFF "")
+          "-no_replace_malloc" "" OFF operators 0 "")
     endif (USE_DRSYMS)
 
     if (GCC)
@@ -726,18 +728,18 @@ if (TOOL_DR_MEMORY)
 
     newtest_ex(gdi gdi.cpp ""
       "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread" ""
-      OFF "" OFF)
+      OFF "" 0)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
     newtest_ex(handle handle.cpp ""
       "-light;-check_handle_leaks;-callstack_max_frames;100"
-      "" OFF "" OFF)
+      "" OFF "" 0)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only;-callstack_max_frames;100" "" OFF "handle_only")
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
-    newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" OFF)
+    newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" 0)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -760,7 +762,7 @@ if (TOOL_DR_MEMORY)
   # instead.
   newtest_ex(pcache free.c "" "-no_check_uninitialized;-no_count_leaks;-persist_code"
     # do not load any stale pcaches from prior runs, in first run
-    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly" OFF)
+    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly" 0)
   if (WIN32)
     # we make a separate executable to avoid ASLR
     append_link_flags(pcache "/dynamicbase:no")
@@ -769,16 +771,16 @@ if (TOOL_DR_MEMORY)
   # when running tests in parallel, have to generate pcaches first
   set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
-    OFF "" OFF)
+    OFF "" 0)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "registers.pattern")
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
-  newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" ON "")
+  newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
 else (TOOL_DR_MEMORY)
-  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "" OFF)
+  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "" 0)
 
   newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF "")
   newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF "")
@@ -810,7 +812,7 @@ if (WIN32)
   # char test, so we stick to wrapping for this test.
   # Wrapping doesn't work on win8 so we disable the test there.
   if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-    newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string OFF)
+    newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string 0)
   endif ()
 
   # Ensure we don't spit out false positives when there are no symbols for the app
@@ -832,7 +834,7 @@ if (TOOL_DR_MEMORY)
   newtest_ex(whitelist_app whitelist.cpp ""
     # Exclude the lib's errors
     "-lib_whitelist;*whitelist_app*;-lib_whitelist_frames;1"
-    "" OFF "whitelist" OFF)
+    "" OFF "whitelist" 0)
   tobuild_lib(whitelist_lib whitelist_lib.cpp "" "")
   target_link_libraries(whitelist_app whitelist_lib)
   newtest_nobuild(whitelist_justlib whitelist_app ""
@@ -874,14 +876,14 @@ endif ()
 
 else (NOT X64)
   # pattern mode testing.
-  newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly" OFF)
-  newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" OFF)
+  newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly" 0)
+  newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
-    "" OFF "track_origins" OFF)
+    "" OFF "track_origins" 0)
   if (WIN32)
     # FIXME i#672: see earlier comment on # callstack frames
     newtest_ex(handle handle.cpp ""
       "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0" ""
-      OFF "" OFF)
+      OFF "" 0)
   endif (WIN32)
 endif (NOT X64)

@@ -179,6 +179,9 @@ OPTION_CLIENT_BOOL(client, log_suppressed_errors, false,
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",
                    "Display, but do not abort, on asserts in debug build (in release build asserts are automatically disabled).")
+OPTION_CLIENT(client, exit_code_if_errors, int, 0, INT_MIN, INT_MAX,
+              "If non-zero, the app's exit code is changed to this if errors are found",
+              "If non-zero, the app's exit code is changed to this code if any errors are found.")
 OPTION_CLIENT_BOOL(drmemscope, pause_at_error, false,
                    "Pause at each reported error of any type",
                    ""TOOLNAME" pauses at the point of each error that is identified.  On Windows, this pause is a popup window.  On Linux, the pause involves waiting for a keystroke, which may not work well if the application reads from stdin.  In that case consider -pause_via_loop as an additional option.")

@@ -1685,6 +1685,17 @@ report_leak_stats(file_t f, bool notify, bool potential, uint type)
     }
 }
 
+static bool
+report_errors_found(void)
+{
+    uint set = ERROR_SET(false/*!potential*/);
+    return (num_reported_errors[set] > 0 ||
+            num_bytes_leaked[set][ERROR_LEAK] > 0 ||
+            num_bytes_leaked[set][ERROR_POSSIBLE_LEAK] > 0 ||
+            (options.show_reachable &&
+             num_bytes_leaked[set][ERROR_REACHABLE_LEAK] > 0));
+}
+
 /* N.B.: for PR 477013, postprocess.pl duplicates some of this syntax
  * exactly: try to keep the two in sync
  */
@@ -1695,11 +1706,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
     stored_error_t *err;
     bool notify = (options.summary && stderr_too);
     uint set = ERROR_SET(potential);
-    bool found_errors = (num_reported_errors[set] > 0 ||
-                         num_bytes_leaked[set][ERROR_LEAK] > 0 ||
-                         num_bytes_leaked[set][ERROR_POSSIBLE_LEAK] > 0 ||
-                         (options.show_reachable &&
-                          num_bytes_leaked[set][ERROR_REACHABLE_LEAK] > 0));
+    bool found_errors = report_errors_found();
 
     /* Too much info to put on stderr, so just in logfile */
     dr_fprintf(f, ""NL);
@@ -1879,6 +1886,16 @@ report_exit(void)
     }
 
     drmgr_unregister_tls_field(tls_idx_report);
+}
+
+void
+report_exit_if_errors(void)
+{
+    /* Xref DRi#1400 on downsides of just exiting and perhaps adding a
+     * feature to set the exit code in another way.
+     */
+    if (options.exit_code_if_errors != 0 && report_errors_found())
+        dr_exit_process(options.exit_code_if_errors);
 }
 
 void

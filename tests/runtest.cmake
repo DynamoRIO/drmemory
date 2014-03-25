@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -32,8 +32,8 @@
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
 # * CMAKE_SYSTEM_VERSION
-# * ignore_exit_code = whether to consider non-zero exit code of test
-#     process to be a test failure
+# * exit_code = if set to "ANY", the app's exit code is ignored; else, the
+#     exit code must match the value passed in order for the test to pass.
 # * path_append = string to add to PATH before running cmd
 #
 # these allow for parameterization for more portable tests (PR 544430)
@@ -307,8 +307,10 @@ else ()
   message("STDOUT: ${cmd_out}\nSTDERR: ${cmd_err}\n")
   # combine out and err
   set(cmd_err "${cmd_out}${cmd_err}")
-  if (cmd_result AND NOT ignore_exit_code)
-    message(FATAL_ERROR "*** ${cmd} failed (${cmd_result}): ${cmd_err}***\n")
+  if (NOT exit_code STREQUAL "ANY")
+    if (NOT cmd_result STREQUAL exit_code)
+      message(FATAL_ERROR "*** ${cmd} failed (${cmd_result}): ${cmd_err}***\n")
+    endif ()
   endif ()
 endif ()
 
@@ -618,6 +620,7 @@ if (resmatch)
       -D DRMEMORY_CTEST_SRC_DIR:STRING=${DRMEMORY_CTEST_SRC_DIR}
       -D DRMEMORY_CTEST_DR_DIR:STRING=${DRMEMORY_CTEST_DR_DIR}
       -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
+      -D exit_code:STRING=0
       # runtest.cmake will add the -profdir arg
       -D postcmd:STRING=${postcmd}
       -P "./runtest.cmake" # CTEST_SCRIPT_NAME is not set: only for -S?
