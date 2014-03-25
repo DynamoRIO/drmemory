@@ -20,6 +20,11 @@
 
 cmake_minimum_required(VERSION 2.6)
 
+if ("${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
+  # XXX DRi#1481: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0022 OLD)
+endif ()
+
 set_output_dirs(${framework_bindir})
 
 # We do not need libc and we save space by not using it (i#714).

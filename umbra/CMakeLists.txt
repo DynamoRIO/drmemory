@@ -21,6 +21,11 @@
 # UMBRA: the shadow memory framework
 cmake_minimum_required(VERSION 2.8.10)
 
+if ("${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
+  # XXX DRi#1481: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0022 OLD)
+endif ()
+
 # We do not need libc, and we avoid a 10x size increase in both our
 # dll and pdb (plus we avoid stressing private library isolation) by
 # not using it (i#714).
