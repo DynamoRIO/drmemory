@@ -3938,7 +3938,8 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
 {
 # ifdef TOOL_DR_MEMORY
     /* Handle faults from writes to special shadow blocks */
-    if (info->sig == SIGSEGV) {
+    /* i#1488: we sometimes get SIGBUS on Mac */
+    if (info->sig == SIGSEGV || info->sig == SIGBUS) {
         byte *target = info->access_address;
         /* We don't know whether a write since DR isn't providing that info but
          * shouldn't matter enough to be worth our determining
@@ -3965,7 +3966,7 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
              */
             return DR_SIGNAL_SUPPRESS;
         }
-    } if (info->sig == SIGILL) {
+    } else if (info->sig == SIGILL) {
         LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
             info->raw_mcontext->xip, info->mcontext->xip);
         if (options.pattern != 0) {

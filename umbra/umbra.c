@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -263,7 +263,8 @@ umbra_event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 dr_signal_action_t
 umbra_event_signal(void *drcontext, dr_siginfo_t *info)
 {
-    if (info->sig == SIGSEGV &&
+    /* i#1488: MacOS raises SIGBUS */
+    if ((info->sig == SIGSEGV || info->sig == SIGBUS) &&
         umbra_handle_fault(drcontext, info->access_address,
                            info->raw_mcontext, info->mcontext)) {
         return DR_SIGNAL_SUPPRESS;
