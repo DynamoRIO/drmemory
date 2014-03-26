@@ -367,12 +367,12 @@ drmemory.exe -- c:/path/to/my/app args to my app
 
 On Linux or Mac:
 \verbatim
-drmemory.pl -- /path/to/my/app args to my app
+drmemory -- /path/to/my/app args to my app
 \endverbatim
 
 Examples throughout the rest of the documentation will use just one platform,
 but can readily be adapted to the other by changing the front-end (\p
-drmemory.exe or \p drmemory.pl) and the path style.
+drmemory.exe or \p drmemory) and the path style.
 
 If as part of \ref page_install you did not add Dr. Memory to your path,
 you'll need to specify the full path to Dr. Memory.
@@ -385,7 +385,7 @@ When running scripts it is best to explicitly invoke the interpreter rather
 than invoking the script directly.  For example:
 
 \verbatim
-drmemory.pl -- /usr/bin/perl ./myscript.pl
+drmemory -- /usr/bin/perl ./myscript.pl
 \endverbatim
 
 ********************
@@ -519,11 +519,11 @@ and supply the list of log directories, or a single directory containing
 the log directories as sub-directories to aggregate all of them:
 
 \verbatim
-drmemory.pl -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000
+drmemory -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000
 \endverbatim
 
 \verbatim
-drmemory.pl -aggregate /parent/logdir/
+drmemory -aggregate /parent/logdir/
 \endverbatim
 
 Currently the \p -aggregate option is not available on Windows.
@@ -557,11 +557,11 @@ Dr. Memory with the \p -results option and the log directory created during
 the run (which contains the raw data):
 
 \verbatim
-drmemory.pl -skip_results -- myapp myargs
+drmemory -skip_results -- myapp myargs
 \endverbatim
 
 \verbatim
-drmemory.pl -results DrMemory-myapp.9876.000
+drmemory -results DrMemory-myapp.9876.000
 \endverbatim
 
 If \p -results is invoked on a different machine where the application

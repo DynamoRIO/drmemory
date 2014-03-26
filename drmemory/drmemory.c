@@ -1876,7 +1876,7 @@ dr_init(client_id_t id)
                 libdr2_base = data->start;
                 libdr2_end = data->end;
                 ASSERT(check_contiguous(data), "lib not contiguous!");
-            } else if (strncmp(modname, "libdrmemory.", 12) == 0) {
+            } else if (strncmp(modname, "libdrmemorylib.", 12) == 0) {
                 ASSERT(dr_memory_is_in_client(data->start), "client lib mismatch");
                 libdrmem_base = data->start;
                 libdrmem_end = data->end;

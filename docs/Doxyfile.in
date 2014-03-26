@@ -46,8 +46,8 @@ INHERIT_DOCS           = YES
 SEPARATE_MEMBER_PAGES  = NO
 TAB_SIZE               = 8
 # if you add/change aliases make sure you also change the sed lines in the Makefile
-ALIASES                = TOOL_VERSION=X.Y.Z FRONT_END=drmemory.pl \
-                         FRONT_END_PATH=drmemory.pl PLATFORM=Linux \
+ALIASES                = TOOL_VERSION=X.Y.Z FRONT_END=drmemory \
+                         FRONT_END_PATH=drmemory PLATFORM=Linux \
                          DRCONFIG_PATH=drconfig
 OPTIMIZE_OUTPUT_FOR_C  = YES
 OPTIMIZE_OUTPUT_JAVA   = NO

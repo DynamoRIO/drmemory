@@ -51,7 +51,7 @@ at the end of the run.
 Quick start for Linux:
 
 1) g++ -m32 -g -fno-inline -fno-omit-frame-pointer *.cpp -o myapp
-2) bin/drmemory.pl -- ./myapp args_to_myapp
+2) bin/drmemory -- ./myapp args_to_myapp
 
 --------------------------------------------------
 Quick start for Windows:
@@ -63,7 +63,7 @@ Quick start for Windows:
 Quick start for Mac:
 
 1) c++ -m32 -g -fno-inline -fno-omit-frame-pointer *.cpp -o myapp
-2) bin/drmemory.pl -- ./myapp args_to_myapp
+2) bin/drmemory -- ./myapp args_to_myapp
 
 ===========================================================================
 Full Documentation

@@ -42,8 +42,7 @@ This section is divided into the following subsections:
 
 The Dr. Memory distribution contains the following:
 
- - The front-end script to launch Dr. Memory: \p drmemory.pl on Linux, Mac,
-   and Cygwin, \p drmemory.exe on Windows.
+ - The front-end executable \p drmemory for launch Dr. Memory.
  - The back-end of Dr. Memory, contained in the \p bin and \p dynamorio
    subdirectories.  Dr. Memory runs on top of the DynamoRIO tool engine
    (see http://dynamorio.org for more information on DynamoRIO).
@@ -92,6 +91,7 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
  - The pause in cmd on a frontend error is now bypassable by -batch.
  - Added an option -exit_code_if_errors to return a non-zero exit code
    when errors are detect.
+ - Replaced the perl front-end \p drmemory.pl on Linux with an executable.
  - Various bug fixes.
 
 The changes between version 1.6.1 and version 1.6.0 include:

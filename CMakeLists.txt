@@ -988,22 +988,25 @@ else (TOOL_DR_HEAPSTAT)
     set(srcs ${srcs} drmemory/gdicheck.c)
     set(srcs ${srcs} drmemory/handlecheck.c)
   endif (UNIX)
+  set(scripts ${toolname}.pl)
 endif (TOOL_DR_HEAPSTAT)
-set(scripts ${toolname}.pl)
+
 if (NOT USE_DRSYMS)
   set(scripts ${scripts} postprocess.pl)
 endif (NOT USE_DRSYMS)
 
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  # front-end needs to be name drmemory.exe and thus has drmemory.pdb, so
+if (USE_DRSYMS AND TOOL_DR_MEMORY)
+  # front-end needs to be named drmemory.exe and thus has drmemory.pdb, so
   # we rename client lib (plus cmake best w/o same-name targets)
   set(client_target "${toolname}lib")
   # assuming only DrMem for now
   add_executable(${toolname} drmemory/frontend.c)
-  target_link_libraries(${toolname} dbghelp)
-else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+  if (WIN32)
+    target_link_libraries(${toolname} dbghelp)
+  endif (WIN32)
+else (USE_DRSYMS AND TOOL_DR_MEMORY)
   set(client_target ${toolname})
-endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (USE_DRSYMS AND TOOL_DR_MEMORY)
 
 add_library(${client_target} SHARED ${srcs})
 set_target_properties(${client_target} PROPERTIES
@@ -1085,13 +1088,18 @@ if (WIN32)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} ${new_flags}")
 endif (WIN32)
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+if (USE_DRSYMS AND TOOL_DR_MEMORY)
   configure_DynamoRIO_standalone(${toolname})
-  target_link_libraries(${toolname} drinjectlib drconfiglib)
-  set_target_properties(${toolname} PROPERTIES
-    VERSION ${TOOL_VERSION_NUMBER})
+  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib)
+  if (WIN32)
+    set_target_properties(${toolname} PROPERTIES
+      VERSION ${TOOL_VERSION_NUMBER})
+  else (WIN32)
+    add_rel_rpaths(${toolname} drinjectlib)
+    add_rel_rpaths(${toolname} drconfiglib)
+  endif (WIN32)
   set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (USE_DRSYMS AND TOOL_DR_MEMORY)
 if (USE_DRSYMS)
   if (STATIC_DRSYMS)
     use_DynamoRIO_extension(${client_target} drsyms_static)
@@ -1228,7 +1236,7 @@ endif (PERL_TO_EXE)
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
-if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
+if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl" @ONLY)
   if (NOT USE_DRSYMS OR TOOL_DR_HEAPSTAT)
@@ -1576,17 +1584,17 @@ endif (WIN32)
 install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
   DESTINATION "${INSTALL_PREFIX}.")
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+if (USE_DRSYMS AND TOOL_DR_MEMORY)
   install_if_32bit(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+else (USE_DRSYMS AND TOOL_DR_MEMORY)
   install_if_32bit(FILES
     ${script_main}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (USE_DRSYMS AND TOOL_DR_MEMORY)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install_if_32bit(FILES

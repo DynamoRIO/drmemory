@@ -180,7 +180,11 @@ function (get_relative_location target outvar)
 endfunction (get_relative_location)
 
 if (UNIX)
-  set(cmd_shell ${bin_relative}/${toolname}.pl)
+  if (TOOL_DR_MEMORY)
+    set(cmd_shell ${bin_relative}/${toolname})
+  else ()
+    set(cmd_shell ${bin_relative}/${toolname}.pl)
+  endif ()
 else (UNIX)
   if (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
     set(cmd_shell ${bin_relative}/${toolname}.exe)
@@ -261,7 +265,7 @@ set(cmd_script -P "./runtest.cmake")
 # Note: For args with spaces (or multiple args) passed via drmem_ops a ;
 # should be used instead of each space.  Otherwise, the whole of
 # drmem_ops is passed in as a single argument, which results in
-# options parsing errors in drmemory.pl and drmem client.
+# options parsing errors in the frontend and drmem client.
 # The postprocess arg is a bool that applies only for Dr. Memory:
 # whether to run the front-end with -results after the app is run.
 # The resbase arg support specifying a different .res and .out name

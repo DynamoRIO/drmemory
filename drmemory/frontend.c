@@ -55,15 +55,18 @@
 #include "dr_api.h" /* for the types */
 #include "dr_inject.h"
 #include "dr_config.h"
+#include "dr_frontend.h"
 #include "utils.h"
 #include "frontend.h"
 #include <assert.h>
-#include <dbghelp.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 
-#if _MSC_VER <= 1400 /* VS2005- */
+#ifdef WINDOWS
+# include <dbghelp.h>
+# if _MSC_VER <= 1400 /* VS2005- */
 /* These aren't present in VS2005 DbgHelp.h */
 BOOL IMAGEAPI
 SymInitializeW(__in HANDLE hProcess, __in_opt PCWSTR UserSearchPath,
@@ -76,32 +79,7 @@ DWORD64 IMAGEAPI
 SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR ImageName,
                  __in_opt PCWSTR ModuleName, __in DWORD64 BaseOfDll, __in DWORD DllSize,
                  __in_opt PMODLOAD_DATA Data, __in_opt DWORD Flags);
-#endif
-
-/* XXX: we may want to share this with DR's libutil/our_tchar.h b/c we'll
- * want something similar for drdeploy and drinject libs and tools
- */
-#ifdef WINDOWS
-# include <tchar.h>
-#else
-# define TCHAR char
-# define _tmain main
-# define _tcslen strlen
-# define _tcsstr strstr
-# define _tcscmp strcmp
-# define _tcsnicmp strnicmp
-# define _tcsncpy strncpy
-# define _tcscat_s strcat
-# define _tcsrchr strrchr
-# define _sntprintf snprintf
-# define _ftprintf fprintf
-# define _tfopen fopen
-# define _T(s) s
-#endif
-#ifdef _UNICODE
-# define TSTR_FMT "%S"
-#else
-# define TSTR_FMT "%s"
+# endif
 #endif
 
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
@@ -113,6 +91,17 @@ SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR Im
 #else
 # define LIB_ARCH "lib32"
 # define BIN_ARCH "bin"
+#endif
+
+#ifdef WINDOWS
+# define DR_LIB_NAME "dynamorio.dll"
+# define DRMEM_LIB_NAME "drmemorylib.dll"
+#elif defined(LINUX)
+# define DR_LIB_NAME "libdynamorio.so"
+# define DRMEM_LIB_NAME "libdrmemorylib.so"
+#elif defined(MACOS)
+# define DR_LIB_NAME "libdynamorio.dylib"
+# define DRMEM_LIB_NAME "libdrmemorylib.dylib"
 #endif
 
 /* -shared_slowpath requires -disable_traces
@@ -137,9 +126,11 @@ SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR Im
 static bool verbose;
 static bool quiet;
 static bool results_to_stderr = true;
-static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
 static bool top_stats;
+
+#ifdef WINDOWS
+static bool batch; /* no popups */
 static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
 static bool fetch_crt_syms_only = true;
 
@@ -159,8 +150,6 @@ static char symsrv_path[MAX_SYMSRV_PATH];
 /* URL of the MS symbol server. */
 static const char ms_symsrv[] = "http://msdl.microsoft.com/download/symbols";
 
-static const char *prefix = PREFIX_DEFAULT_MAIN_THREAD;
-
 static bool
 on_vista_or_later(void)
 {
@@ -178,6 +167,9 @@ on_supported_version(void)
 {
     return (win_ver.version <= DR_WINDOWS_VERSION_8_1);
 }
+#endif /* WINDOWS */
+
+static const char *prefix = PREFIX_DEFAULT_MAIN_THREAD;
 
 static void
 pause_if_in_cmd(void)
@@ -202,7 +194,7 @@ pause_if_in_cmd(void)
 }
 
 #define fatal(msg, ...) do { \
-    fprintf(stderr, "ERROR: " msg "\n", __VA_ARGS__);    \
+    fprintf(stderr, "ERROR: " msg "\n", ##__VA_ARGS__);    \
     fflush(stderr); \
     /* for drag-and-drop we'd better make fatal errors visible */ \
     pause_if_in_cmd(); \
@@ -211,7 +203,7 @@ pause_if_in_cmd(void)
 
 #define warn(msg, ...) do { \
     if (!quiet) { \
-        fprintf(stderr, "WARNING: " msg "\n", __VA_ARGS__); \
+        fprintf(stderr, "WARNING: " msg "\n", ##__VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
@@ -219,14 +211,14 @@ pause_if_in_cmd(void)
 #define warn_prefix(msg, ...) do { \
     if (!quiet) { \
         fprintf(stderr, "%s", prefix); \
-        fprintf(stderr, "WARNING: " msg "\n", __VA_ARGS__); \
+        fprintf(stderr, "WARNING: " msg "\n", ##__VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
 
 #define info(msg, ...) do { \
     if (verbose) { \
-        fprintf(stderr, "INFO: " msg "\n", __VA_ARGS__); \
+        fprintf(stderr, "INFO: " msg "\n", ##__VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
@@ -237,7 +229,7 @@ pause_if_in_cmd(void)
 #define sym_info(msg, ...) do { \
     if (!quiet) { \
         fprintf(stderr, "%s", prefix); \
-        fprintf(stderr, msg "\n", __VA_ARGS__); \
+        fprintf(stderr, msg "\n", ##__VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
@@ -278,7 +270,7 @@ static const char * const bool_string[2] = {
 static void
 print_usage(bool full)
 {
-    fprintf(stderr, "Usage: drmemory.exe [options] -- <app and args to run>\n");
+    fprintf(stderr, "Usage: drmemory [options] -- <app and args to run>\n");
     if (!full) {
         fprintf(stderr, "Run with --help for full option list.\n");
 #ifdef WINDOWS
@@ -294,7 +286,7 @@ print_usage(bool full)
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
             fprintf(stderr, "  -%-28s [%6s]  %s\n", #name,              \
-                    bool_string[(int)defval], short);                   \
+                    bool_string[(int)(ptr_int_t)defval], short);        \
         } else if (TYPE_HAS_RANGE_##type)                               \
             fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <int>", #defval, short); \
         else                                                            \
@@ -308,111 +300,28 @@ print_usage(bool full)
 
 #define usage(msg, ...) do {                                    \
     fprintf(stderr, "\n");                                      \
-    fprintf(stderr, "ERROR: " msg "\n\n", __VA_ARGS__);         \
+    fprintf(stderr, "ERROR: " msg "\n\n", ##__VA_ARGS__);         \
     print_usage(false);                                         \
     exit(1);                                                    \
 } while (0)
 
-#undef BUFPRINT /* XXX: we could redefine ASSERT to use utils.h BUFPRINT here */
-/* must use dr_snprintf here to support %S converting UTF-16<->UTF-8 */
+#undef BUFPRINT
 #define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
-    len = dr_snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
-    sofar += (len < 0 ? 0 : len); \
-    assert((bufsz) > (sofar)); \
-    /* be paranoid: though usually many calls in a row and could delay until end */ \
-    (buf)[(bufsz)-1] = '\0';                                 \
+    drfront_status_t sc = drfront_bufprint(buf, bufsz, &(sofar), &(len), __VA_ARGS__); \
+    if (sc != DRFRONT_SUCCESS) \
+        fatal("drfront_bufprint failed: %d\n", sc); \
 } while (0)
 
-/* always null-terminates */
-static void
-tchar_to_char(const TCHAR *wstr, char *buf, size_t buflen/*# elements*/)
-{
-    int res = WideCharToMultiByte(CP_UTF8, 0, wstr, -1/*null-term*/,
-                                  buf, buflen, NULL, NULL);
-    /* XXX: propagate to caller?  or make fatal error? */
-    assert(res > 0);
-    buf[buflen - 1] = '\0';
-}
-
-/* includes the terminating null */
-static size_t
-tchar_to_char_size_needed(const TCHAR *wstr)
-{
-    return WideCharToMultiByte(CP_UTF8, 0, wstr, -1/*null-term*/, NULL, 0, NULL, NULL);
-}
-
+#ifdef WINDOWS
 /* always null-terminates */
 static void
 char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
 {
-    int res = MultiByteToWideChar(CP_UTF8, 0/*=>MB_PRECOMPOSED*/, str, -1/*null-term*/,
-                                  wbuf, wbuflen);
-    /* XXX: propagate to caller?  or make fatal error? */
-    assert(res > 0);
-    wbuf[wbuflen - 1] = L'\0';
+    drfront_status_t sc = drfront_char_to_tchar(str, wbuf, wbuflen);
+    if (sc != DRFRONT_SUCCESS)
+        fatal("drfront_char_to_tchar failed: %d\n", sc);
 }
-
-/* On failure returns INVALID_HANDLE_VALUE.
- * On success returns a file handle which must be closed via CloseHandle()
- * by the caller.
- */
-static HANDLE
-read_nt_headers(const char *exe, IMAGE_NT_HEADERS *nt)
-{
-    HANDLE f;
-    DWORD offs;
-    DWORD read;
-    IMAGE_DOS_HEADER dos;
-    TCHAR wexe[MAXIMUM_PATH];
-    char_to_tchar(exe, wexe, BUFFER_SIZE_ELEMENTS(wexe));
-    f = CreateFile(wexe, GENERIC_READ, FILE_SHARE_READ,
-                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (f == INVALID_HANDLE_VALUE)
-        goto read_nt_headers_error;
-    if (!ReadFile(f, &dos, sizeof(dos), &read, NULL) ||
-        read != sizeof(dos) ||
-        dos.e_magic != IMAGE_DOS_SIGNATURE)
-        goto read_nt_headers_error;
-    offs = SetFilePointer(f, dos.e_lfanew, NULL, FILE_BEGIN);
-    if (offs == INVALID_SET_FILE_POINTER)
-        goto read_nt_headers_error;
-    if (!ReadFile(f, nt, sizeof(*nt), &read, NULL) ||
-        read != sizeof(*nt) ||
-        nt->Signature != IMAGE_NT_SIGNATURE)
-        goto read_nt_headers_error;
-    return f;
- read_nt_headers_error:
-    if (f != INVALID_HANDLE_VALUE)
-        CloseHandle(f);
-    return INVALID_HANDLE_VALUE;
-}
-
-static bool
-is_graphical_app(const char *exe)
-{
-    /* reads the PE headers to see whether the given image is a graphical app */
-    bool res = false; /* err on side of console */
-    IMAGE_NT_HEADERS nt;
-    HANDLE f = read_nt_headers(exe, &nt);
-    if (f == INVALID_HANDLE_VALUE)
-        return res;
-    res = (nt.OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI);
-    CloseHandle(f);
-    return res;
-}
-
-static bool
-is_64bit_app(const char *exe)
-{
-    bool res = false;
-    IMAGE_NT_HEADERS nt;
-    HANDLE f = read_nt_headers(exe, &nt);
-    if (f == INVALID_HANDLE_VALUE)
-        return res;
-    res = (nt.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
-    CloseHandle(f);
-    return res;
-}
+#endif
 
 /* Replace occurences of old_char with new_char in str.  Typically used to
  * canonicalize Windows paths into using forward slashes.
@@ -453,72 +362,31 @@ ends_in_exe(const char *s)
 static bool
 file_is_writable(char *path)
 {
-    TCHAR wbuf[MAXIMUM_PATH];
-    char_to_tchar(path, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
-    return (_taccess(wbuf, 2/*write*/) == 0);
+    bool ret = false;
+    return (drfront_access(path, DRFRONT_WRITE, &ret) == DRFRONT_SUCCESS && ret);
 }
 
 static bool
 file_is_readable(char *path)
 {
-    TCHAR wbuf[MAXIMUM_PATH];
-    char_to_tchar(path, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
-    return (_taccess(wbuf, 4/*read*/) == 0);
-}
-
-static bool
-get_env_var(const TCHAR *name, char *buf, size_t buflen/*# elements*/)
-{
-    TCHAR wbuf[MAXIMUM_PATH];
-    int len = GetEnvironmentVariable(name, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
-    if (len > 0) {
-        tchar_to_char(wbuf, buf, buflen);
-        return true;
-    }
-    return false;
-}
-
-/* Takes in UTF-16 and returns UTF-8 when _UNICODE is set */
-static void
-get_absolute_path_wide(const TCHAR *wsrc, char *buf, size_t buflen/*# elements*/)
-{
-    TCHAR wdst[MAXIMUM_PATH];
-    int res = GetFullPathName(wsrc, BUFFER_SIZE_ELEMENTS(wdst), wdst, NULL);
-    assert(res > 0);
-    NULL_TERMINATE_BUFFER(wdst);
-    tchar_to_char(wdst, buf, buflen);
+    bool ret = false;
+    return (drfront_access(path, DRFRONT_READ, &ret) == DRFRONT_SUCCESS && ret);
 }
 
 static void
 get_absolute_path(const char *src, char *buf, size_t buflen/*# elements*/)
 {
-    TCHAR wsrc[MAXIMUM_PATH];
-    char_to_tchar(src, wsrc, BUFFER_SIZE_ELEMENTS(wsrc));
-    get_absolute_path_wide(wsrc, buf, buflen);
+    drfront_status_t sc = drfront_get_absolute_path(src, buf, buflen);
+    if (sc != DRFRONT_SUCCESS)
+        fatal("drfront_get_absolute_path failed: %d\n", sc);
 }
 
 static void
 get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
 {
-    int res;
-    TCHAR wbuf[MAXIMUM_PATH];
-    TCHAR wapp[MAXIMUM_PATH];
-    char_to_tchar(app, wapp, BUFFER_SIZE_ELEMENTS(wapp));
-    _tsearchenv(wapp, _T("PATH"), wbuf);
-    NULL_TERMINATE_BUFFER(wbuf);
-    if (wbuf[0] == _T('\0')) {
-        /* may need to append .exe, FIXME : other executable types */
-        TCHAR tmp_buf[MAXIMUM_PATH];
-        _sntprintf(tmp_buf, BUFFER_SIZE_ELEMENTS(tmp_buf), _T("%s%s"), wapp, _T(".exe"));
-        NULL_TERMINATE_BUFFER(wbuf);
-        _tsearchenv(tmp_buf, _T("PATH"), wbuf);
-    }
-    if (wbuf[0] == _T('\0')) {
-        /* last try: expand w/ cur dir */
-        GetFullPathName(wapp, BUFFER_SIZE_ELEMENTS(wbuf), wbuf, NULL);
-        NULL_TERMINATE_BUFFER(wbuf);
-    }
-    tchar_to_char(wbuf, buf, buflen);
+    drfront_status_t sc = drfront_get_app_full_path(app, buf, buflen);
+    if (sc != DRFRONT_SUCCESS)
+        fatal("drfront_get_app_full_path failed: %d\n", sc);
 }
 
 static bool
@@ -539,7 +407,10 @@ create_dir_if_necessary(const char *dir)
     return true;
 }
 
-/* i#200/PR 459481: communicate child pid via file */
+/* i#200/PR 459481: communicate child pid via file.
+ * We don't need this on unix b/c we use exec.
+ */
+#ifdef WINDOWS
 static void
 write_pid_to_file(const char *pidfile, process_id_t pid)
 {
@@ -589,8 +460,8 @@ set_symbol_search_path(const char *symdir, bool ignore_env)
      * Otherwise, we set it to logs/symcache/symbols and make sure it exists.
      */
     if (ignore_env ||
-        get_env_var(_T("_NT_SYMBOL_PATH"), symsrv_path,
-                    BUFFER_SIZE_ELEMENTS(symsrv_path)) == 0 ||
+        drfront_get_env_var("_NT_SYMBOL_PATH", symsrv_path,
+                            BUFFER_SIZE_ELEMENTS(symsrv_path)) != DRFRONT_SUCCESS ||
         strlen(symsrv_path) == 0) {
         char pdb_dir[MAXIMUM_PATH];
         _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", symdir);
@@ -855,25 +726,27 @@ process_results_file(const char *logdir, const char *symdir,
                      process_id_t pid, const char *app)
 {
     HANDLE f;
-    TCHAR fname[MAXIMUM_PATH];
+    char fname[MAXIMUM_PATH];
+    TCHAR wfname[MAXIMUM_PATH];
     char resfile[MAXIMUM_PATH];
     TCHAR wresfile[MAXIMUM_PATH];
     DWORD read;
+
     if (no_resfile || (quiet && batch))
         return;
-    dr_snwprintf(fname, BUFFER_SIZE_ELEMENTS(fname), _T(TSTR_FMT)_T("/resfile.%d"),
+    dr_snwprintf(wfname, BUFFER_SIZE_ELEMENTS(wfname), _T(TSTR_FMT)_T("/resfile.%d"),
                  logdir, pid);
-    NULL_TERMINATE_BUFFER(fname);
-    f = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ,
+    NULL_TERMINATE_BUFFER(wfname);
+    f = CreateFile(wfname, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
         warn("unable to locate results file since can't open "TSTR_FMT": %d",
-             fname, GetLastError());
+             wfname, GetLastError());
         return;
     }
     if (!ReadFile(f, resfile, BUFFER_SIZE_ELEMENTS(resfile), &read, NULL)) {
         warn("unable to locate results file since can't read "TSTR_FMT": %d",
-             fname, GetLastError());
+             wfname, GetLastError());
         CloseHandle(f);
         return;
     }
@@ -881,8 +754,8 @@ process_results_file(const char *logdir, const char *symdir,
     resfile[read] = '\0';
     CloseHandle(f);
     /* We are now done with the file */
-    if (!DeleteFile(fname)) {
-        warn("unable to delete temp file "TSTR_FMT": %d", fname, GetLastError());
+    if (!DeleteFile(wfname)) {
+        warn("unable to delete temp file "TSTR_FMT": %d", wfname, GetLastError());
     }
     char_to_tchar(resfile, wresfile, BUFFER_SIZE_ELEMENTS(wresfile));
 
@@ -903,7 +776,10 @@ process_results_file(const char *logdir, const char *symdir,
         bool in_cmd = ((((ptr_int_t)GetStdHandle(STD_OUTPUT_HANDLE)) & 0x10000003)
                        == 0x3);
         /* Don't show leaks for graphical app, since won't have other errors */
-        bool show_leaks = !quiet && results_to_stderr && !is_graphical_app(app);
+        bool is_graphical;
+        bool show_leaks = !quiet && results_to_stderr &&
+            (drfront_is_graphical_app(app, &is_graphical) != DRFRONT_SUCCESS ||
+             !is_graphical);
         if (in_cmd) {
             FILE *stream;
             char line[100];
@@ -939,19 +815,26 @@ process_results_file(const char *logdir, const char *symdir,
         PROCESS_INFORMATION pi;
         STARTUPINFO si;
         TCHAR cmd[MAXIMUM_PATH*2];
+        drfront_status_t sc;
+        bool res;
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
-        _tsearchenv(_T("notepad.exe"), _T("PATH"), fname);
-        NULL_TERMINATE_BUFFER(fname);
-        /* Older notepad can't handle forward slashes (i#1123) */
-        string_replace_character_wide(wresfile, _T('/'), _T('\\'));
-        _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), fname, wresfile);
-        NULL_TERMINATE_BUFFER(cmd);
-        if (!CreateProcess(fname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-            warn("cannot run \"%s\": %d", cmd, GetLastError());
+        sc = drfront_searchenv("notepad.exe", "PATH", fname,
+                               BUFFER_SIZE_ELEMENTS(fname), &res);
+        if (sc == DRFRONT_SUCCESS && res) {
+            char_to_tchar(fname, wfname, BUFFER_SIZE_ELEMENTS(wfname));
+            /* Older notepad can't handle forward slashes (i#1123) */
+            string_replace_character_wide(wresfile, _T('/'), _T('\\'));
+            _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), wfname, wresfile);
+            NULL_TERMINATE_BUFFER(cmd);
+            if (!CreateProcess(wfname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+                warn("cannot run \"%s\": %d", cmd, GetLastError());
+            } else {
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
         } else {
-            CloseHandle(pi.hThread);
-            CloseHandle(pi.hProcess);
+            warn("unable to find notepad (error %d)\n", sc);
         }
     }
 
@@ -963,6 +846,7 @@ process_results_file(const char *logdir, const char *symdir,
         info("skipping symbol fetching");
     }
 }
+#endif /* WINDOWS */
 
 int
 _tmain(int argc, TCHAR *targv[])
@@ -992,7 +876,9 @@ _tmain(int argc, TCHAR *targv[])
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
+#ifdef WINDOWS
     char *pidfile = NULL;
+#endif
     process_id_t nudge_pid = 0;
     bool native_parent = false;
     size_t native_parent_pos = 0; /* holds cliops_sofar of "-native_parent" */
@@ -1015,13 +901,18 @@ _tmain(int argc, TCHAR *targv[])
 
     time_t start_time, end_time;
 
+    drfront_status_t sc;
+    bool res;
+
     if (dr_standalone_init() == NULL) {
         /* We assume this is due to a new version of Windows */
         fatal("this version of Windows is not supported by Dr. Memory.");
     }
 
+#ifdef WINDOWS
     /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is
      * 6.2 (Win8)!  Thus we use DR's version.
+     * XXX: we should add this to drfrontendlib
      */
     win_ver.size = sizeof(win_ver);
     if (!dr_get_os_version(&win_ver))
@@ -1031,28 +922,19 @@ _tmain(int argc, TCHAR *targv[])
      */
     if (!on_supported_version())
         fatal("this version of Windows is not supported by Dr. Memory.");
+#endif
 
-#ifdef _UNICODE
-    /* To simplify our (soon-to-be) cross-platform code we convert to utf8 up front.
-     * We need to do this for app_argv in any case so there's not much extra
-     * work here.
-     */
-    argv = (char **) malloc((argc + 1/*null*/)*sizeof(*argv));
-    for (i = 0; i < argc; i++) {
-        size_t len = tchar_to_char_size_needed(targv[i]);
-        argv[i] = (char *) malloc(len); /* len includes terminating null */
-        tchar_to_char(targv[i], argv[i], len);
-    }
-    argv[i] = NULL;
+#if defined(WINDOWS) && !defined(_UNICODE)
+# error _UNICODE must be defined
 #else
-# ifdef _MBCS
-#  error _MBCS not supported: only _UNICODE or ascii
-# endif
-    argv = targv;
+    /* Convert to UTF-8 if necessary */
+    sc = drfront_convert_args((const TCHAR **)targv, &argv, argc);
+    if (sc != DRFRONT_SUCCESS)
+        fatal("failed to process args: %d\n", sc);
 #endif
 
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
-    get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
+    get_absolute_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
     c = buf + strlen(buf) - 1;
     while (*c != DIRSEP && *c != ALT_DIRSEP && c > buf)
         c--;
@@ -1083,12 +965,17 @@ _tmain(int argc, TCHAR *targv[])
         /* On Vista+ we can't write to Program Files; plus better to not store
          * logs there on 2K or XP either.
          */
-        bool have_env = get_env_var(_T("APPDATA"), buf, BUFFER_SIZE_ELEMENTS(buf));
+        bool have_env = false;
+        sc = drfront_get_env_var("APPDATA", buf, BUFFER_SIZE_ELEMENTS(buf));
+        if (sc == DRFRONT_SUCCESS)
+            have_env = true;
         if (have_env) {
             _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/Dr. Memory", buf);
             NULL_TERMINATE_BUFFER(logdir);
         } else {
-            have_env = get_env_var(_T("USERPROFILE"), buf, BUFFER_SIZE_ELEMENTS(buf));
+            sc = drfront_get_env_var("USERPROFILE", buf, BUFFER_SIZE_ELEMENTS(buf));
+            if (sc == DRFRONT_SUCCESS)
+                have_env = true;
             if (have_env) {
                 _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir),
                           "%s/Application Data/Dr. Memory", buf);
@@ -1177,6 +1064,7 @@ _tmain(int argc, TCHAR *targv[])
             results_to_stderr = false;
             continue;
         }
+#ifdef WINDOWS
         else if (strcmp(argv[i], "-batch") == 0) {
             batch = true;
             /* now that DR has msgboxes by default we have to explicitly turn off */
@@ -1193,6 +1081,7 @@ _tmain(int argc, TCHAR *targv[])
             prefix = PREFIX_BLANK;
             continue;
         }
+#endif
         else if (strcmp(argv[i], "-prefix_style") == 0) {
             int style;
             if (i >= argc - 1)
@@ -1207,6 +1096,7 @@ _tmain(int argc, TCHAR *targv[])
                      cliops_sofar, len, "%s %s ", argv[i-1], argv[i]);
             continue;
         }
+#ifdef WINDOWS
         else if (strcmp(argv[i], "-fetch_symbols") == 0) {
             fetch_symbols = true;
             fetch_crt_syms_only = false;
@@ -1217,6 +1107,7 @@ _tmain(int argc, TCHAR *targv[])
             fetch_crt_syms_only = false;
             continue;
         }
+#endif
         else if (strcmp(argv[i], "-top_stats") == 0) {
             top_stats = true;
             continue;
@@ -1288,11 +1179,13 @@ _tmain(int argc, TCHAR *targv[])
             BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                      drops_sofar, len, "%s ", argv[++i]);
         }
+#ifdef WINDOWS
         else if (strcmp(argv[i], "-pid_file") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
             pidfile = argv[++i];
         }
+#endif
         else if (strcmp(argv[i], "-logdir") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
@@ -1341,7 +1234,7 @@ _tmain(int argc, TCHAR *targv[])
                      cliops_sofar, len, "-suppress `%s` ", suppress);
         }
         else if (strcmp(argv[i], "-exit0") == 0) {
-            exit0 = TRUE;
+            exit0 = true;
         }
         else {
             if (strcmp(argv[i], "-perturb_only") == 0)
@@ -1353,7 +1246,6 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     if (nudge_pid != 0) {
-        dr_config_status_t res;
         if (i < argc)
             usage("%s", "-nudge does not take an app to run");
         /* could also complain about other client or app specific ops */
@@ -1400,7 +1292,7 @@ _tmain(int argc, TCHAR *targv[])
      * we supply this useful message up front.  Once we do add 64-bit we'll
      * want to solve i#1037 and then get rid of or modify this message.
      */
-    if (is_64bit_app(app_name)) {
+    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS && res) {
         fatal("This Dr. Memory release does not support 64-bit applications.");
         goto error; /* actually won't get here */
     }
@@ -1418,14 +1310,14 @@ _tmain(int argc, TCHAR *targv[])
         dr_root = default_dr_root;
     }
     _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-              "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root,
-              use_dr_debug ? "debug" : "release");
+              "%s/"LIB_ARCH"/%s/%s", dr_root,
+              use_dr_debug ? "debug" : "release", DR_LIB_NAME);
     NULL_TERMINATE_BUFFER(buf);
     if (!file_is_readable(buf)) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                      "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root, "debug");
+                      "%s/"LIB_ARCH"/%s/%s", dr_root, "debug", DR_LIB_NAME);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf)) {
                 fatal("cannot find DynamoRIO library %s", buf);
@@ -1438,14 +1330,14 @@ _tmain(int argc, TCHAR *targv[])
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
     _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
-              "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root, DIRSEP, DIRSEP,
-              use_drmem_debug ? "debug" : "release", DIRSEP);
+              "%s%c"BIN_ARCH"%c%s%c%s", drmem_root, DIRSEP, DIRSEP,
+              use_drmem_debug ? "debug" : "release", DIRSEP, DRMEM_LIB_NAME);
     NULL_TERMINATE_BUFFER(client_path);
     if (!file_is_readable(client_path)) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
-                      "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root,
-                      DIRSEP, DIRSEP, "debug", DIRSEP);
+                      "%s%c"BIN_ARCH"%c%s%c%s", drmem_root,
+                      DIRSEP, DIRSEP, "debug", DIRSEP, DRMEM_LIB_NAME);
             NULL_TERMINATE_BUFFER(client_path);
             if (!file_is_readable(client_path)) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);
@@ -1532,8 +1424,8 @@ _tmain(int argc, TCHAR *targv[])
      * default value here.  We add ` to rule out -lib_blacklist_frames.
      */
     if (strstr(client_ops, "-lib_blacklist`") == NULL) {
-        bool ok = get_env_var(_T("SYSTEMROOT"), buf, BUFFER_SIZE_ELEMENTS(buf));
-        if (ok) {
+        if (drfront_get_env_var("SYSTEMROOT", buf, BUFFER_SIZE_ELEMENTS(buf)) ==
+            DRFRONT_SUCCESS) {
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      /* Add .d?? to still report errors in app .exe but not
                       * in *.dll or *.drv.
@@ -1544,27 +1436,40 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
+#ifdef WINDOWS
     /* Set _NT_SYMBOL_PATH for the app. */
     set_symbol_search_path(symdir, false);
+#endif
 
-    errcode = dr_inject_process_create(app_name, app_argv, &inject_data);
+#ifdef UNIX
+    errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
+#else
+    errcode = dr_inject_process_create(app_name, (const char **)app_argv, &inject_data);
+#endif
     if (errcode != 0) {
-        int sofar = _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                              "failed to create process for \"%s\": ", app_name);
+#ifdef WINDOWS
+        int sofar =
+#endif
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                      "failed to create process for \"%s\": ", app_name);
+#ifdef WINDOWS
         if (sofar > 0) {
             FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                           NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                           (LPTSTR) buf + sofar,
                           BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
         }
+#endif
         NULL_TERMINATE_BUFFER(buf);
         fatal("%s", buf);
         goto error; /* actually won't get here */
     }
 
     pid = dr_inject_get_process_id(inject_data);
+#ifdef WINDOWS
     if (pidfile != NULL)
         write_pid_to_file(pidfile, pid);
+#endif
 
     /* we need to locate the results file, but only for top-level process (i#328) */
     BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
@@ -1628,10 +1533,14 @@ _tmain(int argc, TCHAR *targv[])
     if (top_stats)
         start_time = time(NULL);
     dr_inject_process_run(inject_data);
+#ifdef UNIX
+    fatal("Failed to exec application");
+#else
     info("waiting for app to exit...");
     errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
     if (errcode != WAIT_OBJECT_0)
         info("failed to wait for app: %d\n", errcode);
+#endif
     if (top_stats) {
         double wallclock;
         end_time = time(NULL);
@@ -1644,18 +1553,18 @@ _tmain(int argc, TCHAR *targv[])
             warn("failed to unregister child processes");
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
+#ifdef WINDOWS
     process_results_file(logdir, symdir, pid, app_name);
+#endif
     goto cleanup;
  error:
     if (inject_data != NULL)
         dr_inject_process_exit(inject_data, false);
     errcode = 1;
  cleanup:
-#ifdef _UNICODE
-    for (i = 0; i < argc; i++)
-        free(argv[i]);
-    free(argv);
-#endif
+    sc = drfront_cleanup_args(argv, argc);
+    if (sc != DRFRONT_SUCCESS)
+        fatal("drfront_cleanup_args failed: %d\n", sc);
     if (errcode != 0) {
         /* We use a prefix to integrate better with tool output, esp inside
          * the VS IDE as an External Tool.

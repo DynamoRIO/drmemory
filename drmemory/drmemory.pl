@@ -50,6 +50,8 @@ use lib "$FindBin::RealBin";
 # RealBin resolves symlinks for us
 ($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
 
+$use_drsyms = 1;
+
 # $^O is either "linux", "cygwin", "MSWin32", or "darwin"
 $is_unix = ($^O eq "linux" || $^O eq "darwin") ? 1 : 0;
 if ($is_unix) {
