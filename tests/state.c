@@ -24,28 +24,46 @@
 #include <assert.h>
 
 #ifdef UNIX
+# ifdef MACOS
+#  define _XOPEN_SOURCE 700 /* required to get POSIX, etc. defines out of ucontext.h */
+#  define __need_struct_ucontext64 /* seems to be missing from Mac headers */
+# endif
 # include <unistd.h>
 # include <signal.h>
 # include <ucontext.h>
 typedef void (*handler_3_t)(int, siginfo_t *, void *);
+#else
+# include <windows.h>
 #endif
 
 int xax_val = 0xffffffff;
 
-#ifdef UNIX
+/* XXX: share with core/ */
+#ifdef LINUX
+typedef struct sigcontext sigcontext_t;
 # define SIGCXT_FROM_UCXT(ucxt) (&((ucxt)->uc_mcontext))
 # ifdef X64
 #  define XAX rax
 # else
 #  define XAX eax
 # endif
+#elif defined(MACOS)
+# ifdef X64
+typedef _STRUCT_MCONTEXT_AVX64 sigcontext_t;
+#  define SIGCXT_FROM_UCXT(ucxt) ((sigcontext_t*)((ucxt)->uc_mcontext64))
+#  define XAX __ss.__rax
+# else
+typedef _STRUCT_MCONTEXT_AVX32 sigcontext_t;
+#  define SIGCXT_FROM_UCXT(ucxt) ((sigcontext_t*)((ucxt)->uc_mcontext))
+#  define XAX __ss.__eax
+# endif
+#endif
 
-typedef struct sigcontext sigcontext_t;
-
+#ifdef UNIX
 static void
 signal_handler(int sig, siginfo_t *siginfo, void *context)
 {
-    if (sig == SIGSEGV) {
+    if (sig == SIGSEGV || sig == SIGBUS) {
         ucontext_t *ucxt = (ucontext_t *)context;
         sigcontext_t *sc = (sigcontext_t *)SIGCXT_FROM_UCXT(ucxt);
         if (sc->XAX != xax_val)
@@ -69,10 +87,6 @@ intercept_signal(int sig, handler_3_t handler)
     assert(rc == 0);
 }
 #else
-/* sort of a hack to avoid the MessageBox of the unhandled exception spoiling
- * our batch runs
- */
-# include <windows.h>
 # ifdef X64
 #  define XAX    Rax
 # else
@@ -101,6 +115,7 @@ main()
 {
 #ifdef UNIX
     intercept_signal(SIGSEGV, signal_handler);
+    intercept_signal(SIGBUS, signal_handler);
 #else
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
