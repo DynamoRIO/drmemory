@@ -35,9 +35,6 @@ libstdc++*!std::ostream::_M_insert<>
 UNINITIALIZED READ
 name=default i#1451 std::_Bit_reference bitfield
 *!std::_Bit_reference::operator bool
-*!std::_Bit_const_iterator::operator*
-...
-*!std::vector<>::*
 
 ##################################################
 # i#1452: C++ try/catch uninits
