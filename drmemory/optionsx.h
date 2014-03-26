@@ -140,6 +140,9 @@ OPTION_FRONT_BOOL(front, use_vmtree, true,
  * Public client options
  */
 
+OPTION_CLIENT_BOOL(drmemscope, light, false,
+                   "Enables a lightweight mode that detects only critical errors",
+                   "This option enables a lightweight mode that detects unaddressable accesses, free/delete/delete[] mismatches, and GDI API usage errors in Windows, but not uninitialized reads or memory leaks.")
 OPTION_CLIENT_BOOL(client, brief, false,
                    "Show simplified and easier-to-read error reports",
                    "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps.  Also enables -delay_frees_stack and disables -callstack_use_top_fp, trading off performance for better error reports.")
@@ -538,9 +541,6 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_max, uint, 50, 0, UINT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
                     "Seed used for random delays added by -perturb",
                     "To reproduce the random delays added by -perturb, pass the seed from the logfile from the target run to this option.  There may still be non-determinism in the rest of the system, however.")
-OPTION_CLIENT_BOOL(drmemscope, light, false,
-                   "Enables a lightweight mode that detects only critical errors",
-                   "This option enables a lightweight mode that detects unaddressable accesses, free/delete/delete[] mismatches, and GDI API usage errors in Windows, but not uninitialized reads or memory leaks.")
 /* We know this is logically a little weird to have -light be shadow and
  * -unaddr_only be pattern, but from the outside we're pretending that
  * shadow-based light and pattern-based light are the same.
