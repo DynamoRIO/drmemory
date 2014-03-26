@@ -424,6 +424,7 @@ if (WIN32)
   # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
   # I believe I have the proper prologue+epilogue but I still the error, so:
   append_property_string(TARGET registers LINK_FLAGS "/safeseh:no")
+  append_property_string(TARGET asmtest LINK_FLAGS "/safeseh:no")
 endif (WIN32)
 newtest(bitfield bitfield.cpp)
 if (WIN32)
