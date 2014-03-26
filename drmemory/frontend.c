@@ -949,6 +949,21 @@ _tmain(int argc, TCHAR *targv[])
     NULL_TERMINATE_BUFFER(buf);
     get_absolute_path(buf, default_drmem_root, BUFFER_SIZE_ELEMENTS(default_drmem_root));
     NULL_TERMINATE_BUFFER(default_drmem_root);
+#ifdef UNIX
+    /* All the dirs look cleaner without the "bin/../logs", etc., which only happens
+     * on unix b/c the Windows GetFullPathName removes "..".
+     */
+    if (default_drmem_root[strlen(default_drmem_root)-1] == '.') {
+        int len = strlen(default_drmem_root);
+        char *c = default_drmem_root + len - 1;
+        if (len > 4 && *c == '.' && *(c-1) == '.' && *(c-2) == '/') {
+            c -= 3;
+            while (*c != '/' && c > default_drmem_root)
+                c--;
+            *c = '\0';
+        }
+    }
+#endif
     drmem_root = default_drmem_root;
     string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
 
