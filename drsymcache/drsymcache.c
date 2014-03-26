@@ -55,7 +55,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 11
+#define SYMCACHE_VERSION 12
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -105,7 +105,13 @@ typedef struct _mod_cache_t {
     uint timestamp;
     size_t module_internal_size;
 #else
-    /* XXX: may want more consistency checks */
+    /* XXX: may want more consistency checks as timestamp is not always set */
+    uint timestamp;
+# ifdef MACOS
+    uint current_version;
+    uint compatibility_version;
+    byte uuid[16];
+# endif
 #endif
     bool has_debug_info; /* do we have DWARF/PECOFF/PDB symbols? */
 } mod_cache_t;
@@ -311,8 +317,16 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
                    modcache->checksum, modcache->timestamp,
                    modcache->module_internal_size);
 #else
-    BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING"\n",
-                   modcache->module_file_size);
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING",%u",
+                   modcache->module_file_size, modcache->timestamp);
+# ifdef MACOS
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, ",%u,%u,",
+                   modcache->current_version, modcache->compatibility_version);
+    /* For easy sscanf we print as 4 ints */
+    for (i = 0; i < 4; i++)
+        BUFFERED_WRITE(f, buf, bsz, sofar, len, "%08x,", *(int*)(&modcache->uuid[i*4]));
+# endif
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, "\n");
 #endif
     BUFFERED_WRITE(f, buf, bsz, sofar, len, "%u\n", modcache->has_debug_info);
     for (i = 0; i < HASHTABLE_SIZE(symtable->table_bits); i++) {
@@ -345,6 +359,8 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         dr_delete_file(symfile_tmp);
         return;
     } else {
+        LOG(3, "Wrote symcache %s file size %d to pos filesz_loc\n",
+            modname, (uint)file_size, filesz_loc);
         ASSERT(strlen(buf) <= SYMCACHE_SIZE_DIGITS, "not enough space for file size");
     }
 
@@ -412,11 +428,11 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         /* Module consistency checks */
         uint cache_file_size;
         uint64 module_file_size;
+        uint timestamp;
 #ifdef WINDOWS
         version_number_t file_version;
         version_number_t product_version;
         uint checksum;
-        uint timestamp;
         size_t module_internal_size;
         if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
                       UINT64_FORMAT_STRING",%u,%u,%lu",
@@ -445,20 +461,43 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
                 module_internal_size, modcache->module_internal_size);
             goto symcache_read_symfile_done;
         }
-#else
-        if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING,
-                      &cache_file_size, &module_file_size) != 2) {
+#elif defined(LINUX)
+        if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING",%u",
+                      &cache_file_size, &module_file_size, &timestamp) != 3) {
             WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
             goto symcache_read_symfile_done;
         }
-        if (module_file_size != modcache->module_file_size) {
+        if (module_file_size != modcache->module_file_size ||
+            timestamp != modcache->timestamp) {
+            LOG(1, "module version mismatch: %s symbol cache file is stale\n", modname);
+            goto symcache_read_symfile_done;
+        }
+#elif defined(MACOS)
+        uint current_version;
+        uint compatibility_version;
+        byte uuid[16];
+        /* XXX: if dr_sscanf supported %n maybe we could split these into
+         * separate scans on the same string and share code w/ Linux.
+         */
+        if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING",%u,%u,%u,%x,%x,%x,%x",
+                      &cache_file_size, &module_file_size, &timestamp,
+                      &current_version, &compatibility_version,
+                      (uint*)(&uuid[0]), (uint*)(&uuid[4]),
+                      (uint*)(&uuid[8]), (uint*)(&uuid[12])) != 9) {
+            WARN("WARNING: %s symbol cache file has bad consistency header B\n", modname);
+            goto symcache_read_symfile_done;
+        }
+        if (current_version != modcache->current_version ||
+            compatibility_version != modcache->compatibility_version ||
+            memcmp(uuid, modcache->uuid, sizeof(uuid) != 0)) {
             LOG(1, "module version mismatch: %s symbol cache file is stale\n", modname);
             goto symcache_read_symfile_done;
         }
 #endif
         /* We could go further w/ CRC or even MD5 but not worth it for dev tool */
         if (cache_file_size != (uint)map_size) {
-            WARN("WARNING: %s symbol cache file is corrupted\n", modname);
+            WARN("WARNING: %s symbol cache file is corrupted: map=%d vs file=%d\n",
+                 modname, (uint)map_size, cache_file_size);
             goto symcache_read_symfile_done;
         }
     }
@@ -712,6 +751,13 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     modcache->checksum = mod->checksum;
     modcache->timestamp = mod->timestamp;
     modcache->module_internal_size = mod->module_internal_size;
+#else
+    modcache->timestamp = mod->timestamp;
+# ifdef MACOS
+    modcache->current_version = mod->current_version;
+    modcache->compatibility_version = mod->compatibility_version;
+    memcpy(modcache->uuid, mod->uuid, sizeof(modcache->uuid));
+# endif
 #endif
 
     modcache->modname = drmem_strdup(modname, HEAPSTAT_HASHTABLE);
