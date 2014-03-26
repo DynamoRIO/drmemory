@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.   All rights reserved.
+ * Copyright (c) 2014 Google, Inc.   All rights reserved.
  * **********************************************************/
 
 /*
@@ -33,38 +33,25 @@
 /**
 ***************************************************************************
 ***************************************************************************
-\page page_drmf Dr. Memory Framework
+\page page_umbra Umbra: Shadow Memory Extension
 
-Dr. Memory provides a Software Development Kit called the Dr. Memory
-Framework, or DRMF.  The DRMF allows other tools to leverage the powerful
-features built into Dr. Memory.  The DRMF is organized into separate
-DynamoRIO Extension libraries:
+The \p Umbra DynamoRIO Extension provides shadow memory features.
+\p Umbra is part of the Dr. Memory Framework.
 
- - \subpage page_drsyscall
-   <br>Detailed system call parameter monitoring
- - \subpage page_umbra
-   <br>Shadow memory mapping
- - \subpage page_drsymcache
-   <br>Persistent caching of symbol lookup data
- - Dr. Malloc
-   <br>Memory allocation tracking (<em>coming soon</em>)
- - Dr. Callstack
-   <br>Efficient callstack walking and storage (<em>coming soon</em>)
+ - \ref sec_umbra_setup
+ - \ref sec_umbra_mapping
+ - \ref sec_umbra_API
 
-\section sec_drmf_setup Using DRMF
+\section sec_umbra_setup Setup
 
-To use one or more of the components of DRMF, first locate the Dr. Memory
-Framework using the \p find_package command:
+To use \p Umbra with your client, first locate the Dr. Memory
+Framework.  Then use the standard method of using an Extension with the
+name \p umbra.  The two steps will look like this in your client's
+\p CMakeLists.txt file:
 
 \code
 find_package(DrMemoryFramework)
-\endcode
-
-All of the components of DRMF share the same versioning scheme.
-You can pass a required version to \p find_package:
-
-\code
-find_package(DrMemoryFramework 1.0)
+use_DynamoRIO_extension(clientname umbra)
 \endcode
 
 To point CMake at the framework, set the DrMemoryFramework_DIR variable to
@@ -75,19 +62,35 @@ using.  For example:
 cmake -G"Ninja" -DDynamoRIO_DIR=c:/path/to/DynamoRIO-Windows-4.1.0-8/cmake -DDrMemoryFramework_DIR=c:/path/to/DrMemory-Windows-1.6.0-2/drmf ../mysrcs/
 \endcode
 
-Once the package is located, use the standard method of using an Extension
-for each component your client uses.  The two steps combined will look like
-this example in your client's \p CMakeLists.txt file:
+That will automatically set up the include path and library dependence.
 
-\code
-find_package(DrMemoryFramework)
-use_DynamoRIO_extension(clientname drsyscall)
-use_DynamoRIO_extension(clientname umbra)
-\endcode
+Your client must call \p umbra_init() prior to accessing any API
+routines in \p umbra, and should call \p umbra_exit() at process exit
+time.
 
-That will automatically set up the include paths and library dependences.
+\section sec_umbra_mapping Shadow Memory Mapping
 
-See the documentation for the individual components for information on how
-to use each one.
+A shadow memory mapping scheme \p map is an opaque data structure that describes
+how an application memory address is mapped to its corresponding shadow memory address.
+A mapping scheme can be created using \p umbra_create_mapping() and destroyed using
+\p umbra_destroy_mapping().
+A shadow memory mapping scheme must be created before any use of any shadow memory.
+
+Once a mapping scheme is in place, shadow memory can be created and deleted for
+application memory using \p umbra_create_shadow_memory() and
+\p umbra_delete_shadow_memory().
+
+\section sec_umbra_API Umbra API
+
+\p Umbra provides the following key features:
+ -# Create/delete shadow memory
+ -# Read/write shadow memory
+ -# Iterate over every application/shadow memory region
+ -# Instrument code to access shadow memory
+
+The client can use the provided \p Umbra APIs to manange and access shadow memory
+without knowing the actual shadow memory address or how shadow memory is managed.
+Advanced users can create "special" shadow memory (read-only memory region with
+default value) or directly access shadow memory for better performanc and memory usage.
 
 */
