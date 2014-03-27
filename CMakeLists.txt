@@ -462,10 +462,15 @@ if (WIN32)
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
     # Putting this last mainly b/c only older versions (like my 6.3) are here.
     "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll")
-  if (NOT X64)
+  if (X64)
+    set(dbghelp_paths ${dbghelp_paths}
+      # For Visual Studio 2010+, x64 dbghelp.dll resides in Program
+      # Files (x86) rather than Program Files.
+      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
+  else (X64)
     set(dbghelp_paths ${dbghelp_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll")
-  endif (NOT X64)
+  endif (X64)
   file(GLOB dbghelp_hint ${dbghelp_paths})
   # XXX i#908: it seems cmake has trouble to lookup dbghelp.dll in
   # 64-bit directory, so we just explicitly check several possible locations.
@@ -499,16 +504,20 @@ if (WIN32)
   else ()
     message(STATUS "Using ${DBGHELP_DLL}")
   endif ()
-
   set(symsrv_paths
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # Putting this last mainly b/c only older versions (like my 6.3) are here.
     "${PROGFILES}/Debugging Tools for Windows/symsrv.dll")
-  if (NOT X64)
+  if (X64)
+    set(symsrv_paths ${symsrv_paths}
+      # For Visual Studio 2010+, x64 symsrv.dll resides in Program
+      # Files (x86) rather than Program Files.
+      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll")
+  else (X64)
     set(symsrv_paths ${symsrv_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll")
-  endif (NOT X64)
+  endif (X64)
   file(GLOB symsrv_hint ${symsrv_paths})
   if (symsrv_hint)
     list(GET symsrv_hint 0 symsrv_default)
