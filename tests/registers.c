@@ -56,6 +56,7 @@ static int array[128];
 void float_test_asm(double *zero);
 void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post);
 void subdword_test2_asm(char *undef, int *val1, int *val2);
+void addronly_test_asm(char *undef);
 
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
@@ -354,89 +355,7 @@ addronly_test(void)
     char *undef = (char *) malloc(128);
     unused[0] = 1;
     printf("before addronly test!\n");
-
-#ifdef WINDOWS
-    /* XXX i#403: add asm_defines.asm and write cross-os asm: this is getting
-     * hard to maintain w/ two copies
-     */
-    __asm {
-        pushad
-        mov   eax, undef
-
-        /* i#533: eflags restore */
-        inc   byte ptr [eax+128] /* partial aflags write so need aflags restore */
-        inc   eax /* ensure ebx and edx are the scratch regs to get xchg */
-        inc   eax
-        inc   eax
-        inc   eax
-        inc   ecx
-        inc   ecx
-        inc   ecx
-        inc   ecx
-        jmp   foo /* end bb */
-      foo:
-
-        inc   byte ptr [eax+128] /* partial aflags write so need aflags restore */
-        inc   ebx /* this time have eax and ecx as the scratch regs */
-        inc   ebx
-        inc   ebx
-        inc   ebx
-        mov   edx, 0
-        inc   edx
-        inc   edx
-        inc   edx
-        jmp   foo2 /* end bb */
-      foo2:
-
-        /* Undo modifications to avoid RtlHeap crash (i#924) */
-        dec   byte ptr [eax+124]
-        dec   byte ptr [eax+128]
-
-        popad
-    }
-#else
-    asm("pusha");
-    asm("mov   %0, %%eax" : : "g"(undef) : "eax");
-
-    /* i#533: eflags restore */
-    /* XXX: having separate asm lines means the compiler can insert spill code
-     * in between (rnk: clang -O0 does), but it means the entire sequence
-     * is one source line, messing up the line-based testing.  Going w/ separate
-     * lines for now since it works out in gcc: in the future we'll probably
-     * need separate, true asm anyway (for 64-bit) and we'll get the best of
-     * both worlds then.
-     */
-    asm("incb  128(%eax)");
-    asm("inc   %eax");
-    asm("inc   %eax");
-    asm("inc   %eax");
-    asm("inc   %eax");
-    asm("inc   %ecx");
-    asm("inc   %ecx");
-    asm("inc   %ecx");
-    asm("inc   %ecx");
-    asm("jmp foo");
-    asm("foo:");
-    asm("incb  128(%eax)");
-    asm("inc   %ebx");
-    asm("inc   %ebx");
-    asm("inc   %ebx");
-    asm("inc   %ebx");
-    asm("mov   $0, %edx");
-    asm("inc   %edx");
-    asm("inc   %edx");
-    asm("inc   %edx");
-    asm("jmp foo2");
-    asm("foo2:");
-
-    /* Undo the modifications our unaddrs made to make glibc happy when running
-     * natively.
-     */
-    asm("decb  124(%eax)");
-    asm("decb  128(%eax)");
-
-    asm("popa");
-#endif
+    addronly_test_asm(undef);
     free(undef);
     printf("after addronly test!\n");
 }
@@ -596,6 +515,52 @@ main(int argc, char *argv[])
 #else /* asm code *************************************************************/
 #include "cpp2asm_defines.h"
 START_FILE
+
+#define FUNCNAME addronly_test_asm
+/* void addronly_test_asm(char *undef); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1 /* undef, assuming 128 bytes */
+        /* save callee-saved regs */
+        PUSH_SEH(REG_XBX)
+        END_PROLOG
+
+        /* i#533: eflags restore */
+        inc      BYTE [REG_XAX + 128] /* partial aflags write so need aflags restore */
+        inc      REG_XAX /* ensure ebx and edx are the drmem scratch regs to get xchg */
+        inc      REG_XAX
+        inc      REG_XAX
+        inc      REG_XAX
+        inc      REG_XCX
+        inc      REG_XCX
+        inc      REG_XCX
+        inc      REG_XCX
+        jmp      foo /* end bb */
+      foo:
+
+        inc      BYTE [REG_XAX + 128] /* partial aflags write so need aflags restore */
+        inc      REG_XBX /* this time have eax and ecx as the drmem scratch regs */
+        inc      REG_XBX
+        inc      REG_XBX
+        inc      REG_XBX
+        mov      REG_XDX, 0
+        inc      REG_XDX
+        inc      REG_XDX
+        inc      REG_XDX
+        jmp      foo2 /* end bb */
+      foo2:
+
+        /* Undo modifications to avoid RtlHeap/free crash (i#924) */
+        dec      BYTE [REG_XAX + 124]
+        dec      BYTE [REG_XAX + 128]
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XBX
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
 
 #define FUNCNAME regtest_asm
 /* void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post); */
