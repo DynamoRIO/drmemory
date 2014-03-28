@@ -81,4 +81,12 @@ NtQuerySystemInformationEx(
     __out_opt PULONG ReturnLength
     );
 
+NTSTATUS
+NTAPI
+NtInitializeNlsFiles(
+    __out PVOID *BaseAddress,
+    __out PLCID DefaultLocaleId,
+    __out PLARGE_INTEGER DefaultCasingTableSize
+    );
+
 #endif /* _NTEXAPI_H_ 1 */

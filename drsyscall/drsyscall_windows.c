@@ -3152,7 +3152,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtInitializeNlsFiles", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtInitializeNlsFiles", OK, RNTST, 3,
+     {
+         {0, sizeof(PVOID), W|HT, DRSYS_TYPE_POINTER},
+         {1, sizeof(LCID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
     {{0,0},"NtIsUILanguageComitted", UNKNOWN, RNTST, 0, },
     {{0,0},"NtListTransactions", UNKNOWN, RNTST, 3, },
     {{0,0},"NtMarshallTransaction", UNKNOWN, RNTST, 6, },
@@ -3165,8 +3171,22 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenKeyTransacted", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtOpenPrivateNamespace", UNKNOWN, RNTST, 4, },
+    {{0,0},"NtOpenKeyTransacted", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtOpenPrivateNamespace", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtOpenResourceManager", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3422,11 +3442,23 @@ static syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{WIN7,0},"NtCreateProfileEx", UNKNOWN, RNTST, 10, },
-    {{WIN7,0},"NtDisableLastKnownGood", UNKNOWN, RNTST, 0, },
-    {{WIN7,0},"NtDrawText", UNKNOWN, RNTST, 1, },
-    {{WIN7,0},"NtEnableLastKnownGood", UNKNOWN, RNTST, 0, },
+    {{WIN7,0},"NtDisableLastKnownGood", OK, RNTST, 0, },
+    {{WIN7,0},"NtDrawText", OK, RNTST, 1,
+     {
+        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+     }
+    },
+    {{WIN7,0},"NtEnableLastKnownGood", OK, RNTST, 0, },
     {{WIN7,0},"NtNotifyChangeSession", UNKNOWN, RNTST, 8, },
-    {{WIN7,0},"NtOpenKeyTransactedEx", UNKNOWN, RNTST, 5, },
+    {{WIN7,0},"NtOpenKeyTransactedEx", OK, RNTST, 5,
+     {
+        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+        {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+        {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+        {4, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{WIN7,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6, },
     /* One info class reads data, which is special-cased */
     {{WIN7,0},"NtQuerySystemInformationEx", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 6,
