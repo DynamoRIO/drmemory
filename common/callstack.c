@@ -1726,7 +1726,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     }
     if (pt != NULL && lowest_frame > pt->stack_lowest_frame) {
         if (pt->stack_lowest_frame == NULL) {
-            /* for main thread we couldn't query esp before, so do so now */
+            /* For main thread we couldn't query esp before, so do so now (i#1495) */
             callstack_set_lowest_frame(drcontext);
         }
         if (lowest_frame > pt->stack_lowest_frame) {

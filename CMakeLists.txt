@@ -1701,28 +1701,13 @@ if (NOT BUILDING_SUB_PACKAGE)
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}\")")
 
   if (UNIX)
-    # FIXME: CPACK_INSTALLED_DIRECTORIES resolves symlinks instead of preserving
-    # (filed as http://www.itk.org/Bug/view.php?id=10096).
-    # So, since we're bundling a particular version anyway, we just take the ${LIB_SFX}
-    # file itself and discard all the version-named files
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}\")")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)")
-    # Include debug files
-    if (APPLE)
-      install(DIRECTORY ${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}
-        DESTINATION ${INSTALL_PREFIX}${DR_install_dir}/${LIB_ARCH}
-        FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-        WORLD_READ WORLD_EXECUTE
-        FILES_MATCHING
-        REGEX ".*.dSYM/.*DWARF/.*" # too painful to get right # of backslash for literal .
-        )
-    else ()
-      # These have version #s so we glob.
-      # Note that addr2line/gdb will still find the 1.x.debug since the name is
-      # stored in the library.
-      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)\nendforeach()")
-    endif ()
+    # CPACK_INSTALLED_DIRECTORIES since 2.8.3 now properly preserves symlinks
+    # (http://www.itk.org/Bug/view.php?id=10096) so we can just copy the dir.
+    install(DIRECTORY ${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}
+      DESTINATION ${INSTALL_PREFIX}${DR_install_dir}/${LIB_ARCH}
+      FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+      WORLD_READ WORLD_EXECUTE
+      PATTERN "libdrdecode*" EXCLUDE)
     # ext dir is currently empty but we need it to avoid drrun error (i#427)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/${build_type}\")")
     # CPack seems to ignore empty dirs so add a README file
