@@ -47,9 +47,6 @@ your computer:
 ********************
 \section sec_linux_utils System Requirements
 
-Ensure your Linux machine has perl installed, as it is used for the current
-front-end to Dr. Memory.
-
 Ensure your Linux installation is able to build 32-bit applications. On
 64-bit Ubuntu you will want these packages:
 
@@ -75,9 +72,6 @@ structure on your PATH, or invoke Dr. Memory via its full path.
 
 ********************
 \section sec_macos_utils System Requirements
-
-Ensure your Mac machine has perl installed, as it is used for the current
-front-end to Dr. Memory.
 
 Ensure your compiler is able to build 32-bit applications.  XCode by
 default is able to do so.

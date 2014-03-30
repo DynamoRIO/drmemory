@@ -44,8 +44,9 @@
  * _access(), and GetFullPathName().  Yet we must use UTF-8 for the DR
  * API routines.  We could go two routes: one is to have everything be UTF-16
  * and only convert before calling DR routines; the other is to have everything
- * be UTF-8 and convert when calling Windows routines.  We pick the latter
- * because we expect to port this to Linux.
+ * be UTF-8 and convert when calling Windows routines.  We pick the latter,
+ * which works better for Linux and Mac.  That's the model that
+ * drfrontendlib uses.
  */
 #ifdef WINDOWS
 # define UNICODE
@@ -63,6 +64,9 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef MACOS
+# include <sys/utsname.h>
+#endif
 
 #ifdef WINDOWS
 # include <dbghelp.h>
@@ -166,6 +170,20 @@ static bool
 on_supported_version(void)
 {
     return (win_ver.version <= DR_WINDOWS_VERSION_8_1);
+}
+#elif defined(MACOS)
+static bool
+on_supported_version(void)
+{
+    struct utsname uinfo;
+    int kernel_major;
+    if (uname(&uinfo) != 0)
+        return false;
+#   define MIN_DARWIN_VERSION_SUPPORTED 11  /* OSX 10.7.x */
+#   define MAX_DARWIN_VERSION_SUPPORTED 13  /* OSX 10.9.x */
+    return (dr_sscanf(uinfo.release, "%d", &kernel_major) == 1 &&
+            kernel_major <= MAX_DARWIN_VERSION_SUPPORTED &&
+            kernel_major >= MIN_DARWIN_VERSION_SUPPORTED);
 }
 #endif /* WINDOWS */
 
@@ -286,7 +304,7 @@ print_usage(bool full)
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
             fprintf(stderr, "  -%-28s [%6s]  %s\n", #name,              \
-                    bool_string[(int)(ptr_int_t)defval], short);        \
+                    bool_string[(ptr_int_t)defval >= 1 ? 1 : 0], short);\
         } else if (TYPE_HAS_RANGE_##type)                               \
             fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <int>", #defval, short); \
         else                                                            \
@@ -879,7 +897,9 @@ _tmain(int argc, TCHAR *targv[])
 #ifdef WINDOWS
     char *pidfile = NULL;
 #endif
+#ifndef MACOS /* XXX i#1286: implement nudge on MacOS */
     process_id_t nudge_pid = 0;
+#endif
     bool native_parent = false;
     size_t native_parent_pos = 0; /* holds cliops_sofar of "-native_parent" */
 
@@ -922,6 +942,9 @@ _tmain(int argc, TCHAR *targv[])
      */
     if (!on_supported_version())
         fatal("this version of Windows is not supported by Dr. Memory.");
+#elif defined(MACOS)
+    if (!on_supported_version())
+        fatal("this version of Mac OSX is not supported by Dr. Memory.");
 #endif
 
 #if defined(WINDOWS) && !defined(_UNICODE)
@@ -1171,11 +1194,13 @@ _tmain(int argc, TCHAR *targv[])
             BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                      drops_sofar, len, "%s ", argv[i]);
         }
+#ifndef MACOS /* XXX i#1286: implement nudge on MacOS */
         else if (strcmp(argv[i], "-nudge") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
             nudge_pid = strtoul(argv[++i], NULL, 10);
         }
+#endif
         else if (strcmp(argv[i], "-native_parent") == 0) {
             native_parent = true;
             native_parent_pos = cliops_sofar;
@@ -1260,6 +1285,7 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
+#ifndef MACOS /* XXX i#1286: implement nudge on MacOS */
     if (nudge_pid != 0) {
         if (i < argc)
             usage("%s", "-nudge does not take an app to run");
@@ -1273,6 +1299,7 @@ _tmain(int argc, TCHAR *targv[])
         }
         exit(0);
     }
+#endif
 
     if (i >= argc)
         usage("%s", "no app specified");

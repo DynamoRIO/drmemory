@@ -107,9 +107,11 @@ OPTION_FRONT_BOOL(front, follow_children, true,
                   "Monitor child processes",
                   "Monitor child processes by following across execve on Linux or CreateProcess on Windows.  On Linux, monitoring always continues across a fork.")
 
+#ifndef MACOS /* XXX i#1286: implement nudge on MacOS */
 OPTION_FRONT(side, nudge, uint, 0, 0, UINT_MAX,
              "Process id to nudge",
-             "Use this option to 'nudge' an already-running process in order to request leak checking and other "TOOLNAME" actions that normally only occur when the process exits.")
+             "Use this option to 'nudge' an already-running process in order to request leak checking and other "TOOLNAME" actions that normally only occur when the process exits.  Not currently available on MacOS.")
+#endif
 
 OPTION_FRONT_BOOL(script, v, false,
                   "Display verbose information in the "TOOLNAME" front end",
