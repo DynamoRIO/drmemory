@@ -194,7 +194,7 @@ Here is a sample command line for compiling your application that combines
 all of the above recommendations:
 
 \verbatim
-g++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+c++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 \endverbatim
 
 ********************

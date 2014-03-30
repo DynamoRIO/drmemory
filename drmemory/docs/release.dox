@@ -42,11 +42,13 @@ This section is divided into the following subsections:
 
 The Dr. Memory distribution contains the following:
 
- - The front-end executable \p drmemory for launch Dr. Memory.
+ - The front-end executable \p drmemory for launching Dr. Memory.
  - The back-end of Dr. Memory, contained in the \p bin and \p dynamorio
    subdirectories.  Dr. Memory runs on top of the DynamoRIO tool engine
    (see http://dynamorio.org for more information on DynamoRIO).
  - Documentation for Dr. Memory (you're looking at it).
+ - \ref page_drstrace
+ - \ref page_symquery
 
 ***************************************************************************
 \htmlonly

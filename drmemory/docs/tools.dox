@@ -80,23 +80,23 @@ NtClose
         retval: 0x0 (type=NTSTATUS, size=0x4)
 \endcode
 
-\section Child Processes
+\section sec_drstrace_child Child Processes
 
 By default, \p drstrace traces all child processes.  The runtime option \p
 -no_follow_children overrides this and only traces the parent process.
 
-\section Limitations
+\section sec_drstrace_limits Limitations
 
-\subsection Window of Tracing
+\subsection sec_drstrace_window Window of Tracing
 
 Currently, \p drstrace starts logging only at the start of the executable's
 entry point.  Thus, system calls executed by the initialization code in
 statically imported shared libraries will not be seen.  However, the
 logging for child processes when the parent is under the control of
 \p drstrace starts earlier, during shared library initialization.  Future
-versions will provide earlier start for the initial process.
+versions will provide an earlier start point for the initial process.
 
-\subsection Windows XP and 2000 Console Output
+\subsection sec_drstrace_console Windows XP and 2000 Console Output
 
 On Windows XP and Windows 2000, when \p drstrace is run from the \p cmd
 console and its output is not sent to a file, the printed output stops

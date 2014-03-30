@@ -1791,8 +1791,13 @@ dr_init(client_id_t id)
 #if defined(WIN32) && defined(USE_DRSYMS)
     dr_enable_console_printing();
 #endif
-    if (options.summary)
+    if (options.summary) {
         NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
+#ifdef MACOS
+        NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
+        NOTIFY("problems encountered to https://code.google.com/p/drmemory/issues/list."NL);
+#endif
+    }
 # ifdef WINDOWS
     if (options.summary)
         NOTIFY("Running \"%S\""NL, get_app_commandline());
