@@ -45,6 +45,8 @@ extern syscall_info_t syscall_info_bsd[];
 extern size_t count_syscall_info_bsd;
 
 /* FIXME i#1440: add mach syscall table */
+#define SYSCALL_NUM_MARKER_MACH      0x1000000
+#define SYSCALL_NUM_MARKER_MACHDEP   0x3000000
 
 /* FIXME i#1440: add machdep syscall table */
 
@@ -213,5 +215,11 @@ drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
 {
-    return !TEST(EFLAGS_CF, mc->eflags);
+    if (TEST(SYSCALL_NUM_MARKER_MACH, sysnum.number)) {
+        /* FIXME i#1440: Mach syscalls vary (for some KERN_SUCCESS=0 is success,
+         * for others that return mach_port_t 0 is failure (I think?).
+         */
+        return ((ptr_int_t)mc->xax >= 0);
+    } else
+        return !TEST(EFLAGS_CF, mc->eflags);
 }

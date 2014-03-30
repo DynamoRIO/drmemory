@@ -603,6 +603,7 @@ drmf_status_t
 drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT)
 {
 #ifdef MACOS
+    /* XXX: we actually could return a value for Mach syscalls */
     return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
 #else
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
