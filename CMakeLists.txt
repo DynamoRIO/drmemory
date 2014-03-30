@@ -1650,8 +1650,10 @@ install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   FILES_MATCHING
   PATTERN "*.debug"
   PATTERN "*.pdb"
+  REGEX ".*.dSYM/.*DWARF/.*" # too painful to get right # of backslash for literal .
   ${install_pdb_exclude}
   )
+
 install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   DESTINATION "${INSTALL_BIN}"
   FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE
@@ -1659,6 +1661,7 @@ install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   FILES_MATCHING
   PATTERN "*.debug"
   PATTERN "*.pdb"
+  REGEX ".*.dSYM/.*DWARF/.*" # too painful to get right # of backslash for literal .
   ${install_pdb_exclude}
   )
 
@@ -1695,29 +1698,28 @@ if (NOT BUILDING_SUB_PACKAGE)
     # (filed as http://www.itk.org/Bug/view.php?id=10096).
     # So, since we're bundling a particular version anyway, we just take the ${LIB_SFX}
     # file itself and discard all the version-named files
-    if (DEBUG_BUILD)
-      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
-      # Include both .debug files.  These have version #s so we glob.
-      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)\nendforeach()")
-      # ext dir is currently empty but we need it to avoid drrun error (i#427)
-      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug\")")
-      # CPack seems to ignore empty dirs so add a README file
-      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README.txt\" \"Currently empty.\n\")")
-    else (DEBUG_BUILD)
-      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
-      # Include both .debug files.  These have version #s so we glob.
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}\")")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)")
+    # Include debug files
+    if (APPLE)
+      install(DIRECTORY ${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}
+        DESTINATION ${INSTALL_PREFIX}${DR_install_dir}/${LIB_ARCH}
+        FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
+        FILES_MATCHING
+        REGEX ".*.dSYM/.*DWARF/.*" # too painful to get right # of backslash for literal .
+        )
+    else ()
+      # These have version #s so we glob.
       # Note that addr2line/gdb will still find the 1.x.debug since the name is
       # stored in the library.
-      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)\nendforeach()")
-      # ext dir is currently empty but we need it to avoid drrun error (i#427)
-      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release\")")
-      # CPack seems to ignore empty dirs so add a README file
-      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README.txt\" \"Currently empty.\n\")")
-    endif (DEBUG_BUILD)
+      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/${build_type}/\" COPYONLY)\nendforeach()")
+    endif ()
+    # ext dir is currently empty but we need it to avoid drrun error (i#427)
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/${build_type}\")")
+    # CPack seems to ignore empty dirs so add a README file
+    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/${build_type}/README.txt\" \"Currently empty.\n\")")
   endif (UNIX)
 
   # can't find way to package external individual files (can do whole dir)
@@ -1769,6 +1771,7 @@ install(DIRECTORY ${framework_bindir}/
   FILES_MATCHING
   PATTERN "*.debug"
   PATTERN "*.pdb"
+  REGEX ".*.dSYM/.*DWARF/.*" # too painful to get right # of backslash for literal .
   PATTERN "*_int.pdb" EXCLUDE
   )
 
