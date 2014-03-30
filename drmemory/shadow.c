@@ -1471,15 +1471,22 @@ shadow_registers_thread_init(void *drcontext)
         sr->eflags = SHADOW_DEFINED;
     } else {
         /* we are in at start for new threads */
-        memset(sr, SHADOW_DWORD_UNDEFINED, sizeof(*sr));
+        uint init_shadow = SHADOW_DWORD_UNDEFINED;
+#ifdef MACOS
+        /* With current late thread takeover (DRi#1403 covers moving it earlier),
+         * we have to mark all as defined.
+         */
+        init_shadow = SHADOW_DWORD_DEFINED;
+#endif
+        memset(sr, init_shadow, sizeof(*sr));
         sr->aux = aux;
-        memset(sr->aux, SHADOW_DWORD_UNDEFINED, sizeof(*sr->aux));
-        sr->eflags = SHADOW_UNDEFINED;
-#ifdef UNIX
+        memset(sr->aux, init_shadow, sizeof(*sr->aux));
+        sr->eflags = init_shadow;
+#ifdef LINUX
         /* PR 426162: post-clone, esp and eax are defined */
         sr->esp = SHADOW_DWORD_DEFINED;
         sr->eax = SHADOW_DWORD_DEFINED;
-#else
+#elif defined(WINDOWS)
         /* new thread on Windows has esp defined */
         sr->esp = SHADOW_DWORD_DEFINED;
 #endif

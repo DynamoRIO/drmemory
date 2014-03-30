@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -18,4 +19,5 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# empty
+Error #1: UNADDRESSABLE ACCESS: reading 4 byte(s)
+pthreads.c:79

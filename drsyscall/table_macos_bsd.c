@@ -1966,16 +1966,16 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_bsdthread_create /*360*/}, "bsdthread_create", OK, DRSYS_TYPE_POINTER, 5,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
-         {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
-         {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_POINTER},
+         {1, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {2, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_POINTER},
+         {3, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {4, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{SYS_bsdthread_terminate /*361*/}, "bsdthread_terminate", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},

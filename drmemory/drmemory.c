@@ -1183,7 +1183,7 @@ set_thread_initial_structures(void *drcontext)
         set_initial_range((byte *)stack_reserve, (byte *)teb->StackBase);
     }
     dr_switch_to_dr_state(drcontext);
-#else /* WINDOWS */
+#elif defined(LINUX)
     /* Anything to do here?  most per-thread user address space structures
      * will be written by user-space code, which we will observe.
      * This includes a thread's stack: we'll see the mmap to allocate,
@@ -1192,6 +1192,26 @@ set_thread_initial_structures(void *drcontext)
      * but we originally couldn't get the stack bounds here (xref PR
      * 395156) so we instead watch the arg to SYS_clone.
      */
+#elif defined(MACOS)
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    dr_mem_info_t info;
+    IF_DEBUG(bool ok;)
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
+    IF_DEBUG(ok = )
+        dr_get_mcontext(drcontext, &mc);
+    ASSERT(ok, "unable to get mcontext for thread");
+
+    if (dr_query_memory_ex((app_pc)mc.xsp, &info)) {
+        LOG(2, "thread initial stack: "PFX"-"PFX"-"PFX"\n",
+            info.base_pc, mc.xsp, info.base_pc + info.size);
+        ASSERT(info.base_pc < (byte*)mc.xsp && info.base_pc + info.size >= (byte*)mc.xsp,
+               "invalid stack");
+        /* We should have already marked this region as defined, as an mmap */
+        if (options.check_stack_bounds) {
+            shadow_set_range(info.base_pc, (byte *)mc.xsp, SHADOW_UNADDRESSABLE);
+        }
+    }
 #endif /* WINDOWS */
 }
 

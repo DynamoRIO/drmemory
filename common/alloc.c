@@ -4255,6 +4255,9 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     case SYS_brk:
     case SYS_clone:
 # endif
+# ifdef MACOS
+    case SYS_bsdthread_create:
+# endif
         return true;
     default:
         return false;
@@ -4412,6 +4415,14 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 # if defined(LINUX) && defined(DEBUG)
     else if (sysnum == SYS_brk) {
         pt->sbrk = (app_pc) dr_syscall_get_param(drcontext, 0);
+    }
+# endif
+# ifdef MACOS
+    else if (sysnum == SYS_bsdthread_terminate) {
+        app_pc base = (app_pc) dr_syscall_get_param(drcontext, 0);
+        size_t size = (size_t) dr_syscall_get_param(drcontext, 1);
+        LOG(2, "Thread stack de-allocation "PFX"-"PFX"\n", base, base + size);
+        client_handle_munmap(base, size, true/*anon*/);
     }
 # endif
 #endif /* WINDOWS */
@@ -4780,6 +4791,18 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
             heap_region_add(heap_start, (byte *) result, HEAP_ARENA, 0);
         } else
             heap_region_adjust(heap_start, (byte *) result);
+    }
+# endif
+# ifdef MACOS
+    if (sysnum == SYS_bsdthread_create) {
+        dr_mem_info_t info;
+        if (dr_query_memory_ex((app_pc)result, &info)) {
+            LOG(2, "New thread stack allocation is "PFX"-"PFX"\n",
+                info.base_pc, info.base_pc + info.size);
+            client_handle_mmap(drcontext, info.base_pc, info.size, true/*anon*/);
+        } else
+            WARN("WARNING: failed to find new thread stack bounds @"PFX, result);
+        /* We mark beyond-TOS as unaddressable in set_thread_initial_structures() */
     }
 # endif
 #endif /* WINDOWS */

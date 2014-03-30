@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -68,6 +69,15 @@ process(void *arg)
     register double width, localsum;
     register int i;
     register int iproc;
+
+    /* Ensure new thread stacks are marked unaddr beyond TOS, but only for
+     * threads we know will get here, to avoid flakiness.
+     */
+    if ((int)arg < 2) {
+        int buf[4];
+        i = 0;
+        i = buf[i - 64];
+    }
 
 #if VERBOSE
     fprintf(stderr, "\tthread %d starting\n", id);
@@ -144,7 +154,7 @@ main(int argc, char **argv)
      */
     intervals = 10000000;
     for (i = 0; i < NUM_THREADS; i++) {
-        if (pthread_create(&thread[i], NULL, process, (void *)i)) {
+        if (pthread_create(&thread[i], NULL, process, (void *)(i+2))) {
             fprintf(stderr, "%s: cannot make thread\n", argv[0]);
             exit(1);
         }
