@@ -367,6 +367,28 @@ callstack_exit(void)
     drmgr_unregister_tls_field(tls_idx_callstack);
 }
 
+static void
+callstack_set_lowest_frame(void *drcontext)
+{
+    tls_callstack_t *pt = (tls_callstack_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_callstack);
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    app_pc stack_base;
+    size_t stack_size;
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
+    dr_get_mcontext(drcontext, &mc);
+    if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
+        LOG(2, "lowest frame for thread "TIDFMT" = top of stack "PFX"-"PFX
+            ", sp="PFX"\n",
+            dr_get_thread_id(drcontext), stack_base, stack_base + stack_size, mc.xsp);
+        pt->stack_lowest_frame = stack_base + stack_size;
+    } else {
+        LOG(2, "unable to query stack: leaving lowest frame for thread "TIDFMT
+            " NULL\n", dr_get_thread_id(drcontext));
+    }
+}
+
 void
 callstack_thread_init(void *drcontext)
 {
@@ -419,21 +441,7 @@ callstack_thread_init(void *drcontext)
         dr_free_module_data(data);
         first = false;
     } else {
-        dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-        app_pc stack_base;
-        size_t stack_size;
-        mc.size = sizeof(mc);
-        mc.flags = DR_MC_CONTROL; /* only need xsp */
-        dr_get_mcontext(drcontext, &mc);
-        if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
-            LOG(2, "lowest frame for thread "TIDFMT" = top of stack "PFX"-"PFX
-                ", sp="PFX"\n",
-                dr_get_thread_id(drcontext), stack_base, stack_base + stack_size, mc.xsp);
-            pt->stack_lowest_frame = stack_base + stack_size;
-        } else {
-            LOG(2, "unable to query stack: leaving lowest frame for thread "TIDFMT
-                " NULL\n", dr_get_thread_id(drcontext));
-        }
+        callstack_set_lowest_frame(drcontext);
     }
 #endif
 }
@@ -1231,7 +1239,8 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
           * xref i#246.
           */
          (!top_frame && (pt->stack_lowest_frame - fp) < FP_NO_SCAN_NEAR_LOW_THRESH))) {
-        LOG(4, "find_next_fp: aborting b/c beyond stack_lowest_frame\n");
+        LOG(4, "find_next_fp: aborting b/c "PFX" is beyond stack_lowest_frame "PFX"\n",
+            fp, pt->stack_lowest_frame);
         return NULL;
     }
     /* Check the cache.  We verify by reading the retaddr.  With
@@ -1716,8 +1725,14 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  FP_PREFIX"<call stack frame ptr "PFX" unreadable>"NL, pc);
     }
     if (pt != NULL && lowest_frame > pt->stack_lowest_frame) {
-        pt->stack_lowest_frame = lowest_frame;
-        LOG(4, "set lowest frame to "PFX"\n", lowest_frame);
+        if (pt->stack_lowest_frame == NULL) {
+            /* for main thread we couldn't query esp before, so do so now */
+            callstack_set_lowest_frame(drcontext);
+        }
+        if (lowest_frame > pt->stack_lowest_frame) {
+            pt->stack_lowest_frame = lowest_frame;
+            LOG(4, "set lowest frame to "PFX"\n", lowest_frame);
+        }
     }
 
     if (buf != NULL) {
