@@ -131,9 +131,9 @@ static bool verbose;
 static bool quiet;
 static bool results_to_stderr = true;
 static bool no_resfile; /* no results file expected */
-static bool top_stats;
 
 #ifdef WINDOWS
+static bool top_stats;
 static bool batch; /* no popups */
 static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
 static bool fetch_crt_syms_only = true;
@@ -919,7 +919,9 @@ _tmain(int argc, TCHAR *targv[])
     bool dr_logdir_specified = false;
     bool doubledash_present = false;
 
+#ifdef WINDOWS
     time_t start_time, end_time;
+#endif
 
     drfront_status_t sc;
     bool res;
@@ -932,7 +934,6 @@ _tmain(int argc, TCHAR *targv[])
 #ifdef WINDOWS
     /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is
      * 6.2 (Win8)!  Thus we use DR's version.
-     * XXX: we should add this to drfrontendlib
      */
     win_ver.size = sizeof(win_ver);
     if (!dr_get_os_version(&win_ver))
@@ -1145,11 +1146,11 @@ _tmain(int argc, TCHAR *targv[])
             fetch_crt_syms_only = false;
             continue;
         }
-#endif
         else if (strcmp(argv[i], "-top_stats") == 0) {
             top_stats = true;
             continue;
         }
+#endif
         else if (strcmp(argv[i], "-dr_debug") == 0) {
             use_dr_debug = true;
             continue;
@@ -1572,8 +1573,10 @@ _tmain(int argc, TCHAR *targv[])
         goto error; /* actually won't get here */
     }
 
+#ifdef WINDOWS
     if (top_stats)
         start_time = time(NULL);
+#endif
     dr_inject_process_run(inject_data);
 #ifdef UNIX
     fatal("Failed to exec application");
@@ -1582,13 +1585,13 @@ _tmain(int argc, TCHAR *targv[])
     errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
     if (errcode != WAIT_OBJECT_0)
         info("failed to wait for app: %d\n", errcode);
-#endif
     if (top_stats) {
         double wallclock;
         end_time = time(NULL);
         wallclock = difftime(end_time, start_time);
         dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
     }
+#endif
     if (native_parent) {
         if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
             != DR_SUCCESS)
