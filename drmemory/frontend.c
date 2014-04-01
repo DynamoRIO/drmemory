@@ -327,7 +327,7 @@ print_usage(bool full)
 #define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
     drfront_status_t sc = drfront_bufprint(buf, bufsz, &(sofar), &(len), __VA_ARGS__); \
     if (sc != DRFRONT_SUCCESS) \
-        fatal("drfront_bufprint failed: %d\n", sc); \
+        fatal("failed (status=%d) to append to buffer", sc); \
 } while (0)
 
 #ifdef WINDOWS
@@ -337,7 +337,7 @@ char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
 {
     drfront_status_t sc = drfront_char_to_tchar(str, wbuf, wbuflen);
     if (sc != DRFRONT_SUCCESS)
-        fatal("drfront_char_to_tchar failed: %d\n", sc);
+        fatal("failed (status=%d) to convert UTF-8 to UTF-16", sc);
 }
 #endif
 
@@ -396,7 +396,7 @@ get_absolute_path(const char *src, char *buf, size_t buflen/*# elements*/)
 {
     drfront_status_t sc = drfront_get_absolute_path(src, buf, buflen);
     if (sc != DRFRONT_SUCCESS)
-        fatal("drfront_get_absolute_path failed: %d\n", sc);
+        fatal("failed (status=%d) to convert %s to an absolute path", sc, src);
 }
 
 static void
@@ -404,7 +404,7 @@ get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
 {
     drfront_status_t sc = drfront_get_app_full_path(app, buf, buflen);
     if (sc != DRFRONT_SUCCESS)
-        fatal("drfront_get_app_full_path failed: %d\n", sc);
+        warn("failed (status=%d) to find application %s", sc, app);
 }
 
 static bool
@@ -954,11 +954,11 @@ _tmain(int argc, TCHAR *targv[])
     /* Convert to UTF-8 if necessary */
     sc = drfront_convert_args((const TCHAR **)targv, &argv, argc);
     if (sc != DRFRONT_SUCCESS)
-        fatal("failed to process args: %d\n", sc);
+        fatal("failed to process args: %d", sc);
 #endif
 
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
-    get_absolute_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
+    get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
     c = buf + strlen(buf) - 1;
     while (*c != DIRSEP && *c != ALT_DIRSEP && c > buf)
         c--;
@@ -1609,7 +1609,7 @@ _tmain(int argc, TCHAR *targv[])
  cleanup:
     sc = drfront_cleanup_args(argv, argc);
     if (sc != DRFRONT_SUCCESS)
-        fatal("drfront_cleanup_args failed: %d\n", sc);
+        fatal("failed to free memory for args: %d", sc);
     if (errcode != 0) {
         /* We use a prefix to integrate better with tool output, esp inside
          * the VS IDE as an External Tool.
