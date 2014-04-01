@@ -459,17 +459,19 @@ if (WIN32)
     "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
-    # Putting this last mainly b/c only older versions (like my 6.3) are here.
-    "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
   if (X64)
     set(dbghelp_paths ${dbghelp_paths}
       # For Visual Studio 2010+, x64 dbghelp.dll resides in Program
       # Files (x86) rather than Program Files.
-      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
+      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
+      # For older versions of windbg, x64 dbghelp.dll resides here.
+      "${PROGFILES}/Debugging Tools for Windows (x64)/dbghelp.dll")
   else (X64)
     set(dbghelp_paths ${dbghelp_paths}
-      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll")
+      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll"
+      # Putting this last mainly b/c only older versions (like my 6.3) are here.
+      "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll")
   endif (X64)
   file(GLOB dbghelp_hint ${dbghelp_paths})
   # XXX i#908: it seems cmake has trouble to lookup dbghelp.dll in
@@ -506,17 +508,19 @@ if (WIN32)
   endif ()
   set(symsrv_paths
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
-    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
-    # Putting this last mainly b/c only older versions (like my 6.3) are here.
-    "${PROGFILES}/Debugging Tools for Windows/symsrv.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
   if (X64)
     set(symsrv_paths ${symsrv_paths}
       # For Visual Studio 2010+, x64 symsrv.dll resides in Program
       # Files (x86) rather than Program Files.
-      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll")
+      "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
+      # For older versions of windbg, x64 symsrv.dll resides here.
+      "${PROGFILES}/Debugging Tools for Windows (x64)/symsrv.dll")
   else (X64)
     set(symsrv_paths ${symsrv_paths}
-      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll")
+      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll"
+      # Putting this last mainly b/c only older versions (like my 6.3) are here.
+      "${PROGFILES}/Debugging Tools for Windows/symsrv.dll")
   endif (X64)
   file(GLOB symsrv_hint ${symsrv_paths})
   if (symsrv_hint)
