@@ -459,7 +459,7 @@ newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
 if (UNIX)
   newtest(signal signal.c)
-  newtest(unix_syscalls unix_syscalls.c)
+  newtest(syscalls_unix syscalls_unix.c)
 
   if (NOT APPLE)
     ##################################################
@@ -493,7 +493,7 @@ if (UNIX)
           VERBATIM)
       add_custom_target("${kmod_name}"
           DEPENDS "${kmod_bin}")
-      add_dependencies(unix_syscalls "${kmod_name}")
+      add_dependencies(syscalls_unix "${kmod_name}")
       set(kmod_build_files "${kmod_bin_dir}/modules.order"
           "${kmod_bin_dir}/Module.symvers"
           "${kmod_bin_dir}/${kmod_name}.c"
@@ -739,6 +739,7 @@ if (TOOL_DR_MEMORY)
     newtest_ex(gdi gdi.cpp ""
       "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread" ""
       OFF "" 0)
+    newtest(syscalls_win syscalls_win.cpp)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement

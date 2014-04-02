@@ -21,53 +21,53 @@
 Error #1: UNADDRESSABLE ACCESS: reading 10 byte(s)
 system call open
 unaddr_open
-unix_syscalls.c:66
+syscalls_unix.c:66
 overlaps memory that was freed
 
 Error #2: UNINITIALIZED READ: reading 10 byte(s)
 system call open
 uninit_open
-unix_syscalls.c:85
+syscalls_unix.c:85
 
 Error #3: UNADDRESSABLE ACCESS: reading 12 byte(s)
 system call finit_module
 unaddr_finit_module
-unix_syscalls.c:161
+syscalls_unix.c:161
 overlaps memory that was freed
 
 # Number of bytes can vary depending on where 1st null char happens to be:
 Error #4: UNINITIALIZED READ: reading
 system call finit_module
 uninit_finit_module
-unix_syscalls.c:150
+syscalls_unix.c:150
 
 Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-unix_syscalls.c:177
+syscalls_unix.c:177
 overlaps memory that was freed
 
 Error #6: UNINITIALIZED READ: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-unix_syscalls.c:177
+syscalls_unix.c:177
 
 Error #7: UNINITIALIZED READ: reading 20 byte(s)
 system call process_vm_readv
 unaddr_process_vm_readv_writev
-unix_syscalls.c:211
+syscalls_unix.c:211
 
 Error #8: UNADDRESSABLE ACCESS: writing 2 byte(s)
 system call process_vm_readv
 unaddr_process_vm_readv_writev
-unix_syscalls.c:211
+syscalls_unix.c:211
 
 Error #9: UNINITIALIZED READ: reading 10 byte(s)
 system call process_vm_writev
 unaddr_process_vm_readv_writev
-unix_syscalls.c:213
+syscalls_unix.c:213
 
 Error #10: UNADDRESSABLE ACCESS: reading 2 byte(s)
 system call process_vm_writev
 unaddr_process_vm_readv_writev
-unix_syscalls.c:213
+syscalls_unix.c:213
