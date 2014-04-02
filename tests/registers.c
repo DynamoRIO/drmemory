@@ -57,6 +57,7 @@ void float_test_asm(double *zero);
 void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post);
 void subdword_test2_asm(char *undef, int *val1, int *val2);
 void addronly_test_asm(char *undef);
+void subdword_test_asm(char *undef, int *val);
 
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
@@ -92,40 +93,7 @@ subdword_test(void)
     char *undef = (char *) malloc(128);
     int val;
     printf("before subdword test!\n");
-    /* FIXME i#934: convert to cross-platform asm routine */
-#ifdef WINDOWS
-    __asm {
-        /* loads */
-        mov   eax, 0
-        mov   ecx, undef
-        add   al, byte ptr [ecx + 37]
-        js    uninit
-      uninit:
-        sub   ah, al
-        mov   val, eax
-        /* stores */
-        mov   eax, 0
-        sub   byte ptr [ecx + 1], ah
-        js    uninit2
-      uninit2:
-        nop
-    }
-#else
-    /* values we can recognize, but stay under undef[128] */
-    asm("mov   %0, %%ecx" : : "g"(undef) : "ecx");
-    /* loads */
-    asm("mov   $0, %eax");
-    asm("add   37(%ecx), %al"); /* write to flags */
-    asm("js    uninit"); /* uninit eflags! */
-    asm("uninit:");
-    asm("sub   %al, %ah");
-    asm("mov   %%eax, %0" : "=m"(val));
-    /* stores */
-    asm("mov   $0, %eax");
-    asm("sub   %ah, 1(%ecx)"); /* write to flags */
-    asm("js    uninit2"); /* uninit eflags! */
-    asm("uninit2:");
-#endif
+    subdword_test_asm(undef, &val); /* val is set uninit in subdword_test_asm */
     if (val == 0) /* uninit */
         array[0] = val;
     printf("after subdword test!\n");
@@ -515,6 +483,31 @@ main(int argc, char *argv[])
 #else /* asm code *************************************************************/
 #include "cpp2asm_defines.h"
 START_FILE
+
+#define FUNCNAME subdword_test_asm
+/* void subword_test_asm(char *undef, int *val); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1 /* undef, assuming 128 bytes */
+        mov      REG_XDX, ARG2 /* val */
+        END_PROLOG
+
+        mov      REG_XAX, 0
+        add      al, BYTE [REG_XCX + 37] /* write to flags */
+        js       uninit /* uninit eflags! */
+       uninit:
+        sub      ah, al
+        mov      [REG_XDX], REG_XAX /* set val uninit */
+        /* stores */
+        mov      REG_XAX, 0
+        sub      BYTE [REG_XCX + 1], ah /* write to flags */
+        js       uninit2 /* uninit eflags! */
+       uninit2:
+        nop
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
 
 #define FUNCNAME addronly_test_asm
 /* void addronly_test_asm(char *undef); */

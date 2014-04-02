@@ -24,19 +24,19 @@
 # while pattern mode reports "writing 1 byte(s)" error.
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:949
+registers.c_asm.asm:942
 Error #2: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:961
+registers.c_asm.asm:954
 Error #3: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:974
+registers.c_asm.asm:967
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:532
+registers.c_asm.asm:528
 Error #2: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:544
+registers.c_asm.asm:540
 Error #3: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:557
+registers.c_asm.asm:553
 %endif
 Error #4: LEAK 15 direct bytes + 0 indirect bytes
 Error #5: LEAK 15 direct bytes + 0 indirect bytes
