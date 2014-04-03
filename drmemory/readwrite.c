@@ -4440,8 +4440,13 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                     stack_size = allocation_size((app_pc)mc->xsp, &stack_base);
                 LOG(4, "comparing %08x %08x %08x %08x\n",
                     addr+i, stack_base, stack_base+stack_size, mc->xsp);
-                if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
-                    addr+i < (app_pc)mc->xsp)
+                /* We used to also check addr+<xsp but if we mess up our TOS tracking
+                 * we end up not reporting any unaddr, as if addr_on_stack is false
+                 * then we consider the stack itself an "unknown region" (i#1501).
+                 * The risk of going to full stack_size is that our memquery might
+                 * see a guard page or something else up there?
+                 */
+                if (addr+i >= stack_base && addr+i < stack_base+stack_size)
                     addr_on_stack = true;
                 if (!check_unaddressable_exceptions(is_write, loc,
                                                     addr + i, sz, addr_on_stack, mc)) {
