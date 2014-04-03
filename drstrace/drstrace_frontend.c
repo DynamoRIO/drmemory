@@ -206,6 +206,7 @@ _tmain(int argc, TCHAR *targv[])
 
     bool use_dr_debug = false;
     bool use_drstrace_debug = false;
+    bool dr_logdir_specified = false;
 
     char *app_name;
     char full_app_name[MAXIMUM_PATH];
@@ -269,10 +270,7 @@ _tmain(int argc, TCHAR *targv[])
             i++;
             break;
 	}
-        /* drag-and-drop does not include "--" so we try to identify the app.
-         * we explicitly parse -logdir and -suppress, and all the other
-         * client ops that take args take numbers so this should be safe.
-         */
+        /* drag-and-drop does not include "--" so we try to identify the app. */
         else if (argv[i][0] != '-' && ends_in_exe(argv[i])) {
             /* leave i alone: this is the app itself */
             break;
@@ -329,6 +327,8 @@ _tmain(int argc, TCHAR *targv[])
         else if (strcmp(argv[i], "-dr_ops") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
+            if (strstr(argv[i+1], "-logdir ") != NULL)
+                dr_logdir_specified = true;
             BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                      drops_sofar, len, "%s ", argv[++i]);
         }
@@ -431,13 +431,41 @@ _tmain(int argc, TCHAR *targv[])
                 goto error; /* actually won't get here */
             }
             /* try to avoid warning for devs running from build dir */
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path),
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
                       "%s%cCMakeCache.txt", drstrace_root, DIRSEP);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf))
                 warn("using debug Dr. Memory since release not found");
             use_drstrace_debug = true;
         }
+    }
+
+    /* If we're installed into Program Files, we have to pick a different
+     * DR logdir to avoid popup msgs (i#1499).  We don't want to use the
+     * same logdir as for drstrace as the latter supports "-" (stderr).
+     */
+    if (!dr_logdir_specified) { /* don't override user-specified DR logdir */
+        char dr_logdir[MAXIMUM_PATH];
+        bool use_root;
+        /* XXX: ideally we would share DrMem's "/dynamorio/" subdir, but that would
+         * require creating both subdirs separately if drstrace is run before drmem.
+         * See comment below as well.
+         */
+        if (drfront_appdata_logdir(dr_root, "Dr. Memory", &use_root,
+                                   dr_logdir, BUFFER_SIZE_ELEMENTS(dr_logdir)) !=
+            DRFRONT_SUCCESS ||
+            use_root ||
+            (!dr_create_dir(dr_logdir) && !dr_directory_exists(dr_logdir))) {
+            /* A similar situation: we'd prefer to share DrMem's local install
+             * "drmemory/logs/dynamorio" but that gets complex to support both
+             * in a package and in a dev's local build dir.  Since DR logs
+             * are going to be rare w/ drstrace (only for debugging the tool
+             * itself) we just go w/ simplicity.
+             */
+            get_absolute_path(".", dr_logdir, BUFFER_SIZE_ELEMENTS(dr_logdir));
+        }
+        BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                 drops_sofar, len, "-logdir `%s` ", dr_logdir);
     }
 
 #ifdef UNIX

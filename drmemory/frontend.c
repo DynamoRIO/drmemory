@@ -894,6 +894,7 @@ _tmain(int argc, TCHAR *targv[])
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
+    bool use_root_for_logdir;
 #ifdef WINDOWS
     char *pidfile = NULL;
 #endif
@@ -1000,33 +1001,14 @@ _tmain(int argc, TCHAR *targv[])
              drops_sofar, len, "-no_early_inject ");
 
     /* default logdir */
-    if (strstr(drmem_root, "Program Files") != NULL) {
-        /* On Vista+ we can't write to Program Files; plus better to not store
-         * logs there on 2K or XP either.
-         */
-        bool have_env = false;
-        sc = drfront_get_env_var("APPDATA", buf, BUFFER_SIZE_ELEMENTS(buf));
-        if (sc == DRFRONT_SUCCESS)
-            have_env = true;
-        if (have_env) {
-            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/Dr. Memory", buf);
-            NULL_TERMINATE_BUFFER(logdir);
-        } else {
-            sc = drfront_get_env_var("USERPROFILE", buf, BUFFER_SIZE_ELEMENTS(buf));
-            if (sc == DRFRONT_SUCCESS)
-                have_env = true;
-            if (have_env) {
-                _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir),
-                          "%s/Application Data/Dr. Memory", buf);
-                NULL_TERMINATE_BUFFER(logdir);
-            }
-        }
-        if (have_env) {
-            if (dr_create_dir(logdir) || dr_directory_exists(logdir)) {
-                have_logdir = true;
-            }
-        }
-    } else {
+    if (drfront_appdata_logdir(drmem_root, "Dr. Memory", &use_root_for_logdir,
+                               logdir, BUFFER_SIZE_ELEMENTS(logdir)) == DRFRONT_SUCCESS
+        && !use_root_for_logdir) {
+        if ((dr_create_dir(logdir) || dr_directory_exists(logdir)) &&
+            file_is_writable(logdir))
+            have_logdir = true;
+    }
+    if (!have_logdir) {
         _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s%cdrmemory%clogs",
                   drmem_root, DIRSEP, DIRSEP);
         NULL_TERMINATE_BUFFER(logdir);
@@ -1039,7 +1021,8 @@ _tmain(int argc, TCHAR *targv[])
                 have_logdir = true;
         } else
             have_logdir = true;
-    }
+    } else
+        have_logdir = true;
     if (!have_logdir) {
         /* try logs in cur dir */
         get_absolute_path("./logs", logdir, BUFFER_SIZE_ELEMENTS(logdir));
