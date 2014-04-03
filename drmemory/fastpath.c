@@ -512,7 +512,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 if (!reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/))
                     mi->dst[0].app = mi->dst[0].app;
                 mi->load = true;
-                mi->pushpop = true;
+                mi->pushpop = !instr_pop_into_esp(inst); /* i#1500: pop into esp */
                 return true;
             }
         } else if (opnd_is_memory_reference(mi->dst[0].app)) {

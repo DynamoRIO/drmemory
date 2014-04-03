@@ -1177,7 +1177,8 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
                 opnd_set_disp(&opnd, opnd_get_disp(opnd) - sz);
             }
         } else if (!write && pop && opnd_is_base_disp(opnd)) {
-            pushpop = true;
+            if (!instr_pop_into_esp(inst))
+                pushpop = true;
             if (opc == OP_leave) {
                 /* OP_leave's ebp->esp is handled in instrument_esp_adjust; here we
                  * treat it as simply a pop into ebp, though using the esp value
@@ -1193,7 +1194,7 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
         }
     }
     /* we assume only +w ref for push (-w for pop) is the stack adjust */
-    ASSERT(pushpop || (!(write && push) && !(!write && pop)),
+    ASSERT(pushpop || (!(write && push) && !(!write && pop)) || instr_pop_into_esp(inst),
            "internal stack op bad assumption");
     *opsz = sz;
     *pushpop_stackop = pushpop;
@@ -4421,7 +4422,7 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                 if (options.pause_at_unaddressable)
                     wait_for_user("popping unaddressable memory!");
             }
-            /* FIXME: stack ranges: right now we assume that a push makes memory
+            /* XXX: stack ranges: right now we assume that a push makes memory
              * addressable, but really should check if in stack range
              */
             if (TEST(MEMREF_PUSHPOP, flags) && TEST(MEMREF_WRITE, flags)) {

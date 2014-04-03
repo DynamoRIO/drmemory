@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -64,6 +64,9 @@ generate_shared_esp_fastpath(void *drcontext, instrlist_t *ilist, app_pc pc);
 
 bool
 instr_writes_esp(instr_t *inst);
+
+bool
+instr_pop_into_esp(instr_t *inst);
 
 /* Instrument an esp modification that is not also a read or write
  * Returns whether instrumented

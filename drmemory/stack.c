@@ -258,10 +258,22 @@ instr_writes_esp(instr_t *inst)
     int i;
     for (i = 0; i < instr_num_dsts(inst); i++) {
         opnd_t opnd = instr_get_dst(inst, i);
-        if (opnd_is_reg(opnd) && opnd_uses_reg(opnd, REG_ESP)) {
+        if (opnd_is_reg(opnd) && opnd_uses_reg(opnd, REG_XSP)) {
             /* opnd_uses_reg checks for sub-reg SP */
             return true;
         }
+    }
+    return false;
+}
+
+/* i#1500: we need to handle this as an esp adjustment */
+bool
+instr_pop_into_esp(instr_t *inst)
+{
+    if (instr_get_opcode(inst) == OP_pop) {
+        opnd_t dst = instr_get_dst(inst, 0);
+        if (opnd_is_reg(dst) && opnd_uses_reg(dst, REG_XSP))
+            return true;
     }
     return false;
 }
@@ -316,6 +328,7 @@ get_esp_adjust_type(uint opc)
     case OP_cmovns:
     case OP_cmovz:
     case OP_cmovnz:
+    case OP_pop: /* pop into xsp */
         return ESP_ADJUST_ABSOLUTE;
     case OP_inc:
     case OP_dec:
@@ -348,6 +361,7 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     mc.flags = DR_MC_CONTROL; /* only need xsp */
     STATS_INC(adjust_esp_executions);
     dr_get_mcontext(drcontext, &mc);
+
     if (type == ESP_ADJUST_ABSOLUTE) {
         LOG(3, "esp adjust absolute esp="PFX" => "PFX"\n", mc.xsp, val);
         delta = val - mc.xsp;
@@ -444,7 +458,8 @@ handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*
         ASSERT(instr_valid(&inst), "unknown suspect instr");
         if (instr_writes_esp(&inst)) {
             /* ret gets mangled: we'll skip the ecx save and hit the pop */
-            if (instr_get_opcode(&inst) == OP_pop)
+            if (instr_get_opcode(&inst) == OP_pop &&
+                !instr_pop_into_esp(&inst))
                 type = get_esp_adjust_type(OP_ret);
             else {
                 type = get_esp_adjust_type(instr_get_opcode(&inst));
@@ -541,7 +556,9 @@ needs_esp_adjust(instr_t *inst, sp_adjust_action_t sp_action)
         (opc != OP_ret || !opnd_is_immed_int(instr_get_src(inst, 0))) &&
         opc != OP_enter && opc != OP_leave) {
         /* esp changes are all reads or writes */
-        return false;
+        /* pop into esp is an adjustment we must handle (i#1500) */
+        if (!instr_pop_into_esp(inst))
+            return false;
     }
     /* -leaks_only doesn't care about shrinking the stack
      * technically OP_leave doesn't have to shrink it: we assume it does
@@ -643,6 +660,9 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else if (opc == OP_leave) {
         /* the pop is handled elsewhere as a write */
         arg = opnd_create_reg(REG_EBP);
+    } else if (opc == OP_pop) {
+        /* pop into xsp (i#1500) */
+        arg = instr_get_src(inst, 1);
     }
 
     type = get_esp_adjust_type(opc);

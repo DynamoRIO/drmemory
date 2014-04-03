@@ -110,6 +110,14 @@ GLOBAL_LABEL(FUNCNAME:)
         pextrw   ecx, xmm0, 7
         cmp      ecx, HEX(4)
 
+        /* test unusual stack adjustments such as i#1500 */
+        mov      REG_XAX, REG_XSP
+        sub      REG_XAX, 16
+        push     REG_XAX
+        pop      REG_XSP
+        mov      REG_XAX, PTRSZ [REG_XAX] /* unaddr if doesn't track "pop xsp" */
+        add      REG_XSP, 16
+
         /* XXX: add more tests here */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
