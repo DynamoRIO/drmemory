@@ -77,7 +77,7 @@ install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
 
 add_executable(drstrace drstrace_frontend.c)
 configure_DynamoRIO_standalone(drstrace)
-target_link_libraries(drstrace drinjectlib drconfiglib)
+target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
 set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
 set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 

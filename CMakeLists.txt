@@ -1525,10 +1525,11 @@ if (BUILD_TOOL_TESTS)
 
 endif (BUILD_TOOL_TESTS)
 
+# XXX i#1497, i#1498: the drstrace front-end now uses drfrontendlib
+# but there's a bunch of work getting the client to be cross-platform.
 if (TOOL_DR_MEMORY AND WIN32)
   # We only build for Dr. Memory b/c we'd need extra work to deal w/
   # drheapstat's bin/bin32 different subdir.
-  # FIXME i#566: we need a Linux frontend; for now, Windows-only
   add_subdirectory(drstrace)
 endif (TOOL_DR_MEMORY AND WIN32)
 

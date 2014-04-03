@@ -25,16 +25,19 @@
  * + named constants for flags
  * + callstacks
  * + timestamps
+ *
+ * XXX i#1497: port to Linux
+ * XXX i#1498: port to MacOS
  */
 
 #include "dr_api.h"
 #include "drmgr.h"
 #include "drx.h"
 #include "drsyscall.h"
-#include "windefs.h"
 #include "utils.h"
 #include <string.h>
 #ifdef WINDOWS
+# include "windefs.h"
 # include <windows.h>
 #endif
 
@@ -54,13 +57,13 @@ typedef struct _buf_info_t {
 
 #define OUTPUT(buf_info, fmt, ...) \
     BUFFERED_WRITE(outf, (buf_info)->buf, BUFFER_SIZE_ELEMENTS((buf_info)->buf), \
-                   (buf_info)->sofar, (buf_info)->len, fmt, __VA_ARGS__)
+                   (buf_info)->sofar, (buf_info)->len, fmt, ##__VA_ARGS__)
 
 static uint verbose = 1;
 
 #define ALERT(level, fmt, ...) do {          \
     if (verbose >= (level))                   \
-        dr_fprintf(STDERR, fmt, __VA_ARGS__); \
+        dr_fprintf(STDERR, fmt, ##__VA_ARGS__); \
 } while (0)
 
 /* Checks for both debug and release builds: */
