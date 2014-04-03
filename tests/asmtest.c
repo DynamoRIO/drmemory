@@ -118,6 +118,12 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, PTRSZ [REG_XAX] /* unaddr if doesn't track "pop xsp" */
         add      REG_XSP, 16
 
+        /* test pop into (esp) for i#1502 */
+        push     REG_XAX
+        push     REG_XAX
+        pop      PTRSZ [REG_XSP]
+        pop      REG_XAX
+
         /* XXX: add more tests here */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */

@@ -4791,6 +4791,23 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
             ASSERT(false, "unknown string operation");
     } else {
         addr = opnd_compute_address(opnd, mc);
+        if (opc == OP_pop && !TEST(MEMREF_PUSHPOP, flags) &&
+            opnd_is_base_disp(opnd) && opnd_uses_reg(opnd, DR_REG_XSP)) {
+            /* XXX i#1502: we probably want a solution coming from DR, but for
+             * now we fix this inside DrMem.
+             */
+            if (opnd_get_base(opnd) == DR_REG_XSP)
+                addr += sizeof(void*);
+            else if (opnd_get_index(opnd) == DR_REG_XSP) {
+                addr += opnd_get_scale(opnd)*sizeof(void*);
+            } else {
+                tls_util_t *pt = PT_GET(dr_get_current_drcontext());
+                ELOGPT(0, pt, "ERROR: unhandled pop into base-disp using esp: ");
+                opnd_disassemble(dr_get_current_drcontext(), opnd, pt->f);
+                ELOGPT(0, pt, "\n");
+                ASSERT(false, "unhandled pop into base-disp using esp");
+            }
+        }
     }
     if (sz == 0)
         return true;
