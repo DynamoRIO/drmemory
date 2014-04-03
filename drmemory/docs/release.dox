@@ -92,7 +92,7 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
    drsys_pre_syscall_arg64().
  - The pause in cmd on a frontend error is now bypassable by -batch.
  - Added an option -exit_code_if_errors to return a non-zero exit code
-   when errors are detect.
+   when errors are detected.
  - Replaced the perl front-end \p drmemory.pl on Linux with an executable.
  - Various bug fixes.
 

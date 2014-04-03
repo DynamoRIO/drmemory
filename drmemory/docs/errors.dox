@@ -58,6 +58,7 @@ in \ref page_leaks.
   - \subpage page_invarg
   - \subpage page_leaks
   - \subpage page_gdi
+  - \subpage page_handle
   - \subpage page_warning
 
 ********************
