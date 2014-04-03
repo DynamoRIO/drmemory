@@ -426,7 +426,7 @@ void
 store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value);
 
 ptr_int_t
-release_extra_info(cls_syscall_t *pt, int index);
+read_extra_info(cls_syscall_t *pt, int index);
 
 bool
 report_memarg_ex(sysarg_iter_info_t *iter_info,

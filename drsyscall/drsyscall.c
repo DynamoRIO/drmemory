@@ -1077,7 +1077,7 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
     if (pt->first_iter && ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
         store_extra_info(pt, EXTRA_INFO_SOCKADDR, socklen);
     } else if (!ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
-        size_t pre_len = (size_t) release_extra_info(pt, EXTRA_INFO_SOCKADDR);
+        size_t pre_len = (size_t) read_extra_info(pt, EXTRA_INFO_SOCKADDR);
         if (socklen > pre_len)
             socklen = pre_len;
         ASSERT(pre_len != 0, "check_sockaddr called in post but not pre");
@@ -1229,10 +1229,22 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
                 if (!report_memarg_type(ii, arg->param, SYSARG_READ, field,
                                         sizeof(sz), NULL, DRSYS_TYPE_INT, NULL))
                     return 0;
-                if (safe_read(field, sizeof(sz), &sz))
-                    size = sz;
-                else
-                    WARN("WARNING: cannot read struct size field\n");
+                /* i#1494, i#992: On iterating sysarg via drsys_iterate_args,
+                 * sysarg_get_size from process_pre_syscall_reads_and_writes is
+                 * called even in post-syscall event with pre being true.
+                 * Since the kernel can overwrite these struct fields during the syscall,
+                 * to avoid the real size being overwritten, we only read the size
+                 * on the first iteration.
+                 */
+                if (pt->first_iter) {
+                    if (safe_read(field, sizeof(sz), &sz))
+                        size = sz;
+                    else
+                        WARN("WARNING: cannot read struct size field\n");
+                } else {
+                    /* release */
+                    size = read_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD);
+                }
             }
             /* Even if we failed to get the size, initialize this for
              * post-syscall checks.
@@ -1244,7 +1256,7 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
              * syscall, so we save them in the pre-syscall event and use them
              * post-syscall.
              */
-            size = release_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD);
+            size = read_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD);
         }
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
@@ -1826,7 +1838,7 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     dr_get_mcontext(drcontext, &pt->mc);
 
     DODEBUG({
-        /* release_extra_info() calls can be bypassed if syscalls or safe reads
+        /* read_extra_info() calls can be bypassed if syscalls or safe reads
          * fail so we always clear up front
          */
         memset(pt->extra_inuse, 0, sizeof(pt->extra_inuse));
@@ -2236,7 +2248,7 @@ store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value)
 }
 
 ptr_int_t
-release_extra_info(cls_syscall_t *pt, int index)
+read_extra_info(cls_syscall_t *pt, int index)
 {
     ptr_int_t value;
     ASSERT(index <= EXTRA_INFO_MAX, "index too high");

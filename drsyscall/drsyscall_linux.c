@@ -2561,8 +2561,8 @@ check_msghdr(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
         struct iovec *iov;
         size_t len;
         /* we saved this in pre-syscall */
-        void *pre_control = (void *) release_extra_info(pt, EXTRA_INFO_MSG_CONTROL);
-        size_t pre_controllen = (size_t) release_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN);
+        void *pre_control = (void *) read_extra_info(pt, EXTRA_INFO_MSG_CONTROL);
+        size_t pre_controllen = (size_t) read_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN);
         ASSERT(!sendmsg, "logic error"); /* currently axiomatic but just in case */
         if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)&msg->msg_flags,
                                 sizeof(msg->msg_flags), "recvmsg msg_flags",

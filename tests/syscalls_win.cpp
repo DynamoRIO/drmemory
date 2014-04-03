@@ -38,16 +38,20 @@ test_sysarg_size_in_field()
 {
     int uninit;
     CURSORINFO cursor_info;
+    ICONINFO iinfo;
     /* We zero out the high 30-bit of cbSize (& 0x3) to avoid large value,
      * which may cause an extra unaddr error.
      * We cannot use 0xf due to a heuristic used by i#849.
      */
     cursor_info.cbSize &= 0x3;
-    if (GetCursorInfo(&cursor_info) != 0) /* uninit on cbSize */
+    if (GetCursorInfo(&cursor_info)) /* uninit on cbSize */
         cout << "GetCursorInfo succeeded unexpectedly." << endl;
     cursor_info.cbSize = sizeof(CURSORINFO);
-    if (GetCursorInfo(&cursor_info) == 0)
+    /* i#1494: GetCursorInfo clear the cbSize field in kernel */
+    if (!GetCursorInfo(&cursor_info))
         cout << "Unable to get cursor info. Error = " << GetLastError() << endl;
+    if (!GetIconInfo(cursor_info.hCursor, &iinfo))
+        cout << "Unable to get icon info. Error = " << GetLastError() << endl;
 }
 
 int
