@@ -749,6 +749,7 @@ process_results_file(const char *logdir, const char *symdir,
     char resfile[MAXIMUM_PATH];
     TCHAR wresfile[MAXIMUM_PATH];
     DWORD read;
+    bool is_graphical = true;
 
     if (no_resfile || (quiet && batch))
         return;
@@ -777,9 +778,16 @@ process_results_file(const char *logdir, const char *symdir,
     }
     char_to_tchar(resfile, wresfile, BUFFER_SIZE_ELEMENTS(wresfile));
 
+    if (drfront_is_graphical_app(app, &is_graphical) != DRFRONT_SUCCESS)
+        warn("unable to determine whether app is graphical");
+
     if (!quiet &&
-        /* On vista, or win7+ with i#440, output works from client, even during exit */
-        !on_vista_or_later()) {
+        /* On vista, or win7+ with i#440, output works from client, even during exit,
+         * for non-graphical apps
+         */
+        (is_graphical || !on_vista_or_later()) &&
+        /* Win7 output from client works even for graphical app since DR r2325 */
+        win_ver.version != DR_WINDOWS_VERSION_7) {
         /* Even with console-writing support from DR, the client cannot write
          * to a cmd console from the exit event: nor can it write for a graphical
          * application (xref i#261/PR 562198).  Thus when within cmd we always
@@ -794,10 +802,18 @@ process_results_file(const char *logdir, const char *symdir,
         bool in_cmd = ((((ptr_int_t)GetStdHandle(STD_OUTPUT_HANDLE)) & 0x10000003)
                        == 0x3);
         /* Don't show leaks for graphical app, since won't have other errors */
-        bool is_graphical;
-        bool show_leaks = !quiet && results_to_stderr &&
-            (drfront_is_graphical_app(app, &is_graphical) != DRFRONT_SUCCESS ||
-             !is_graphical);
+        bool show_leaks = !quiet && results_to_stderr && !is_graphical;
+        /* i#1503: on win8+ in_cmd is false, but graphical apps have no output.
+         * Recent cygwins in their modified cmd window do have output, so we
+         * print the summary unless we're in bash.  We do get a double summary
+         * if in cmd run from within rxvt, but we can live with that.
+         */
+        if (is_graphical && win_ver.version >= DR_WINDOWS_VERSION_8) {
+            if (drfront_get_env_var("SHELL", fname,
+                                    BUFFER_SIZE_ELEMENTS(fname)) != DRFRONT_SUCCESS ||
+                strlen(fname) == 0)
+                in_cmd = true;
+        }
         if (in_cmd) {
             FILE *stream;
             char line[100];
