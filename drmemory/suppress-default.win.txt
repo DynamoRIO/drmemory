@@ -696,11 +696,12 @@ name=default i#1043: EH leak in mingw CRT
 # i#1134: TlsGetValue after TlsFree in mingw CRT
 # This was fixed between mingw g++ 4.5.2 and 4.7.2 so we may be able
 # to remove the suppression once we no longer support those versions.
+# XXX i#1134c#3: but I see it in 4.7.3 too!
 
 UNADDRESSABLE ACCESS
 name=default i#1134: mingw CRT TlsGetValue after TlsFree
 KERNEL*.dll!TlsGetValue
-*!__mingwthr_run_key_dtors
+*!__mingwthr_run_key_dtors*
 
 ##################################################
 # i#1140: MessageBox leaks we need to analyze
