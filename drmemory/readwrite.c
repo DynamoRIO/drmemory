@@ -157,6 +157,7 @@ uint heap_header_exception;
 uint tls_exception;
 uint alloca_exception;
 uint strlen_exception;
+uint strlen_uninit_exception;
 uint strcpy_exception;
 uint rawmemchr_exception;
 uint strmem_unaddr_exception;
@@ -1300,23 +1301,12 @@ result_is_always_defined(instr_t *inst, bool natively)
 }
 
 #ifdef TOOL_DR_MEMORY
-/* All current non-syscall uses already have inst decoded so we require it
- * for efficiency
- */
+# ifdef UNIX
 static bool
-check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
-                               dr_mcontext_t *mc, instr_t *inst)
+is_rawmemchr_uninit(void *drcontext, app_pc pc, reg_id_t reg,
+                    dr_mcontext_t *mc, instr_t *inst)
 {
-    bool res = false;
-    byte *pc;
     char buf[16]; /* for safe_read */
-    if (loc->type != APP_LOC_PC)
-        return false; /* syscall */
-    ASSERT(inst != NULL, "must pass in inst if non-syscall");
-    pc = loc_to_pc(loc);
-    ASSERT(instr_valid(inst), "unknown suspect instr");
-
-#ifdef UNIX
     /* PR 406535: glibc's rawmemchr does some bit tricks that can end up using
      * undefined or unaddressable values:
      * <rawmemchr+113>:
@@ -1343,7 +1333,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
             LOG(3, "suppressing positive from glibc rawmemchr pattern\n");
             register_shadow_set_dword(DR_REG_XCX, SHADOW_DWORD_DEFINED);
             STATS_INC(rawmemchr_exception);
-            res = true;
+            return true;
         }
     } else {
         /* FIXME PR 406535: verify there's no chance of a true positive */
@@ -1368,11 +1358,20 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
                 LOG(3, "suppressing positive from glibc rawmemchr pattern\n");
                 set_shadow_eflags(SHADOW_DWORD_DEFINED);
                 STATS_INC(rawmemchr_exception);
-                res = true;
+                return true;
             } else
                 LOG(3, "NOT suppressing glibc rawmemchr w/ val 0x%x\n", val);
         }
     }
+    return false;
+}
+
+static bool
+is_strrchr_uninit(void *drcontext, app_pc pc, reg_id_t reg,
+                  dr_mcontext_t *mc, instr_t *inst)
+{
+    bool match = false;
+    char buf[16]; /* for safe_read */
     /* glibc's strrchr:
      *   +0    L3  8b 56 08             mov    0x08(%esi) -> %edx
      *   +3    L3  bf ff fe fe fe       mov    $0xfefefeff -> %edi
@@ -1410,7 +1409,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
                 LOG(3, "suppressing positive from glibc strrchr/strlen pattern\n");
                 set_shadow_eflags(SHADOW_DWORD_DEFINED);
                 STATS_INC(strrchr_exception);
-                res = true;
+                match = true;
             } else
                 LOG(3, "NOT suppressing glibc strrchr/strlen w/ val 0x%x\n", val);
         } else {
@@ -1451,17 +1450,69 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
             LOG(3, "suppressing positive from glibc strrchr pattern\n");
             set_shadow_eflags(SHADOW_DWORD_DEFINED);
             STATS_INC(strrchr_exception);
-            res = true;
+            match = true;
         } else
             LOG(3, "NOT suppressing glibc strrchr/strlen w/ val 0x%x\n", val);
     }
-#else
-    /* For future undefined exceptions, follow the pattern of
-     * is_ok_unaddressable_pattern in alloc_drmem.c.
-     */
-#endif
+    return match;
+}
+# endif /* UNIX */
 
-    return res;
+static bool
+is_strlen_uninit(void *drcontext, app_pc pc, reg_id_t reg,
+                 dr_mcontext_t *mc, instr_t *inst)
+{
+    char buf[16]; /* for safe_read */
+    /* i#1505: mingw inlines strlen:
+     *   +0    L3              8b 13                mov    (%ebx)[4byte] -> %edx
+     *   +2    L3              83 c3 04             add    $0x00000004 %ebx -> %ebx
+     *   +5    L3              8d 82 ff fe fe fe    lea    0xfefefeff(%edx) -> %eax
+     *   +11   L3              f7 d2                not    %edx -> %edx
+     *   +13   L3              21 d0                and    %edx %eax -> %eax
+     *   +15   L3              25 80 80 80 80       and    $0x80808080 %eax -> %eax
+     *   +20   L3              74 ea                jz     $0x0040f7b0
+     */
+    static const byte STRLEN_PATTERN[] =
+        {0xfe, 0xfe, 0xfe, 0xf7, 0xd2, 0x21, 0xd0, 0x25, 0x80, 0x80, 0x80, 0x80};
+    ASSERT(sizeof(STRLEN_PATTERN) <= BUFFER_SIZE_BYTES(buf), "buf too small");
+    if (reg == REG_EFLAGS &&
+        (instr_get_opcode(inst) == OP_jz ||
+         instr_get_opcode(inst) == OP_jz_short) &&
+        safe_read(pc - sizeof(STRLEN_PATTERN),
+                  sizeof(STRLEN_PATTERN), buf) &&
+        memcmp(buf, STRLEN_PATTERN, sizeof(STRLEN_PATTERN)) == 0) {
+        STATS_INC(strlen_uninit_exception);
+        return true;
+    }
+    return false;
+}
+
+/* All current non-syscall uses already have inst decoded so we require it
+ * for efficiency
+ */
+static bool
+check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
+                               dr_mcontext_t *mc, instr_t *inst)
+{
+    bool match = false;
+    byte *pc;
+    if (loc->type != APP_LOC_PC)
+        return false; /* syscall */
+    ASSERT(inst != NULL, "must pass in inst if non-syscall");
+    pc = loc_to_pc(loc);
+    ASSERT(instr_valid(inst), "unknown suspect instr");
+
+#ifdef UNIX
+    match = is_rawmemchr_uninit(drcontext, pc, reg, mc, inst);
+    if (!match) {
+        match = is_strrchr_uninit(drcontext, pc, reg, mc, inst);
+    }
+#endif
+    if (!match) {
+        match = is_strlen_uninit(drcontext, pc, reg, mc, inst);
+    }
+
+    return match;
 }
 
 static bool

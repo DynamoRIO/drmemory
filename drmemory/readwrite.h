@@ -110,6 +110,7 @@ extern uint heap_header_exception;
 extern uint tls_exception;
 extern uint alloca_exception;
 extern uint strlen_exception;
+extern uint strlen_uninit_exception;
 extern uint strcpy_exception;
 extern uint rawmemchr_exception;
 extern uint strmem_unaddr_exception;

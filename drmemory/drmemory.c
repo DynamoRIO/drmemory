@@ -207,7 +207,8 @@ dump_statistics(void)
                strlen_exception, strcpy_exception, strmem_unaddr_exception);
     dr_fprintf(f_global, "def exceptions:  andor: %7u, rawmemchr: %5u, strrchr: %5u\n",
                andor_exception, rawmemchr_exception, strrchr_exception);
-    dr_fprintf(f_global, "more def exceptions:  fldfst: %5u\n", fldfst_exception);
+    dr_fprintf(f_global, "more def exceptions:  fldfst: %5u, strlen: %5u\n",
+               fldfst_exception, strlen_uninit_exception);
     dr_fprintf(f_global, "bitfield exceptions: const %8u, xor %5u\n",
                bitfield_const_exception, bitfield_xor_exception);
     dr_fprintf(f_global, "reg spills: dead:%8u, xchg:%8u, spill:%8u slow:%8u own:%8u\n",
