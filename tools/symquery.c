@@ -23,6 +23,7 @@
 
 #include "dr_api.h"
 #include "drsyms.h"
+#include "dr_frontend.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,8 +41,8 @@
 #endif
 
 /* forward decls */
-static void lookup_address(const char *dllpath, size_t modoffs);
-static void lookup_symbol(const char *dllpath, const char *sym);
+static void symquery_lookup_address(const char *dllpath, size_t modoffs);
+static void symquery_lookup_symbol(const char *dllpath, const char *sym);
 static void enumerate_symbols(const char *dllpath, const char *match,
                               bool search, bool searchall);
 static void enumerate_lines(const char *dllpath);
@@ -179,6 +180,19 @@ main(int argc, char *argv[])
 
     dr_standalone_init();
 
+    if (dll != NULL) {
+        bool is_64bit;
+        if (drfront_is_64bit_app(dll, &is_64bit) != DRFRONT_SUCCESS) {
+            printf("ERROR: unable to get the architecture infomation of"
+                   " the target module %s\n", dll);
+            return 1;
+        }
+        if (IF_X64_ELSE(!is_64bit, is_64bit)) {
+            printf("ERROR: target module %s is for the wrong architecture\n", dll);
+            return 1;
+        }
+    }
+
     if (drsym_init(IF_WINDOWS_ELSE(NULL, 0)) != DRSYM_SUCCESS) {
         printf("ERROR: unable to initialize symbol library\n");
         return 1;
@@ -194,13 +208,13 @@ main(int argc, char *argv[])
             for (; i < argc; i++) {
                 if (addr2sym) {
                     if (sscanf(argv[i], "%x", (uint *)&modoffs) == 1)
-                        lookup_address(dll, modoffs);
+                        symquery_lookup_address(dll, modoffs);
                     else
                         printf("ERROR: unknown input %s\n", argv[i]);
                 } else if (enumerate || search)
                     enumerate_symbols(dll, argv[i], search, searchall);
                 else
-                    lookup_symbol(dll, argv[i]);
+                    symquery_lookup_symbol(dll, argv[i]);
             }
         }
     } else {
@@ -217,7 +231,7 @@ main(int argc, char *argv[])
              */
             if (sscanf(line, "%"MAX_PATH_STR"[^;];%x", (char *)&modpath,
                        (uint *)&modoffs) == 2) {
-                lookup_address(modpath, modoffs);
+                symquery_lookup_address(modpath, modoffs);
                 fflush(stdout); /* ensure flush in case piped */
             } else if (verbose)
                 printf("Error: unknown input %s\n", line);
@@ -252,7 +266,7 @@ get_and_print_debug_kind(const char *dllpath)
 }
 
 static void
-lookup_address(const char *dllpath, size_t modoffs)
+symquery_lookup_address(const char *dllpath, size_t modoffs)
 {
     drsym_error_t symres;
     drsym_info_t sym;
@@ -287,7 +301,7 @@ lookup_address(const char *dllpath, size_t modoffs)
 }
 
 static void
-lookup_symbol(const char *dllpath, const char *sym)
+symquery_lookup_symbol(const char *dllpath, const char *sym)
 {
     size_t modoffs;
     drsym_error_t symres;

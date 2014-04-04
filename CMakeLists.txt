@@ -1225,6 +1225,13 @@ set(DynamoRIO_RPATH ON)
 configure_DynamoRIO_standalone(symquery)
 use_DynamoRIO_extension(symquery drsyms_static)
 set(DynamoRIO_RPATH ${old_rpath})
+# drfrontendlib depends on drinjectlib, DR-i#1409 should be the solution
+target_link_libraries(symquery drinjectlib drfrontendlib)
+if (WIN32)
+  set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER})
+else (WIN32)
+  add_rel_rpaths(${toolname} drinjectlib)
+endif (WIN32)
 
 # should go into a configure.h if we get enough of these
 set(script_aux "")
