@@ -350,6 +350,45 @@ _tmain(int argc, TCHAR *targv[])
         app_name = full_app_name;
     info("targeting application: \"%s\"", app_name);
 
+    /* Cross-arch injection (i#1506) */
+    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS &&
+        IF_X64_ELSE(!res, res)) {
+        /* While I'd love to just set bin_arch and lib_arch differently,
+         * drinjectlib doesn't support cross-arch injection (DRi#803).
+         * Thus, to provide single-front-end support, we launch the other
+         * frontend.
+         */
+        char *orig_argv0 = argv[0];
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                  "%s%c%s%cdrstrace.exe", drstrace_root, DIRSEP,
+                  IF_X64_ELSE(BIN32_ARCH, BIN64_ARCH), DIRSEP);
+        NULL_TERMINATE_BUFFER(buf);
+        if (!file_is_readable(buf)) {
+            fatal("unable to find frontend %s to match target app bitwidth: "
+                  "is this an incomplete installation?", buf);
+        }
+        argv[0] = buf;
+        info("launching frontend %s to match target app bitwidth", buf);
+        /* XXX DRi#943: this lib routine currently doesn't handle int18n */
+        errcode = dr_inject_process_create(buf, argv, &inject_data);
+        /* Mismatch is just a warning */
+        if (errcode == 0 || errcode == WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
+            dr_inject_process_run(inject_data);
+            /* If we don't wait, the prompt comes back, which is confusing */
+            info("waiting for other frontend...");
+            errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data),
+                                          INFINITE);
+            if (errcode != WAIT_OBJECT_0)
+                info("failed to wait for frontend: %d\n", errcode);
+            dr_inject_process_exit(inject_data, false);
+            argv[0] = orig_argv0;
+            goto cleanup;
+        } else {
+            fatal("unable to launch frontend to match target app bitwidth: code=%d",
+                  errcode);
+        }
+    }
+
     /* note that we want target app name as part of cmd line
      * (FYI: if we were using WinMain, the pzsCmdLine passed in
      *  does not have our own app name in it)
@@ -368,18 +407,6 @@ _tmain(int argc, TCHAR *targv[])
         assert(c - buf < BUFFER_SIZE_ELEMENTS(buf));
         info("app cmdline: %s", buf);
     }
-
-#ifdef X64
-    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS && !res) {
-        bin_arch = BIN32_ARCH;
-        lib_arch = LIB32_ARCH;
-    }
-#else
-    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS && res) {
-        bin_arch = BIN64_ARCH;
-        lib_arch = LIB64_ARCH;
-    }
-#endif
 
     if (!file_is_readable(dr_root)) {
         fatal("invalid -dr_root %s", dr_root);
@@ -411,11 +438,6 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
-    /* XXX: for x64 installation we need to address the NSIS "bin/" requirement.
-     * The 32-bit frontend correctly picks the x64 lib, so we should perhaps
-     * just remove the 64-bit frontend in the final package (keep in build
-     * dirs b/c hard to build w/ both compilers).
-     */
     _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
               "%s%c%s%c%s%cdrstracelib.dll", drstrace_root, DIRSEP, bin_arch, DIRSEP,
               use_drstrace_debug ? "debug" : "release", DIRSEP);
@@ -469,11 +491,12 @@ _tmain(int argc, TCHAR *targv[])
     }
 
 #ifdef UNIX
-    errcode = dr_inject_process_create(app_name, (const char **)app_argv, &inject_data);
+    errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
 #else
     errcode = dr_inject_process_create(app_name, (const char **)app_argv, &inject_data);
 #endif
-    if (errcode != 0) {
+    /* Mismatch is just a warning */
+    if (errcode != 0 && errcode != WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
 #ifdef WINDOWS
         int sofar =
 #endif
