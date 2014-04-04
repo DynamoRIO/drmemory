@@ -1230,7 +1230,7 @@ target_link_libraries(symquery drinjectlib drfrontendlib)
 if (WIN32)
   set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER})
 else (WIN32)
-  add_rel_rpaths(${toolname} drinjectlib)
+  add_rel_rpaths(symquery drinjectlib)
 endif (WIN32)
 
 # should go into a configure.h if we get enough of these

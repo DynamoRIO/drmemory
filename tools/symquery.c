@@ -21,9 +21,16 @@
 
 /* Front-end to drsyms for Windows */
 
+#ifdef WINDOWS
+/* We use drfrontendlib, whose model has us take in UTF-16 argv */
+# define UNICODE
+# define _UNICODE
+#endif
+
 #include "dr_api.h"
 #include "drsyms.h"
 #include "dr_frontend.h"
+#include "dr_inject.h" /* for cross-arch support */
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -46,6 +53,7 @@ static void symquery_lookup_symbol(const char *dllpath, const char *sym);
 static void enumerate_symbols(const char *dllpath, const char *match,
                               bool search, bool searchall);
 static void enumerate_lines(const char *dllpath);
+static bool check_architecture(const char *dll, char **argv);
 
 /* options */
 #define USAGE_PRE "Usage:\n\
@@ -89,10 +97,11 @@ static bool verbose;
 static uint demangle_flags = (DRSYM_DEMANGLE | DRSYM_DEMANGLE_PDB_TEMPLATES);
 
 int
-main(int argc, char *argv[])
+_tmain(int argc, TCHAR *targv[])
 {
-    char *dll = NULL;
-    IF_WINDOWS(char dll_local[MAXIMUM_PATH];)
+    int res = 1;
+    char **argv;
+    char dll[MAXIMUM_PATH];
     int i;
     /* module + address per line */
     char line[MAXIMUM_PATH*2];
@@ -108,33 +117,33 @@ main(int argc, char *argv[])
     bool searchall = false;
     bool enum_lines = false;
 
+#if defined(WINDOWS) && !defined(_UNICODE)
+# error _UNICODE must be defined
+#else
+    /* Convert to UTF-8 if necessary */
+    if (drfront_convert_args((const TCHAR **)targv, &argv, argc) != DRFRONT_SUCCESS) {
+        printf("ERROR: failed to process args\n");
+        return 1;
+    }
+#endif
+
     for (i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "-e") == 0) {
-            IF_WINDOWS(int res;)
+            bool is_readable;
             if (i+1 >= argc) {
                 PRINT_USAGE(argv[0]);
-                return 1;
+                goto cleanup;
             }
             i++;
-#ifdef WINDOWS
-            /* Handle relative paths */
-            res = GetFullPathName(argv[i], BUFFER_SIZE_ELEMENTS(dll_local),
-                                  dll_local, NULL);
-            NULL_TERMINATE_BUFFER(dll_local);
-            dll = dll_local;
-#else
-            dll = argv[i];
-#endif
-            if (
-#ifdef WINDOWS
-                res <= 0 || res >= BUFFER_SIZE_ELEMENTS(dll_local) - 1/*null*/ ||
-                _access(dll, 4/*read*/) == -1
-#else
-                !dr_file_exists(dll)
-#endif
-                ) {
+            if (drfront_get_absolute_path(argv[i], dll, BUFFER_SIZE_ELEMENTS(dll)) !=
+                DRFRONT_SUCCESS) {
                 printf("ERROR: invalid path %s\n", argv[i]);
-                return 1;
+                goto cleanup;
+            }
+            if (drfront_access(dll, DRFRONT_READ, &is_readable) != DRFRONT_SUCCESS ||
+                !is_readable) {
+                printf("ERROR: invalid path %s\n", argv[i]);
+                goto cleanup;
             }
         } else if (_stricmp(argv[i], "-f") == 0) {
             show_func = true;
@@ -144,7 +153,7 @@ main(int argc, char *argv[])
                    _stricmp(argv[i], "-s") == 0) {
             if (i+1 >= argc) {
                 PRINT_USAGE(argv[0]);
-                return 1;
+                goto cleanup;
             }
             if (_stricmp(argv[i], "-a") == 0)
                 addr2sym = true;
@@ -168,34 +177,26 @@ main(int argc, char *argv[])
             searchall = true;
         } else {
             PRINT_USAGE(argv[0]);
-            return 1;
+            goto cleanup;
         }
     }
     if ((!addr2sym_multi && dll == NULL) ||
         (addr2sym_multi && dll != NULL) ||
         (!sym2addr && !addr2sym && !addr2sym_multi && !enumerate_all && !enum_lines)) {
         PRINT_USAGE(argv[0]);
-        return 1;
+        goto cleanup;
     }
 
     dr_standalone_init();
 
     if (dll != NULL) {
-        bool is_64bit;
-        if (drfront_is_64bit_app(dll, &is_64bit) != DRFRONT_SUCCESS) {
-            printf("ERROR: unable to get the architecture infomation of"
-                   " the target module %s\n", dll);
-            return 1;
-        }
-        if (IF_X64_ELSE(!is_64bit, is_64bit)) {
-            printf("ERROR: target module %s is for the wrong architecture\n", dll);
-            return 1;
-        }
+        if (!check_architecture(dll, argv))
+            goto cleanup;
     }
 
     if (drsym_init(IF_WINDOWS_ELSE(NULL, 0)) != DRSYM_SUCCESS) {
         printf("ERROR: unable to initialize symbol library\n");
-        return 1;
+        goto cleanup;
     }
 
     if (!addr2sym_multi) {
@@ -240,8 +241,84 @@ main(int argc, char *argv[])
 
     if (drsym_exit() != DRSYM_SUCCESS)
         printf("WARNING: error cleaning up symbol library\n");
+    res = 0;
 
-    return 0;
+ cleanup:
+    if (drfront_cleanup_args(argv, argc) != DRFRONT_SUCCESS)
+        printf("WARNING: drfront_cleanup_args failed\n");
+    return res;
+}
+
+static bool
+check_architecture(const char *dll, char **argv)
+{
+    bool is_64bit;
+    if (drfront_is_64bit_app(dll, &is_64bit) != DRFRONT_SUCCESS) {
+        printf("ERROR: unable to get the architecture infomation of"
+               " the target module %s\n", dll);
+        return false;
+    }
+    if (IF_X64_ELSE(!is_64bit, is_64bit)) {
+        char *orig_argv0 = argv[0];
+        char root[MAXIMUM_PATH];
+        char buf[MAXIMUM_PATH];
+        char *basename;
+        int errcode;
+        void *inject_data;
+        bool is_readable;
+        if (drfront_get_app_full_path(argv[0], root, BUFFER_SIZE_ELEMENTS(root)) !=
+            DRFRONT_SUCCESS) {
+            printf("ERROR: unable to get base dir of %s\n", argv[0]);
+            return false;
+        }
+        basename = root + strlen(root) - 1;
+        while (*basename != DIRSEP && *basename != ALT_DIRSEP && basename > root)
+            basename--;
+        if (basename <= root) {
+            printf("ERROR: unable to get base dir of %s\n", argv[0]);
+            return false;
+        }
+        *basename = '\0';
+        basename++;
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf) ,
+                  "%s%c..%c%s%c%s", root, DIRSEP, DIRSEP,
+                  IF_X64_ELSE("bin", "bin64"), DIRSEP, basename);
+        NULL_TERMINATE_BUFFER(buf);
+        if (drfront_access(buf, DRFRONT_READ, &is_readable) != DRFRONT_SUCCESS ||
+            !is_readable) {
+            printf("ERROR: unable to find frontend %s to match target file bitwidth: "
+                   "is this an incomplete installation?\n", buf);
+        }
+        argv[0] = buf;
+#ifdef UNIX
+        errcode = dr_inject_prepare_to_exec(buf, (const char **)argv, &inject_data);
+        if (errcode == 0 || errcode == WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE)
+            dr_inject_process_run(inject_data); /* shouldn't return */
+        printf("ERROR (%d): unable to launch frontend to match target file bitwidth\n",
+               errcode);
+        argv[0] = orig_argv0;
+        return false;
+#else
+        errcode = dr_inject_process_create(buf, argv, &inject_data);
+        if (errcode == 0 || errcode == WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
+            dr_inject_process_run(inject_data);
+            /* Wait for the child so user's shell prompt doesn't come back early */
+            errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data),
+                                          INFINITE);
+            if (errcode != WAIT_OBJECT_0)
+                printf("WARNING: failed to wait for cross-arch frontend\n");
+            dr_inject_process_exit(inject_data, false);
+            argv[0] = orig_argv0;
+            return false;
+        } else {
+            printf("ERROR (%d): unable to launch frontend to match target file bitwidth\n",
+                  errcode);
+            argv[0] = orig_argv0;
+            return false;
+        }
+#endif
+    }
+    return true;
 }
 
 static void
