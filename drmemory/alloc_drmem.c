@@ -1217,6 +1217,8 @@ client_handle_cbret(void *drcontext)
     sp = (byte *) mc.xsp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
         sp, cpt_parent->pre_callback_esp);
+    LOG(3, "cbret: cpt_parent is "PFX", cpt is "PFX"\n",
+        cpt_parent, drmgr_get_cls_field(drcontext, cls_idx_drmem));
     umbra_shadow_memory_info_init(&info);
     for (; sp < cpt_parent->pre_callback_esp; sp++)
         shadow_set_byte(&info, sp, SHADOW_UNADDRESSABLE);
@@ -1275,6 +1277,8 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
         ASSERT(cpt_parent != NULL, "drmgr should have pushed context already");
         if (cpt_parent == NULL)
             return; /* don't crash in release build  */
+        LOG(3, "cb: cpt_parent is "PFX", cpt is "PFX"\n",
+            cpt_parent, drmgr_get_cls_field(drcontext, cls_idx_drmem));
         cpt_parent->pre_callback_esp = sp;
     }
 }

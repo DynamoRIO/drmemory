@@ -2835,8 +2835,9 @@ void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
     drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.alloc.insert",
-                                   /* must go after CLS tracking */
-                                   NULL, DRMGR_PRIORITY_NAME_CLS,
+                                   /* must go before CLS exit and after CLS entry */
+                                   DRMGR_PRIORITY_NAME_CLS_EXIT,
+                                   DRMGR_PRIORITY_NAME_CLS_ENTRY,
                                    DRMGR_PRIORITY_INSERT_ALLOC};
     if (!drmgr_register_bb_instrumentation_event(alloc_event_bb_analysis,
                                                  alloc_event_bb_insert, &pri_insert))
