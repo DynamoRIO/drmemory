@@ -711,6 +711,7 @@ if (TOOL_DR_MEMORY)
 
       # C++ tests with other libc configs
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+      newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF "cs2bugMTd")

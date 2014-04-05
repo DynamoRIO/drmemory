@@ -1434,8 +1434,18 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
              * call/jmp to this module's free().
              */
             opnd_t op = instr_get_target(&inst);
+            instr_t ilt;
             ASSERT(opnd_is_pc(op), "must be pc");
             tgt = opnd_get_pc(op);
+            /* i#1510: follow any ILT jmp */
+            instr_init(drcontext, &ilt);
+            if (safe_decode(drcontext, tgt, &ilt, NULL) &&
+                instr_is_ubr(&ilt)) {
+                ASSERT(opnd_is_pc(instr_get_target(&ilt)), "must be pc");
+                tgt = opnd_get_pc(instr_get_target(&ilt));
+                LOG(3, "%s: following call's jmp target to "PFX"\n", __FUNCTION__, tgt);
+            }
+            instr_free(drcontext, &ilt);
         } else if (instr_get_opcode(&inst) == OP_call_ind) {
             /* When std:_DebugHeapDelete is in another module w/o static libc,
              * the call to libc's free is indirect (part of i#607 part C).
