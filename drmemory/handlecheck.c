@@ -214,6 +214,7 @@ get_process_handle_list(void)
         /* iterate over the whole handle list */
         for (h_sys = &sys_list->Handle[0]; h_sys < h_sys_end; h_sys++) {
             /* if pid is matched, count the handles in that chunk */
+            LOG(4, "%s: comparing pid=%d to %d\n", __FUNCTION__, pid, h_sys->OwnerPid);
             if (h_sys->OwnerPid == pid) {
                 num_matched_pid++;
                 for (h_start = h_sys, count = 0;
@@ -242,7 +243,8 @@ get_process_handle_list(void)
         } else {
             if (pid < 0x10000) {
                 /* fail for unknown reason */
-                ASSERT(false, "fail to find the process in the handle list");
+                /* XXX i#1511: not an assert b/c it happens: we need to understand why */
+                WARN("WARNING: failed to find the process in the handle list");
                 break;
             }
             /* i#1389: we truncate the real pid to match the pid value returned
