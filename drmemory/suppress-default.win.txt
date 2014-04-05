@@ -690,7 +690,10 @@ MSVCR80D.dll!*
 LEAK
 name=default i#1043: EH leak in mingw CRT
 *!__cxa_get_globals
-*!__cxa_allocate_exception
+
+# i#1509: I removed the 2nd frame b/c mingw g++ 4.7.3 ends up
+# skipping this frame:
+#*!__cxa_allocate_exception
 
 ##################################################
 # i#1134: TlsGetValue after TlsFree in mingw CRT
