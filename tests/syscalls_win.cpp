@@ -48,8 +48,12 @@ test_sysarg_size_in_field()
         cout << "GetCursorInfo succeeded unexpectedly." << endl;
     cursor_info.cbSize = sizeof(CURSORINFO);
     /* i#1494: GetCursorInfo clear the cbSize field in kernel */
-    if (!GetCursorInfo(&cursor_info))
-        cout << "Unable to get cursor info. Error = " << GetLastError() << endl;
+    if (!GetCursorInfo(&cursor_info)) {
+        /* XXX: i#1504: GetCursorInfo may fail on ERROR_ACCESS_DENIED
+         * for unknown reasons, in which case we bail out.
+         */
+        return;
+    }
     if (!GetIconInfo(cursor_info.hCursor, &iinfo))
         cout << "Unable to get icon info. Error = " << GetLastError() << endl;
 }
