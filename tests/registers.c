@@ -58,6 +58,7 @@ void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post);
 void subdword_test2_asm(char *undef, int *val1, int *val2);
 void addronly_test_asm(char *undef);
 void subdword_test_asm(char *undef, int *val);
+void repstr_test_asm(char *a1, char *a2);
 
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
@@ -114,53 +115,7 @@ repstr_test(void)
             a1[i] = 0;
     }
     printf("before repstr test!\n");
-    /* FIXME i#934: convert to cross-platform asm routine */
-#ifdef WINDOWS
-    __asm {
-        mov   esi, a1
-        mov   edi, a2
-        mov   ecx, 15
-        rep   movsb
-        mov   edi, a2
-        mov   eax, 1
-        mov   ecx, 15
-        rep   stosb
-        mov   edi, a2
-        cmp   byte ptr [7 + edi], 1
-        jne   stos_error
-      stos_error:
-        mov   edi, a1
-        mov   esi, a2
-        mov   ecx, 15
-        repne cmpsb
-        mov   edi, a1
-        mov   eax, 1
-        xadd  dword ptr [edi], eax
-    }
-#else
-    asm("mov   %0, %%esi" : : "g"(a1) : "esi");
-    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
-    asm("mov   $15, %ecx");
-    asm("rep movsb");
-    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
-    asm("mov   $1, %eax");
-    asm("mov   $15, %ecx");
-    asm("rep stosb");
-    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
-    asm("cmpb  $1, 7(%edi)");
-    asm("jne   stos_error");
-    asm("stos_error:");
-    /* should be no error on the movs, and the stos should make a2[7] defined,
-     * but the cmps should hit error on a1[7]
-     */
-    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
-    asm("mov   %0, %%esi" : : "g"(a2) : "esi");
-    asm("mov   $15, %ecx");
-    asm("repne cmpsb");
-    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
-    asm("mov   $1, %eax");
-    asm("xadd  %eax, (%edi)");
-#endif
+    repstr_test_asm(a1, a2);
     printf("after repstr test!\n");
     free(undef);
 }
@@ -483,6 +438,51 @@ main(int argc, char *argv[])
 #else /* asm code *************************************************************/
 #include "cpp2asm_defines.h"
 START_FILE
+
+#define FUNCNAME repstr_test_asm
+/* void repstr_test_asm(char *a1, char *a2); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1 /* a1, 15 bytes init buffer except a1[7] */
+        mov      REG_XDX, ARG2 /* a2, 15 bytes uninit buffer */
+        /* save callee-saved regs */
+        PUSH_SEH(REG_XDI)
+        PUSH_SEH(REG_XSI)
+        PUSH_SEH(REG_XBX)
+        END_PROLOG
+
+        mov      REG_XBX, REG_XAX
+        mov      REG_XSI, REG_XBX /* a1 */
+        mov      REG_XDI, REG_XDX /* a2 */
+        mov      REG_XCX, 15
+        rep      movsb
+        mov      REG_XDI, REG_XDX /* a2 */
+        mov      REG_XAX, 1
+        mov      REG_XCX, 15
+        rep      stosb
+        mov      REG_XDI, REG_XDX /* a2 */
+        cmp      BYTE [REG_XDI + 7], 1
+        jne      stos_error
+       stos_error:
+        /* should be no error on the movs, and the stos should make a2[7] defined,
+         * but the cmps should hit error on a1[7]
+         */
+        mov      REG_XDI, REG_XBX /* a1 */
+        mov      REG_XSI, REG_XDX /* a2 */
+        mov      REG_XCX, 15
+        repne    cmpsb
+        mov      REG_XDI, REG_XBX /* a1 */
+        mov      REG_XAX, 1
+        xadd     [REG_XDI], REG_XAX
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XBX
+        pop      REG_XSI
+        pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
 
 #define FUNCNAME subdword_test_asm
 /* void subword_test_asm(char *undef, int *val); */

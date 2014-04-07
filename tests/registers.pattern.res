@@ -30,9 +30,9 @@ registers.c_asm.asm:954
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:528
+registers.c_asm.asm:531
 Error #2: UNADDRESSABLE ACCESS:
-registers.c_asm.asm:540
+registers.c_asm.asm:543
 %endif
 Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes
