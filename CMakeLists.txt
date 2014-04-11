@@ -1481,15 +1481,15 @@ else (X64)
   set(exported_targets_name "DRMFTarget32")
 endif (X64)
 
-# DRi#948: we need to map RelWithDebInfo and RelMinSize to Release
+# DRi#948: we need to map Release and RelMinSize to RelWithDebInfo
 file(WRITE ${framework_dir}/${exported_targets_name}.cmake "")
 set(exported_targets_append "")
 macro(export_target)
   export(TARGETS ${ARGV} FILE ${framework_dir}/${exported_targets_name}.cmake
     APPEND)
   set(toadd "
-SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE Release)
+SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELEASE RelWithDebInfo)
+SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebInfo)
 ")
   if (NOT DEBUG_BUILD)
     file(APPEND ${framework_dir}/${exported_targets_name}.cmake ${toadd})
