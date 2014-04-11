@@ -354,11 +354,15 @@ string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
 
 if (WIN32)
   # DRi#1424: target the oldest possible platform we can
-  if (CMAKE_C_COMPILER_VERSION VERSION_LESS 17.0) # up to and including VS2010
-    set(os_target "5.00") # Win2K
-  else () # VS2012, VS2013
-    set(os_target "5.01") # WinXP
-  endif ()
+  if (X64)
+    set(os_target "5.02") # Win2003x64/WinXPx64
+  else (X64)
+    if (CMAKE_C_COMPILER_VERSION VERSION_LESS 17.0) # up to and including VS2010
+      set(os_target "5.00") # Win2K
+    else () # VS2012, VS2013
+      set(os_target "5.01") # WinXP
+    endif ()
+  endif (X64)
   foreach (lflags CMAKE_EXE_LINKER_FLAGS
       CMAKE_MODULE_LINKER_FLAGS
       CMAKE_SHARED_LINKER_FLAGS)
