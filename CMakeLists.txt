@@ -352,6 +352,21 @@ string(STRIP "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}"
   CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
 string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
 
+if (WIN32)
+  # DRi#1424: target the oldest possible platform we can
+  if (CMAKE_C_COMPILER_VERSION VERSION_LESS 17.0) # up to and including VS2010
+    set(os_target "5.00") # Win2K
+  else () # VS2012, VS2013
+    set(os_target "5.01") # WinXP
+  endif ()
+  foreach (lflags CMAKE_EXE_LINKER_FLAGS
+      CMAKE_MODULE_LINKER_FLAGS
+      CMAKE_SHARED_LINKER_FLAGS)
+    set(${lflags} "${${lflags}} /subsystem:console,${os_target}")
+  endforeach()
+  message(STATUS "Targeting subsystem ${os_target}")
+endif (WIN32)
+
 if (UNIX)
   include(CheckIncludeFiles)
   check_include_files("asm-i386/stat.h" HAVE_ASM_I386)

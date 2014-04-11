@@ -23,6 +23,13 @@
 #ifndef _UTILS_H_
 #define _UTILS_H_ 1
 
+#ifdef WINDOWS
+/* DRi#1424: avoid pulling in features from recent versions to keep compatibility */
+# ifndef _WIN32_WINNT
+#  define _WIN32_WINNT _WIN32_WINNT_WIN2K
+# endif
+#endif
+
 #include "hashtable.h"
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
 #include "drmgr.h"
