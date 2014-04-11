@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2013 Branden Clark  All rights reserved.
 # **********************************************************
 
@@ -24,6 +25,12 @@
 #
 
 cmake_minimum_required(VERSION 2.8.10)
+
+if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
+  # XXX DRi#1418: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0020 OLD)
+endif ()
 
 # Embedded DynamoRIO
 if (NOT USER_SPECIFIED_DynamoRIO_DIR)

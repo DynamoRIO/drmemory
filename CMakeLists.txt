@@ -24,6 +24,12 @@
 # (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
 cmake_minimum_required(VERSION 2.8.10)
 
+if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
+  # XXX DRi#1418: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0020 OLD)
+endif ()
+
 # like DR, we collapse VS generator into one config since
 # we don't have enough control over output dirs
 # in build rules (until cmake 2.8.4).
