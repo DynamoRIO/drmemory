@@ -799,11 +799,18 @@ ntdll.dll!LdrInitializeThunk
 # The actual bug is in _stat64i32() called from stat(), but for /MD we
 # might not have symbols.  We limit to the comparison to ':' (0x3a)
 # and avoid missing an uninit in the rest of the string via instruction=.
+# VS2013 has this as an unaddr w/ two frames above stat and cmp to 0x003a.
 
 UNINITIALIZED READ
 name=default i#1298 real MSVCRT stat bug
-instruction=cmp * $0x3a
-*!*
+instruction=*cmp * $0x*3a
+...
+*!stat
+
+UNADDRESSABLE ACCESS
+name=default i#1298 real MSVCRT stat bug VS2013
+instruction=*cmp * $0x*3a
+...
 *!stat
 
 ##################################################
