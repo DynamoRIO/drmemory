@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -81,7 +81,8 @@ my %name_map = (
     'NtGdiGdiGetSpoolMessage' => 'NtGdiGetSpoolMessage',
     'NtGdiGdiInitSpool' => 'NtGdiInitSpool',
     'NtGdiGdiQueryFonts' => 'NtGdiQueryFonts',
-    'NtGdiEngGradientFill' => 'NtGdiCheckAndGetBitmapBits',
+    # CheckAndGetBitmapBits shows up as a dup in a win2k pdb
+    'NtGdiCheckAndGetBitmapBits' => 'NtGdiEngGradientFill',
     );
 
 # These are bogus, not sure whose fault it is (winsyms or dbghelp?  windbg shows

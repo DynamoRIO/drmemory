@@ -5903,7 +5903,6 @@ syscall_info_t syscall_gdi32_info[] = {
          {5, sizeof(DESIGNVECTOR), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtGdiCheckAndGetBitmapBits", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtGdiConsoleTextOut", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtGdiEnumFontChunk", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtGdiEnumFontClose", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
