@@ -3655,6 +3655,11 @@ static void
 check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
                     const char *optional_prefix)
 {
+    /* i#1521: windows version-specific entry feature */
+    if (syslist->num.number != 0 && win_ver.version < syslist->num.number)
+        return;
+    if (syslist->num.secondary != 0 && win_ver.version > syslist->num.secondary)
+        return;
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
     if (info != NULL) {
