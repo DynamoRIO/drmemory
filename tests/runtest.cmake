@@ -525,6 +525,7 @@ if (resmatch)
   #      VS: registers.c_asm.asm.s:1080
   #     gcc: registers.c_asm.asm:720
   string(REGEX REPLACE "c_asm\\.asm[\\.a-z]*" "c_asm.asm" results "${results}")
+  string(REGEX REPLACE "cpp_asm\\.asm[\\.a-z]*" "cpp_asm.asm" results "${results}")
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   set(require_in_order 1)

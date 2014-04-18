@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,6 +19,42 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNINITIALIZED READ
-bitfield.cpp:36
+bitfield.cpp:51
 Error #2: UNINITIALIZED READ
-bitfield.cpp:39
+bitfield.cpp:54
+%if WINDOWS
+Error #3: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:505
+Error #4: UNINITIALIZED READ: reading register bl
+bitfield.cpp_asm.asm:518
+Error #5: UNINITIALIZED READ: reading register cl
+bitfield.cpp_asm.asm:526
+Error #6: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:531
+Error #7: UNINITIALIZED READ: reading register ch
+bitfield.cpp_asm.asm:540
+Error #8: UNINITIALIZED READ: reading register cl
+bitfield.cpp_asm.asm:543
+Error #9: UNINITIALIZED READ: reading register ch
+bitfield.cpp_asm.asm:548
+Error #10: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:551
+%endif
+%if UNIX
+Error #3: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:88
+Error #4: UNINITIALIZED READ: reading register bl
+bitfield.cpp_asm.asm:101
+Error #5: UNINITIALIZED READ: reading register cl
+bitfield.cpp_asm.asm:109
+Error #6: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:114
+Error #7: UNINITIALIZED READ: reading register ch
+bitfield.cpp_asm.asm:123
+Error #8: UNINITIALIZED READ: reading register cl
+bitfield.cpp_asm.asm:126
+Error #9: UNINITIALIZED READ: reading register ch
+bitfield.cpp_asm.asm:131
+Error #10: UNINITIALIZED READ: reading register ecx
+bitfield.cpp_asm.asm:134
+%endif

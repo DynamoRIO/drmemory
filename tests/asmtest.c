@@ -31,7 +31,7 @@
 
 void asm_test(char *undef, char *def);
 
-void
+static void
 asm_test_C(void)
 {
     char undef[128];
@@ -124,28 +124,20 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      PTRSZ [REG_XSP]
         pop      REG_XCX
 
-        /* test i#849-ish bitfield sequence for i#1520 */
-        mov      ecx, DWORD [REG_XAX] /* undef */
-        shr      ecx, HEX(1b)
-        and      ecx, HEX(0f)
-        mov      ecx, 0
-        sete     cl
-        cmp      eax,ecx
-
-        /* test i#878-ish bitfield sequence for i#1520 */
-        push     ebx /* save callee-saved reg */
-        mov      ecx, 0
-        mov      cl, BYTE [REG_XAX] /* undef */
-        push     ecx /* set up undef memory we can write to */
-        xor      cl, cl
-        mov      bl, BYTE [REG_XSP] /* undef */
-        xor      bl, cl
-        and      bl, 1
-        xor      bl, BYTE [REG_XSP]
-        mov      BYTE [REG_XSP], bl
-        test     bl, 1
-        pop      ebx
-        pop      ebx /* restore */
+        /* test pop into (esp) for i#1502 */
+        push     REG_XDX
+        push     REG_XBX
+        mov      edx, DWORD [REG_XAX] /* undef */
+        or       ecx, HEX(28)
+        mov      ebx, DWORD [REG_XAX + 4] /* undef */
+        and      ebx, HEX(FFFFFF00)
+        and      edx, HEX(C0014000)
+        shl      ecx, HEX(B)
+        or       ecx, edx
+        cmp      ecx, 0
+        cmp      ebx, 0
+        pop      REG_XBX
+        pop      REG_XDX
 
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).

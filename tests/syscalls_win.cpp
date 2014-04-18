@@ -39,15 +39,15 @@ test_sysarg_size_in_field()
     int uninit;
     CURSORINFO cursor_info;
     ICONINFO iinfo;
-    /* We zero out the high 30-bit of cbSize (& 0x3) to avoid large value,
-     * which may cause an extra unaddr error.
-     * We cannot use 0xf due to a heuristic used by i#849.
+    /* We zero out the high bits of cbSize to avoid a large value,
+     * which can cause an extra unaddr error.
+     * We can't use & with a constant as that hits bitfield heuristics (i#849, i#1520).
      */
-    cursor_info.cbSize &= 0x3;
+    memset(((byte *)&cursor_info.cbSize) + 1, 0, 3);
     if (GetCursorInfo(&cursor_info)) /* uninit on cbSize */
         cout << "GetCursorInfo succeeded unexpectedly." << endl;
     cursor_info.cbSize = sizeof(CURSORINFO);
-    /* i#1494: GetCursorInfo clear the cbSize field in kernel */
+    /* i#1494: GetCursorInfo clears the cbSize field in kernel */
     if (!GetCursorInfo(&cursor_info)) {
         /* XXX: i#1504: GetCursorInfo may fail on ERROR_ACCESS_DENIED
          * for unknown reasons, in which case we bail out.

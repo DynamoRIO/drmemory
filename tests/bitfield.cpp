@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 #include <stdio.h>
 
 typedef unsigned int uint;
@@ -30,7 +32,20 @@ struct bitfield {
     bool bits1_ : 1;
 };
 
-int main(int argc, char *argv[])
+extern "C" {
+void bitfield_asm_test(char *undef, char *def);
+}
+
+static void
+bitfield_asm_test_C(void)
+{
+    char undef[128];
+    char def[128] = {0,};
+    bitfield_asm_test(undef, def);
+}
+
+int
+main(int argc, char *argv[])
 {
     bitfield b1(argc, true);
     if (b1.bits21_ > 0)
@@ -38,5 +53,89 @@ int main(int argc, char *argv[])
     bitfield b2;
     if (b2.bits21_ == 0)
         printf("correct\n");
+
+#ifdef BITFIELD_ASM
+    bitfield_asm_test_C();
+#endif
+
+    printf("all done\n");
     return 0;
 }
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+#define FUNCNAME bitfield_asm_test
+/* void bitfield_asm_test(char *undef, char *def); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XDX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* test i#849-ish bitfield sequence for i#1520 */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        shr      ecx, HEX(1b)
+        and      ecx, HEX(0f)
+        mov      ecx, 0
+        sete     cl
+        cmp      eax,ecx
+
+        /* test i#878-ish bitfield sequence for i#1520 */
+        push     ebx /* save callee-saved reg */
+        mov      ecx, 0
+        mov      cl, BYTE [REG_XAX] /* undef */
+        push     ecx /* set up undef memory we can write to */
+        xor      cl, cl
+        mov      bl, BYTE [REG_XSP] /* undef */
+        xor      bl, cl
+        and      bl, 1
+        xor      bl, BYTE [REG_XSP]
+        mov      BYTE [REG_XSP], bl
+        test     bl, 1
+        pop      ebx
+        pop      ebx /* restore */
+
+        /* test i#1520 bitfield sequence A */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(80000000)
+        shr      ecx, HEX(11)
+        test     cl, 1
+
+        /* test i#1520 bitfield sequence B */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(f3009000)
+        cmp      eax,ecx
+
+        /* test i#1520 byte-aligned masks: we later decided to not tighten
+         * the bitfield heuristics for whole-byte constants, but I'm leaving
+         * this test in case we enable later.
+         */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(ff00ff00)
+        cmp      al,cl /* ok */
+        cmp      ah,ch /* uninit -- but we disabled byte masks, so no error */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(ffff00ff)
+        cmp      al,cl /* uninit -- but we disabled byte masks, so no error */
+        cmp      ah,ch /* ok */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(ffffff00)
+        cmp      al,cl /* ok */
+        cmp      ah,ch /* uninit -- but we disabled byte masks, so no error */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        and      ecx, HEX(00ff0000)
+        cmp      eax,ecx /* uninit -- but we disabled byte masks, so no error */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+END_FILE
+#endif

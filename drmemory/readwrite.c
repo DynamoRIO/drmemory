@@ -2321,8 +2321,8 @@ xor_bitfield_mark_defined(opnd_t op, dr_mcontext_t *mc, opnd_t and_src, opnd_t a
               opnd_is_memory_reference(and_dst)) ||
              !opnd_share_reg(op, and_dst))) {
             shadow_set_non_matching_range(opnd_compute_address(op, mc),
-                                          opnd_get_size(op), SHADOW_DEFINED,
-                                          SHADOW_UNADDRESSABLE);
+                                          opnd_size_in_bytes(opnd_get_size(op)),
+                                          SHADOW_DEFINED, SHADOW_UNADDRESSABLE);
         }
     }
 }
@@ -2404,7 +2404,48 @@ check_andor_vals(int opc, reg_t val, uint i, bool bitmask_immed)
 }
 
 static bool
-check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
+check_and_not_test(void *drcontext, dr_mcontext_t *mc, instr_t *and, app_pc next_pc)
+{
+    /* i#1520: we expand our bitfield heuristics to handle single-bit fields as
+     * well as multiple contiguous bitfield variables.  These end up initialized
+     * using OP_and with constants like 0x80000000 or 0xf3009000 that don't
+     * meet the original i#849 requirements.  Here, we allow any OP_and constant
+     * so long as there's no eflags-reading instr soon after, to rule out
+     * non-assignment uses like testing that are using OP_and instead of OP_test
+     * for some reason.
+     */
+    bool matches = false;
+    instr_t inst;
+    uint count;
+    byte *pc = next_pc;
+#   define AND_NOT_TEST_INSTRS_TO_CHECK 3
+    ASSERT(instr_get_opcode(and) == OP_and, "caller should check");
+    if (options.strict_bitops) /* not worth separate option */
+        return false;
+    instr_init(drcontext, &inst);
+    for (count = 0; count < AND_NOT_TEST_INSTRS_TO_CHECK; count++) {
+        if (!safe_decode(drcontext, pc, &inst, &pc) ||
+            !instr_valid(&inst))
+            break;
+        if (instr_is_cti(&inst))
+            break;
+        if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst)))
+            break;
+        instr_reset(drcontext, &inst);
+    }
+    if (count == AND_NOT_TEST_INSTRS_TO_CHECK) {
+        matches = true;
+        LOG(4, "%s: no eflags-reading instrs after and-with-const @"PFX"\n",
+            __FUNCTION__, next_pc);
+        STATS_INC(bitfield_const_exception);
+    }
+    instr_free(drcontext, &inst);
+    return matches;
+}
+
+
+static bool
+check_andor_bitmask_immed(int opc, size_t sz, reg_t immed, bool *byte_bounds OUT)
 {
     /* For i#849, we're looking for OP_and with a constant that sets a contiguous
      * sequence of bits to 0 and leaves the rest alone: used to initialize
@@ -2413,11 +2454,15 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
      * just one or two bits w/ OP_and instead of OP_test).
      */
     bool bitmask_immed = false;
+    bool byte_only = false;
     if (!options.strict_bitops && opc == OP_and/*no OP_test*/) {
         uint num_contig_1bits = 0;
+        /* Also look for byte-aligned and byte-length sequences */
+        uint sequence_0 = 0, sequence_1 = 0;
         reg_t curval = immed;
-        bool found_zero = false, last_zero = false;
+        bool found_zero = false, last_zero = false, two_zeroes = false;
         uint i;
+        byte_only = true;
         for (i = 0; i < sz*8; i++) {
             /* XXX perf: per-byte table lookup would be better though
              * need logic to stitch bytes together
@@ -2425,19 +2470,31 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
             if (TEST(1, curval)) {
                 num_contig_1bits++;
                 last_zero = false;
+                if (sequence_0 % 8 != 0)
+                    byte_only = false;
+                sequence_0 = 0;
+                sequence_1++;
             } else {
-                if (!last_zero && found_zero)
-                    break; /* two sets of zeros */
-                found_zero = true;
-                last_zero = true;
+                if (!last_zero && found_zero) {
+                    /* two sets of zeros: but we can't break b/c of sequence* */
+                    two_zeroes = true;
+                } else {
+                    found_zero = true;
+                    last_zero = true;
+                }
+                if (sequence_1 % 8 != 0)
+                    byte_only = false;
+                sequence_1 = 0;
+                sequence_0++;
             }
             curval = curval >> 1;
         }
-        if (i == sz*8 && num_contig_1bits > 2) {
+        if (!two_zeroes && i == sz*8 && num_contig_1bits > 2) {
             STATS_INC(bitfield_const_exception);
             bitmask_immed = true;
         }
     }
+    *byte_bounds = byte_only;
     return bitmask_immed;
 }
 
@@ -2536,8 +2593,17 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         return true;
     }
 
-    if (!options.strict_bitops && have_immed)
-        bitmask_immed = check_andor_bitmask_immed(opc, sz, immed);
+    if (!options.strict_bitops && have_immed) {
+        bool byte_bounds;
+        bitmask_immed = check_andor_bitmask_immed(opc, sz, immed, &byte_bounds);
+        /* XXX i#1520c#8: we'd like to set bitmask_immed to false if
+        * byte_bounds is true, but that leads to false positives.
+        * So for now we ignore it and prefer to err on the false neg side
+        * until we add true per-bit tracking.
+        */
+        if (!bitmask_immed && opc == OP_and)
+            bitmask_immed = check_and_not_test(drcontext, mc, inst, next_pc);
+    }
 
     for (i = 0; i < sz; i++) {
         LOG(4, "%s: have_vals=%d i=%d def=%d %d val=%d %d\n",

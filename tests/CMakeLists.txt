@@ -107,12 +107,14 @@ function(tobuild name source)
   set(srcs ${source})
 
   # support same-file asm code
-  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/${source}" srccode)
-  if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
-    add_split_asm_target("${CMAKE_CURRENT_SOURCE_DIR}/${source}" asm_source gen_asm_tgt
-      "_asm" "${asm_defs}" "${asm_deps}")
-    set(srcs ${srcs} ${asm_source})
-  endif ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
+  if (NOT DEFINED ${name}_disable_asm)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/${source}" srccode)
+    if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
+      add_split_asm_target("${CMAKE_CURRENT_SOURCE_DIR}/${source}" asm_source gen_asm_tgt
+        "_asm" "${asm_defs}" "${asm_deps}")
+      set(srcs ${srcs} ${asm_source})
+    endif ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
+  endif ()
 
   add_executable(${name} ${srcs})
   set_props(${name})
@@ -424,16 +426,19 @@ if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
   newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
+newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+if (WIN32)
+  # i#489: building /GL results in a double-xor sequence
+  set(bitfieldGL_disable_asm ON)
+  newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
+endif (WIN32)
+
 if (WIN32)
   # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
   # I believe I have the proper prologue+epilogue but I still the error, so:
   append_property_string(TARGET registers LINK_FLAGS "/safeseh:no")
   append_property_string(TARGET asmtest LINK_FLAGS "/safeseh:no")
-endif (WIN32)
-newtest(bitfield bitfield.cpp)
-if (WIN32)
-  # i#489: building /GL results in a double-xor sequence
-  newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
+  append_property_string(TARGET bitfield LINK_FLAGS "/safeseh:no")
 endif (WIN32)
 
 if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
