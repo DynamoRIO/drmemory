@@ -2302,6 +2302,31 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
  * i#878: handle the "mov C->B, xor A->B, and D->B, xor C->B" sequence, for
  * which we look for "and D->B, xor C->B"
  */
+static void
+xor_bitfield_mark_defined(opnd_t op, dr_mcontext_t *mc, opnd_t and_src, opnd_t and_dst)
+{
+    if (opnd_is_reg(op)) {
+        register_shadow_mark_defined(opnd_get_reg(op),
+                                     opnd_size_in_bytes(opnd_get_size(op)));
+    } else {
+        ASSERT(opnd_is_memory_reference(op), "invalid xor dst");
+        /* No need for adjust_memop: not a push or pop */
+        /* Rule out OP_and's operands affecting base/index of xor (so we can
+         * rely on opnd_compute_address() below), or D==C.
+         */
+        if (((opnd_is_memory_reference(op) &&
+              opnd_is_memory_reference(and_src)) ||
+             !opnd_share_reg(op, and_src)) &&
+            ((opnd_is_memory_reference(op) &&
+              opnd_is_memory_reference(and_dst)) ||
+             !opnd_share_reg(op, and_dst))) {
+            shadow_set_non_matching_range(opnd_compute_address(op, mc),
+                                          opnd_get_size(op), SHADOW_DEFINED,
+                                          SHADOW_UNADDRESSABLE);
+        }
+    }
+}
+
 static bool
 check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                    shadow_combine_t *comb INOUT, size_t sz, app_pc next_pc)
@@ -2329,6 +2354,7 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
             /* XXX: in debug build try to go backward and verify the prior mov,xor
              * instrs to find out whether any other patterns match this tail end.
              */
+            LOG(4, "%s: matched @"PFX"\n", __FUNCTION__, next_pc);
             matches = true;
             STATS_INC(bitfield_xor_exception);
             /* Caller already collapsed the 2nd src so we just set bottom indices */
@@ -2341,30 +2367,8 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
              * is executed at the OP_and and marking dst defined doesn't help b/c
              * the xor then executes and propagates the uninit bits from the src.
              */
-            if (opnd_is_reg(xor_src)) {
-                register_shadow_mark_defined(opnd_get_reg(xor_src),
-                                             opnd_size_in_bytes(opnd_get_size(xor_src)));
-            }
-            if (opnd_is_reg(xor_dst)) {
-                register_shadow_mark_defined(opnd_get_reg(xor_dst),
-                                             opnd_size_in_bytes(opnd_get_size(xor_dst)));
-            } else {
-                ASSERT(opnd_is_memory_reference(xor_dst), "invalid xor dst");
-                /* No need for adjust_memop: not a push or pop */
-                /* Rule out OP_and's operands affecting base/index of xor (so we can
-                 * rely on opnd_compute_address() below), or D==C.
-                 */
-                if (((opnd_is_memory_reference(xor_dst) &&
-                      opnd_is_memory_reference(and_src)) ||
-                     !opnd_share_reg(xor_dst, and_src)) &&
-                    ((opnd_is_memory_reference(xor_dst) &&
-                      opnd_is_memory_reference(and_dst)) ||
-                     !opnd_share_reg(xor_dst, and_dst))) {
-                    shadow_set_non_matching_range(opnd_compute_address(xor_dst, mc),
-                                                  opnd_get_size(xor_dst), SHADOW_DEFINED,
-                                                  SHADOW_UNADDRESSABLE);
-                }
-            }
+            xor_bitfield_mark_defined(xor_src, mc, and_src, and_dst);
+            xor_bitfield_mark_defined(xor_dst, mc, and_src, and_dst);
         }
     }
     instr_free(drcontext, &xor);

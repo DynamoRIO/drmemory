@@ -124,13 +124,28 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      PTRSZ [REG_XSP]
         pop      REG_XCX
 
-        /* test bitfield sequence for i#1520 */
+        /* test i#849-ish bitfield sequence for i#1520 */
         mov      ecx, DWORD [REG_XAX] /* undef */
         shr      ecx, HEX(1b)
         and      ecx, HEX(0f)
         mov      ecx, 0
         sete     cl
         cmp      eax,ecx
+
+        /* test i#878-ish bitfield sequence for i#1520 */
+        push     ebx /* save callee-saved reg */
+        mov      ecx, 0
+        mov      cl, BYTE [REG_XAX] /* undef */
+        push     ecx /* set up undef memory we can write to */
+        xor      cl, cl
+        mov      bl, BYTE [REG_XSP] /* undef */
+        xor      bl, cl
+        and      bl, 1
+        xor      bl, BYTE [REG_XSP]
+        mov      BYTE [REG_XSP], bl
+        test     bl, 1
+        pop      ebx
+        pop      ebx /* restore */
 
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).
