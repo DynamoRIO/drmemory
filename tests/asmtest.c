@@ -111,20 +111,30 @@ GLOBAL_LABEL(FUNCNAME:)
         cmp      ecx, HEX(4)
 
         /* test unusual stack adjustments such as i#1500 */
-        mov      REG_XAX, REG_XSP
-        sub      REG_XAX, 16
-        push     REG_XAX
+        mov      REG_XCX, REG_XSP
+        sub      REG_XCX, 16
+        push     REG_XCX
         pop      REG_XSP
-        mov      REG_XAX, PTRSZ [REG_XAX] /* unaddr if doesn't track "pop xsp" */
+        mov      REG_XCX, PTRSZ [REG_XCX] /* unaddr if doesn't track "pop xsp" */
         add      REG_XSP, 16
 
         /* test pop into (esp) for i#1502 */
-        push     REG_XAX
-        push     REG_XAX
+        push     REG_XCX
+        push     REG_XCX
         pop      PTRSZ [REG_XSP]
-        pop      REG_XAX
+        pop      REG_XCX
 
-        /* XXX: add more tests here */
+        /* test bitfield sequence for i#1520 */
+        mov      ecx, DWORD [REG_XAX] /* undef */
+        shr      ecx, HEX(1b)
+        and      ecx, HEX(0f)
+        mov      ecx, 0
+        sete     cl
+        cmp      eax,ecx
+
+        /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
+         * edx (holds def mem).
+         */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP

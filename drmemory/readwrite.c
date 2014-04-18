@@ -2437,6 +2437,7 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
     return bitmask_immed;
 }
 
+/* Returns whether the definedness values changed at all */
 static bool
 check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                     shadow_combine_t *comb INOUT, app_pc next_pc)
@@ -2448,7 +2449,7 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
     int opc = instr_get_opcode(inst);
     reg_t val0, val1, immed = 0;
     uint i, immed_opnum, nonimmed_opnum;
-    bool all_defined = true;
+    bool changed = false;
     bool have_vals = (get_cur_src_value(drcontext, inst, 0, &val0) &&
                       get_cur_src_value(drcontext, inst, 1, &val1));
     bool have_immed = false;
@@ -2543,10 +2544,10 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                 check_andor_vals(opc, val1, i, bitmask_immed)) {
                 /* The 0/1 byte makes the source undefinedness not matter */
                 comb->dst[i] = SHADOW_DEFINED;
+                changed = true;
                 STATS_INC(andor_exception);
                 LOG(3, "0/1 byte %d suppresses undefined and/or source\n", i);
-            } else
-                all_defined = false;
+            }
         } else {
             ASSERT(comb->dst[i] == SHADOW_DEFINED, "shadow val inconsistency");
             if (comb->dst[i+sz] == SHADOW_UNDEFINED) {
@@ -2554,8 +2555,12 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                     /* The 0/1 byte makes the source undefinedness not matter */
                     STATS_INC(andor_exception);
                     LOG(3, "0/1 byte %d suppresses undefined and/or source\n", i);
+                    changed = true;
                 } else {
-                    all_defined = false;
+                    /* We probably don't need this as map_src_to_dst() should
+                     * already have propagated i+sz to eflags?
+                     */
+                    changed = true;
                     comb->dst[i] = SHADOW_UNDEFINED;
                 }
             } else
@@ -2565,10 +2570,10 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         comb->dst[i+sz] = SHADOW_DEFINED;
     }
 
-    if (opc == OP_and)
-        all_defined = check_xor_bitfield(drcontext, mc, inst, comb, sz, next_pc);
+    if (opc == OP_and && check_xor_bitfield(drcontext, mc, inst, comb, sz, next_pc))
+        changed = true;
 
-    return all_defined;
+    return changed;
 }
 
 /* Adds a new source operand's value to the array of shadow vals in
@@ -3385,21 +3390,44 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     if (check_srcs_after)
         comb.dst = comb.raw; /* restore */
 
-    if (check_srcs_after && !check_definedness/*avoid recursing after goto below*/) {
+    if (check_srcs_after) {
         /* turn back on for dsts */
         check_definedness = instr_check_definedness(&inst);
-        if (!check_andor_sources(drcontext, mc, &inst, &comb, decode_pc + instr_sz) &&
-            check_definedness) {
-            /* We do not bother to suppress reporting the particular bytes that
-             * may have been "defined" due to 0/1 in the other operand since
-             * doing so would require duplicating/extracting all the reporting
-             * logic above for regs and in handle_mem_ref(): our goto here is
-             * slightly less ugly.
-             */
-            for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
-                comb.dst[i] = SHADOW_DEFINED;
-            comb.eflags = SHADOW_DEFINED;
-            goto check_srcs;
+        if (check_andor_sources(drcontext, mc, &inst, &comb, decode_pc + instr_sz)) {
+            if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst))) {
+                /* We have to redo the eflags propagation.  map_src_to_dst() combined
+                 * all the laid-out sources, some of which we made defined in
+                 * check_andor_sources.
+                 */
+                comb.eflags = SHADOW_DEFINED;
+                for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
+                    accum_shadow(&comb.eflags, comb.dst[i]);
+            }
+        }
+        if (check_definedness) {
+            /* If we need to report undefs we have to go back */
+            bool all_defined = true;
+            for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++) {
+                if (comb.dst[i] != SHADOW_DEFINED) {
+                    all_defined = false;
+                    break;
+                }
+            }
+            if (!all_defined) {
+                /* We do not bother to suppress reporting the particular bytes that
+                 * may have been "defined" due to 0/1 in the other operand since
+                 * doing so would require duplicating/extracting all the reporting
+                 * logic above for regs and in handle_mem_ref(): our goto here is
+                 * slightly less ugly.
+                 */
+                LOG(4, "and/or not all defined and need to check def: restarting\n");
+                /* Avoid recursing, and don't do the side-by-side layout this time */
+                check_srcs_after = false;
+                for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
+                    comb.dst[i] = SHADOW_DEFINED;
+                comb.eflags = SHADOW_DEFINED;
+                goto check_srcs;
+            }
         }
     }
 
