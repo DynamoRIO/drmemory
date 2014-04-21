@@ -39,6 +39,10 @@ Error #9: UNINITIALIZED READ: reading register ch
 bitfield.cpp_asm.asm:548
 Error #10: UNINITIALIZED READ: reading register ecx
 bitfield.cpp_asm.asm:551
+Error #11: UNINITIALIZED READ: reading register dl
+bitfield.cpp_asm.asm:569
+Error #12: UNINITIALIZED READ: reading register esi
+bitfield.cpp_asm.asm:570
 %endif
 %if UNIX
 Error #3: UNINITIALIZED READ: reading register ecx
@@ -57,4 +61,8 @@ Error #9: UNINITIALIZED READ: reading register ch
 bitfield.cpp_asm.asm:131
 Error #10: UNINITIALIZED READ: reading register ecx
 bitfield.cpp_asm.asm:134
+Error #11: UNINITIALIZED READ: reading register dl
+bitfield.cpp_asm.asm:152
+Error #12: UNINITIALIZED READ: reading register esi
+bitfield.cpp_asm.asm:153
 %endif

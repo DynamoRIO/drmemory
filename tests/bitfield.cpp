@@ -130,6 +130,33 @@ GLOBAL_LABEL(FUNCNAME:)
         and      ecx, HEX(00ff0000)
         cmp      eax,ecx /* uninit -- but we disabled byte masks, so no error */
 
+        /* test i#1523 double-xor */
+        push     ebx /* save callee-saved reg */
+        push     esi /* save callee-saved reg */
+        push     edi /* save callee-saved reg */
+        push     edx /* save def ptr */
+        mov      ebx, 0 /* used as 1st xor src for both */
+        mov      dl, BYTE [REG_XAX] /* undef */
+        mov      esi, DWORD [REG_XAX] /* undef */
+        mov      cl, dl
+        mov      edi, esi
+        xor      cl, bl
+        xor      edi, ebx
+        and      cl, 1
+        and      edi, HEX(1fffff)
+        xor      dl, cl
+        xor      esi, edi
+        test     dl, 1
+        test     esi, 1
+        pop      edx /* restore */
+        pop      edi /* restore */
+        pop      esi /* restore */
+        pop      ebx /* restore */
+
+        /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
+         * edx (holds def mem).
+         */
+
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
         pop      REG_XBP

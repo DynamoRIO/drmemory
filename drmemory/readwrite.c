@@ -2299,9 +2299,13 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
  * relies on it).  It's painful to go backward though (we'd have to walk
  * the bb table to find start of bb) so we just look for "and D->B, xor B->C"
  * and mark B and C defined which is a reasonable compromise.
+ *
  * i#878: handle the "mov C->B, xor A->B, and D->B, xor C->B" sequence, for
  * which we look for "and D->B, xor C->B"
+ *
+ * i#1523: we also handle a double intertwined mov;xor;and;xor.
  */
+
 static void
 xor_bitfield_mark_defined(opnd_t op, dr_mcontext_t *mc, opnd_t and_src, opnd_t and_dst)
 {
@@ -2328,49 +2332,77 @@ xor_bitfield_mark_defined(opnd_t op, dr_mcontext_t *mc, opnd_t and_src, opnd_t a
 }
 
 static bool
+xor_bitfield_check_instr(void *drcontext, dr_mcontext_t *mc, instr_t *and, instr_t *xor,
+                         shadow_combine_t *comb INOUT, size_t sz)
+{
+    bool matches = false;
+    /* While someone could construct an L4 OP_and where src0==dst0 (or
+     * with 30 sources, for that matter), it won't encode, so we go ahead
+     * and assume it matches the canonical form.
+     */
+    opnd_t and_src = instr_get_src(and, 0);
+    opnd_t and_dst = instr_get_dst(and, 0);
+    opnd_t xor_src = instr_get_src(xor, 0);
+    opnd_t xor_dst = instr_get_dst(xor, 0);
+    ASSERT(instr_get_opcode(xor) == OP_xor, "caller should check");
+    if ((opnd_same(xor_src, and_dst) || opnd_same(xor_dst, and_dst)) &&
+        /* Rule out: 1) nop; 2) xor where B and C are not completely separate */
+        !opnd_share_reg(xor_dst, xor_src)) {
+        int i;
+        /* XXX: in debug build try to go backward and verify the prior mov,xor
+         * instrs to find out whether any other patterns match this tail end.
+         */
+        LOG(4, "%s: matched @"PFX"\n", __FUNCTION__, instr_get_app_pc(and));
+        matches = true;
+        STATS_INC(bitfield_xor_exception);
+        /* Caller already collapsed the 2nd src so we just set bottom indices */
+        for (i = 0; i < sz; i++) {
+            if (comb->dst[i] == SHADOW_UNDEFINED)
+                comb->dst[i] = SHADOW_DEFINED;
+        }
+        /* Eflags will be marked defined since comb->dst is all defined */
+        /* i#878: we mark both xor dst and xor src b/c this pattern match code
+         * is executed at the OP_and and marking dst defined doesn't help b/c
+         * the xor then executes and propagates the uninit bits from the src.
+         */
+        xor_bitfield_mark_defined(xor_src, mc, and_src, and_dst);
+        xor_bitfield_mark_defined(xor_dst, mc, and_src, and_dst);
+    }
+    return matches;
+}
+
+static bool
 check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                    shadow_combine_t *comb INOUT, size_t sz, app_pc next_pc)
 {
     bool matches = false;
     instr_t xor;
+    byte *pc = next_pc;
     ASSERT(instr_get_opcode(inst) == OP_and, "caller should check");
     if (options.strict_bitops) /* not worth separate option */
         return false;
     instr_init(drcontext, &xor);
-    if (safe_decode(drcontext, next_pc, &xor, NULL) &&
-        instr_valid(&xor) && instr_get_opcode(&xor) == OP_xor) {
-        /* While someone could construct an L4 OP_and where src0==dst0 (or
-         * with 30 sources, for that matter), it won't encode, so we go ahead
-         * and assume it matches the canonical form.
-         */
-        opnd_t and_src = instr_get_src(inst, 0);
-        opnd_t and_dst = instr_get_dst(inst, 0);
-        opnd_t xor_src = instr_get_src(&xor, 0);
-        opnd_t xor_dst = instr_get_dst(&xor, 0);
-        if ((opnd_same(xor_src, and_dst) || opnd_same(xor_dst, and_dst)) &&
-            /* Rule out: 1) nop; 2) xor where B and C are not completely separate */
-            !opnd_share_reg(xor_dst, xor_src)) {
-            int i;
-            /* XXX: in debug build try to go backward and verify the prior mov,xor
-             * instrs to find out whether any other patterns match this tail end.
-             */
-            LOG(4, "%s: matched @"PFX"\n", __FUNCTION__, next_pc);
-            matches = true;
-            STATS_INC(bitfield_xor_exception);
-            /* Caller already collapsed the 2nd src so we just set bottom indices */
-            for (i = 0; i < sz; i++) {
-                if (comb->dst[i] == SHADOW_UNDEFINED)
-                    comb->dst[i] = SHADOW_DEFINED;
+    if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor))
+        goto check_xor_bitfield_done;
+    if (instr_get_opcode(&xor) == OP_and) {
+        /* Try the next instr, to handle double intertwined patterns (i#1523) */
+        instr_reset(drcontext, &xor);
+        if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor))
+            goto check_xor_bitfield_done;
+    }
+    if (instr_get_opcode(&xor) == OP_xor) {
+        matches = xor_bitfield_check_instr(drcontext, mc, inst, &xor, comb, sz);
+        if (!matches) {
+            /* Try the next instr, to handle double intertwined patterns (i#1523) */
+            instr_reset(drcontext, &xor);
+            if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor))
+                goto check_xor_bitfield_done;
+            if (instr_get_opcode(&xor) == OP_xor) {
+                matches = xor_bitfield_check_instr(drcontext, mc, inst, &xor, comb, sz);
             }
-            /* Eflags will be marked defined since comb->dst is all defined */
-            /* i#878: we mark both xor dst and xor src b/c this pattern match code
-             * is executed at the OP_and and marking dst defined doesn't help b/c
-             * the xor then executes and propagates the uninit bits from the src.
-             */
-            xor_bitfield_mark_defined(xor_src, mc, and_src, and_dst);
-            xor_bitfield_mark_defined(xor_dst, mc, and_src, and_dst);
         }
     }
+ check_xor_bitfield_done:
     instr_free(drcontext, &xor);
     return matches;
 }
