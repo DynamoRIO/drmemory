@@ -759,7 +759,9 @@ process_results_file(const char *logdir, const char *symdir,
     f = CreateFile(wfname, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
-        warn("unable to locate results file since can't open "TSTR_FMT": %d",
+        warn("unable to locate results file since can't open "TSTR_FMT": %d\n"
+             "There was likely an early crash, perhaps due to interference "
+             "from invasive security software.  Try disabling other software.",
              wfname, GetLastError());
         return;
     }
