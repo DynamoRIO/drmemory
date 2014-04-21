@@ -740,10 +740,11 @@ if (TOOL_DR_MEMORY)
         newtest_gcc(cs2bugMinGW_shared cs2bug.cpp cs2bug "" "" "" "" "" cs2bug
           ${mingw_path})
       endif ()
-   endif (GCC)
+    endif (GCC)
 
+    # use -verify_sysnums to verify syscall numbers are correct
     newtest_ex(gdi gdi.cpp ""
-      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread" ""
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread;-verify_sysnums" ""
       OFF "" 0)
     newtest(syscalls_win syscalls_win.cpp)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
@@ -751,7 +752,7 @@ if (TOOL_DR_MEMORY)
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
     newtest_ex(handle handle.cpp ""
-      "-light;-check_handle_leaks;-callstack_max_frames;100"
+      "-light;-check_handle_leaks;-callstack_max_frames;100;-verify_sysnums"
       "" OFF "" 0)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only;-callstack_max_frames;100" "" OFF "handle_only")
