@@ -32,7 +32,7 @@ file_t f_global = INVALID_FILE;
 int tls_idx_util = -1;
 file_t f_results = INVALID_FILE;
 file_t f_potential = INVALID_FILE;
-
+int reported_disk_error;
 typedef int heapstat_t;
 
 void

@@ -1774,7 +1774,7 @@ print_buffer(file_t f, char *buf)
             if (res == -EINTR)
                 continue;
 #endif
-            ASSERT(false, "dr_write_file failed");
+            REPORT_DISK_ERROR();
         }
         /* getting weird failures on stderr: aborting silently on those */
         ASSERT(IF_WINDOWS(f == STDERR ||) res == sz, "dr_write_file partial write");

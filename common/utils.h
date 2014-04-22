@@ -32,6 +32,7 @@
 
 #include "hashtable.h"
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
+#include "dr_tools.h"
 #include "drmgr.h"
 #include "drsyms.h"
 #include "drsyscall.h"
@@ -228,6 +229,7 @@ extern bool op_pause_via_loop;
 extern bool op_ignore_asserts;
 extern uint op_prefix_style;
 extern file_t f_global;
+extern int reported_disk_error;
 #ifdef USE_DRSYMS
 # ifdef TOOL_DR_MEMORY
 extern file_t f_results;
@@ -335,8 +337,10 @@ extern int tls_idx_util;
 #define LOGFILE_LOOKUP() LOGFILE(PT_LOOKUP())
 /* we require a ,fmt arg but C99 requires one+ argument which we just strip */
 #define ELOGF(level, f, ...) do {   \
-    if (op_verbose_level >= (level) && (f) != INVALID_FILE) \
-        dr_fprintf(f, __VA_ARGS__); \
+    if (op_verbose_level >= (level) && (f) != INVALID_FILE) {\
+        if (dr_fprintf(f, __VA_ARGS__) < 0) \
+            REPORT_DISK_ERROR(); \
+    } \
 } while (0)
 #define ELOGPT(level, pt, ...) \
     ELOGF(level, LOGFILE(pt), __VA_ARGS__)
@@ -359,6 +363,22 @@ extern int tls_idx_util;
 } while (0)
 
 #define WARN(...) ELOGF(0, f_global, __VA_ARGS__)
+
+#define REPORT_DISK_ERROR() do { \
+    /* this implements a DO_ONCE with multiple instantiations */ \
+    int report_count = dr_atomic_add32_return_sum(&reported_disk_error, 1); \
+    if (report_count == 1) { \
+        if (op_print_stderr) { \
+            print_prefix_to_console(); \
+            PRINT_CONSOLE("WARNING: Unable to write to the disk.  "\
+                "Ensure that you have enough space and permissions.\n"); \
+        } \
+        if (USE_MSGBOX) { \
+            IF_WINDOWS(dr_messagebox("Unable to write to the disk.  "\
+                "Ensure that you have enough space and permissions.\n")); \
+        } \
+    } \
+} while(0)
 
 /* PR 427074: asserts should go to the log and not just stderr.
  * Since we don't have a vsnprintf() (i#168) we can't make this an

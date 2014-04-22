@@ -51,6 +51,7 @@ bool op_pause_via_loop;
 bool op_ignore_asserts;
 uint op_prefix_style;
 file_t f_global = INVALID_FILE;
+int reported_disk_error;
 #ifdef USE_DRSYMS
 bool op_use_symcache;
 # ifdef STATISTICS
