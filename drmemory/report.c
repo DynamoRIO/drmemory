@@ -1160,10 +1160,8 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
                 num_suppressions_matched_default++;
             else
                 num_suppressions_matched_user++;
-            /* spec->count_used and num_unique is supposed to count *unique*
-             * callstacks matching the suppression.  Without taking a callstack,
-             * we can't count that, so we overestimate and assume they are all
-             * unique.
+            /* spec->count_used is now a total and not unique (i#1527) which is good
+             * b/c we don't have the callstack here to check unique.
              */
             spec->count_used++;
             dr_mutex_unlock(error_lock);
@@ -2584,6 +2582,8 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     err = record_error(etp->errtype, pcs, etp->loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {
+            /* Suppression count is total, not unique callstacks (i#1527) */
+            err->suppress_spec->count_used++;
             if (err->suppressed_by_default)
                 num_suppressions_matched_default++;
             else
