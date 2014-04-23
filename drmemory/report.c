@@ -314,6 +314,10 @@ static void
 print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
                       stored_error_t *err, error_callstack_t *ecs,
                       bool for_log);
+#ifdef DEBUG
+static void
+print_double_null_term_string(const char *s, const char *sep);
+#endif
 
 /***************************************************************************
  * suppression list
@@ -528,17 +532,25 @@ suppress_spec_finish(suppress_spec_t *spec,
              * been converted from commas to null-separated, double-null-terminated.
              * We assume no synch is needed as this is init time.
              */
-            size_t len = strlen(options.check_uninit_blacklist);
-            char *c = options.check_uninit_blacklist + len + 1/*skip 1st null*/;
+            size_t len;
+            char *c = options.check_uninit_blacklist;
             while (*c != '\0')
-                c += strlen(options.check_uninit_blacklist) + 1/*skip 1st null*/;
+                c += strlen(c) + 1/*skip 1st null*/;
             len = c - options.check_uninit_blacklist;
-            dr_snprintf(options.check_uninit_blacklist + len,
-                        BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist) - len,
-                        "%s%s", len > 0 ? "," : "", spec->frames[0].modname);
-            NULL_TERMINATE_BUFFER(options.check_uninit_blacklist);
+            dr_snprintf(c, BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist) - len,
+                        "%s", spec->frames[0].modname);
+            len = strlen(c);
+            if (c + len + 1 - options.check_uninit_blacklist <
+                BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist))
+                *(c + len + 1) = '\0';
+            NULL_TERMINATE_BUFFER(options.check_uninit_blacklist); /* paranoid */
             LOG(1, "Found whole-module supp: added %s to -check_uninit_blacklist\n",
                 spec->frames[0].modname);
+            DOLOG(2, {
+                LOG(2, "Blacklist is now: ");
+                print_double_null_term_string(options.check_uninit_blacklist, ", ");
+                LOG(2, "\n");
+            });
         }
     }
     return spec;
@@ -1357,7 +1369,6 @@ leak_is_likely_false_positive(error_callstack_t *ecs)
 
 /***************************************************************************/
 
-#ifdef USE_DRSYMS
 /* converts a ,-separated string to null-separated w/ double null at end */
 static void
 convert_commas_to_nulls(char *buf, size_t bufsz)
@@ -1374,6 +1385,17 @@ convert_commas_to_nulls(char *buf, size_t bufsz)
     while (c != NULL) {
         *c = '\0';
         c = strchr(c + 1, ',');
+    }
+}
+
+#ifdef DEBUG
+static void
+print_double_null_term_string(const char *s, const char *sep)
+{
+    const char *c = s;
+    while (*c != '\0') {
+        LOG(1, "%s%s", c, sep);
+        c += strlen(c) + 1;
     }
 }
 #endif
@@ -1790,13 +1812,21 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
         for (i = 0; i < ERROR_MAX_VAL; i++) {
             suppress_spec_t *spec;
             for (spec = supp_list[i]; spec != NULL; spec = spec->next) {
-                if (spec->count_used > 0 &&
-                    (print_full_stats || !spec->is_default)) {
+                if (!print_full_stats && spec->is_default)
+                    continue;
+                if (spec->count_used > 0) {
                     dr_fprintf(f, "\t%6dx", spec->count_used);
                     if (type_is_leak(i))
                         dr_fprintf(f, " (leaked %7d bytes): ", spec->bytes_leaked);
                     else
                         dr_fprintf(f, ": ");
+                    if (spec->name == NULL)
+                        dr_fprintf(f, "<no name %d>"NL, spec->num);
+                    else
+                        dr_fprintf(f, "%s"NL, spec->name);
+                } else if (is_module_wildcard(spec) && spec->type == ERROR_UNDEFINED) {
+                    dr_fprintf(f, "\t%6sx", "?");
+                    dr_fprintf(f, " (count unavail. for whole-lib): ");
                     if (spec->name == NULL)
                         dr_fprintf(f, "<no name %d>"NL, spec->num);
                     else
