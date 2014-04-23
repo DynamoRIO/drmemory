@@ -62,11 +62,17 @@ static uint saved_throttled_leaks;
 
 static uint64 timestamp_start;
 
+static bool report_exited;
+
 typedef struct _tls_report_t {
     char *errbuf; /* buffer for atomic writes to global logfile */
     size_t errbufsz;
     /* for callstack shadow xl8 cache */
     umbra_shadow_memory_info_t xl8_info;
+    /* cached values for module_is_on_check_uninit_blacklist() for i#1529 */
+    app_pc last_query_mod_start;
+    size_t last_query_mod_size;
+    bool last_query_res;
 } tls_report_t;
 
 static int tls_idx_report = -1;
@@ -487,6 +493,7 @@ static bool
 is_module_wildcard(suppress_spec_t *spec)
 {
     return (spec->num_frames == 1 &&
+            spec->instruction == NULL &&
             spec->frames[0].is_module &&
             spec->frames[0].func[0] == '*' &&
             spec->frames[0].func[1] == '\0');
@@ -516,6 +523,23 @@ suppress_spec_finish(suppress_spec_t *spec,
     num_suppressions++;
     if (is_module_wildcard(spec)) {
         have_module_wildcard = true;
+        if (spec->type == ERROR_UNDEFINED) {
+            /* i#1529: auto-add to the check_uninit_blacklist, which has already
+             * been converted from commas to null-separated, double-null-terminated.
+             * We assume no synch is needed as this is init time.
+             */
+            size_t len = strlen(options.check_uninit_blacklist);
+            char *c = options.check_uninit_blacklist + len + 1/*skip 1st null*/;
+            while (*c != '\0')
+                c += strlen(options.check_uninit_blacklist) + 1/*skip 1st null*/;
+            len = c - options.check_uninit_blacklist;
+            dr_snprintf(options.check_uninit_blacklist + len,
+                        BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist) - len,
+                        "%s%s", len > 0 ? "," : "", spec->frames[0].modname);
+            NULL_TERMINATE_BUFFER(options.check_uninit_blacklist);
+            LOG(1, "Found whole-module supp: added %s to -check_uninit_blacklist\n",
+                spec->frames[0].modname);
+        }
     }
     return spec;
 }
@@ -1179,6 +1203,7 @@ typedef struct _per_callstack_module_t {
     bool on_blacklist;
     bool on_whitelist;
     bool in_tool;
+    bool on_check_uninit_blacklist;
 } per_callstack_module_t;
 
 static void *
@@ -1196,8 +1221,12 @@ callstack_module_load_cb(const char *path, const char *modname, byte *base)
                                                   FILESYS_CASELESS));
     mod->in_tool = (path != NULL &&
                     text_matches_pattern(modname, DRMEMORY_LIBNAME, FILESYS_CASELESS));
-    LOG(1, "%s: %s => black=%d white=%d\n", __FUNCTION__, path,
-        mod->on_blacklist, mod->on_whitelist);
+    mod->on_check_uninit_blacklist =
+        (modname != NULL && options.check_uninit_blacklist[0] != '\0' &&
+         text_matches_any_pattern(modname, options.check_uninit_blacklist,
+                                  FILESYS_CASELESS));
+    LOG(1, "%s: %s => black=%d white=%d uninit=%d\n", __FUNCTION__, path,
+        mod->on_blacklist, mod->on_whitelist, mod->on_check_uninit_blacklist);
     return (void *) mod;
 }
 
@@ -1206,6 +1235,13 @@ callstack_module_unload_cb(const char *path, void *data)
 {
     per_callstack_module_t *mod = (per_callstack_module_t *) data;
     global_free(mod, sizeof(*mod), HEAPSTAT_CALLSTACK);
+
+    if (!report_exited) {
+        /* Clear the cache */
+        tls_report_t *pt = (tls_report_t *)
+            drmgr_get_tls_field(dr_get_current_drcontext(), tls_idx_report);
+        pt->last_query_mod_size = 0;
+    }
 }
 
 /* Returns whether the error should be treated as a false positive */
@@ -1262,6 +1298,28 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
         return (i > 0 && i >= options.lib_blacklist_frames);
     }
     return false;
+}
+
+bool
+module_is_on_check_uninit_blacklist(app_pc pc)
+{
+    /* We use TLS to cache the last lookup.  For -no_fastpath, or a series of
+     * fastpath entrances, we expect a whole bunch of queries for the same module.
+     * Querying TLS should be faster than doing a full module lookup.
+     */
+    tls_report_t *pt = (tls_report_t *)
+        drmgr_get_tls_field(dr_get_current_drcontext(), tls_idx_report);
+    if (pc < pt->last_query_mod_start ||
+        pc - pt->last_query_mod_start >= pt->last_query_mod_size) {
+        per_callstack_module_t *mod = (per_callstack_module_t *)
+            module_lookup_user_data(pc, &pt->last_query_mod_start,
+                                    &pt->last_query_mod_size);
+        if (mod != NULL)
+            pt->last_query_res = mod->on_check_uninit_blacklist;
+        else
+            pt->last_query_res = false;
+    }
+    return pt->last_query_res;
 }
 
 static bool
@@ -1442,6 +1500,8 @@ report_init(void)
     convert_commas_to_nulls(options.src_whitelist,
                             BUFFER_SIZE_ELEMENTS(options.src_whitelist));
 #endif
+    convert_commas_to_nulls(options.check_uninit_blacklist,
+                            BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist));
 
 #ifdef WINDOWS
     {
@@ -1859,6 +1919,7 @@ void
 report_exit(void)
 {
     uint i;
+    report_exited = true;
 #ifdef USE_DRSYMS
     ELOGF(0, f_results, NL"==========================================================================="NL"FINAL SUMMARY:"NL);
     dr_mutex_destroy(suppress_file_lock);

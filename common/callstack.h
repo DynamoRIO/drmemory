@@ -266,7 +266,8 @@ typedef struct _callstack_options_t {
     /* Callbacks invoked on module load and unload, allowing the user to store
      * per-module data.  The return value of module_load is the data to store.
      * It is propagated into each symbolized callstack frame that comes from
-     * that module, and can be queried with symbolized_callstack_frame_data.
+     * that module, and can be queried with symbolized_callstack_frame_data().
+     * It can also be quered via module_lookup_user_data().
      * It should be freed in module_unload.
      */
     void * (*module_load)(const char * /*module path*/, const char * /* module name */,
@@ -374,6 +375,13 @@ module_lookup_path(byte *pc);
  */
 const char *
 module_lookup_preferred_name(byte *pc);
+
+/* Returns the data stored for the module containing pc by
+ * callstack_options_t.module_load, or NULL if the pc is not in a known module.
+ * Optionally returns the module bounds as well.
+ */
+void *
+module_lookup_user_data(byte *pc, app_pc *start OUT, size_t *size OUT);
 
 /* Warns once about modules that don't have symbols, and records them in a
  * logfile so they can be fetched at the end of execution.

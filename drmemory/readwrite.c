@@ -1279,6 +1279,23 @@ result_is_always_defined(instr_t *inst, bool natively)
      *     propagate eflags (PR 425622)
      */
     int opc = instr_get_opcode(inst);
+
+#ifdef TOOL_DR_MEMORY
+    /* i#1529: mark an entire module defined */
+    if (!natively && options.check_uninit_blacklist[0] != '\0') {
+        /* Fastpath should have already checked the cached value in
+         * bb_info_t.mark_defined, so we should only be paying this
+         * cost for each slowpath entry.
+         */
+        app_pc pc = instr_get_app_pc(inst) != NULL ?
+            instr_get_app_pc(inst) : instr_get_raw_bits(inst);
+        if (module_is_on_check_uninit_blacklist(pc)) {
+            LOG(3, "module is on uninit blacklist: always defined\n");
+            return true;
+        }
+    }
+#endif
+
     /* Though our general non-const per-byte 0/1 checking would cover this,
      * we optimize by looking for entire-dword consts up front
      */
@@ -3063,6 +3080,12 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
     flags = MEMREF_USE_VALUES;
     if (options.check_uninit_cmps)
         flags |= MEMREF_CHECK_DEFINEDNESS;
+    if (options.check_uninit_blacklist[0] != '\0') {
+        /* i#1529: mark an entire module defined */
+        /* XXX: this is the wrong pc if decode_pc != pc.  For now we live with it. */
+        if (module_is_on_check_uninit_blacklist(loc_to_pc(loc)))
+            flags = 0; /* w/o MEMREF_USE_VALUES, handle_mem_ref() uses SHADOW_DEFINED */
+    }
     shadow_combine_init(&comb, NULL, OP_cmps, 1);
     check_mem_opnd(OP_cmps, flags, loc,
                    opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
@@ -5392,6 +5415,16 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
     bi = thread_alloc(drcontext, sizeof(*bi), HEAPSTAT_PERBB);
     memset(bi, 0, sizeof(*bi));
     *user_data = (void *) bi;
+
+    if (options.check_uninitialized &&
+        options.check_uninit_blacklist[0] != '\0') {
+        /* We assume no elision across modules here, so we can just pass the tag */
+        bi->mark_defined = module_is_on_check_uninit_blacklist(dr_fragment_app_pc(tag));
+        DOLOG(3, {
+            if (bi->mark_defined)
+                LOG(3, "module is on uninit blacklist: always defined\n");
+        });
+    }
 
 #ifdef DEBUG
     /* To diagnose fastpath vs slowpath issues on a whole-bb level,

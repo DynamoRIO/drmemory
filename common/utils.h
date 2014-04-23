@@ -862,9 +862,11 @@ strnchr(const char *str, int find, size_t max);
 bool
 text_matches_pattern(const char *text, const char *pattern, bool ignore_case);
 
+/* patterns is a null-separated, double-null-terminated list of strings */
 bool
 text_matches_any_pattern(const char *text, const char *patterns, bool ignore_case);
 
+/* patterns is a null-separated, double-null-terminated list of strings */
 const char *
 text_contains_any_string(const char *text, const char *patterns, bool ignore_case,
                          const char **matched);

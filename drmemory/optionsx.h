@@ -278,6 +278,9 @@ OPTION_CLIENT(client, src_whitelist_frames, uint, 4, 0, 4096,
                      "The number of frames to match vs -src_whitelist",
                      "The number of frames, starting from the top, that must not match -src_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -src_whitelist-based error separation.  If the top frame is a system call or a replace_* Dr. Memory routine, it is ignored and matching starts from the second frame.")
 # endif
+OPTION_CLIENT_STRING(drmemscope, check_uninit_blacklist, "",
+                     ",-separated list of module basenames in which to not check uninits",
+                   "For each library or executable basename on this list, Dr. Memory suspends checking of uninitialized reads.  Instead Dr. Memory marks all memory written by such modules as defined.  This is a more efficient way to ignore all errors from a module than suppressing them or adding to the lib_blacklist option.  Dr. Memory does automatically turn a whole-module suppression consisting of a single frame of the form 'modulename!*' into an entry on this list.  The entries on this list can contain wildcards.")
 #endif
 
 OPTION_CLIENT_BOOL(client, callstack_use_top_fp, true,

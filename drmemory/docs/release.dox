@@ -60,7 +60,13 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.6.1 include:
+The changes between \TOOL_VERSION and version 1.7.0 include:
+ - Added a new option -check_uninit_blacklist to reduce overhead on modules
+   where no uninitialized read error reporting is desired.
+   Dr. Memory automatically adds to this list when it sees a whole-module
+   suppression.
+
+The changes between version 1.7.0 and version 1.6.1 include:
  - Added a Beta version of Dr. Memory for Mac.  Be aware that this
    is a work in progress, but is far enough along to use on small
    applications.

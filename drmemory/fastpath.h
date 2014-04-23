@@ -195,6 +195,7 @@ struct _bb_info_t {
 #endif
     bool first_instr;
     bool added_instru;
+    bool mark_defined; /* mark all instr dsts defined (i#1529) */
     /* for calculating size of bb */
     app_pc first_app_pc;
     app_pc last_app_pc;

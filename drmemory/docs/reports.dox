@@ -164,6 +164,9 @@ on particular source files or particular libraries, using Dr. Memory's
 whitelisting options.  See \ref sec_potential_errors for further
 information on whitelists.
 
+A final method of ignoring uninitialized reads, in particular, for an
+entire library is described in \ref sec_no_uninit_checks.
+
 To get more information on what errors are being suppressed, run with
 \p -log_suppressed_errors.  All suppressed reports will be printed to the global
 logfile.

@@ -125,4 +125,7 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix);
 void
 report_child_thread(void *drcontext, thread_id_t child);
 
+bool
+module_is_on_check_uninit_blacklist(app_pc pc);
+
 #endif /* _REPORT_H_ */

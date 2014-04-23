@@ -2754,6 +2754,14 @@ module_lookup_preferred_name(byte *pc)
     return found ? name_info->name : NULL;
 }
 
+void *
+module_lookup_user_data(byte *pc, app_pc *start OUT, size_t *size OUT)
+{
+    modname_info_t *name_info;
+    bool found = module_lookup(pc, NULL, NULL, &name_info);
+    return found ? name_info->user_data : NULL;
+}
+
 /* Warn once (or twice with races) about modules that don't have symbols, and
  * log them so we can fetch symbols at the end of the run.
  */

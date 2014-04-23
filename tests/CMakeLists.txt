@@ -608,6 +608,11 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
+  newtest_nobuild_ex(blacklist_uninit.op registers ""
+    "-check_uninit_blacklist;registers*" "" OFF "registers.blacklist" 0 "")
+  newtest_nobuild_ex(blacklist_uninit.supp registers ""
+    "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
+    "" OFF "registers.blacklist" 0 "")
 
   # -replace_malloc is now the default, so test wrapping
   newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")

@@ -470,6 +470,24 @@ desired at the risk of not detecting all application errors, Dr. Memory's
 \ref page_light can be used to disable checking for uninitialized reads and
 leaks.
 
+**********
+\subsection sec_no_uninit_checks Eliminating Uninitialized Read Checks By Library
+
+Dr. Memory has an additional type of blacklist beyond the blacklist for
+system library errors described in \ref sec_potential_errors.  This
+blacklist is controlled by the option \p -check_uninit_blacklist, which is
+a ,-separated list of library names.  Unlike the other blacklist, these
+names are basenames and not whole paths, as they are meant to correspond to
+library names given in suppression files.  For each library on this list,
+Dr. Memory will not report any uninitialized reads while directly executing the
+library's code.  This is a more efficient means to eliminate
+errors than using suppressions or the \p -lib_blacklist option, but it only
+applies to uninitialized reads.
+
+When Dr. Memory sees a whole-module suppression -- a suppression containing
+only a single frame of the form "name!*" -- it automatically adds "name" to
+the \p -check_uninit_blacklist option list.
+
 ********************
 \section sec_children Controlling Child Processes
 

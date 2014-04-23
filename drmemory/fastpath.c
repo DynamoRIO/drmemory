@@ -4227,6 +4227,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     mark_defined =
         !options.check_uninitialized ||
+        /* i#1529: mark all instrs in blacklisted modules defined.  We check this
+         * before result_is_always_defined to avoid a lookup there.
+         */
+        mi->bb->mark_defined ||
         result_is_always_defined(inst, false/*us*/) ||
         /* no sources (e.g., rdtsc) */
         (opnd_is_null(mi->src[0].app) &&
