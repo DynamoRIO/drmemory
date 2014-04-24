@@ -153,6 +153,18 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      esi /* restore */
         pop      ebx /* restore */
 
+        /* test i#1530 interrupted xor sequence */
+        push     ebx /* save callee-saved reg */
+        movzx    ecx, BYTE [REG_XAX] /* undef */
+        push     ecx /* set up undef memory we can write to */
+        xor      cl, BYTE [REG_XSP]
+        and      cl, 1
+        mov      bl, BYTE [REG_XAX] /* unrelated interrupting instr */
+        xor      BYTE [REG_XSP], cl
+        test     BYTE [REG_XSP], 1
+        pop      ebx
+        pop      ebx /* restore */
+
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).
          */

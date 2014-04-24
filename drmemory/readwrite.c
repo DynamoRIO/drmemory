@@ -1142,6 +1142,33 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
     }
     return false;
 }
+
+static bool
+instrs_share_reg(instr_t *in1, instr_t *in2)
+{
+    int i, j;
+    for (i = 0; i < instr_num_srcs(in1); i++) {
+        for (j = 0; j < instr_num_srcs(in2); j++) {
+            if (opnd_share_reg(instr_get_src(in1, i), instr_get_src(in2, j)))
+                return true;
+        }
+        for (j = 0; j < instr_num_dsts(in2); j++) {
+            if (opnd_share_reg(instr_get_src(in1, i), instr_get_dst(in2, j)))
+                return true;
+        }
+    }
+    for (i = 0; i < instr_num_dsts(in1); i++) {
+        for (j = 0; j < instr_num_srcs(in2); j++) {
+            if (opnd_share_reg(instr_get_dst(in1, i), instr_get_src(in2, j)))
+                return true;
+        }
+        for (j = 0; j < instr_num_dsts(in2); j++) {
+            if (opnd_share_reg(instr_get_dst(in1, i), instr_get_dst(in2, j)))
+                return true;
+        }
+    }
+    return false;
+}
 #endif /* TOOL_DR_MEMORY */
 
 uint
@@ -2401,11 +2428,19 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
     instr_init(drcontext, &xor);
     if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor))
         goto check_xor_bitfield_done;
-    if (instr_get_opcode(&xor) == OP_and) {
-        /* Try the next instr, to handle double intertwined patterns (i#1523) */
+    if (instr_get_opcode(&xor) != OP_xor) {
+        /* Try the next instr, to handle double intertwined patterns (i#1523)
+         * or just a random instr in between (i#1530).
+         */
+        instr_t *between = instr_clone(drcontext, &xor);
         instr_reset(drcontext, &xor);
-        if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor))
+        if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor) ||
+            /* Bail if the instr in between has any non-memory-alias overlap */
+            instrs_share_reg(between, &xor)) {
+            instr_destroy(drcontext, between);
             goto check_xor_bitfield_done;
+        }
+        instr_destroy(drcontext, between);
     }
     if (instr_get_opcode(&xor) == OP_xor) {
         matches = xor_bitfield_check_instr(drcontext, mc, inst, &xor, comb, sz);
