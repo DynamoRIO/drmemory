@@ -799,7 +799,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -2847,7 +2847,13 @@ static syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* added in Windows Vista SP0 */
     /* XXX: add min OS version: but we have to distinguish the service packs! */
-    {{0,0},"NtAcquireCMFViewOwnership", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtAcquireCMFViewOwnership", OK, RNTST, 3,
+     {
+         {0, sizeof(ULONGLONG), W|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtAlpcAcceptConnectPort", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3079,7 +3085,14 @@ static syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,0},"NtCreateKeyTransacted", UNKNOWN, RNTST, 8, },
-    {{0,0},"NtCreatePrivateNamespace", UNKNOWN, RNTST, 4, },
+    {{0,0},"NtCreatePrivateNamespace", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtCreateResourceManager", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3115,8 +3128,25 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtCreateWorkerFactory", UNKNOWN, RNTST, 10, },
-    {{0,0},"NtDeletePrivateNamespace", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtCreateWorkerFactory", OK, RNTST, 10,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {5, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {6, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {8, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtDeletePrivateNamespace", OK, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtEnumerateTransactionObject", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -3127,19 +3157,59 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtFlushInstallUILanguage", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtFlushInstallUILanguage", OK, RNTST, 2,
+     {
+         {0, sizeof(LANGID), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtFlushProcessWriteBuffers", OK, RNTST, 0, },
-    {{0,0},"NtFreezeRegistry", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtFreezeRegistry", OK, RNTST, 1,
+     {
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtFreezeTransactions", OK, RNTST, 2,
      {
          {0, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtGetMUIRegistryInfo", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtGetNextProcess", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtGetNextThread", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtGetNlsSectionPtr", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtGetMUIRegistryInfo", OK, RNTST, 3,
+     {
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -1, WI|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtGetNextProcess", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtGetNextThread", OK, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtGetNlsSectionPtr", OK, RNTST, 5,
+     {
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {3, sizeof(PVOID), W|HT, DRSYS_TYPE_POINTER},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtGetNotificationResourceManager", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -3159,7 +3229,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtIsUILanguageComitted", UNKNOWN, RNTST, 0, },
+    {{0,0},"NtIsUILanguageComitted", OK, RNTST, 0, },
     {{0,0},"NtListTransactions", UNKNOWN, RNTST, 3, },
     {{0,0},"NtMarshallTransaction", UNKNOWN, RNTST, 6, },
     {{0,0},"NtOpenEnlistment", OK, RNTST, 5,
@@ -3196,7 +3266,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenSession", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtOpenSession", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+     }
+    },
     {{0,0},"NtOpenTransaction", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3330,8 +3406,12 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtReleaseCMFViewOwnership", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtReleaseWorkerFactoryWorker", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtReleaseCMFViewOwnership", OK, RNTST, 0, },
+    {{0,0},"NtReleaseWorkerFactoryWorker", OK, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtRemoveIoCompletionEx", UNKNOWN, RNTST, 6, },
     {{0,0},"NtRollbackComplete", OK, RNTST, 2,
      {
@@ -3407,7 +3487,11 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,WIN7},   "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 2, },
     {{WIN8,WIN8},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
     {{WIN81,0},  "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtWorkerFactoryWorkerReady", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtWorkerFactoryWorkerReady", OK, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
 
     /***************************************************/
     /* added in Windows Vista SP1 */
@@ -3418,7 +3502,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtReplacePartitionUnit", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtReplacePartitionUnit", OK, RNTST, 3,
+     {
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtWow64CsrVerifyRegion", OK, RNTST, 2, },
     {{0,0},"NtWow64WriteVirtualMemory64", OK, RNTST, 7,
      {
@@ -3441,7 +3531,20 @@ static syscall_info_t syscall_ntdll_info[] = {
         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{WIN7,0},"NtCreateProfileEx", UNKNOWN, RNTST, 10, },
+    {{WIN7,0},"NtCreateProfileEx", OK, RNTST, 10,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_POINTER},
+         {3, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, -6, R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(KPROFILE_SOURCE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {8, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(GROUP_AFFINITY), R|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
     {{WIN7,0},"NtDisableLastKnownGood", OK, RNTST, 0, },
     {{WIN7,0},"NtDrawText", OK, RNTST, 1,
      {
@@ -3472,8 +3575,17 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_QuerySystemInformationEx
     },
-    {{WIN7,0},"NtQueueApcThreadEx", UNKNOWN, RNTST, 6, },
-    {{WIN7,0},"NtSerializeBoot", UNKNOWN, RNTST, 0, },
+    {{WIN7,0},"NtQueueApcThreadEx", OK, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(PKNORMAL_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {5, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+     }
+    },
+    {{WIN7,0},"NtSerializeBoot", OK, RNTST, 0, },
     {{WIN7,0},"NtSetIoCompletionEx", UNKNOWN, RNTST, 6, },
     {{WIN7,0},"NtSetTimerEx", UNKNOWN, RNTST, 4, },
     {{WIN7,0},"NtUmsThreadYield", UNKNOWN, RNTST, 1, },

@@ -25,6 +25,38 @@ NtAllocateReserveObject(
     __in MEMORY_RESERVE_TYPE Type
     );
 
+NTSTATUS
+NTAPI
+NtGetNextProcess(
+    __in HANDLE ProcessHandle,
+    __in ACCESS_MASK DesiredAccess,
+    __in ULONG HandleAttributes,
+    __in ULONG Flags,
+    __out PHANDLE NewProcessHandle
+    );
+
+NTSTATUS
+NTAPI
+NtGetNextThread(
+    __in HANDLE ProcessHandle,
+    __in HANDLE ThreadHandle,
+    __in ACCESS_MASK DesiredAccess,
+    __in ULONG HandleAttributes,
+    __in ULONG Flags,
+    __out PHANDLE NewThreadHandle
+    );
+
+NTSTATUS
+NTAPI
+NtQueueApcThreadEx(
+    __in HANDLE ThreadHandle,
+    __in_opt HANDLE UserApcReserveHandle,
+    __in PPS_APC_ROUTINE ApcRoutine,
+    __in_opt PVOID ApcArgument1,
+    __in_opt PVOID ApcArgument2,
+    __in_opt PVOID ApcArgument3
+    );
+
 #endif /* __PHLIB_NTPSAPI_H */
 
 /* EOF */

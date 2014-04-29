@@ -33,6 +33,12 @@ NtOpenKeyTransactedEx(
     __in HANDLE TransactionHandle
     );
 
+NTSTATUS
+NTAPI
+NtFreezeRegistry(
+    __in ULONG TimeOutInSeconds
+    );
+
 #endif /* __PHLIB_NTPSAPI_H */
 
 /* EOF */

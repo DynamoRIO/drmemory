@@ -1,7 +1,7 @@
 /****************************************************************************
  ****************************************************************************
  ***
- ***   This header was generated from a ProcessHacker header to make
+ ***   This header was created from a ProcessHacker header to make
  ***   information necessary for userspace to call into the Windows
  ***   kernel available to Dr. Memory.  It contains only constants,
  ***   structures, and macros generated from the original header, and
@@ -9,36 +9,26 @@
  ***
  ****************************************************************************
  ****************************************************************************/
+/* from phlib/include/ntpnpapi.h */
 
-/* from phlib/include/ntobapi.h */
-
-#ifndef __PHLIB_NTOBAPI_H
-#define __PHLIB_NTOBAPI_H
+#ifndef __PHLIB_NTPNPAPI_H
+#define __PHLIB_NTPNPAPI_H
 
 NTSTATUS
 NTAPI
-NtOpenPrivateNamespace(
-    __out PHANDLE NamespaceHandle,
-    __in ACCESS_MASK DesiredAccess,
-    __in_opt POBJECT_ATTRIBUTES ObjectAttributes,
-    __in PVOID BoundaryDescriptor
+NtReplacePartitionUnit(
+    __in PUNICODE_STRING TargetInstancePath,
+    __in PUNICODE_STRING SpareInstancePath,
+    __in ULONG Flags
     );
 
 NTSTATUS
 NTAPI
-NtCreatePrivateNamespace(
-    __out PHANDLE NamespaceHandle,
-    __in ACCESS_MASK DesiredAccess,
-    __in_opt POBJECT_ATTRIBUTES ObjectAttributes,
-    __in PVOID BoundaryDescriptor
+NtSerializeBoot(
+    VOID
     );
 
-NTSTATUS
-NTAPI
-NtDeletePrivateNamespace(
-    __in HANDLE NamespaceHandle
-    );
-
-#endif /* __PHLIB_NTOBAPI_H */
+#endif /* __PHLIB_NTPNPAPI_H */
 
 /* EOF */
+

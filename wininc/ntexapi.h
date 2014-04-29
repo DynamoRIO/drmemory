@@ -88,5 +88,93 @@ NtInitializeNlsFiles(
     __out PLCID DefaultLocaleId,
     __out PLARGE_INTEGER DefaultCasingTableSize
     );
+	
+NTSTATUS
+NTAPI
+NtAcquireCMFViewOwnership(
+    __out PULONGLONG TimeStamp,
+    __out PBOOLEAN tokenTaken,
+    __in BOOLEAN replaceExisting
+    );
+
+NTSTATUS
+NTAPI
+NtCreateProfileEx(
+    __out PHANDLE ProfileHandle,
+    __in_opt HANDLE Process,
+    __in PVOID ProfileBase,
+    __in SIZE_T ProfileSize,
+    __in ULONG BucketSize,
+    __in PULONG Buffer,
+    __in ULONG BufferSize,
+    __in KPROFILE_SOURCE ProfileSource,
+    __in ULONG GroupAffinityCount,
+    __in_opt PGROUP_AFFINITY GroupAffinity
+    );
+
+NTSTATUS
+NTAPI
+NtCreateWorkerFactory(
+    __out PHANDLE WorkerFactoryHandleReturn,
+    __in ACCESS_MASK DesiredAccess,
+    __in_opt POBJECT_ATTRIBUTES ObjectAttributes,
+    __in HANDLE CompletionPortHandle,
+    __in HANDLE WorkerProcessHandle,
+    __in PVOID StartRoutine,
+    __in_opt PVOID StartParameter,
+    __in_opt ULONG MaxThreadCount,
+    __in_opt SIZE_T StackReserve,
+    __in_opt SIZE_T StackCommit
+    );
+
+NTSTATUS
+NTAPI
+NtFlushInstallUILanguage(
+    __in LANGID InstallUILanguage,
+    __in ULONG SetComittedFlag
+    );
+
+NTSTATUS
+NTAPI
+NtGetMUIRegistryInfo(
+    __in ULONG Flags,
+    __inout PULONG DataSize,
+    __out PVOID Data
+    );
+
+NTSTATUS
+NTAPI
+NtGetNlsSectionPtr(
+    __in ULONG SectionType,
+    __in ULONG SectionData,
+    __in PVOID ContextData,
+    __out PVOID *SectionPointer,
+    __out PULONG SectionSize
+    );
+
+NTSTATUS
+NTAPI
+NtIsUILanguageComitted(
+    VOID
+    );
+
+NTSTATUS
+NTAPI
+NtReleaseCMFViewOwnership(
+    VOID
+    );
+
+NTSTATUS
+NTAPI
+NtReleaseWorkerFactoryWorker(
+    __in HANDLE WorkerFactoryHandle
+    );
+	
+NTSTATUS
+NTAPI
+NtWorkerFactoryWorkerReady(
+    __in HANDLE WorkerFactoryHandle
+    );
+	
 
 #endif /* _NTEXAPI_H_ 1 */
