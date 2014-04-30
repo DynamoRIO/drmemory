@@ -716,6 +716,8 @@ struct _alloc_routine_set_t {
     bool is_libc;
     /* For i#643 */
     bool check_mismatch;
+    /* For i#1532 */
+    bool check_winapi_match;
     /* For i#939, let wrap/replace store a field per malloc set */
     void *user_data;
     /* For i#964 we connect crt and dbgcrt */
@@ -1306,7 +1308,8 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
      * XXX: for -conservative we should do a lookup
      */
     malloc_interface.malloc_intercept(pc, type, e,
-                                      e->set->check_mismatch && indiv_check_mismatch);
+                                      e->set->check_mismatch && indiv_check_mismatch,
+                                      e->set->check_winapi_match);
     return e;
 }
 
@@ -1712,6 +1715,7 @@ typedef struct _set_enum_data_t {
     bool use_redzone;
     bool check_mismatch;
     bool indiv_check_mismatch;
+    bool check_winapi_match;
     /* if a wildcard lookup */
     const char *wildcard_name;
     const module_data_t *mod;
@@ -1953,6 +1957,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
             edata->set->user_data = user_data;
         edata->set->type = edata->set_type;
         edata->set->check_mismatch = edata->check_mismatch;
+        edata->set->check_winapi_match = edata->check_winapi_match;
         edata->set->set_libc = edata->set_libc;
         edata->set->is_libc = edata->is_libc;
         if (edata->set_libc != NULL) {
@@ -2201,6 +2206,11 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.num_possible = num_possible;
     edata.use_redzone = use_redzone;
     edata.check_mismatch = check_mismatch;
+    /* i#1532: do not check C vs Win mismatch for static libc, as we've seen free()
+     * inlined while the corresponding malloc() is not, leading to spurious mismatch
+     * reports.
+     */
+    edata.check_winapi_match = is_libc || is_libcpp;
     edata.indiv_check_mismatch = true;
     edata.mod = mod;
     edata.processed = NULL;
@@ -2407,7 +2417,7 @@ void
  * opaque type in alloc_private.h
  */
 malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
-                       bool check_mismatch)
+                       bool check_mismatch, bool check_winapi_match)
 {
 #ifdef WINDOWS
     if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE) {
@@ -2435,7 +2445,7 @@ malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
 /* XXX i#882: make this static once malloc replacement replaces operators */
 void
 malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
-                         bool check_mismatch)
+                         bool check_mismatch, bool check_winapi_match)
 {
 #ifdef WINDOWS
     if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE ||
@@ -3357,7 +3367,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                     bool done = (set_cpp->refcnt == 1);
                     if (e != NULL) {
                         malloc_interface.malloc_unintercept(e->pc, e->type, e,
-                                                            e->set->check_mismatch);
+                                                            e->set->check_mismatch,
+                                                            e->set->check_winapi_match);
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);
                         if (done)
                             break;
@@ -3498,7 +3509,8 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                     }
 
                     malloc_interface.malloc_unintercept(e->pc, e->type, e,
-                                                        e->set->check_mismatch);
+                                                        e->set->check_mismatch,
+                                                        e->set->check_winapi_match);
 
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);

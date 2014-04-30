@@ -262,6 +262,13 @@ library may be required to identify these bugs.  Also note that if leak
 counting is completely disabled via \p -no-count_leaks then the callstack
 of the allocation will not be reported on a mismatch.
 
+On Windows, mismatches between the C library allocation layer (malloc() and
+free()) and the Windows API layer (HeapAlloc() and HeapFree()) are reported
+by Dr. Memory if the application or one of its libraries uses the dynamic C
+library.  These mismatches are not reported when using a static C library
+as one of malloc() or free() might be inlined while the other is not,
+making mismatch detection intractable for Dr. Memory.
+
 ********************
 \page page_leaks Memory Leaks
 

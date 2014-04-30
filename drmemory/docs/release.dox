@@ -65,6 +65,8 @@ The changes between \TOOL_VERSION and version 1.7.0 include:
    where no uninitialized read error reporting is desired.
    Dr. Memory automatically adds to this list when it sees a whole-module
    suppression.
+ - Disabled checks for mixing C library heap routines with Windows API heap
+   routines (-check_heap_mismatch) for modules that contain static libc.
 
 The changes between version 1.7.0 and version 1.6.1 include:
  - Added a Beta version of Dr. Memory for Mac.  Be aware that this

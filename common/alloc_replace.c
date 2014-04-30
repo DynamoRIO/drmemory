@@ -138,11 +138,16 @@ enum {
 #ifdef WINDOWS
     CHUNK_LAYER_RTL   = MALLOC_RESERVED_8,          /* 0x0800 */
 #endif
-    CHUNK_SKIP_ITER   =                                0x1000,
+    /* i#1532: only check for non-static libc.  This is Windows-only but it's
+     * cleaner to avoid all the ifdefs down below.
+     */
+    CHUNK_LAYER_NOCHECK =                              0x1000,
+    CHUNK_SKIP_ITER   =                                0x2000,
 
     /* meta-flags */
 #ifdef WINDOWS
-    ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL),
+    ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL |
+                             CHUNK_LAYER_NOCHECK),
 #else
     ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS),
 #endif
@@ -1717,7 +1722,8 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
 #ifdef WINDOWS
     /* For pre-us we don't know whether Rtl or libc layer */
     else if (!TEST(CHUNK_PRE_US, head->flags) &&
-             (free_type & CHUNK_LAYER_RTL) != (head->flags & CHUNK_LAYER_RTL)) {
+             (free_type & CHUNK_LAYER_RTL) != (head->flags & CHUNK_LAYER_RTL) &&
+             !TEST(CHUNK_LAYER_NOCHECK, free_type | head->flags)) {
         /* i#1197: report libc/Rtl mismatches */
         client_mismatched_heap(caller, (byte *)ptr, mc,
                                malloc_layer_name(head->flags),
@@ -2333,6 +2339,28 @@ replace_malloc(size_t size)
     return res;
 }
 
+/* Unfortunately there's no easy way to share code here.  We do not want an
+ * extra frame.  We could use macros.
+ */
+static void *
+replace_malloc_nomatch(size_t size)
+{
+    void *res;
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_malloc %d\n", size);
+    res = (void *) replace_alloc_common(arena, size,
+                                        ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                                        drcontext, &mc,
+                                        (app_pc)replace_malloc/*avoid confusion*/,
+                                        MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+    LOG(2, "\treplace_malloc %d => "PFX"\n", size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
 static void *
 replace_calloc(size_t nmemb, size_t size)
 {
@@ -2357,6 +2385,32 @@ replace_calloc(size_t nmemb, size_t size)
     return (void *) res;
 }
 
+/* See comment on replace_malloc_nomatch about sharing code */
+static void *
+replace_calloc_nomatch(size_t nmemb, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    byte *res;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_calloc %d %d\n", nmemb, size);
+    if (unsigned_multiply_will_overflow(nmemb, size)) {
+        LOG(2, "calloc size will overflow => returning NULL\n");
+        client_handle_alloc_failure(UINT_MAX, (app_pc)replace_calloc, &mc);
+        res = NULL;
+    } else {
+        res = replace_alloc_common(arena, nmemb * size,
+                                   ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
+                                   drcontext, &mc,
+                                   (app_pc)replace_calloc/*avoid confusion*/,
+                                   MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+    }
+    LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return (void *) res;
+}
+
 static void *
 replace_realloc(void *ptr, size_t size)
 {
@@ -2375,6 +2429,26 @@ replace_realloc(void *ptr, size_t size)
     return res;
 }
 
+/* See comment on replace_malloc_nomatch about sharing code */
+static void *
+replace_realloc_nomatch(void *ptr, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
+    res = replace_realloc_common(arena, ptr, size,
+                                 ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
+                                 drcontext, &mc,
+                                 (app_pc)replace_realloc/*avoid confusion*/,
+                                 MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+    LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
 static void
 replace_free(void *ptr)
 {
@@ -2385,6 +2459,21 @@ replace_free(void *ptr)
     LOG(2, "replace_free "PFX"\n", ptr);
     replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
                         &mc, (app_pc)replace_free, MALLOC_ALLOCATOR_MALLOC);
+    exit_client_code(drcontext, false/*need swap*/);
+}
+
+/* See comment on replace_malloc_nomatch about sharing code */
+static void
+replace_free_nomatch(void *ptr)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_free "PFX"\n", ptr);
+    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
+                        &mc, (app_pc)replace_free/*deliberate: avoid confusion*/,
+                        MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
     exit_client_code(drcontext, false/*need swap*/);
 }
 
@@ -2400,6 +2489,26 @@ replace_malloc_usable_size(void *ptr)
     res = replace_size_common(arena, ptr, ALLOC_SYNCHRONIZE, drcontext, &mc,
                               (app_pc)replace_malloc_usable_size,
                               MALLOC_ALLOCATOR_MALLOC);
+    if (res == (size_t)-1)
+        res = 0; /* 0 on failure */
+    LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+/* See comment on replace_malloc_nomatch about sharing code */
+static size_t
+replace_malloc_usable_size_nomatch(void *ptr)
+{
+    void *drcontext = enter_client_code();
+    size_t res;
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
+    res = replace_size_common(arena, ptr, ALLOC_SYNCHRONIZE, drcontext, &mc,
+                              (app_pc)replace_malloc_usable_size/*avoid confusion*/,
+                              MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
     if (res == (size_t)-1)
         res = 0; /* 0 on failure */
     LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
@@ -3443,7 +3552,7 @@ alloc_entering_replace_routine(app_pc pc)
 }
 
 static bool
-func_interceptor(routine_type_t type, bool check_mismatch,
+func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_match,
                  void **routine OUT, bool *at_entry OUT, uint *stack OUT)
 {
     /* almost everything is at the callee entry */
@@ -3532,15 +3641,20 @@ func_interceptor(routine_type_t type, bool check_mismatch,
     /* nothing below here is stdcall */
     *stack = 0;
     if (is_malloc_routine(type))
-        *routine = (void *) replace_malloc;
+        *routine = (void *)
+            (check_winapi_match ? replace_malloc : replace_malloc_nomatch);
     else if (is_calloc_routine(type))
-        *routine = (void *) replace_calloc;
+        *routine = (void *)
+            (check_winapi_match ? replace_calloc : replace_calloc_nomatch);
     else if (is_realloc_routine(type))
-        *routine = (void *) replace_realloc;
+        *routine = (void *)
+            (check_winapi_match ? replace_realloc : replace_realloc_nomatch);
     else if (is_free_routine(type))
-        *routine = (void *) replace_free;
+        *routine = (void *) (check_winapi_match ? replace_free : replace_free_nomatch);
     else if (is_size_routine(type))
-        *routine = (void *) replace_malloc_usable_size;
+        *routine = (void *)
+            (check_winapi_match ? replace_malloc_usable_size :
+             replace_malloc_usable_size_nomatch);
     else if (type == HEAP_ROUTINE_NEW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new : replace_operator_new_nomatch);
@@ -3594,12 +3708,13 @@ func_interceptor(routine_type_t type, bool check_mismatch,
 
 static void
 malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
-                          bool check_mismatch)
+                          bool check_mismatch, bool check_winapi_match)
 {
     void *interceptor = NULL;
     bool at_entry = true;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, check_mismatch, &interceptor, &at_entry, &stack_adjust)) {
+    if (!func_interceptor(type, check_mismatch, check_winapi_match,
+                          &interceptor, &at_entry, &stack_adjust)) {
         /* we'll replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
@@ -3616,18 +3731,19 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
          * _Crt* / RtlMultipleAllocateHeap / etc., along with all other
          * heap-related routines currenly not intercepted, w/ nops
          */
-        malloc_wrap__intercept(pc, type, e, check_mismatch);
+        malloc_wrap__intercept(pc, type, e, check_mismatch, check_winapi_match);
     }
 }
 
 static void
 malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
-                            bool check_mismatch)
+                            bool check_mismatch, bool check_winapi_match)
 {
     void *interceptor = NULL;
     bool at_entry;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, check_mismatch, &interceptor, &at_entry, &stack_adjust)) {
+    if (!func_interceptor(type, check_mismatch, check_winapi_match,
+                          &interceptor, &at_entry, &stack_adjust)) {
         /* we'll un-replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
@@ -3635,7 +3751,7 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
         if (!drwrap_replace_native(pc, NULL, at_entry, stack_adjust, NULL, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
-        malloc_wrap__unintercept(pc, type, e, check_mismatch);
+        malloc_wrap__unintercept(pc, type, e, check_mismatch, check_winapi_match);
     }
 }
 

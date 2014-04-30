@@ -700,6 +700,8 @@ if (TOOL_DR_MEMORY)
   if (WIN32)
     # test i#1197.  With -replace_malloc default, we need to point at wincrt.replace.
     newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" 0)
+    # i#1532: we only report C vs Win mismatches for /MD*
+    append_test_compile_flags(wincrt "/MD")
     newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
 
     # FIXME: Re-enable when it doesn't break the build.
