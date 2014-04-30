@@ -2604,9 +2604,8 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     /* Our report_max throttling is post-dup-checking, to make the option
      * useful (else if 1st error has 20K instances, won't see any others).
      * Also, num_reported_errors doesn't count suppressed errors.
-     * Also, suppressed errors are printed to the log until report_max is
-     * reached so they can fill it up.
-     * FIXME Perhaps we can avoid printing suppressed errors at all by default.
+     * If -log_suppressed_errors is on, suppressed errors are printed to the log
+     * until report_max is reached so they can fill it up.
      * If perf of dup check or suppression matching is an issue
      * we can add -report_all_max or something.
      */
@@ -2621,6 +2620,13 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
          * to report whether there are any.
          */
         num_throttled_errors++;
+        DO_ONCE({
+            NOTIFY(NL);
+            NOTIFY("Reached maximum error report limit (-report_max). "
+                   "No further errors will be reported."NL);
+            ELOGF(0, f_results, NL"Reached maximum error report limit (-report_max). "
+                  "No further errors will be reported."NL);
+        });
         goto report_error_done;
     }
 
@@ -3180,6 +3186,13 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         num_total_leaks[ERROR_NORMAL] + num_total_leaks[ERROR_POTENTIAL] >=
         options.report_leak_max) {
         num_throttled_leaks++;
+        DO_ONCE({
+            NOTIFY(NL);
+            NOTIFY("Reached maximum leak report limit (-report_leak_max). "
+                   "No further leaks will be reported."NL);
+            ELOGF(0, f_results, NL"Reached maximum leak report limit (-report_leak_max). "
+                  "No further leaks will be reported."NL);
+        });
         return;
     }
     buf = report_alloc_buf(drcontext, &bufsz);
