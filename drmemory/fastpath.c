@@ -4030,6 +4030,8 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
         }
     }
 # endif
+    LOG(2, "application fault @"PFX" in module %s\n",
+        excpt->mcontext->pc, module_lookup_preferred_name(excpt->mcontext->pc));
     return true;
 }
 #endif

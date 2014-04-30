@@ -527,7 +527,7 @@ suppress_spec_finish(suppress_spec_t *spec,
     num_suppressions++;
     if (is_module_wildcard(spec)) {
         have_module_wildcard = true;
-        if (spec->type == ERROR_UNDEFINED) {
+        if (spec->type == ERROR_UNDEFINED && options.check_uninitialized) {
             /* i#1529: auto-add to the check_uninit_blacklist, which has already
              * been converted from commas to null-separated, double-null-terminated.
              * We assume no synch is needed as this is init time.
@@ -1824,7 +1824,8 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                         dr_fprintf(f, "<no name %d>"NL, spec->num);
                     else
                         dr_fprintf(f, "%s"NL, spec->name);
-                } else if (is_module_wildcard(spec) && spec->type == ERROR_UNDEFINED) {
+                } else if (options.check_uninitialized && is_module_wildcard(spec) &&
+                           spec->type == ERROR_UNDEFINED) {
                     dr_fprintf(f, "\t%6sx", "?");
                     dr_fprintf(f, " (count unavail. for whole-lib): ");
                     if (spec->name == NULL)
