@@ -2048,10 +2048,10 @@ enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
  */
 static void
 find_alloc_regex(set_enum_data_t *edata, const char *regex,
-                 const char *prefix, const char *suffix)
+                 const char *prefix, const char *suffix, bool full_syms)
 {
     uint i;
-    bool full = false;
+    bool full = full_syms;
 # ifdef WINDOWS
     if (edata->is_libc || edata->is_libcpp) {
         /* The _calloc_impl in msvcr*.dll is private (i#960) */
@@ -2060,7 +2060,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
          * in particular, and technically for possible_cpp_routines and
          * in fact for libc routines too b/c of _calloc_impl?
          * But we don't want to pay the cost on large apps.  Leaving code
-         * as is for now.
+         * as is for now, except for std::_DebugHeapDelete (i#1533).
          */
         LOG(2, "%s: doing full symbol lookup for libc/libc++\n", __FUNCTION__);
         full = true;
@@ -2254,16 +2254,16 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             bool has_fast_search = lookup_has_fast_search(mod);
             if (possible == possible_libc_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
-                    find_alloc_regex(&edata, "mall*", "mall", NULL);
-                    find_alloc_regex(&edata, "*alloc", NULL, "alloc");
-                    find_alloc_regex(&edata, "*_impl", NULL, "_impl");
+                    find_alloc_regex(&edata, "mall*", "mall", NULL, false);
+                    find_alloc_regex(&edata, "*alloc", NULL, "alloc", false);
+                    find_alloc_regex(&edata, "*_impl", NULL, "_impl", false);
                 }
 # ifdef WINDOWS
             } else if (possible == possible_crtdbg_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
-                    find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
-                    find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
-                    find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+                    find_alloc_regex(&edata, "*_dbg", NULL, "_dbg", false);
+                    find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl", false);
+                    find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL, false);
                     /* Exports not covered by the above will be found by
                      * individual query.
                      */
@@ -2271,8 +2271,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 # endif
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
-                find_alloc_regex(&edata, "operator new*", "operator new", NULL);
-                find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
+                find_alloc_regex(&edata, "operator new*", "operator new", NULL, false);
+                find_alloc_regex(&edata, "operator delete*", "operator delete",
+                                 NULL, false);
 # ifdef WINDOWS
                 /* wrapper in place of real delete or delete[] operators
                  * (i#722,i#655)
@@ -2280,7 +2281,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 edata.wildcard_name = "std::_DebugHeapDelete<>";
                 find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
                                  /* no export lookups so pass NULL */
-                                 NULL, NULL);
+                                 NULL, NULL,
+                                 /* i#1533: for /MTd we need private syms */
+                                 true);
                 edata.wildcard_name = NULL;
 # endif
             }
