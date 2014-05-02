@@ -461,6 +461,11 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 
 #define OPERATOR_ENTRIES 4 /* new, new[], delete, delete[] */
 
+/* This is the name we store in the symcache for i#722.
+ * This means we are storing something different from the actual symbol names.
+ */
+#define DEBUG_HEAP_DELETE_NAME "std::_DebugHeapDelete<>"
+
 static const possible_alloc_routine_t possible_cpp_routines[] = {
 #ifdef USE_DRSYMS
     /* XXX: currently drsyms does NOT include function params, which is what
@@ -490,10 +495,7 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "operator delete nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
     { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 # ifdef WINDOWS
-    /* This is the name we store in the symcache for i#722.
-     * This means we are storing something different from the actual symbol names.
-     */
-    { "std::_DebugHeapDelete<>", HEAP_ROUTINE_DebugHeapDelete },
+    { DEBUG_HEAP_DELETE_NAME, HEAP_ROUTINE_DebugHeapDelete },
 # endif
 #else
     /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
@@ -769,6 +771,48 @@ alloc_routine_get_module_base(alloc_routine_entry_t *e)
 {
     ASSERT(e != NULL, "invalid param");
     return e->set->modbase;
+}
+
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+static alloc_routine_set_t *
+alloc_routine_set_for_module(app_pc modbase)
+{
+    alloc_routine_entry_t *e;
+    alloc_routine_set_t *set = NULL;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)modbase);
+    if (e != NULL) {
+        if (e->set->set_libc != NULL)
+            set = e->set->set_libc;
+        else
+            set = e->set;
+    }
+    dr_mutex_unlock(alloc_routine_lock);
+    return set;
+}
+#endif
+
+/* caller must hold alloc routine lock */
+static void
+add_module_libc_set_entry(app_pc modbase, alloc_routine_set_t *set)
+{
+    /* We add a fake entry at the module base so we can find the libc
+     * set for any module, for late interception of std::_DebugHeapDelete (i#1533).
+     */
+    alloc_routine_entry_t *e;
+    IF_DEBUG(bool is_new;)
+    ASSERT(dr_mutex_self_owns(alloc_routine_lock), "missing lock");
+    if (hashtable_lookup(&alloc_routine_table, (void *)modbase) != NULL)
+        return;
+    e = global_alloc(sizeof(*e), HEAPSTAT_WRAP);
+    e->pc = modbase;
+    e->type = HEAP_ROUTINE_INVALID;
+    e->name = "<per-module libc pseudo-entry>";
+    e->set = set;
+    e->set->refcnt++;
+    IF_DEBUG(is_new = )
+        hashtable_add(&alloc_routine_table, (void *)modbase, (void *)e);
+    ASSERT(is_new, "alloc entry should not already exist");
 }
 
 static void
@@ -1236,6 +1280,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
+    ASSERT(dr_mutex_self_owns(alloc_routine_lock), "missing lock");
     e = hashtable_lookup(&alloc_routine_table, (void *)pc);
     if (e != NULL) {
         /* this happens w/ things like cfree which maps to free in libc */
@@ -1384,11 +1429,32 @@ disable_crtdbg(const module_data_t *mod, byte *pc)
     return res;
 }
 
+/* Returns the final target of call, including routing through the ILT */
+static app_pc
+decode_direct_call_target(void *drcontext, instr_t *call)
+{
+    opnd_t op = instr_get_target(call);
+    instr_t ilt;
+    app_pc tgt;
+    ASSERT(opnd_is_pc(op), "must be pc");
+    tgt = opnd_get_pc(op);
+    /* i#1510: follow any ILT jmp */
+    instr_init(drcontext, &ilt);
+    if (safe_decode(drcontext, tgt, &ilt, NULL) &&
+        instr_is_ubr(&ilt)) {
+        ASSERT(opnd_is_pc(instr_get_target(&ilt)), "must be pc");
+        tgt = opnd_get_pc(instr_get_target(&ilt));
+        LOG(3, "%s: following call's jmp target to "PFX"\n", __FUNCTION__, tgt);
+    }
+    instr_free(drcontext, &ilt);
+    return tgt;
+}
+
 static size_t
 find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
 {
     /* i#722, i#655: MSVS libraries call _DELETE_CRT(ptr) or _DELETE_CRT_VEC(ptr)
-     * which for release build map to operatore delete or operator delete[], resp.
+     * which for release build map to operator delete or operator delete[], resp.
      * However, for _DEBUG, both map to the same routine std::_DebugHeapDelete, which
      * explicitly calls the destructor and then calls free(), sometimes via tailcall.
      * This means we would report a mismatch for an allocation with new but
@@ -1436,19 +1502,7 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
              * assume we've already found free() and that we only care about a
              * call/jmp to this module's free().
              */
-            opnd_t op = instr_get_target(&inst);
-            instr_t ilt;
-            ASSERT(opnd_is_pc(op), "must be pc");
-            tgt = opnd_get_pc(op);
-            /* i#1510: follow any ILT jmp */
-            instr_init(drcontext, &ilt);
-            if (safe_decode(drcontext, tgt, &ilt, NULL) &&
-                instr_is_ubr(&ilt)) {
-                ASSERT(opnd_is_pc(instr_get_target(&ilt)), "must be pc");
-                tgt = opnd_get_pc(instr_get_target(&ilt));
-                LOG(3, "%s: following call's jmp target to "PFX"\n", __FUNCTION__, tgt);
-            }
-            instr_free(drcontext, &ilt);
+            tgt = decode_direct_call_target(drcontext, &inst);
         } else if (instr_get_opcode(&inst) == OP_call_ind) {
             /* When std:_DebugHeapDelete is in another module w/o static libc,
              * the call to libc's free is indirect (part of i#607 part C).
@@ -1490,6 +1544,105 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
         modoffs = 0;
     }
     return modoffs;
+}
+
+/* i#1533: ensure we're not in a private std::_DebugHeapDelete that we missed
+ * up front (it's too expensive to search private syms in large executables).
+ * "caller" should be the first app frame.
+ *
+ * We do end up doing a flush here, but for typical apps there's just
+ * one of these; it only happens for apps with /MTd who have private
+ * std::_DebugHeapDelete; and the single flush is faster than
+ * searching the private syms for very large apps.
+ *
+ * We pay this cost of a callstack frame and potentially 2 address symbolizations
+ * for every mismatch: but that's far less than reporting the mismatch where
+ * we have to symbolize the whole callstack, so we live with this and with
+ * this code complexity to avoid the huge up-front cost of searching all syms.
+ */
+static bool
+addr_is_debug_delete(app_pc pc, const module_data_t *mod)
+{
+    size_t modoffs = pc - mod->start;
+    drsym_error_t symres;
+    drsym_info_t sym;
+    /* store an extra char to ensure we don't have strcmp match a prefix */
+#   define MAX_DEBUGDEL_LEN (sizeof(DEBUG_HEAP_DELETE_NAME) + 2)
+    char name[MAX_DEBUGDEL_LEN];
+    sym.struct_size = sizeof(sym);
+    sym.name = name;
+    sym.name_size = BUFFER_SIZE_BYTES(name);
+    sym.file = NULL;
+    STATS_INC(symbol_address_lookups);
+    symres = drsym_lookup_address(mod->full_path, modoffs, &sym, DRSYM_DEMANGLE);
+    LOG(2, "%s: "PFX" => %s\n", __FUNCTION__, pc, name);
+    return ((symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) &&
+            strcmp(sym.name, DEBUG_HEAP_DELETE_NAME) == 0);
+}
+
+static void
+late_intercept_debug_delete(app_pc pc, const module_data_t *mod)
+{
+    alloc_routine_set_t *set = alloc_routine_set_for_module(mod->start);
+    LOG(1, "mismatch is due to std::_DebugHeapDelete not found earlier\n");
+    dr_mutex_lock(alloc_routine_lock);
+    add_alloc_routine(pc, HEAP_ROUTINE_DebugHeapDelete, DEBUG_HEAP_DELETE_NAME,
+                      set, mod->start, dr_module_preferred_name(mod),
+                      true/*check mismatch: if off we wouldn't get here*/);
+    dr_mutex_unlock(alloc_routine_lock);
+    if (alloc_ops.use_symcache)
+        drsymcache_add(mod, DEBUG_HEAP_DELETE_NAME, pc - mod->start);
+}
+
+bool
+check_for_private_debug_delete(app_pc caller)
+{
+    bool suppress = false;
+    module_data_t *mod = NULL;
+    instr_t inst;
+    void *drcontext = dr_get_current_drcontext();
+#   define DIRECT_CALL_LEN 5
+    app_pc pc = caller - DIRECT_CALL_LEN;
+    mod = dr_lookup_module(pc);
+    instr_init(drcontext, &inst);
+    if (safe_decode(drcontext, pc, &inst, NULL) &&
+        instr_is_call_direct(&inst) &&
+        mod != NULL) {
+        if (addr_is_debug_delete(pc, mod)) {
+            suppress = true;
+            late_intercept_debug_delete(pc, mod);
+        } else {
+            /* Handle tailcall by decoding target.  "caller" will be a destructor
+             * who calls std::_DebugHeapDelete, which is always via direct call (or ILT
+             * for /ZI) if it hits this problem (if in msvcp*.dll, we did a private
+             * syms search up front, and if no syms we disabled misatches).
+             * The target should be in the same module.
+             *
+             * XXX: I have not managed to construct a test for this: I am unable
+             * to build in a way that produces either A) a tailcall from
+             * std::_DebugHeapDelete to free or B) private std::_DebugHeapDelete syms.
+             */
+            app_pc tgt = decode_direct_call_target(drcontext, &inst);
+            if (addr_is_debug_delete(tgt, mod)) {
+                size_t offs = find_debug_delete_interception(mod->start, mod->end,
+                                                             tgt - mod->start);
+                if (offs > 0) {
+                    suppress = true;
+                    late_intercept_debug_delete(mod->start + offs, mod);
+                }
+            }
+        }
+    }
+    if (mod != NULL)
+        dr_free_module_data(mod);
+    instr_free(drcontext, &inst);
+    return suppress;
+}
+#else
+bool
+check_for_private_debug_delete(app_pc caller)
+{
+    return false; /* don't suppress */
 }
 #endif
 
@@ -1915,6 +2068,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
 }
 #endif
 
+/* caller must hold alloc routine lock */
 static void
 add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
 {
@@ -1922,6 +2076,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     if (modname == NULL)
         modname = "<noname>";
     ASSERT(edata != NULL && pc != NULL, "invalid params");
+    ASSERT(dr_mutex_self_owns(alloc_routine_lock), "missing lock");
 #if defined(WINDOWS) && defined(USE_DRSYMS)
     if (alloc_ops.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG) {
         if (!disable_crtdbg(edata->mod, pc))
@@ -1966,6 +2121,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
             edata->set->next_dep = edata->set_libc->next_dep;
             edata->set_libc->next_dep = edata->set;
         }
+        add_module_libc_set_entry(edata->mod->start, edata->set);
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
                       edata->set, edata->mod->start, modname,
@@ -2053,10 +2209,10 @@ enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
  */
 static void
 find_alloc_regex(set_enum_data_t *edata, const char *regex,
-                 const char *prefix, const char *suffix, bool full_syms)
+                 const char *prefix, const char *suffix)
 {
     uint i;
-    bool full = full_syms;
+    bool full = false;
 # ifdef WINDOWS
     if (edata->is_libc || edata->is_libcpp) {
         /* The _calloc_impl in msvcr*.dll is private (i#960) */
@@ -2064,8 +2220,8 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         /* XXX: really for MTd we should do full as well for possible_crtdbg_routines
          * in particular, and technically for possible_cpp_routines and
          * in fact for libc routines too b/c of _calloc_impl?
-         * But we don't want to pay the cost on large apps.  Leaving code
-         * as is for now, except for std::_DebugHeapDelete (i#1533).
+         * But we don't want to pay the cost on large apps, which is 3x or more (!)
+         * (see the data under i#1533c#2).
          */
         LOG(2, "%s: doing full symbol lookup for libc/libc++\n", __FUNCTION__);
         full = true;
@@ -2200,6 +2356,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     set_enum_data_t edata;
     uint i;
     bool res;
+    ASSERT(dr_mutex_self_owns(alloc_routine_lock), "missing lock");
     edata.set = NULL;
     edata.set_type = type;
     edata.possible = possible;
@@ -2264,16 +2421,16 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             bool has_fast_search = lookup_has_fast_search(mod);
             if (possible == possible_libc_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
-                    find_alloc_regex(&edata, "mall*", "mall", NULL, false);
-                    find_alloc_regex(&edata, "*alloc", NULL, "alloc", false);
-                    find_alloc_regex(&edata, "*_impl", NULL, "_impl", false);
+                    find_alloc_regex(&edata, "mall*", "mall", NULL);
+                    find_alloc_regex(&edata, "*alloc", NULL, "alloc");
+                    find_alloc_regex(&edata, "*_impl", NULL, "_impl");
                 }
 # ifdef WINDOWS
             } else if (possible == possible_crtdbg_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
-                    find_alloc_regex(&edata, "*_dbg", NULL, "_dbg", false);
-                    find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl", false);
-                    find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL, false);
+                    find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
+                    find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
+                    find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
                     /* Exports not covered by the above will be found by
                      * individual query.
                      */
@@ -2281,9 +2438,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 # endif
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
-                find_alloc_regex(&edata, "operator new*", "operator new", NULL, false);
-                find_alloc_regex(&edata, "operator delete*", "operator delete",
-                                 NULL, false);
+                find_alloc_regex(&edata, "operator new*", "operator new", NULL);
+                find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
 # ifdef WINDOWS
                 /* wrapper in place of real delete or delete[] operators
                  * (i#722,i#655)
@@ -2291,9 +2447,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 edata.wildcard_name = "std::_DebugHeapDelete<>";
                 find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
                                  /* no export lookups so pass NULL */
-                                 NULL, NULL,
-                                 /* i#1533: for /MTd we need private syms */
-                                 true);
+                                 NULL, NULL);
                 edata.wildcard_name = NULL;
 # endif
             }
@@ -3457,7 +3611,8 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
          * them all in some module-indexed table (we don't even
          * store them all in each set b/c of duplicates), we walk
          * the interception table.  It's not very big, and module
-         * unload is rare.
+         * unload is rare.  We now rely on this for late-intercepted
+         * std::_DebugHeapDelete instances (i#1533).
          * chromium ui_tests run:
          *   final alloc routine table size: 7 bits, 44 entries
          */
@@ -3508,9 +3663,11 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         dr_mutex_unlock(gencode_lock);
                     }
 
-                    malloc_interface.malloc_unintercept(e->pc, e->type, e,
-                                                        e->set->check_mismatch,
-                                                        e->set->check_winapi_match);
+                    if (e->type != HEAP_ROUTINE_INVALID) {
+                        malloc_interface.malloc_unintercept(e->pc, e->type, e,
+                                                            e->set->check_mismatch,
+                                                            e->set->check_winapi_match);
+                    }
 
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);
@@ -5215,11 +5372,16 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             LOG(2, "ignoring operator mismatch b/c delete==delete[]\n");
             return true;
         }
-        client_mismatched_heap(drwrap_get_retaddr(wrapcxt),
-                               base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
-                               malloc_alloc_type_name(alloc_type),
-                               translate_routine_name(routine->name), "freed",
-                               malloc_get_client_data(base), true/*C vs C++*/);
+        /* i#1533: ensure we're not in a private std::_DebugHeapDelete that we missed
+         * up front.  We want the app caller, which drwrap gives us.
+         */
+        if (!check_for_private_debug_delete(drwrap_get_retaddr(wrapcxt))) {
+            client_mismatched_heap(drwrap_get_retaddr(wrapcxt),
+                                   base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
+                                   malloc_alloc_type_name(alloc_type),
+                                   translate_routine_name(routine->name), "freed",
+                                   malloc_get_client_data(base), true/*C vs C++*/);
+        }
         return false;
     }
     return true;

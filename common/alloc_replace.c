@@ -1714,10 +1714,17 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
     if ((alloc_main_type != MALLOC_ALLOCATOR_UNKNOWN &&
          free_main_type != MALLOC_ALLOCATOR_UNKNOWN) &&
         alloc_main_type != free_main_type) {
-        client_mismatched_heap(caller, (byte *)ptr, mc,
-                               malloc_alloc_type_name(alloc_main_type),
-                               malloc_free_type_name(free_main_type), action,
-                               head->user_data, true/*C vs C++*/);
+        /* i#1533: ensure we're not in a private std::_DebugHeapDelete that we missed
+         * up front.  We want the app caller, so the caller of our "caller" here
+         * (which is our replace_* routine).
+         */
+        app_pc app_caller = callstack_next_retaddr(mc);
+        if (!check_for_private_debug_delete(app_caller)) {
+            client_mismatched_heap(caller, (byte *)ptr, mc,
+                                   malloc_alloc_type_name(alloc_main_type),
+                                   malloc_free_type_name(free_main_type), action,
+                                   head->user_data, true/*C vs C++*/);
+        }
     }
 #ifdef WINDOWS
     /* For pre-us we don't know whether Rtl or libc layer */

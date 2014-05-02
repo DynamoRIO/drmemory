@@ -1807,6 +1807,18 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
 }
 #endif /* DEBUG */
 
+app_pc
+callstack_next_retaddr(dr_mcontext_t *mc)
+{
+    app_pc res = NULL;
+    packed_callstack_t *pcs;
+    /* XXX: pass in a max # frames, as we only need 1 */
+    packed_callstack_record(&pcs, mc, NULL);
+    res = PCS_FRAME_LOC(pcs, 0).addr;
+    packed_callstack_destroy(pcs);
+    return res;
+}
+
 /****************************************************************************
  * Binary callstacks for storing callstacks of allocation sites.
  */

@@ -293,6 +293,9 @@ callstack_thread_exit(void *drcontext);
 size_t
 max_callstack_size(void);
 
+app_pc
+callstack_next_retaddr(dr_mcontext_t *mc);
+
 /****************************************************************************
  * Binary callstacks for storing callstacks of allocation sites
  */
