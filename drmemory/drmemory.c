@@ -84,7 +84,7 @@ char logsubdir[MAXIMUM_PATH];
 #ifndef USE_DRSYMS
 file_t f_fork = INVALID_FILE;
 #else
-file_t f_results;
+file_t f_results = INVALID_FILE;
 file_t f_missing_symbols;
 file_t f_suppress;
 file_t f_potential;
