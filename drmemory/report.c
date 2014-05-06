@@ -139,6 +139,21 @@ static const char *const suppress_name[] = {
     "REACHABLE LEAK",
 };
 
+/* When updating, change the -dump_at_error_mask docs as well */
+static const uint error_mask[] = {
+    0x0001, /* unaddressable access */
+    0x0002, /* uninitialized access */
+    0x0004, /* invalid heap argument */
+#ifdef WINDOWS
+    0x0008, /* GDI usage error */
+    0x0010, /* handle leak */
+#endif
+    0x0020, /* warning */
+    0x0040, /* leak */
+    0x0080, /* possible leak */
+    0x0100, /* still-reachable allocation */
+};
+
 #define DRMEM_VALGRIND_TOOLNAME "Dr.Memory"
 
 /* The error_lock protects these as well as error_table */
@@ -1489,6 +1504,11 @@ report_init(void)
     tls_idx_report = drmgr_register_tls_field();
     ASSERT(tls_idx_report > -1, "unable to reserve TLS slot");
 
+#ifdef WINDOWS
+    if (options.dump_at_unaddressable)
+        options.dump_at_error_mask |= error_mask[ERROR_UNADDRESSABLE];
+#endif
+
     error_lock = dr_mutex_create();
 
     hashtable_init_ex(&error_table, ERROR_HASH_BITS, HASH_CUSTOM,
@@ -2576,6 +2596,36 @@ report_free_buf(void *drcontext, char *buf, size_t bufsz)
     }
 }
 
+#ifdef WINDOWS
+static void
+report_core_dump(error_toprint_t *etp, uint flags, uint id, dr_mcontext_t *mc)
+{
+    /* We create a local CONTEXT var to make it easier to swap to the app's
+     * context within the ldmp.  i#600 covers adding proper debugger support and
+     * i#549 covers creating a minidump with app state.
+     */
+    CONTEXT cxt;
+    dr_memory_dump_spec_t spec;
+    char ldmp_path[MAXIMUM_PATH];
+    spec.size = sizeof(spec);
+    spec.flags = DR_MEMORY_DUMP_LDMP;
+    spec.label = "Dr. Memory error report dump";
+    spec.ldmp_path = ldmp_path;
+    spec.ldmp_path_size = BUFFER_SIZE_BYTES(ldmp_path);
+    /* Syscalls should already have mc->pc filled in */
+    if (etp->loc != NULL && etp->loc->type == APP_LOC_PC)
+        mc->pc = loc_to_pc(etp->loc);
+    if (!dr_mcontext_to_context(&cxt, mc))
+        NOTIFY_ERROR("Failed to set CONTEXT for ldmp"NL);
+    if (!dr_create_memory_dump(&spec))
+        NOTIFY_ERROR("Failed to create ldmp"NL);
+    else {
+        NOTIFY("%smemory dump created at %s"NL, INFO_PFX, ldmp_path);
+        NULL_TERMINATE_BUFFER(ldmp_path);
+    }
+}
+#endif
+
 /* pcs is only used for invalid heap args */
 static void
 report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
@@ -2744,6 +2794,13 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
 
  report_error_done:
     symbolized_callstack_free(&ecs.scs);
+#ifdef WINDOWS
+    /* don't create dumps for dup errors or potential errors */
+    if (TEST(error_mask[etp->errtype], options.dump_at_error_mask) &&
+        reporting && err->count == 1 && !err->potential) {
+        report_core_dump(etp, options.dump_at_error_mask, err->id, mc);
+    }
+#endif
     if (reporting && !err->potential) { /* don't pause at a "potential error" */
         if (etp->errtype == ERROR_UNADDRESSABLE && options.pause_at_unaddressable)
             wait_for_user("pausing at unaddressable access error");

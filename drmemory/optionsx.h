@@ -152,7 +152,7 @@ OPTION_CLIENT_BOOL(client, brief, false,
 #ifdef WINDOWS
 OPTION_CLIENT_BOOL(client, visual_studio, false,
                    "Produce Visual Studio external tool output",
-                   "Produce output suitable for a Visual Studio external tool.  Enables -prefix_style 2, -callstack_style 0x820, -batch, and -brief.")
+                   "Produce output suitable for a Visual Studio external tool.  Enables -prefix_style 2, -callstack_style 0x820, -batch, and -brief.  Windows-only.")
 #endif
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
@@ -211,6 +211,21 @@ OPTION_CLIENT_BOOL(drmemscope, crash_at_unaddressable, false,
 OPTION_CLIENT_BOOL(drmemscope, crash_at_error, false,
                    "Crash at the first reported error of any type",
                    ""TOOLNAME" terminates the process in a crash at the point of the first error that is identified.")
+#ifdef WINDOWS
+/* XXX: also add -crash_at_error_mask and -pause_at_error_mask options */
+OPTION_CLIENT(client, dump_at_error_mask, uint, 0, 0, 0x2f,
+              "Creates a memory dump file at the specified errors",
+              "At each reported unique error selected by the mask value, a memory dump file is created.  This option is a work-in-progress and is currently experimental, using the DynamoRIO livedump format which is not yet publicly documented.  The mask takes the following bitfields: @@<ul>"
+              "<li>0x0001 = unaddressable access@@"
+              "<li>0x0002 = uninitialized read@@"
+              "<li>0x0004 = invalid heap argument@@"
+              "<li>0x0008 = GDI usage error@@"
+              "<li>0x0020 = warning@@"
+              "</ul>@@")
+OPTION_CLIENT_BOOL(drmemscope, dump_at_unaddressable, false,
+                   "Creates a memory dump file at unaddressable errors",
+                   "Equivalent to -dump_at_error_mask 1.")
+#endif
 
 #ifdef TOOL_DR_MEMORY
 OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
