@@ -1091,7 +1091,7 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserGetKeyboardState", OK, SYSARG_TYPE_UINT32, 1,
      {
-         {0, sizeof(BYTE), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {0, USER_KEYBOARD_STATE_SIZE, W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetKeyboardType", OK, SYSARG_TYPE_UINT32, 1,
@@ -1940,7 +1940,7 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserSetKeyboardState", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0, 256*sizeof(BYTE), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {0, USER_KEYBOARD_STATE_SIZE, R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserSetLayeredWindowAttributes", OK, SYSARG_TYPE_BOOL32, 4,

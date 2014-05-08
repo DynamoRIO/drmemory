@@ -22,3 +22,8 @@ Error #1: UNINITIALIZED READ: reading 1 byte(s)
 system call NtUserGetCursorInfo
 test_sysarg_size_in_field
 syscalls_win.cpp:47
+
+Error #2: UNINITIALIZED READ: reading 256 byte(s)
+system call NtUserSetKeyboardState
+test_GetKeyboardState
+syscalls_win.cpp:68

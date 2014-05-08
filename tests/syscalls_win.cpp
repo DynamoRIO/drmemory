@@ -58,10 +58,22 @@ test_sysarg_size_in_field()
         cout << "Unable to get icon info. Error = " << GetLastError() << endl;
 }
 
+static void
+test_GetKeyboardState()
+{
+    /* TODO: use USER_KEYBOARD_STATE_SIZE from wininc/ntuser.h for keyboard size */
+    BYTE keyboard_states_uninit[256];
+    BYTE keyboard_states_init[256];
+    GetKeyboardState(&keyboard_states_init[0]);
+    SetKeyboardState(&keyboard_states_uninit[0]); /* uninit error */
+    SetKeyboardState(&keyboard_states_init[0]);
+}
+
 int
 main()
 {
     test_sysarg_size_in_field();
+    test_GetKeyboardState();
     cout << "done" << endl;
     return 0;
 }

@@ -3505,7 +3505,11 @@ NtUserSetScrollBarInfo(
   LONG idObject,
   SETSCROLLBARINFO *info);
 
+/****************************************************************************
+ *** This part contains constants, structures, and macros added by us.
+ ****************************************************************************/
 
+#define USER_KEYBOARD_STATE_SIZE (256*sizeof(BYTE))
 
 #endif /* __WIN32K_NTUSER_H */
 
