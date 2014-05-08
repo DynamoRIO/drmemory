@@ -3051,7 +3051,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
-    {{0,0},"NtCancelSynchronousIoFile", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtCancelSynchronousIoFile", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(IO_STATUS_BLOCK), R|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {2, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+     }
+    },
     {{0,0},"NtClearAllSavepointsTransaction", UNKNOWN, RNTST, 1, },
     {{0,0},"NtClearSavepointTransaction", UNKNOWN, RNTST, 2, },
     {{0,0},"NtCommitComplete", OK, RNTST, 2,
@@ -3084,7 +3090,18 @@ static syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtCreateKeyTransacted", UNKNOWN, RNTST, 8, },
+    {{0,0},"NtCreateKeyTransacted", OK, RNTST, 8,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {7, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtCreatePrivateNamespace", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3373,7 +3390,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryInformationWorkerFactory", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtQueryInformationWorkerFactory", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(WORKERFACTORYINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtQueryLicenseValue", UNKNOWN, RNTST, 5, },
     {{0,0},"NtReadOnlyEnlistment", OK, RNTST, 2,
      {
@@ -3412,7 +3438,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtRemoveIoCompletionEx", UNKNOWN, RNTST, 6, },
+    {{0,0},"NtRemoveIoCompletionEx", OK, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(FILE_IO_COMPLETION_INFORMATION)},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {5, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtRollbackComplete", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -3472,8 +3507,20 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      },
     },
-    {{0,0},"NtSetInformationWorkerFactory", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtShutdownWorkerFactory", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtSetInformationWorkerFactory", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(WORKERFACTORYINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtShutdownWorkerFactory", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), R|W|HT, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtSinglePhaseReject", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -3483,8 +3530,23 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtStartTm", OK, RNTST, 0, },
     {{0,0},"NtThawRegistry", OK, RNTST, 0, },
     {{0,0},"NtThawTransactions", OK, RNTST, 0, },
-    {{0,0},"NtTraceControl", UNKNOWN, RNTST, 6, },
-    {{0,WIN7},   "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtTraceControl", OK, RNTST, 6,
+     {
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, -2, R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -4, W|HT, DRSYS_TYPE_STRUCT},
+         {3, -5, WI|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,WIN7},"NtWaitForWorkViaWorkerFactory", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(FILE_IO_COMPLETION_INFORMATION), W|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
     {{WIN8,WIN8},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
     {{WIN81,0},  "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 5, },
     {{0,0},"NtWorkerFactoryWorkerReady", OK, RNTST, 1,
@@ -3562,7 +3624,17 @@ static syscall_info_t syscall_ntdll_info[] = {
         {4, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{WIN7,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6, },
+    {{WIN7,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         /* XXX i#1537: Arg requires special handler function. */
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -4, W|HT, DRSYS_TYPE_STRUCT},
+         {3, -5, WI|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     /* One info class reads data, which is special-cased */
     {{WIN7,0},"NtQuerySystemInformationEx", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 6,
      {
@@ -3586,8 +3658,24 @@ static syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{WIN7,0},"NtSerializeBoot", OK, RNTST, 0, },
-    {{WIN7,0},"NtSetIoCompletionEx", UNKNOWN, RNTST, 6, },
-    {{WIN7,0},"NtSetTimerEx", UNKNOWN, RNTST, 4, },
+    {{WIN7,0},"NtSetIoCompletionEx", OK, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
+         {5, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{WIN7,0},"NtSetTimerEx", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(TIMER_SET_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, R|W|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN7,0},"NtUmsThreadYield", UNKNOWN, RNTST, 1, },
     {{WIN7,0},"NtWow64GetCurrentProcessorNumberEx", OK, RNTST, 1,
      {
@@ -3619,7 +3707,15 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{WIN8,0},"NtDeleteWnfStateName", UNKNOWN, RNTST, 1, },
     {{WIN8,0},"NtFilterBootOption", UNKNOWN, RNTST, 5, },
     {{WIN8,0},"NtFilterTokenEx", UNKNOWN, RNTST, 14, },
-    {{WIN8,0},"NtFlushBuffersFileEx", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtFlushBuffersFileEx", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+     }
+    },
     {{WIN8,0},"NtGetCachedSigningLevel", UNKNOWN, RNTST, 6, },
     {{WIN8,0},"NtQueryWnfStateData", UNKNOWN, RNTST, 6, },
     {{WIN8,0},"NtQueryWnfStateNameInformation", UNKNOWN, RNTST, 5, },

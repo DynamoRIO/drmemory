@@ -114,6 +114,7 @@ $all_params = 1; # we now want all, not just memory
      'LPARAM'                   => 'DRSYS_TYPE_SIGNED_INT',
      'GETCPD'                   => 'DRSYS_TYPE_SIGNED_INT',
      'USERTHREADINFOCLASS'      => 'DRSYS_TYPE_SIGNED_INT',
+     'WORKERFACTORYINFOCLASS'   => 'DRSYS_TYPE_SIGNED_INT',
      'int'                      => 'DRSYS_TYPE_SIGNED_INT',
      'BOOL'                     => 'DRSYS_TYPE_BOOL',
      'BOOLEAN'                  => 'DRSYS_TYPE_BOOL',
@@ -192,6 +193,7 @@ $all_params = 1; # we now want all, not just memory
      'SOCKADDR'                 => 'DRSYS_TYPE_SOCKADDR',
      'MSGHDR'                   => 'DRSYS_TYPE_MSGHDR',
      'MSGBUF'                   => 'DRSYS_TYPE_MSGBUF',
+     'FILE_IO_COMPLETION_INFORMATION' => 'DRSYS_TYPE_FILE_IO_COMPLETION_INFO'
     );
 %typemap_struct =
     (

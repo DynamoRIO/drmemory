@@ -10,26 +10,21 @@
  ****************************************************************************
  ****************************************************************************/
 
- /* from phlib/include/ntmisc.h */
+ /* from phlib/include/ntseapi.h */
 
-#ifndef __PHLIB_NTMISC_H
-#define __PHLIB_NTMISC_H
+#ifndef __PHLIB_NTSEAPI_H
+#define __PHLIB_NTSEAPI_H
 
-NTSTATUS NTAPI
-NtDrawText(
-    __in PUNICODE_STRING Text
-    );
-
-NTSTATUS NTAPI
-NtTraceControl(
-    __in ULONG FunctionCode,
-    __in_bcount_opt(InBufferLen) PVOID InBuffer,
-    __in ULONG InBufferLen,
-    __out_bcount_opt(OutBufferLen) PVOID OutBuffer,
-    __in ULONG OutBufferLen,
+NTSTATUS
+NTAPI
+NtQuerySecurityAttributesToken(
+    __in HANDLE TokenHandle,
+    __in_ecount_opt(NumberOfAttributes) PUNICODE_STRING Attributes,
+    __in ULONG NumberOfAttributes,
+    __out_bcount(Length) PVOID Buffer
+    __in ULONG Length,
     __out PULONG ReturnLength
     );
 
-#endif /* __PHLIB_NTMISC_H */
-
+#endif /* __PHLIB_NTSEAPI_H */
 /* EOF */

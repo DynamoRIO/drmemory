@@ -169,12 +169,53 @@ NTAPI
 NtReleaseWorkerFactoryWorker(
     __in HANDLE WorkerFactoryHandle
     );
-	
+
 NTSTATUS
 NTAPI
 NtWorkerFactoryWorkerReady(
     __in HANDLE WorkerFactoryHandle
     );
-	
+
+NTSTATUS
+NTAPI
+NtQueryInformationWorkerFactory(
+    __in HANDLE WorkerFactoryHandle,
+    __in WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    __out_bcount(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    __in ULONG WorkerFactoryInformationLength,
+    __out_opt PULONG ReturnLength
+    );
+
+NTSTATUS
+NTAPI
+NtSetInformationWorkerFactory(
+    __in HANDLE WorkerFactoryHandle,
+    __in WORKERFACTORYINFOCLASS WorkerFactoryInformationClass,
+    __in_bcount(WorkerFactoryInformationLength) PVOID WorkerFactoryInformation,
+    __in ULONG WorkerFactoryInformationLength
+    );
+
+NTSTATUS
+NTAPI
+NtWaitForWorkViaWorkerFactory(
+    __in HANDLE WorkerFactoryHandle,
+    __out _FILE_IO_COMPLETION_INFORMATION *MiniPacket
+    );
+
+NTSTATUS
+NTAPI
+NtShutdownWorkerFactory(
+    __in HANDLE WorkerFactoryHandle,
+    __inout volatile LONG *PendingWorkerCount
+    );
+
+NTSTATUS
+NTAPI
+NtSetTimerEx(
+    __in HANDLE TimerHandle,
+    __in TIMER_SET_INFORMATION_CLASS TimerSetInformationClass,
+    __inout_bcount_opt(TimerSetInformationLength) PVOID TimerSetInformation,
+    __in ULONG TimerSetInformationLength
+    );
 
 #endif /* _NTEXAPI_H_ 1 */

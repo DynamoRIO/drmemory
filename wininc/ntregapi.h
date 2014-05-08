@@ -39,6 +39,19 @@ NtFreezeRegistry(
     __in ULONG TimeOutInSeconds
     );
 
+NTSTATUS
+NTAPI
+NtCreateKeyTransacted(
+    __out PHANDLE KeyHandle,
+    __in ACCESS_MASK DesiredAccess,
+    __in POBJECT_ATTRIBUTES ObjectAttributes,
+    __reserved ULONG TitleIndex,
+    __in_opt PUNICODE_STRING Class,
+    __in ULONG CreateOptions,
+    __in HANDLE TransactionHandle,
+    __out_opt PULONG Disposition
+    );
+
 #endif /* __PHLIB_NTPSAPI_H */
 
 /* EOF */

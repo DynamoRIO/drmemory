@@ -156,6 +156,15 @@ typedef enum _SEMAPHORE_INFORMATION_CLASS
 } SEMAPHORE_INFORMATION_CLASS;
 
 //
+// System Information Classes for NtSetTimerEx
+//
+typedef enum _TIMER_SET_INFORMATION_CLASS
+{
+    TimerSetCoalescableTimer,
+    MaxTimerInfoClass
+} TIMER_SET_INFORMATION_CLASS;
+
+//
 //  System Information Classes for NtQueryEvent
 //
 typedef enum _EVENT_INFORMATION_CLASS
@@ -212,5 +221,23 @@ typedef struct _SYSTEM_HANDLE_INFORMATION {
      SYSTEM_HANDLE_ENTRY Handle[1];
 } SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
 
+//
+// System Information Class for Nt*InformationWorkerFactory group of functions
+//
+typedef enum _WORKERFACTORYINFOCLASS
+{
+    WorkerFactoryTimeout,
+    WorkerFactoryRetryTimeout,
+    WorkerFactoryIdleTimeout,
+    WorkerFactoryBindingCount,
+    WorkerFactoryThreadMinimum,
+    WorkerFactoryThreadMaximum,
+    WorkerFactoryPaused,
+    WorkerFactoryBasicInformation,
+    WorkerFactoryAdjustThreadGoal,
+    WorkerFactoryCallbackType,
+    WorkerFactoryStackInformation,
+    MaxWorkerFactoryInfoClass
+} WORKERFACTORYINFOCLASS, *PWORKERFACTORYINFOCLASS;
 
 #endif /* _EXTYPES_H */

@@ -40,6 +40,15 @@ typedef struct _BOOT_OPTIONS
 } BOOT_OPTIONS, *PBOOT_OPTIONS;
 
 //
+// I/O structure for NtRemoveIoCompletionEx function
+//
+typedef struct _FILE_IO_COMPLETION_INFORMATION{
+    PVOID KeyContext;
+    PVOID ApcContext;
+    IO_STATUS_BLOCK IoStatusBlock;
+} FILE_IO_COMPLETION_INFORMATION, *PFILE_IO_COMPLETION_INFORMATION;
+
+//
 // I/O Completion Information Class for NtQueryIoCompletionInformation
 //
 typedef enum _IO_COMPLETION_INFORMATION_CLASS
