@@ -9,6 +9,11 @@
  ****************************************************************************
  ****************************************************************************/
 
+#define ALPC_MESSAGE_SECURITY_ATTRIBUTE 0x80000000
+#define ALPC_MESSAGE_VIEW_ATTRIBUTE     0x40000000
+#define ALPC_MESSAGE_CONTEXT_ATTRIBUTE  0x20000000
+#define ALPC_MESSAGE_HANDLE_ATTRIBUTE   0x10000000
+
 typedef struct _ALPC_CONTEXT_ATTRIBUTES
 {
     PVOID PortContext;
@@ -34,6 +39,14 @@ typedef struct _ALPC_SECURITY_ATTRIBUTES
     ULONG Reserved1;
     ULONG Reserved2;
 } ALPC_SECURITY_ATTRIBUTES, *PALPC_SECURITY_ATTRIBUTES;
+
+typedef struct _ALPC_HANDLE_ATTRIBUTES
+{
+    ULONG Flags;
+    HANDLE Handle;
+    ULONG ObjectType;
+    ACCESS_MASK DesiredAccess;
+} ALPC_HANDLE_ATTRIBUTES, *PALPC_HANDLE_ATTRIBUTES;
 
 
 /***************************************************************************

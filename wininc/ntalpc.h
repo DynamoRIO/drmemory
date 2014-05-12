@@ -175,7 +175,7 @@ NtAlpcSendWaitReceivePort(
     __in HANDLE                             PortHandle,
     __in ULONG                              Flags,
     __in_opt PPORT_MESSAGE                  SendMessage,
-    __in_opt PALPC_MESSAGE_ATTRIBUTES       SendMessageAttributes,
+    __inout_opt PALPC_MESSAGE_ATTRIBUTES    SendMessageAttributes,
     __inout_opt PPORT_MESSAGE               ReceiveMessage,
     __inout_opt PULONG                      BufferLength,
     __inout_opt PALPC_MESSAGE_ATTRIBUTES    ReceiveMessageAttributes,

@@ -3029,10 +3029,10 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(PORT_MESSAGE), SYSARG_NON_MEMARG, SYSARG_TYPE_PORT_MESSAGE},
-         {3, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|CT, DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES},
          {4, -5, WI|HT, SYSARG_TYPE_PORT_MESSAGE},
          {5, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {6, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|HT, DRSYS_TYPE_STRUCT},
+         {6, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|CT, DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES},
          {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
@@ -4738,8 +4738,8 @@ handle_alpc_security_attributes_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_alpc_context_attributes_access(sysarg_iter_info_t *ii,
-                                       const sysinfo_arg_t *arg_info,
-                                       app_pc start, uint size)
+                                      const sysinfo_arg_t *arg_info,
+                                      app_pc start, uint size)
 {
     /* XXX i#1390: This structure is only used in NtAlpcCancelMessage, and right now only
      * uses three of its fields: MessageContext, MessageID, and CallbackID. This was
@@ -4761,6 +4761,96 @@ handle_alpc_context_attributes_access(sysarg_iter_info_t *ii,
     if (!report_memarg(ii, arg_info, (byte *) &aca->MessageID, sizeof(aca->MessageID) +
         sizeof(aca->CallbackID), "ALPC_CONTEXT_ATTRIBUTES MessageID..CallbackID"))
         return true;
+    return true;
+}
+
+static bool
+handle_alpc_message_attributes_access(sysarg_iter_info_t *ii,
+                                      const sysinfo_arg_t *arg_info,
+                                      app_pc start, uint size)
+{
+    /* ALPC attributes are initially passed in by the server or client when a message is
+     * sent. A user can request the kernel to expose the attributes back. These attributes
+     * are structs laid out one after the other in a particular order, w/ the flags
+     * indicating which structs are exposed. The logic was reverse engineered from
+     * nt!AlpcpExposeAttributes. The kernel will fill the ValidAttributes field to
+     * indicate which attributes were actually exposed.
+     */
+    ALPC_MESSAGE_ATTRIBUTES ama;
+    ALPC_MESSAGE_ATTRIBUTES *arg = (ALPC_MESSAGE_ATTRIBUTES *) start;
+    ULONG attributes;
+    size_t delta = sizeof(ALPC_MESSAGE_ATTRIBUTES);
+    if (safe_read((void*)start, sizeof(ama), &ama)) {
+        if (ii->arg->pre) {
+            /* AllocatedAttributes needs to be defined */
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_READ,
+                                    (byte *) &arg->AllocatedAttributes,
+                                    sizeof(arg->AllocatedAttributes),
+                                    "ALPC_MESSAGE_ATTRIBUTES AllocatedAttributes",
+                                    DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES, NULL))
+                return true;
+            attributes = ama.AllocatedAttributes;
+        } else {
+            attributes = ama.ValidAttributes;
+        }
+        if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE,
+                                (byte *) &arg->ValidAttributes,
+                                sizeof(arg->ValidAttributes),
+                                "ALPC_MESSAGE_ATTRIBUTES ValidAttributes",
+                                DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES, NULL))
+            return true;
+        if (TEST(ALPC_MESSAGE_SECURITY_ATTRIBUTE, attributes)) {
+            /* Kernel does not write SecurityQos field. */
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE, start + delta,
+                                    sizeof(((ALPC_SECURITY_ATTRIBUTES*)0)->Flags),
+                                    "exposed ALPC_SECURITY_ATTRIBUTES Flags",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE, start + delta +
+                                    offsetof(ALPC_SECURITY_ATTRIBUTES, ContextHandle),
+                                    sizeof(((ALPC_SECURITY_ATTRIBUTES*)0)->ContextHandle),
+                                    "exposed ALPC_SECURITY_ATTRIBUTES ContextHandle",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+            delta = sizeof(ALPC_SECURITY_ATTRIBUTES);
+        }
+        if (TEST(ALPC_MESSAGE_VIEW_ATTRIBUTE, attributes)) {
+            /* XXX: The kernel performs checks for each attribute, however it is checked
+             * against AllocatedAttributes masked w/ ALPC_MESSAGE_SECURITY_ATTRIBUTE thus
+             * making the additional checks unnecessary. Kernel does not write
+             * SectionHandle field.
+             */
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE, start + delta,
+                                    sizeof(((ALPC_DATA_VIEW*)0)->Flags),
+                                    "exposed ALPC_DATA_VIEW Flags",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE, start + delta +
+                                    offsetof(ALPC_DATA_VIEW, ViewBase),
+                                    sizeof(((ALPC_DATA_VIEW*)0)->ViewBase) +
+                                    sizeof(((ALPC_DATA_VIEW*)0)->ViewSize),
+                                    "exposed ALPC_DATA_VIEW ViewBase..ViewSize",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+            delta += sizeof(ALPC_DATA_VIEW);
+        }
+        if (TEST(ALPC_MESSAGE_CONTEXT_ATTRIBUTE, attributes)) {
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE,
+                                    start + delta, sizeof(ALPC_CONTEXT_ATTRIBUTES),
+                                    "exposed ALPC_CONTEXT_ATTRIBUTES",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+            delta += sizeof(ALPC_CONTEXT_ATTRIBUTES);
+        }
+        if (TEST(ALPC_MESSAGE_HANDLE_ATTRIBUTE, attributes)) {
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_WRITE,
+                                    start + delta, sizeof(ALPC_HANDLE_ATTRIBUTES),
+                                    "exposed ALPC_MESSAGE_HANDLE_ATTRIBUTES",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return true;
+        }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
     return true;
 }
 
@@ -4797,6 +4887,8 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
         return handle_alpc_security_attributes_access(ii, arg_info, start, size);
     case SYSARG_TYPE_ALPC_CONTEXT_ATTRIBUTES:
         return handle_alpc_context_attributes_access(ii, arg_info, start, size);
+    case SYSARG_TYPE_ALPC_MESSAGE_ATTRIBUTES:
+        return handle_alpc_message_attributes_access(ii, arg_info, start, size);
     }
     return wingdi_process_arg(ii, arg_info, start, size);
 }
