@@ -1143,27 +1143,35 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
     return false;
 }
 
+static inline bool
+opnds_overlap(opnd_t op1, opnd_t op2)
+{
+    /* XXX: should we check overlap on memory opnd? */
+    return (opnd_same(op1, op2) ||
+            (opnd_is_reg(op1) && opnd_is_reg(op2) && opnd_share_reg(op1, op2)));
+}
+
 static bool
-instrs_share_reg(instr_t *in1, instr_t *in2)
+instrs_share_opnd(instr_t *in1, instr_t *in2)
 {
     int i, j;
     for (i = 0; i < instr_num_srcs(in1); i++) {
         for (j = 0; j < instr_num_srcs(in2); j++) {
-            if (opnd_share_reg(instr_get_src(in1, i), instr_get_src(in2, j)))
+            if (opnds_overlap(instr_get_src(in1, i), instr_get_src(in2, j)))
                 return true;
         }
         for (j = 0; j < instr_num_dsts(in2); j++) {
-            if (opnd_share_reg(instr_get_src(in1, i), instr_get_dst(in2, j)))
+            if (opnds_overlap(instr_get_src(in1, i), instr_get_dst(in2, j)))
                 return true;
         }
     }
     for (i = 0; i < instr_num_dsts(in1); i++) {
         for (j = 0; j < instr_num_srcs(in2); j++) {
-            if (opnd_share_reg(instr_get_dst(in1, i), instr_get_src(in2, j)))
+            if (opnds_overlap(instr_get_dst(in1, i), instr_get_src(in2, j)))
                 return true;
         }
         for (j = 0; j < instr_num_dsts(in2); j++) {
-            if (opnd_share_reg(instr_get_dst(in1, i), instr_get_dst(in2, j)))
+            if (opnds_overlap(instr_get_dst(in1, i), instr_get_dst(in2, j)))
                 return true;
         }
     }
@@ -2430,13 +2438,20 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         goto check_xor_bitfield_done;
     if (instr_get_opcode(&xor) != OP_xor) {
         /* Try the next instr, to handle double intertwined patterns (i#1523)
-         * or just a random instr in between (i#1530).
+         * or just a random instr in between (i#1530, i#1542).
          */
         instr_t *between = instr_clone(drcontext, &xor);
         instr_reset(drcontext, &xor);
         if (!safe_decode(drcontext, pc, &xor, &pc) || !instr_valid(&xor) ||
             /* Bail if the instr in between has any non-memory-alias overlap */
-            instrs_share_reg(between, &xor)) {
+            /* i#1542: the instr in between could have shared reg
+             *   mov     al,[edi+0x20]
+             *   xor     al,[ebp+0x10]           ss:002b:0018e110=00
+             *   and     al,0x1
+             *   mov     dword ptr [edi],0x103356c8
+             *   xor     [edi+0x20],al
+             */
+            instrs_share_opnd(between, &xor)) {
             instr_destroy(drcontext, between);
             goto check_xor_bitfield_done;
         }
