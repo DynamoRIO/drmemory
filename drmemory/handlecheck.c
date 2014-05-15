@@ -529,11 +529,11 @@ handlecheck_check_open_handle(const char *name,
              * at that site should probably be closed.
              */
             count--; /* pair table refcount */
-            if (count <= 1) {
-                /* Report it as a potential error if there is only one live handle
-                 * from the same call site, as it could be left open on purpose.
-                 * Also, we currently want to avoid noise and false positives and
-                 * focus on significant leaks.
+            if (count <= 2) {
+                /* Report it as a potential error if there are only one or two live
+                 * handles from the same call site, as they could be left open on
+                 * purpose. Also, we currently want to avoid noise and false positives
+                 * and focus on significant leaks.
                  */
                 potential = true;
             }
