@@ -25,7 +25,7 @@
  */
 
 #ifndef _TABLE_DEFINES_H
-#defined _TABLE_DEFINES_H 1
+#define _TABLE_DEFINES_H 1
 
 #define OK (SYSINFO_ALL_PARAMS_KNOWN)
 #define UNKNOWN 0
@@ -40,8 +40,15 @@
 #define RNTST (DRSYS_TYPE_NTSTATUS)
 #define RLONG (DRSYS_TYPE_SIGNED_INT)
 
-#define WIN7  DR_WINDOWS_VERSION_7
-#define WIN8  DR_WINDOWS_VERSION_8
-#define WIN81 DR_WINDOWS_VERSION_8_1
+#ifdef LINUX
+/* See the big comment "64-bit vs 32-bit" in drsyscall_linux.c. */
+# define PACKNUM(x64,x86) (((x64) << 16) | (x86 & 0xffff))
+#endif
+
+#ifdef WINDOWS
+# define WIN7  DR_WINDOWS_VERSION_7
+# define WIN8  DR_WINDOWS_VERSION_8
+# define WIN81 DR_WINDOWS_VERSION_8_1
+#endif
 
 #endif /* _TABLE_DEFINES_H 1 */

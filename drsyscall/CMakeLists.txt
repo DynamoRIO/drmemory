@@ -57,6 +57,8 @@ if (UNIX)
   else (APPLE)
     set(srcs ${srcs}
       drsyscall_linux.c
+      table_linux.c
+      table_linux_ioctl.c
       ../${asm_utils_src})
   endif (APPLE)
 else (UNIX)
