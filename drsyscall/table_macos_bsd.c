@@ -105,16 +105,7 @@
 # define SYS_pid_shutdown_sockets 436
 #endif
 
-#define OK (SYSINFO_ALL_PARAMS_KNOWN)
-#define UNKNOWN 0
-#define W (SYSARG_WRITE)
-#define R (SYSARG_READ)
-#define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
-#define CT (SYSARG_COMPLEX_TYPE)
-#define HT (SYSARG_HAS_TYPE)
-#define CSTRING (SYSARG_TYPE_CSTRING)
-#define RET (SYSARG_POST_SIZE_RETVAL)
-#define RLONG (DRSYS_TYPE_SIGNED_INT) /* they all return type "long" */
+#include "table_defines.h"
 
 syscall_info_t syscall_info_bsd[] = {
     /* FIXME i#1440: this table was auto-generated, and the memory
@@ -2446,14 +2437,3 @@ syscall_info_t syscall_info_bsd[] = {
 };
 
 size_t count_syscall_info_bsd = sizeof(syscall_info_bsd)/sizeof(syscall_info_bsd[0]);
-
-#undef OK
-#undef UNKNOWN
-#undef W
-#undef R
-#undef WI
-#undef CT
-#undef HT
-#undef CSTRING
-#undef RET
-#undef RLONG

@@ -1,0 +1,47 @@
+/* **********************************************************
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/* This is meant to be included into a file that only contains a system
+ * call table.  Thus it has no mechanism for undefining.
+ */
+
+#ifndef _TABLE_DEFINES_H
+#defined _TABLE_DEFINES_H 1
+
+#define OK (SYSINFO_ALL_PARAMS_KNOWN)
+#define UNKNOWN 0
+#define W (SYSARG_WRITE)
+#define R (SYSARG_READ)
+#define CT (SYSARG_COMPLEX_TYPE)
+#define HT (SYSARG_HAS_TYPE)
+#define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
+#define IO (SYSARG_POST_SIZE_IO_STATUS)
+#define CSTRING (SYSARG_TYPE_CSTRING)
+#define RET (SYSARG_POST_SIZE_RETVAL)
+#define RNTST (DRSYS_TYPE_NTSTATUS)
+#define RLONG (DRSYS_TYPE_SIGNED_INT)
+
+#define WIN7  DR_WINDOWS_VERSION_7
+#define WIN8  DR_WINDOWS_VERSION_8
+#define WIN81 DR_WINDOWS_VERSION_8_1
+
+#endif /* _TABLE_DEFINES_H 1 */
