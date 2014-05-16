@@ -56,11 +56,6 @@
 # include "syscall_driver.h"
 #endif
 
-#ifdef WINDOWS
-static drsys_sysnum_t sysnum_UserCallOneParam = {-1, 0};
-static drsys_sysnum_t sysnum_UserCallTwoParam = {-1, 0};
-#endif
-
 /* Keep this in synch with drsys_param_type_t */
 const char * const param_type_names[] = {
     "<invalid>",                /* DRSYS_TYPE_INVALID */
@@ -1561,17 +1556,11 @@ get_sysinfo(void *drcontext, cls_syscall_t *pt, int initial_num,
              * used for syscalls w/ 64-bit params in 32-bit, so we can use
              * dr_syscall_get_param().
              */
+            /* The param # to use for the code is stored in the 1st entry
+             * (the entries are not otherwise used, as we'll switch to the
+             * other table).
+             */
             code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[0].param);
-#ifdef WINDOWS
-            /* i#1394: special handling for NtUserCall{One/Two}Param */
-            if (initial_num == sysnum_UserCallOneParam.number) {
-                ASSERT(sysinfo->arg_count == 2, "2nd arg for code");
-                code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[1].param);
-            } else if (initial_num == sysnum_UserCallTwoParam.number) {
-                ASSERT(sysinfo->arg_count == 3, "3rd arg for code");
-                code = (uint) dr_syscall_get_param(drcontext, sysinfo->arg[2].param);
-            }
-#endif
             sysnum->secondary = code;
             /* get a new sysinfo */
             sysinfo = syscall_lookup(*sysnum, true/*resolve 2ndary*/);
@@ -2185,14 +2174,6 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
 #ifdef SYSCALL_DRIVER
     if (drsys_ops.syscall_driver)
         driver_init();
-#endif
-
-#ifdef WINDOWS
-    /* Some system may not have these system calls and the lookup could fail,
-     * so we do not check the result.
-     */
-    os_syscall_get_num("NtUserCallOneParam", &sysnum_UserCallOneParam);
-    os_syscall_get_num("NtUserCallTwoParam", &sysnum_UserCallTwoParam);
 #endif
 
     return DRMF_SUCCESS;

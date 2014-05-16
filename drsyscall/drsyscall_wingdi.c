@@ -385,38 +385,27 @@ syscall_info_t syscall_user32_info[] = {
     /* i#389: NtUserCall* take in a code and perform a variety of tasks */
     {{0,0},"NtUserCallHwnd", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 2,
      {
-         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1,}  /* code is param #1 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_BOOL32, 2,
      {
-         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1,}  /* code is param #1 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndOpt", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_HANDLE, 2,
      {
-         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1,}  /* code is param #1 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndParam", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
-         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         /* This type varies: sometimes timer id, BOOL, or HANDLE. Since the entry
-          * in the secondary table is used, we have UINT as a placeholder here.
-          */
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2,}  /* code is param #2 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndParamLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
-         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         /* This type varies so use UINT as placeholder. */
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2,}  /* code is param #2 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallMsgFilter", UNKNOWN, SYSARG_TYPE_BOOL32, 2,
@@ -435,22 +424,17 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserCallNoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 1,
      {
-         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {0,}  /* code is param #0 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallOneParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 2,
      {
-        /* This type varies so use UINT as placeholder. */
-         {0, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1,}  /* code is param #1 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallTwoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 3,
      {
-         /* Param types 1 and 2 vary so use UINT as placeholder. */
-         {0, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2,}  /* code is param #2 */
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserChangeClipboardChain", OK, SYSARG_TYPE_BOOL32, 2,
