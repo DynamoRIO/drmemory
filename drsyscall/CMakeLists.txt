@@ -65,6 +65,10 @@ else (UNIX)
   set(srcs ${srcs}
     drsyscall_windows.c
     table_windows_ntoskrnl.c
+    table_windows_ntuser.c
+    table_windows_ntusercall.c
+    table_windows_ntgdi.c
+    table_windows_kernel32.c
     drsyscall_wingdi.c)
   if (SYSCALL_DRIVER)
     set(srcs ${srcs}
