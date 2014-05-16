@@ -128,6 +128,8 @@ uint64 slowpath_sz1;
 uint64 slowpath_sz2;
 uint64 slowpath_sz4;
 uint64 slowpath_sz8;
+uint64 slowpath_sz10;
+uint64 slowpath_sz16;
 uint64 slowpath_szOther;
 
 /* PR 423757: periodic stats dump */
@@ -3385,6 +3387,10 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             STATS_INC(slowpath_sz4);
         else if (bytes == 8)
             STATS_INC(slowpath_sz8);
+        else if (bytes == 10)
+            STATS_INC(slowpath_sz10);
+        else if (bytes == 16)
+            STATS_INC(slowpath_sz16);
         else
             STATS_INC(slowpath_szOther);
     }

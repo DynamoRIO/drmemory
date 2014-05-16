@@ -305,6 +305,8 @@ dump_statistics(void)
     dr_fprintf(f_global, "\t2-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz2);
     dr_fprintf(f_global, "\t4-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz4);
     dr_fprintf(f_global, "\t8-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz8);
+    dr_fprintf(f_global, "\t10-byte:%12"UINT64_FORMAT_CODE"\n", slowpath_sz10);
+    dr_fprintf(f_global, "\t16-byte:%12"UINT64_FORMAT_CODE"\n", slowpath_sz16);
     dr_fprintf(f_global, "\tOther:  %12"UINT64_FORMAT_CODE"\n", slowpath_szOther);
     dr_fprintf(f_global, "\n");
 }

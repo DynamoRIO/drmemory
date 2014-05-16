@@ -89,6 +89,8 @@ extern uint64 slowpath_sz1;
 extern uint64 slowpath_sz2;
 extern uint64 slowpath_sz4;
 extern uint64 slowpath_sz8;
+extern uint64 slowpath_sz10;
+extern uint64 slowpath_sz16;
 extern uint64 slowpath_szOther;
 /* FIXME: make generalized stats infrastructure */
 extern uint slowpath_executions;
