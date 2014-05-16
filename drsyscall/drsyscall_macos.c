@@ -213,13 +213,20 @@ drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 }
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt)
 {
     if (TEST(SYSCALL_NUM_MARKER_MACH, sysnum.number)) {
         /* FIXME i#1440: Mach syscalls vary (for some KERN_SUCCESS=0 is success,
          * for others that return mach_port_t 0 is failure (I think?).
          */
-        return ((ptr_int_t)mc->xax >= 0);
+        return ((ptr_int_t)pt->mc.xax >= 0);
     } else
-        return !TEST(EFLAGS_CF, mc->eflags);
+        return !TEST(EFLAGS_CF, pt->mc.eflags);
+}
+
+bool
+os_syscall_succeeded_custom(drsys_sysnum_t sysnum, syscall_info_t *info,
+                            cls_syscall_t *pt)
+{
+    return false;
 }

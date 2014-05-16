@@ -603,20 +603,22 @@ drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OU
     return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
 #else
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
-    dr_mcontext_t mc;
+    cls_syscall_t pt;
+    memset(&pt, 0, sizeof(pt));
     if (syscall == NULL || success == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    mc.xax = result;
-    *success = os_syscall_succeeded(sysinfo->num, sysinfo, &mc);
+    pt.mc.xax = result;
+    *success = os_syscall_succeeded(sysinfo->num, sysinfo, &pt);
     return DRMF_SUCCESS;
 #endif
 }
 
 static void
-get_syscall_result(syscall_info_t *sysinfo, dr_mcontext_t *mc,
+get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
                    OUT bool *success, OUT uint64 *value, OUT uint *error_code)
 {
-    bool res = os_syscall_succeeded(sysinfo->num, sysinfo, mc);
+    bool res = os_syscall_succeeded(sysinfo->num, sysinfo, pt);
+    dr_mcontext_t *mc = &pt->mc;
     if (success != NULL)
         *success = res;
     if (value != NULL) {
@@ -654,7 +656,7 @@ drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
         return DRMF_ERROR_INVALID_PARAMETER;
     pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     sysinfo = (syscall_info_t *) get_cur_syscall(pt);
-    get_syscall_result(sysinfo, &pt->mc, success, value, error_code);
+    get_syscall_result(sysinfo, pt, success, value, error_code);
     return DRMF_SUCCESS;
 }
 
@@ -865,6 +867,7 @@ report_memarg_type(sysarg_iter_info_t *ii,
                    app_pc ptr, size_t sz, const char *id,
                    drsys_param_type_t type, const char *type_name)
 {
+    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, ptr, ptr+sz);
     return report_memarg_ex(ii, ordinal, mode_from_flags(arg_flags), ptr, sz, id,
                             type, type_name, DRSYS_TYPE_INVALID);
 }
@@ -930,7 +933,8 @@ report_sysarg_iter(sysarg_iter_info_t *ii)
 }
 
 static void
-set_return_arg_vals(void *drcontext, drsys_arg_t *arg/*IN/OUT*/, bool have_retval,
+set_return_arg_vals(void *drcontext, cls_syscall_t *pt,
+                    drsys_arg_t *arg/*IN/OUT*/, bool have_retval,
                     size_t sz, drsys_param_type_t type, const char *type_name)
 {
     arg->ordinal = -1;
@@ -938,7 +942,7 @@ set_return_arg_vals(void *drcontext, drsys_arg_t *arg/*IN/OUT*/, bool have_retva
     arg->reg = DR_REG_NULL;
     arg->start_addr = NULL;
     if (have_retval) {
-        get_syscall_result((syscall_info_t *)arg->syscall, arg->mc,
+        get_syscall_result((syscall_info_t *)arg->syscall, pt,
                            NULL, &arg->value64, NULL);
         arg->value = (ptr_uint_t) arg->value64;
     } else {
@@ -954,7 +958,7 @@ bool
 report_sysarg_return(void *drcontext, sysarg_iter_info_t *ii,
                      size_t sz, drsys_param_type_t type, const char *type_name)
 {
-    set_return_arg_vals(drcontext, ii->arg, ii->pt != NULL && !ii->pt->pre,
+    set_return_arg_vals(drcontext, ii->pt, ii->arg, ii->pt != NULL && !ii->pt->pre,
                         sz, type, type_name);
     return report_sysarg_iter(ii);
 }
@@ -1614,12 +1618,12 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
             driver_process_writes(drcontext, sysnum);
 #endif
         if (pt->sysinfo != NULL) {
-            if (!os_syscall_succeeded(pt->sysnum, pt->sysinfo, &pt->mc)) {
+            if (!os_syscall_succeeded(pt->sysnum, pt->sysinfo, pt)) {
                 LOG(SYSCALL_VERBOSE,
                     "system call #"SYSNUM_FMT"."SYSNUM_FMT" %s failed with "PFX"\n",
                     pt->sysnum.number, pt->sysnum.secondary,
                     pt->sysinfo->name, dr_syscall_get_result(drcontext));
-            } else {
+            } else if (!os_syscall_succeeded_custom(pt->sysnum, pt->sysinfo, pt)) {
                 process_post_syscall_reads_and_writes(pt, &iter_info);
             }
             os_handle_post_syscall(drcontext, pt, &iter_info);
@@ -1731,7 +1735,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
         arg->size = sizeof(reg_t);
         /* get exported type and size if different from reg_t */
         arg->type = map_to_exported_type(sysinfo->return_type, &arg->size);
-        set_return_arg_vals(drcontext, arg, pt != NULL && !pt->pre,
+        set_return_arg_vals(drcontext, pt, arg, pt != NULL && !pt->pre,
                             arg->size, arg->type, NULL);
         (*cb)(arg, user_data);
     }

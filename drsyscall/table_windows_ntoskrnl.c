@@ -94,6 +94,7 @@ extern drsys_sysnum_t sysnum_SetSystemInformation;
 extern drsys_sysnum_t sysnum_SetInformationProcess;
 extern drsys_sysnum_t sysnum_SetInformationFile;
 extern drsys_sysnum_t sysnum_PowerInformation;
+extern drsys_sysnum_t sysnum_QueryVirtualMemory;
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -1789,7 +1790,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_QueryVirtualMemory
     },
     {{0,0},"NtQueryVolumeInformationFile", OK, RNTST, 5,
      {

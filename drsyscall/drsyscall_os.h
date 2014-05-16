@@ -229,7 +229,7 @@ enum {
     /* Return value of STATUS_BUFFER_TOO_SMALL (i#486),
      * STATUS_BUFFER_OVERFLOW (i#531), or STATUS_INFO_LENGTH_MISMATCH
      * (i#932) writes final arg but no others.
-     * If it turns out some syscalls distinguish between the two ret values
+     * If it turns out some syscalls distinguish between the ret values
      * we can split the flag up but seems safer to combine.
      */
     SYSINFO_RET_SMALL_WRITE_LAST= 0x00000010,
@@ -266,7 +266,7 @@ typedef struct _syscall_info_t {
     uint flags; /* SYSINFO_ flags */
     uint return_type; /* not drsys_param_type_t so we can use extended SYSARG_TYPE_* */
     int arg_count;
-    /* list of args that are not inlined */
+    /* list of args that are not inlined: though we now store inlined too for drstrace */
     sysinfo_arg_t arg[MAX_ARGS_IN_ENTRY];
     /* For custom handling w/o separate number lookup.
      * If SYSINFO_SECONDARY_TABLE is set in flags, this is instead
@@ -404,7 +404,14 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
                                   app_pc start, uint size);
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc);
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt);
+
+/* Returns true if successful, yet we should skip automated table output
+ * params as we need custom output handling.
+ */
+bool
+os_syscall_succeeded_custom(drsys_sysnum_t sysnum, syscall_info_t *info,
+                            cls_syscall_t *pt);
 
 #ifdef WINDOWS
 bool

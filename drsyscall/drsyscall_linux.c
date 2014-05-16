@@ -1908,12 +1908,19 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
  */
 
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt)
 {
-    ptr_int_t res = (ptr_int_t) mc->xax;
+    ptr_int_t res = (ptr_int_t) pt->mc.xax;
     if (sysnum.number == SYS_mmap || IF_X86_32(sysnum.number == SYS_mmap2 ||)
         sysnum.number == SYS_mremap)
         return (res >= 0 || res < -PAGE_SIZE);
     else
         return (res >= 0);
+}
+
+bool
+os_syscall_succeeded_custom(drsys_sysnum_t sysnum, syscall_info_t *info,
+                            cls_syscall_t *pt)
+{
+    return false;
 }

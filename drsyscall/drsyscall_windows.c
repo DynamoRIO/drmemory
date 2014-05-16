@@ -29,6 +29,7 @@
 
 #include "../wininc/ndk_extypes.h"
 #include "../wininc/ndk_psfuncs.h"
+#include "../wininc/ndk_mmtypes.h"
 #include "../wininc/afd_shared.h"
 #include "../wininc/msafdlib.h"
 #include "../wininc/winioctl.h"
@@ -242,6 +243,7 @@ drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
 drsys_sysnum_t sysnum_SetInformationFile = {-1,0};
 drsys_sysnum_t sysnum_PowerInformation = {-1,0};
+drsys_sysnum_t sysnum_QueryVirtualMemory = {-1,0};
 
 /* The tables are large, so we separate them into their own files: */
 extern syscall_info_t syscall_ntdll_info[];
@@ -673,13 +675,39 @@ os_syscall_ret_small_write_last(syscall_info_t *info, ptr_int_t res)
     return false;
 }
 
+/* Returns true if successful, yet we should skip automated table output
+ * params as we need custom output handling.
+ */
 bool
-os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, dr_mcontext_t *mc)
+os_syscall_succeeded_custom(drsys_sysnum_t sysnum, syscall_info_t *info,
+                            cls_syscall_t *pt)
 {
+    if (drsys_sysnums_equal(&sysnum, &sysnum_QueryVirtualMemory)) {
+        /* i#1547: NtQueryVirtualMemory.MemoryWorkingSetList writes the
+         * 1st field of MEMORY_WORKING_SET_LIST when it returns
+         * STATUS_INFO_LENGTH_MISMATCH if the size is big enough.
+         */
+        if (pt->mc.xax == STATUS_INFO_LENGTH_MISMATCH &&
+            pt->sysarg[2] == MemoryWorkingSetList &&
+            pt->sysarg[4] >= sizeof(ULONG_PTR))
+            return true;
+    }
+    return false;
+}
+
+bool
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt)
+{
+    /* If any output is written, we have to consider the syscall to have succeeded.
+     * Else the client may not bother to iterate args post-syscall, and we ourselves
+     * do not iterate over table entries.
+     */
     bool success;
-    ptr_int_t res = (ptr_int_t) mc->xax;
+    ptr_int_t res = (ptr_int_t) pt->mc.xax;
     if (wingdi_syscall_succeeded(sysnum, info, res, &success))
         return success;
+    if (os_syscall_succeeded_custom(sysnum, info, pt))
+        return true;
     /* if info==NULL we assume specially handled and we don't need to look it up */
     if (info != NULL) {
         if (os_syscall_ret_small_write_last(info, res))
@@ -1873,6 +1901,32 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
     }
 }
 
+static void
+handle_post_QueryVirtualMemory(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* i#1547: NtQueryVirtualMemory.MemoryWorkingSetList writes the
+     * 1st field of MEMORY_WORKING_SET_LIST when it returns
+     * STATUS_INFO_LENGTH_MISMATCH if the size is big enough, but does not
+     * write to the final bytes-returned param.  Thus we have to special-case
+     * that write.  We do not special-case the success value in os_syscall_succeeded():
+     * we consider it a failure, as we do not want to do the normal processing.
+     */
+    ASSERT(!ii->arg->pre, "post only");
+    if (dr_syscall_get_result(drcontext) == STATUS_INFO_LENGTH_MISMATCH &&
+        pt->sysarg[2] == MemoryWorkingSetList &&
+        pt->sysarg[4] >= sizeof(ULONG_PTR)) {
+        if (!report_memarg_type(ii, 3, SYSARG_WRITE, (byte *) pt->sysarg[3],
+                                sizeof(ULONG_PTR),
+                                /* Nebbett and ReactOS call this "NumberOfPages",
+                                 * but they also have it as ULONG which is wrong.
+                                 * I'm following PSAPI_WORKING_SET_INFORMATION.
+                                 */
+                                "MEMORY_WORKING_SET_LIST.NumberOfEntries",
+                                DRSYS_TYPE_STRUCT, "MEMORY_WORKING_SET_LIST"))
+            return;
+    }
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -2545,7 +2599,7 @@ handle_DeviceIoControlFile_helper(void *drcontext, cls_syscall_t *pt,
          * watch NtWait* and tracking event objects, though we'll
          * over-estimate the amount written in some cases.
          */
-        if (!os_syscall_succeeded(ii->arg->sysnum, NULL, ii->arg->mc))
+        if (!os_syscall_succeeded(ii->arg->sysnum, NULL, pt))
             return;
     }
 
@@ -2706,7 +2760,13 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_QuerySystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_PowerInformation))
         handle_PowerInformation(drcontext, pt, ii);
-    else
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QueryVirtualMemory)) {
+        /* XXX i#1549: if we do split into secondary, this can be limited to
+         * NtQueryVirtualMemory.MemoryWorkingSetList, avoiding the param #2
+         * checks in os_syscall_succeeded() and handle_post_QueryVirtualMemory().
+         */
+        handle_post_QueryVirtualMemory(drcontext, pt, ii);
+    } else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
     DOLOG(2, { syscall_diagnostics(drcontext, pt); });
 }
