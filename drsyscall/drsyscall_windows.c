@@ -3353,7 +3353,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryInformationEnlistment", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, W|HT, DRSYS_TYPE_STRUCT},
          {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3363,7 +3363,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryInformationResourceManager", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, W|HT, DRSYS_TYPE_STRUCT},
          {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3373,7 +3373,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryInformationTransaction", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, W|HT, DRSYS_TYPE_STRUCT},
          {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3383,7 +3383,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryInformationTransactionManager", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, W|HT, DRSYS_TYPE_STRUCT},
          {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3486,7 +3486,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetInformationResourceManager", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, R|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -3494,7 +3494,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetInformationTransaction", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, R|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -3502,7 +3502,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetInformationTransactionManager", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, R|HT, DRSYS_TYPE_STRUCT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      },
