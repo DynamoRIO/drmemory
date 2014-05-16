@@ -2626,6 +2626,23 @@ report_core_dump(error_toprint_t *etp, uint flags, uint id, dr_mcontext_t *mc)
 }
 #endif
 
+static void
+report_pause_at_error(error_toprint_t *etp, dr_mcontext_t *mc, const char *msg)
+{
+#ifdef WINDOWS
+    /* We create a local CONTEXT var to make it easier to swap to the app's
+     * context within the debugger.  i#600 covers adding proper debugger support.
+     */
+    CONTEXT cxt;
+    /* Syscalls should already have mc->pc filled in */
+    if (etp->loc != NULL && etp->loc->type == APP_LOC_PC)
+        mc->pc = loc_to_pc(etp->loc);
+    if (!dr_mcontext_to_context(&cxt, mc))
+        NOTIFY_ERROR("Failed to set CONTEXT for ldmp"NL);
+#endif
+    wait_for_user(msg);
+}
+
 /* pcs is only used for invalid heap args */
 static void
 report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
@@ -2803,11 +2820,11 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
 #endif
     if (reporting && !err->potential) { /* don't pause at a "potential error" */
         if (etp->errtype == ERROR_UNADDRESSABLE && options.pause_at_unaddressable)
-            wait_for_user("pausing at unaddressable access error");
+            report_pause_at_error(etp, mc, "pausing at unaddressable access error");
         else if (etp->errtype == ERROR_UNDEFINED && options.pause_at_uninitialized)
-            wait_for_user("pausing at uninitialized read error");
+            report_pause_at_error(etp, mc, "pausing at uninitialized read error");
         else if (options.pause_at_error)
-            wait_for_user("pausing at error");
+            report_pause_at_error(etp, mc, "pausing at error");
         else if (options.crash_at_error ||
                  (options.crash_at_unaddressable &&
                   etp->errtype == ERROR_UNADDRESSABLE)) {
