@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -290,27 +290,28 @@ test_desktop_handles(bool close)
 int
 main()
 {
+#   define ITERS 4
     int i;
     /* To test -filter_handle_leaks, we must call those test routines with
      * and without closing handles at the same place with the same callstack.
      */
     printf("test gdi handles\n");
-    for (i = 0; i < 3/* make sure there is more than one leak */; i++)
+    for (i = 0; i < ITERS/* make sure there is more than one leak */; i++)
         test_gdi_handles((i == 0)/* close handle? */);
     printf("test file handles\n");
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < ITERS; i++)
         test_file_handles((i == 0)/* close handle? */);
     printf("test thread handles\n");
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < ITERS; i++)
         test_thread_handles((i == 0)/* close handle? */);
     printf("test window handles\n");
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < ITERS; i++)
         test_window_handles((i == 0)/* close handle? */);
     printf("test process handles\n");
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < ITERS; i++)
         test_process_handles((i == 0)/* close handle? */);
     printf("test desktop handles\n");
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < ITERS; i++)
         test_desktop_handles((i == 0)/* close handle? */);
     return 0;
 }
