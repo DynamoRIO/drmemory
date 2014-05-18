@@ -27,7 +27,8 @@
 
 #include <windows.h>
 #include <iostream>
-
+#include <Sddl.h>          /* for SID management */
+#include <strsafe.h>
 using namespace std;
 
 /* use GetCursorInfo, a wrapper for NtUserGetCursorInfo syscall,
@@ -69,11 +70,147 @@ test_GetKeyboardState()
     SetKeyboardState(&keyboard_states_init[0]);
 }
 
+DWORD WINAPI
+JobNotify(HANDLE hiocp)
+{
+    BOOL flag_done = FALSE;
+    DWORD bytes_xferred;
+    ULONG_PTR comp_key;
+    LPOVERLAPPED po;
+    while (!flag_done) {
+        /* The routine calls NtRemoveIoCompletion. */
+        BOOL result = GetQueuedCompletionStatus(hiocp,
+                                                &bytes_xferred,
+                                                &comp_key,
+                                                &po,
+                                                INFINITE);
+        if (!result) {
+            /* unexpected fail */
+            cout << "GetQueuedCompletionStatus failed with error: "
+                 << GetLastError() << endl;
+            return 1;
+        }
+        flag_done = (comp_key == (UINT_PTR) 0);
+    }
+    return 0;
+}
+
+static void
+test_NtSetIoCompletion()
+{
+    DWORD thread_id_array;
+    OVERLAPPED uninit_po;
+    HANDLE thread_hiocp;
+    HANDLE hiocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    if (hiocp == NULL) {
+        /* unexpected fail */
+        cout << "CreateIoCompletionPort unexpectedly failed. Error code is: "
+             << GetLastError() << endl;
+        return;
+    }
+    thread_hiocp = CreateThread(NULL,
+                                0,
+                                JobNotify,
+                                hiocp,
+                                0,
+                                &thread_id_array);
+    if (thread_hiocp == NULL) {
+        /* unexpected fail */
+        cout << "CreateThread unexpectedly failed. Error code is: "
+             << GetLastError() << endl;
+        return;
+    }
+    /* Post a special key that tells the completion port thread to terminate.
+     * The routine calls NtSetIoCompletion.
+     */
+    BOOL result = PostQueuedCompletionStatus(hiocp, NULL, (UINT_PTR) 0, &uninit_po); /*uninit error */
+    if (!result) {
+        /* The routine shouldn't fail */
+        cout << "PostQueuedCompletionStatus unexpectedly failed"
+             << GetLastError() << endl;
+    }
+    /* Wait for the completion port thread to terminate  */
+    WaitForSingleObject(thread_hiocp, INFINITE);
+}
+
+/* Use CreatePrivateNamespace wrapper for
+ * NtCreatePrivateNamespace, to test handling.
+ */
+static void
+test_CreatePrivateNamespace(void)
+{
+    HANDLE   boundary;
+    /* Names of boundary and private namespaces */
+    static PCTSTR   BOUNDARY_NAME = TEXT("3-Boundary");
+    static PCTSTR   NAMESPACE_NAME = TEXT("3-Namespace");
+    /* Create the boundary descriptor */
+    boundary = CreateBoundaryDescriptor(BOUNDARY_NAME, 0);
+    if (boundary == NULL) {
+        /* unexpected fail */
+        cout << "CreateBoundaryDescriptor failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    /* Create a SID corresponding to the Local Administrator group */
+    PSID plocal_admin;
+    if (ConvertStringSidToSid(TEXT("S-1-1-0"), &plocal_admin) == 0) {
+        /* unexpected fail */
+        cout << "ConvertStringSidToSid failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    if (AddSIDToBoundaryDescriptor(&boundary, plocal_admin) == 0) {
+        /* unexpected fail */
+        cout << "AddSIDToBoundaryDescriptor failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    /* Create the namespace for Local Administrators only */
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = FALSE;
+    if (ConvertStringSecurityDescriptorToSecurityDescriptor(TEXT("D:(A;;GA;;;BA)"),
+                                                            SDDL_REVISION_1,
+                                                            &sa.lpSecurityDescriptor,
+                                                            NULL) == 0) {
+        /* unexpected fail */
+        cout << "Security Descriptor creation failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    SECURITY_ATTRIBUTES sa2;
+    sa2.nLength = sizeof(sa2);
+    sa2.bInheritHandle = FALSE;
+    /* The routine calls NtCreatePrivateNamespace. */
+    if (CreatePrivateNamespace(&sa2, NULL, NAMESPACE_NAME) != 0) { /* uninit error */
+        cout << "CreatePrivateNamespace succeeded unexpectedly" << endl;
+    }
+    HANDLE hnamespace = CreatePrivateNamespace(&sa, boundary, NAMESPACE_NAME);
+    if (hnamespace == NULL) {
+        /* unexpected fail */
+        cout << "CreatePrivateNamespace failed. Error code is "
+             << GetLastError() << endl;
+    }
+    ClosePrivateNamespace(hnamespace,
+                          PRIVATE_NAMESPACE_FLAG_DESTROY);
+    DeleteBoundaryDescriptor(boundary);
+    return;
+}
+
 int
 main()
 {
+    cout << "Test sysarg size in field: ";
     test_sysarg_size_in_field();
+    cout << "done" << endl;
+    cout << "Test NtUser[Set/Get]KeyboardState: ";
     test_GetKeyboardState();
+    cout << "done" << endl;
+    cout << "Test NtSetIoCompletion: ";
+    test_NtSetIoCompletion();
+    cout << "done" << endl;
+    cout << "Test NtCreatePrivateNamespaces: ";
+    test_CreatePrivateNamespace();
     cout << "done" << endl;
     return 0;
 }

@@ -18,12 +18,23 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
 Error #1: UNINITIALIZED READ: reading 1 byte(s)
 system call NtUserGetCursorInfo
 test_sysarg_size_in_field
-syscalls_win.cpp:47
+syscalls_win.cpp:48
 
 Error #2: UNINITIALIZED READ: reading 256 byte(s)
 system call NtUserSetKeyboardState
 test_GetKeyboardState
-syscalls_win.cpp:68
+syscalls_win.cpp:69
+
+Error #3: UNINITIALIZED READ: reading 8 byte(s)
+system call NtSetIoCompletion
+test_NtSetIoCompletion
+syscalls_win.cpp:126
+
+Error #4: UNINITIALIZED READ: reading 4 byte(s)
+system call NtCreatePrivateNamespace
+test_CreatePrivateNamespace
+syscalls_win.cpp:185
