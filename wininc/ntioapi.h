@@ -33,20 +33,11 @@ NtCancelSynchronousIoFile(
     );
 
 NTSTATUS NTAPI
-NtSetIoCompletion(
-    __in HANDLE IoCompletionHandle,
-    __in ULONG CompletionKey,
-    __in_opt PIO_STATUS_BLOCK IoStatusBlock,
-    __in NTSTATUS IoStatus,
-    __in ULONG_PTR IoStatusInformation
-    );
-
-NTSTATUS NTAPI
 NtSetIoCompletionEx(
     __in HANDLE IoCompletionHandle,
     __in HANDLE IoCompletionReserveHandle,
-    __in ULONG CompletionKey,
-    __in_opt PIO_STATUS_BLOCK IoStatusBlock,
+    __in PVOID KeyContext,
+    __in_opt PVOID ApcContext,
     __in NTSTATUS IoStatus,
     __in ULONG_PTR IoStatusInformation
     );

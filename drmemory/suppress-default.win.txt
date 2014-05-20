@@ -970,12 +970,3 @@ name=default i#1474 VS2013 istringstream
 *!*FXp_getw
 *!*FDtento
 *!*Stofx
-
-##################################################
-# i#1535: Possible false positive for AddSidToBoundaryDescriptor.
-
-LEAK
-name=default i#1535 AddSidToBoundaryDescriptor false positive
-...
-ntdll.dll!RtlAddSIDToBoundaryDescriptor
-*.dll!AddSIDToBoundaryDescriptor
