@@ -2220,8 +2220,9 @@ packed_callstack_cmp(packed_callstack_t *pcs1, packed_callstack_t *pcs2)
         if ((nonsys1 && !nonsys2) || (!nonsys1 && nonsys2))
             return false;
         if (!nonsys1) {
-            return (memcmp(PCS_FRAME_LOC(pcs1, i).sysloc, PCS_FRAME_LOC(pcs2, i).sysloc,
-                           sizeof(syscall_loc_t)) == 0);
+            if (memcmp(PCS_FRAME_LOC(pcs1, i).sysloc, PCS_FRAME_LOC(pcs2, i).sysloc,
+                       sizeof(syscall_loc_t)) != 0)
+                return false;
         } else {
             if (PCS_FRAME_LOC(pcs1, i).addr != PCS_FRAME_LOC(pcs2, i).addr)
                 return false;
