@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -25,6 +25,7 @@
 
 #include "os_version_win.h"
 #include "gtest/gtest.h"
+#include "app_suite_utils.h"
 
 // For InitCommonControlsEx
 #include <commctrl.h>
@@ -312,4 +313,15 @@ TEST(NtUserTests, WindowMessages) {
     /* XXX: test more message types */
 
     DestroyWindow(hwnd);
+}
+
+TEST(NtUserTests, GetObjectInformation) {
+    /* Test i#1553: NtUserGetObjectInformation parameter #4 */
+    TCHAR buf[MAX_PATH];
+    HDESK desk = GetThreadDesktop(GetCurrentThreadId());
+    ASSERT_NE(desk, (HDESK)NULL);
+    DWORD needed;
+    BOOL res = GetUserObjectInformation(desk, UOI_NAME, buf,
+                                        BUFFER_SIZE_BYTES(buf), &needed);
+    ASSERT_EQ(res, TRUE);
 }

@@ -974,7 +974,7 @@ syscall_info_t syscall_user32_info[] = {
          {2, -3, W|HT, DRSYS_TYPE_STRUCT},
          {2, -4, WI|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(DWORD), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetOpenClipboardWindow", OK, DRSYS_TYPE_HANDLE, 0, },
