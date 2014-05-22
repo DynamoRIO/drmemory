@@ -2772,7 +2772,9 @@ static hashtable_t crtheap_mod_table;
 static hashtable_t crtheap_handle_table;
 #define CRTHEAP_HANDLE_TABLE_HASH_BITS 8
 
-/* XXX: are the BOOL return values really NTSTATUS? */
+/* XXX: are the BOOL return values really NTSTATUS?  Some at least are for sure
+ * and I updated them below.
+ */
 
 /* Forwards */
 static BOOL WINAPI
@@ -3405,12 +3407,32 @@ replace_RtlQueryHeapInformation(HANDLE HeapHandle,
 }
 
 static SIZE_T WINAPI
-replace_RtlCompactHeap(HANDLE Heap, ULONG Flags)
+replace_RtlCompactHeap(HANDLE heap, ULONG flags)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
-    exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
+    SIZE_T res = 0;
+    BOOL success = FALSE;
+    arena_header_t *arena = heap_to_arena(heap);
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlCompactHeap);
+    } else {
+        arena_lock(drcontext, arena, !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                   !TEST(HEAP_NO_SERIALIZE, flags));
+        success = TRUE;
+        if (arena->next_chunk < arena->commit_end)
+            res = arena->commit_end - arena->next_chunk;
+        arena_unlock(drcontext, arena, !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                     !TEST(HEAP_NO_SERIALIZE, flags));
+    }
+    dr_switch_to_app_state(drcontext);
+    if (!success) /* see above about setting errno in app mode */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    else if (res == 0) /* actually out of space */
+        set_app_error_code(drcontext, NO_ERROR);
+    exit_client_code(drcontext, true/*already swapped*/);
+    return res;
 }
 
 static ULONG WINAPI
@@ -3422,17 +3444,17 @@ replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
     return 0;
 }
 
-static BOOL WINAPI
-replace_RtlWalkHeap(HANDLE HeapHandle, PVOID HeapEntry)
+static NTSTATUS WINAPI
+replace_RtlWalkHeap(HANDLE heap, PVOID HeapEntry)
 {
     void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
     exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
+    return STATUS_SUCCESS;
 }
 
 static BOOL WINAPI
-replace_RtlEnumProcessHeaps(PVOID /*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
+replace_RtlEnumProcessHeaps(PVOID/*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
                             PVOID lParam)
 {
     void *drcontext = enter_client_code();
@@ -3629,12 +3651,28 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
             *stack = sizeof(void*);
             return true;
 # endif
-        /* FIXME i#893: we need to split up RTL_ROUTINE_QUERY, along with replacing
-         * other routines not currently wrapped.  We don't need special
-         * fast sym lookup or to treat as heap layers so we should do drwrap
-         * calls from here rather than adding to alloc.c's list, and suppress
-         * alloc.c wrapping.
-         */
+        case RTL_ROUTINE_COMPACT:
+            *routine = (void *) replace_RtlCompactHeap;
+            *stack = sizeof(void*) * 2;
+            return true;
+#if 0 /* FIXME i#1202: NYI */
+        case RTL_ROUTINE_QUERY:
+            *routine = (void *) replace_RtlQueryHeapInformation;
+            *stack = sizeof(void*) * 5;
+            return true;
+        case RTL_ROUTINE_ENUM:
+            *routine = (void *) replace_RtlEnumProcessHeaps;
+            *stack = sizeof(void*) * 2;
+            return true;
+        case RTL_ROUTINE_GET_HEAPS:
+            *routine = (void *) replace_RtlGetProcessHeaps;
+            *stack = sizeof(void*) * 2;
+            return true;
+        case RTL_ROUTINE_WALK:
+            *routine = (void *) replace_RtlWalkHeap;
+            *stack = sizeof(void*) * 2;
+            return true;
+#endif
         /* note that replacing malloc does NOT eliminate the need to
          * wrap LdrShutdownProcess b/c it calls RtlpHeapIsLocked,
          * unless we wanted to treat pre-us Heap header as addressable

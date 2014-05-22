@@ -403,6 +403,7 @@ typedef struct _KUSER_SHARED_DATA {
 
 typedef LONG NTSTATUS;
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
 #define NT_CURRENT_PROCESS ( (HANDLE) -1 )
 
 typedef struct _UNICODE_STRING {

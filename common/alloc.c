@@ -26,7 +26,7 @@
 
 /* Malloc/free replacement w/ own routines vs using original versions:
  *
- * Pro original:
+ * Pro original (wrapping, via this file):
  * * Must use original versions to apply to replayed execution
  *   Note that the headers can function as mini-redzones for replay as well
  * * Don't have to duplicate all of the flags, alignment, features of
@@ -36,98 +36,12 @@
  *   And never know whether some other part of system is going to
  *   make calls into heap subsystem beyond just malloc+free.
  *
- * Con original:
+ * Con original (replacing, via alloc_replace.c):
  * * Alloc code is instrumented but must ignore its accesses to headers
  * * Harder to delay frees
  * * Don't know header flags: but can find sizes by storing in redzone
  *   or (replay-compatible) calling malloc_usable_size() (Linux only)
  *   (RtlSizeHeap returns asked-for size)
- */
-
-/*
-System call and library routines we need to watch:
-
-* NtMapViewOfSection => addressable and defined, whether image or data file
-* NtUnmapViewOfSection => no longer addressable
-* NtAllocateVirtualMemory: if for VirtualAlloc, then addressable and defined;
-  if for HeapAlloc, then neither.  I'm using my reserve-then-commit heuristic
-  to distinguish, combined w/ the currently-in-heap-routine var.
-* MapUserPhysicalPages: NYI for now
-
-* kernel32!Heap* calls ntdll!Rtl*Heap; can probably ignore everything
-  the kernel32 routines do
-
-* RtlAllocateHeap => addressable; if pass HEAP_ZERO_MEMORY then defined as well.
-* RtlReAllocateHeap => transfer current addressability and definedness state
-* RtlFreeHeap => no longer defined or addressable
-* alloca => just adjusts esp so we need do nothing special except for its
-  guard page probes
-
-* RtlCreateHeap, RtlDestroyHeap: to suppress false positives where
-  heap routines that aren't exported (like RtlpHeapIsLocked) read from
-  heap headers, we track the heap regions.  We also track all exported
-  heap routine entry and exits to suppress their heap reads and
-  writes.  We also use these to distinguish VirtualAlloc from HeapAlloc.
-  How track heaps?  RtlCreateHeap => single reservation, so can
-  use return value and query to find the extent: but can have subheaps
-  chained together, so we watch the syscalls for both reserving and freeing.
-
-  FIXME: verify that RtlDestroyHeap calls NtFreeVirtualMemory and I
-  catch its heap region removal: for sub-heaps have to be there,
-  unless reverse-engineer heap format.  Ask Sam if he did sub-heaps.
-
-* RtlCompactHeap: should be able to ignore:
-  "compacts the heap by coalescing adjacent free blocks of memory and
-  decommitting large free blocks of memory"
-* RtlExtendHeap: no msdn pages on it: probably just increases maximum size of
-  heap itself, not of individual allocations
-* RtlWalkHeap: could use that plus GetProcessHeaps to walk all heaps at
-  init time
-
-* LocalAlloc: LMEM_ZEROINIT = 0x0040
-  FIXME: LMEM_MOVEABLE is strange: LocalLock locks it to an address, and LocalReAlloc
-  makes it moveable again: what's the purpose?
-  It looks like it ends up calling RtlAllocateHeap, and LocalReAlloc calls
-  RtlReAllocateHeap, so we can probably just watch the Rtl routines.
-  FIXME: I don't see how 0x40 is translated to 0x8 for zeroing.
-  I do see 0x140000 being or-ed in: so it asks for +x, and some secret flag.
-* ditto with GlobalAlloc
-
-* STL strings use custom allocation but there is a flag to turn that
-  off at compile time?
-
-* TLS slots: keep unaddressable until kernel32!TlsAlloc.
-  Or, at unaddressable exception time, check the bit.
-
-* outer layers sometimes add debug features including their own redzones:
-  so we need to intercept the outermost layer (PR 476805)
-
-* cygwin malloc uses its own heap (PR 476805, PR 595798)
-
-* various additional heap routines (PR 406323: memalign, valloc, pvalloc, etc.,
-  PR 595802: _recalloc, _aligned_offset_malloc, etc.)
-
-msvcrt!malloc =>
-msvcrt!_heap_alloc+0xd1:
-77c2c3c3 ff15f410c177     call  dword ptr [msvcrt!_imp__HeapAlloc (77c110f4)]
-0:001> U @@(*(int *)0x77c110f4)
-ntdll!RtlAllocateHeap:
-
-HeapAlloc: http://msdn2.microsoft.com/en-us/library/aa366597.aspx
-RtlAllocateHeap is presumably identical since we have forwarders:
-  LPVOID WINAPI HeapAlloc(
-    __in          HANDLE hHeap,
-    __in          DWORD dwFlags,
-    __in          SIZE_T dwBytes
-  );
-flag to pay attention to is HEAP_ZERO_MEMORY = 0x00000008
-If the function succeeds, the return value is a pointer to the allocated memory block.
- */
-
-/* When RtlAllocateHeap/malloc pad the asked-for size to a certain alignment,
- * better to use the size the app asked for since it shouldn't write to the
- * extra space anyway.  RtlSizeHeap returns the asked-for space, but
- * malloc_usable_size returns the padded size.
  */
 
 #include "dr_api.h"
@@ -664,10 +578,15 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     /* called by kernel32!Heap32First and touches heap headers.
      * XXX: kernel32!Heap32{First,Next} itself reads a header!
      */
-    { "RtlEnumProcessHeaps", RTL_ROUTINE_QUERY },
+    { "RtlEnumProcessHeaps", RTL_ROUTINE_ENUM },
     { "RtlQueryHeapInformation", RTL_ROUTINE_QUERY },
-    { "RtlGetProcessHeaps", RTL_ROUTINE_QUERY },
-    { "RtlQueryProcessHeapInformation", RTL_ROUTINE_QUERY },
+    { "RtlGetProcessHeaps", RTL_ROUTINE_GET_HEAPS },
+    /* Misc other routines that access heap headers.
+     * We assume that RtlQueryProcessHeapInformation does not access headers
+     * directly and simply invokes other routines like RtlEnumProcessHeaps.
+     */
+    { "RtlCompactHeap", RTL_ROUTINE_COMPACT },
+    { "RtlWalkHeap", RTL_ROUTINE_WALK },
     /* RtlpHeapIsLocked is a non-exported routine that is called directly
      * from LdrShutdownProcess: so we treat the latter as a heap routine
      * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
