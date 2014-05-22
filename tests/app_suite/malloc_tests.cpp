@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -77,12 +77,16 @@ TEST(MallocTests, Executable) {
     HANDLE myheap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
     unsigned char *p = (unsigned char *) HeapAlloc(myheap, 0, 8);
     void (*gencode)(void) = (void (*)(void)) p;
+    BOOL res;
     *p = 0xc3; /* ret */
     gencode();
     void *p2 = HeapAlloc(myheap, 0, 8);
-    HeapFree(myheap, 0, p);
-    HeapFree(myheap, 0, p2);
-    HeapDestroy(myheap);
+    res = HeapFree(myheap, 0, p);
+    ASSERT_EQ(res, TRUE);
+    res = HeapFree(myheap, 0, p2);
+    ASSERT_EQ(res, TRUE);
+    res = HeapDestroy(myheap);
+    ASSERT_EQ(res, TRUE);
 #else
     /* SELinux blocks mprotect on the brk region of the heap so we instead
      * allocate enough to get a separate mmap

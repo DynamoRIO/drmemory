@@ -2772,12 +2772,8 @@ static hashtable_t crtheap_mod_table;
 static hashtable_t crtheap_handle_table;
 #define CRTHEAP_HANDLE_TABLE_HASH_BITS 8
 
-/* XXX: are the BOOL return values really NTSTATUS?  Some at least are for sure
- * and I updated them below.
- */
-
 /* Forwards */
-static BOOL WINAPI
+static NTSTATUS WINAPI
 replace_RtlDestroyHeap(HANDLE heap);
 
 
@@ -3145,12 +3141,12 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
     return (HANDLE) new_arena;
 }
 
-static BOOL WINAPI
+static NTSTATUS WINAPI
 replace_RtlDestroyHeap(HANDLE heap)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOL res = FALSE;
+    NTSTATUS res = STATUS_INVALID_PARAMETER;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, heap);
@@ -3158,16 +3154,9 @@ replace_RtlDestroyHeap(HANDLE heap)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlDestroyHeap);
     else if (heap != process_heap) {
         destroy_Rtl_heap(arena, &mc, true/*free indiv chunks*/);
-        res = TRUE;
+        res = STATUS_SUCCESS;
     }
-    dr_switch_to_app_state(drcontext);
-    if (!res) {
-        /* XXX: for now blindly seting the one errno.
-         * We deliberately wait until in app mode to make this more efficient.
-         */
-        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
-    }
-    exit_client_code(drcontext, true/*already swapped*/);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
@@ -3251,12 +3240,12 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     return res;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOL res = FALSE;
+    BOOLEAN res = FALSE;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" flags=0x%x ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
@@ -3319,12 +3308,12 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
  * as a safe spot, and we redirect our return to the code cache
  * via DRi#849.
  */
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_RtlLockHeap(HANDLE heap)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOL res = FALSE;
+    BOOLEAN res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
     if (arena == NULL) {
         dr_mcontext_t mc;
@@ -3338,39 +3327,47 @@ replace_RtlLockHeap(HANDLE heap)
         app_heap_lock(drcontext, arena->lock);
         res = TRUE;
     }
-    exit_client_code(drcontext, false/*need swap*/);
+    dr_switch_to_app_state(drcontext);
+    if (!res) /* see above about setting errno in app mode */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_RtlUnlockHeap(HANDLE heap)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOL res = FALSE;
+    BOOLEAN res = FALSE, invalid = FALSE;;
     LOG(2, "%s\n", __FUNCTION__);
     if (arena == NULL) {
         dr_mcontext_t mc;
         INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlUnlockHeap);
+        invalid = TRUE;
     } else if (dr_recurlock_self_owns(arena->lock)) {
         app_heap_unlock(drcontext, arena->lock);
         res = TRUE;
     }
-    exit_client_code(drcontext, false/*need swap*/);
+    dr_switch_to_app_state(drcontext);
+    if (invalid) /* see above about setting errno in app mode */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOL res = FALSE;
+    BOOLEAN res = FALSE, invalid = FALSE;
     if (arena == NULL) {
         dr_mcontext_t mc;
         INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlValidateHeap);
+        invalid = TRUE;
     } else {
         chunk_header_t *head = header_from_ptr(ptr);
         if (is_live_alloc(ptr, arena, head)) /* checks for NULL */
@@ -3378,32 +3375,35 @@ replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
     }
     LOG(2, "%s: heap "PFX"=>"PFX" arena, ptr "PFX" => %d\n",
         __FUNCTION__, heap, arena, ptr, res);
-    exit_client_code(drcontext, false/*need swap*/);
+    dr_switch_to_app_state(drcontext);
+    if (invalid) /* see above about setting errno in app mode */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
-static BOOL WINAPI
-replace_RtlSetHeapInformation(HANDLE HeapHandle,
-                              HEAP_INFORMATION_CLASS HeapInformationClass,
-                              PVOID HeapInformation, SIZE_T HeapInformationLength)
-{
-    void *drcontext = enter_client_code();
-    /* FIXME: NYI.  No assert in order to get replace_malloc test going. */
-    exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
-}
-
-static BOOL WINAPI
-replace_RtlQueryHeapInformation(HANDLE HeapHandle,
+static NTSTATUS WINAPI
+replace_RtlQueryHeapInformation(HANDLE heap,
                                 HEAP_INFORMATION_CLASS HeapInformationClass,
                                 PVOID HeapInformation OPTIONAL,
                                 SIZE_T HeapInformationLength OPTIONAL,
                                 PSIZE_T ReturnLength OPTIONAL)
 {
     void *drcontext = enter_client_code();
+    /* FIXME: NYI.  No assert in order to get replace_malloc test going. */
+    exit_client_code(drcontext, false/*need swap*/);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS WINAPI
+replace_RtlSetHeapInformation(HANDLE HeapHandle,
+                              HEAP_INFORMATION_CLASS HeapInformationClass,
+                              PVOID HeapInformation, SIZE_T HeapInformationLength)
+{
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
     exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
+    return STATUS_SUCCESS;
 }
 
 static SIZE_T WINAPI
@@ -3453,21 +3453,21 @@ replace_RtlWalkHeap(HANDLE heap, PVOID HeapEntry)
     return STATUS_SUCCESS;
 }
 
-static BOOL WINAPI
+static NTSTATUS WINAPI
 replace_RtlEnumProcessHeaps(PVOID/*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
                             PVOID lParam)
 {
     void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
     exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
+    return STATUS_SUCCESS;
 }
 
 #ifdef X64
 /* See i#907, i#995, i#1032.  For x64, strings are allocated via exported
  * heap routines, but freed via internal.
  */
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_NtdllpFreeStringRoutine(PVOID ptr)
 {
     void *drcontext = enter_client_code();
@@ -3476,7 +3476,7 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
      * We ignore it here.
      */
     arena_header_t *arena = heap_to_arena(process_heap);
-    BOOL res = FALSE;
+    BOOLEAN res = FALSE;
     bool ok;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -3498,7 +3498,7 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
 }
 #endif
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg0(void)
 {
     void *drcontext = enter_client_code();
@@ -3507,7 +3507,7 @@ replace_ignore_arg0(void)
     return TRUE;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg1(void *arg1)
 {
     void *drcontext = enter_client_code();
@@ -3516,7 +3516,7 @@ replace_ignore_arg1(void *arg1)
     return TRUE;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg2(void *arg1, void *arg2)
 {
     void *drcontext = enter_client_code();
@@ -3525,7 +3525,7 @@ replace_ignore_arg2(void *arg1, void *arg2)
     return TRUE;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
 {
     void *drcontext = enter_client_code();
@@ -3534,7 +3534,7 @@ replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
     return TRUE;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
 {
     void *drcontext = enter_client_code();
@@ -3543,7 +3543,7 @@ replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
     return TRUE;
 }
 
-static BOOL WINAPI
+static BOOLEAN WINAPI
 replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
 {
     void *drcontext = enter_client_code();
