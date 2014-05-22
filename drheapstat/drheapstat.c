@@ -1083,6 +1083,11 @@ client_stack_dealloc(byte *start, byte *end)
 }
 
 void
+client_write_memory(byte *start, size_t size)
+{
+}
+
+void
 client_pre_syscall(void *drcontext, int sysnum)
 {
 }

@@ -1317,6 +1317,14 @@ client_stack_dealloc(byte *start, byte *end)
         register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DEFINED);
 }
 
+/* Non-interpreted code wrote to app-visible memory */
+void
+client_write_memory(byte *start, size_t size)
+{
+    if (options.shadowing && options.check_uninitialized)
+        shadow_set_range(start, start + size, SHADOW_DEFINED);
+}
+
 /***************************************************************************
  * SIGNALS AND SYSTEM CALLS
  */

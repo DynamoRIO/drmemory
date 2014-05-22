@@ -3384,24 +3384,68 @@ replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
 
 static NTSTATUS WINAPI
 replace_RtlQueryHeapInformation(HANDLE heap,
-                                HEAP_INFORMATION_CLASS HeapInformationClass,
-                                PVOID HeapInformation OPTIONAL,
-                                SIZE_T HeapInformationLength OPTIONAL,
-                                PSIZE_T ReturnLength OPTIONAL)
+                                HEAP_INFORMATION_CLASS info_class,
+                                PVOID buf OPTIONAL,
+                                SIZE_T buflen OPTIONAL,
+                                PSIZE_T outlen OPTIONAL)
 {
     void *drcontext = enter_client_code();
-    /* FIXME: NYI.  No assert in order to get replace_malloc test going. */
+    arena_header_t *arena = heap_to_arena(heap);
+    NTSTATUS res = STATUS_SUCCESS;
+    /* In MSDN only HeapCompatibilityInformation is supported.  It returns a ULONG
+     * that we want to set to 0 to indicate neither look-aside lists nor
+     * low-fragmentation heap support.
+     */
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlQueryHeapInformation);
+        res = STATUS_INVALID_PARAMETER;
+    } else if (info_class != HeapCompatibilityInformation) {
+        res = STATUS_INVALID_PARAMETER;
+    } else if (buflen < sizeof(ULONG)) {
+        res = STATUS_BUFFER_TOO_SMALL;
+    } else {
+        *(ULONG *)buf = 0;
+        client_write_memory(buf, buflen);
+        if (outlen != NULL) {
+            *outlen = sizeof(ULONG);
+            client_write_memory((byte *)outlen, sizeof(ULONG));
+        }
+        res = STATUS_SUCCESS;
+    }
     exit_client_code(drcontext, false/*need swap*/);
-    return STATUS_SUCCESS;
+    return res;
 }
 
 static NTSTATUS WINAPI
-replace_RtlSetHeapInformation(HANDLE HeapHandle,
-                              HEAP_INFORMATION_CLASS HeapInformationClass,
-                              PVOID HeapInformation, SIZE_T HeapInformationLength)
+replace_RtlSetHeapInformation(HANDLE heap, HEAP_INFORMATION_CLASS info_class,
+                              PVOID buf, SIZE_T buflen)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    /* MSDN examples, and crt0.c, allow NULL to presumably mean the process heap */
+    arena_header_t *arena = heap_to_arena(heap == NULL ? process_heap : heap);
+    NTSTATUS res = STATUS_SUCCESS;
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlSetHeapInformation);
+        res = STATUS_INVALID_PARAMETER;
+    } else if (info_class == HeapCompatibilityInformation) {
+        if (buflen < sizeof(ULONG)) {
+            res = STATUS_BUFFER_TOO_SMALL;
+        } else {
+            /* Just turn into a nop (xref i#280) as we don't care if they request LFH */
+            res = STATUS_SUCCESS;
+        }
+    } else if (info_class == HeapEnableTerminationOnCorruption) {
+        /* XXX: should we turn into -crash_at_error or sthg, i.e.,
+         * treat as an annotation?  For now making a nop.
+         */
+        res = STATUS_SUCCESS;
+    } else {
+        res = STATUS_INVALID_PARAMETER;
+    }
     exit_client_code(drcontext, false/*need swap*/);
     return STATUS_SUCCESS;
 }
@@ -3621,22 +3665,13 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
             *routine = (void *) replace_RtlUnlockHeap;
             *stack = sizeof(void*) * 1;
             return true;
-        case RTL_ROUTINE_HEAPINFO:
+        case RTL_ROUTINE_HEAPINFO_GET:
+            *routine = (void *) replace_RtlQueryHeapInformation;
+            *stack = sizeof(void*) * 5;
+            return true;
+        case RTL_ROUTINE_HEAPINFO_SET:
             *routine = (void *) replace_RtlSetHeapInformation;
             *stack = sizeof(void*) * 4;
-            return true;
-        /* XXX i#1202: NYI.  Warn or assert if we hit them? */
-        case RTL_ROUTINE_GETINFO:
-            *routine = (void *) replace_ignore_arg5;
-            *stack = sizeof(void*) * 5;
-            return true;
-        case RTL_ROUTINE_SETINFO:
-            *routine = (void *) replace_ignore_arg4;
-            *stack = sizeof(void*) * 4;
-            return true;
-        case RTL_ROUTINE_SETFLAGS:
-            *routine = (void *) replace_ignore_arg5;
-            *stack = sizeof(void*) * 5;
             return true;
         case RTL_ROUTINE_VALIDATE:
             *routine = (void *) replace_RtlValidateHeap;
@@ -3655,11 +3690,20 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
             *routine = (void *) replace_RtlCompactHeap;
             *stack = sizeof(void*) * 2;
             return true;
-#if 0 /* FIXME i#1202: NYI */
-        case RTL_ROUTINE_QUERY:
-            *routine = (void *) replace_RtlQueryHeapInformation;
+        /* XXX i#1202: NYI.  Warn or assert if we hit them? */
+        case RTL_ROUTINE_USERINFO_GET:
+            *routine = (void *) replace_ignore_arg5;
             *stack = sizeof(void*) * 5;
             return true;
+        case RTL_ROUTINE_USERINFO_SET:
+            *routine = (void *) replace_ignore_arg4;
+            *stack = sizeof(void*) * 4;
+            return true;
+        case RTL_ROUTINE_SETFLAGS:
+            *routine = (void *) replace_ignore_arg5;
+            *stack = sizeof(void*) * 5;
+            return true;
+#if 0 /* FIXME i#1202: NYI */
         case RTL_ROUTINE_ENUM:
             *routine = (void *) replace_RtlEnumProcessHeaps;
             *stack = sizeof(void*) * 2;

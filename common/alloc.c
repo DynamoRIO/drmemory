@@ -546,10 +546,11 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlValidateHeap", RTL_ROUTINE_VALIDATE },
     { "RtlCreateHeap", RTL_ROUTINE_CREATE },
     { "RtlDestroyHeap", RTL_ROUTINE_DESTROY },
-    { "RtlGetUserInfoHeap", RTL_ROUTINE_GETINFO },
-    { "RtlSetUserValueHeap", RTL_ROUTINE_SETINFO },
+    { "RtlGetUserInfoHeap", RTL_ROUTINE_USERINFO_GET },
+    { "RtlSetUserValueHeap", RTL_ROUTINE_USERINFO_SET },
     { "RtlSetUserFlagsHeap", RTL_ROUTINE_SETFLAGS },
-    { "RtlSetHeapInformation", RTL_ROUTINE_HEAPINFO },
+    { "RtlQueryHeapInformation", RTL_ROUTINE_HEAPINFO_GET },
+    { "RtlSetHeapInformation", RTL_ROUTINE_HEAPINFO_SET },
     { "RtlCreateActivationContext", RTL_ROUTINE_CREATE_ACTCXT},
     /* XXX: i#297: investigate these new routines */
     { "RtlMultipleAllocateHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
@@ -579,14 +580,13 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
      * XXX: kernel32!Heap32{First,Next} itself reads a header!
      */
     { "RtlEnumProcessHeaps", RTL_ROUTINE_ENUM },
-    { "RtlQueryHeapInformation", RTL_ROUTINE_QUERY },
     { "RtlGetProcessHeaps", RTL_ROUTINE_GET_HEAPS },
+    { "RtlWalkHeap", RTL_ROUTINE_WALK },
     /* Misc other routines that access heap headers.
      * We assume that RtlQueryProcessHeapInformation does not access headers
      * directly and simply invokes other routines like RtlEnumProcessHeaps.
      */
     { "RtlCompactHeap", RTL_ROUTINE_COMPACT },
-    { "RtlWalkHeap", RTL_ROUTINE_WALK },
     /* RtlpHeapIsLocked is a non-exported routine that is called directly
      * from LdrShutdownProcess: so we treat the latter as a heap routine
      * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
@@ -6749,12 +6749,12 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     else if (type == RTL_ROUTINE_VALIDATE) {
         handle_validate_pre(drcontext, pt, wrapcxt, routine);
     }
-    else if (type == RTL_ROUTINE_GETINFO ||
-             type == RTL_ROUTINE_SETINFO ||
+    else if (type == RTL_ROUTINE_USERINFO_GET ||
+             type == RTL_ROUTINE_USERINFO_SET ||
              type == RTL_ROUTINE_SETFLAGS) {
         handle_userinfo_pre(drcontext, pt, wrapcxt, routine);
     }
-    else if (type == RTL_ROUTINE_HEAPINFO) {
+    else if (type == RTL_ROUTINE_HEAPINFO_SET) {
         /* i#280: turn both HeapEnableTerminationOnCorruption and
          * HeapCompatibilityInformation (xref i#63)
          * into no-ops.  We have the routine fail: seems better to
@@ -6882,8 +6882,8 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     } else if (is_calloc_routine(type)) {
         handle_calloc_post(drcontext, pt, wrapcxt, mc, post_call, routine);
 #ifdef WINDOWS
-    } else if (type == RTL_ROUTINE_GETINFO ||
-               type == RTL_ROUTINE_SETINFO ||
+    } else if (type == RTL_ROUTINE_USERINFO_GET ||
+               type == RTL_ROUTINE_USERINFO_SET ||
                type == RTL_ROUTINE_SETFLAGS) {
         handle_userinfo_post(drcontext, pt, wrapcxt);
     } else if (type == RTL_ROUTINE_CREATE) {

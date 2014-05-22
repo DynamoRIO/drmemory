@@ -475,4 +475,8 @@ client_stack_alloc(byte *start, byte *end, bool defined);
 void
 client_stack_dealloc(byte *start, byte *end);
 
+/* Non-interpreted code wrote to app-visible memory */
+void
+client_write_memory(byte *start, size_t size);
+
 #endif /* _ALLOC_H_ */
