@@ -1577,7 +1577,7 @@ syscall_info_t syscall_user32_info[] = {
          {3, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
          {4, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
          {5, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {6, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {6, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserScrollWindowEx", OK, SYSARG_TYPE_UINT32, 8,

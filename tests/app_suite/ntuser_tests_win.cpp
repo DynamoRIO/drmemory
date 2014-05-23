@@ -325,3 +325,14 @@ TEST(NtUserTests, GetObjectInformation) {
                                         BUFFER_SIZE_BYTES(buf), &needed);
     ASSERT_EQ(res, TRUE);
 }
+
+TEST(NtUserTests, ScrollDC) {
+    /* Test i#1555: NtUserScrollDC parameter #6 */
+    HDC hdc = CreateDC("DISPLAY", NULL, NULL, NULL);
+    ASSERT_NE(hdc, (HDC)NULL);
+    RECT rect = { 0, 1, 2, 3 };
+    RECT bound;
+    BOOL res = ScrollDC(hdc, 3, -4, NULL, &rect, NULL, &bound);
+    ASSERT_EQ(res, TRUE);
+    DeleteDC(hdc);
+}
