@@ -106,3 +106,82 @@ TEST(FSTests, RenameFile){
     ASSERT_TRUE(MoveFile(TEXT("testfile.txt"), TEXT("renamefile.txt")));
     ASSERT_TRUE(DeleteFile(TEXT("renamefile.txt")));
 }
+
+DWORD WINAPI
+JobNotify(HANDLE hiocp)
+{
+    BOOL flag_done = FALSE;
+    DWORD bytes_xferred;
+    ULONG entries_num = 3;
+    ULONG_PTR comp_key;
+    ULONG entries_removed;
+    LPOVERLAPPED po;
+    OVERLAPPED_ENTRY po_entry[2];
+    while (!flag_done) {
+        /* The routine calls NtRemoveIoCompletion. */
+        BOOL result = GetQueuedCompletionStatus(hiocp,
+                                                &bytes_xferred,
+                                                &comp_key,
+                                                &po,
+                                                INFINITE);
+        if (!result) {
+            printf("GetQueuedCompletionStatus failed with error: %u", GetLastError());
+            return 1;
+        }
+        /* The routine calls NtRemoveIoCompletionEx. */
+        result = GetQueuedCompletionStatusEx(hiocp,
+                                             po_entry,
+                                             entries_num,
+                                             &entries_removed,
+                                             INFINITE,
+                                             FALSE);
+        if (!result) {
+            printf("GetQueuedCompletionStatusEx failed with error: %u", GetLastError());
+            return 1;
+        }
+        if ((po_entry[0].lpOverlapped != (LPOVERLAPPED)123456789)|| 
+            (po_entry[1].lpOverlapped != (LPOVERLAPPED)987654321)||
+              entries_removed != 2)
+              printf("GetQueuedCompletionStatus received unexpected output values");
+        flag_done = (comp_key == (UINT_PTR) 0);
+    }
+    return 0;
+}
+
+TEST(FSTests, SetIoCompletion) {
+    HANDLE hiocp;
+    DWORD thread_id_array;
+    HANDLE thread_hiocp;
+    hiocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    ASSERT_NE(hiocp, INVALID_HANDLE_VALUE);
+    thread_hiocp = CreateThread(NULL,
+                                0,
+                                JobNotify,
+                                hiocp,
+                                0,
+                                &thread_id_array);
+    ASSERT_NE(thread_hiocp, INVALID_HANDLE_VALUE);
+    /* Post a special key that tells the completion port thread to terminate.
+     * The routine calls NtSetIoCompletion.
+     */
+    BOOL result = PostQueuedCompletionStatus(hiocp,
+                                             NULL,
+                                             (UINT_PTR) 0,
+                                             NULL);
+    ASSERT_NE(NULL, result);
+    /* We make 2 additional Post syscall to test
+     * NtSetIoCompletionEx.
+     */
+    result = PostQueuedCompletionStatus(hiocp,
+                                        NULL,
+                                        (UINT_PTR) 0,
+                                        (LPOVERLAPPED)123456789);
+    ASSERT_NE(NULL, result);
+    result = PostQueuedCompletionStatus(hiocp,
+                                        NULL,
+                                        (UINT_PTR) 0,
+                                        (LPOVERLAPPED)987654321);
+    ASSERT_NE(NULL, result);
+    /* Wait for the completion port thread to terminate */
+    WaitForSingleObject(thread_hiocp, INFINITE);
+}

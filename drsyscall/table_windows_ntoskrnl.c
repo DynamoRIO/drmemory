@@ -1905,7 +1905,7 @@ syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(void*), W|HT, DRSYS_TYPE_VOID},/* see i#1536 */
          {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
@@ -2224,7 +2224,10 @@ syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         /* XXX i#1536: We fill it as inlined VOID* based on our own research
+          * but different sources describe this arg in different ways.
+          */
+         {2, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_VOID},
          {3, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -3239,7 +3242,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(FILE_IO_COMPLETION_INFORMATION)},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(void*), W|HT, DRSYS_TYPE_VOID},/* see i#1536 */
          {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {5, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
@@ -3458,8 +3461,8 @@ syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(void*), SYSARG_INLINED, DRSYS_TYPE_VOID},
          {4, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
          {5, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }

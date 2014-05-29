@@ -20,7 +20,9 @@
  */
 
 #include <windows.h>
+#include <ktmw32.h>
 
+#pragma comment(lib,"KtmW32.lib")
 #pragma comment(lib, "advapi32.lib")
 
 #include "gtest/gtest.h"
@@ -58,6 +60,35 @@ TEST(RegistryTests, CreateGetKey) {
 
     result = RegGetKeySecurity(hklm_key, DACL_SECURITY_INFORMATION, original_sd,
                                &original_sd_size_needed);
+    ASSERT_EQ(ERROR_SUCCESS, result);
+    RegCloseKey(hklm_key);
+}
+
+TEST(RegistryTests, CreateKeyTransacted) {
+    HKEY hklm_key;
+    DWORD disposition;
+    LONG result;
+    HANDLE htransaction;
+    htransaction = CreateTransaction(NULL,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     L"Taglib Handler Setup");
+    ASSERT_NE((HANDLE)NULL, htransaction);
+    /* The routine calls NtCreateKeyTransacted */
+    result = RegCreateKeyTransactedW(HKEY_CURRENT_USER,
+                                     L"Software\\DrMemory Tests\\HKLM Override",
+                                     NULL,
+                                     NULL,
+                                     REG_OPTION_NON_VOLATILE,
+                                     KEY_ALL_ACCESS,
+                                     NULL,
+                                     &hklm_key,
+                                     &disposition,
+                                     htransaction,
+                                     NULL);
     ASSERT_EQ(ERROR_SUCCESS, result);
     RegCloseKey(hklm_key);
 }

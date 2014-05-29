@@ -27,7 +27,8 @@
 
 #include <windows.h>
 #include <iostream>
-
+#include <Sddl.h>          /* for SID management */
+#include <strsafe.h>
 using namespace std;
 
 /* use GetCursorInfo, a wrapper for NtUserGetCursorInfo syscall,
@@ -69,11 +70,81 @@ test_GetKeyboardState()
     SetKeyboardState(&keyboard_states_init[0]);
 }
 
+/* Use CreatePrivateNamespace wrapper for
+ * NtCreatePrivateNamespace, to test handling.
+ */
+static void
+test_CreatePrivateNamespace(void)
+{
+    HANDLE   boundary;
+    /* Names of boundary and private namespaces */
+    static PCTSTR   BOUNDARY_NAME = TEXT("3-Boundary");
+    static PCTSTR   NAMESPACE_NAME = TEXT("3-Namespace");
+    /* Create the boundary descriptor */
+    boundary = CreateBoundaryDescriptor(BOUNDARY_NAME, 0);
+    if (boundary == NULL) {
+        /* unexpected fail */
+        cout << "CreateBoundaryDescriptor failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    /* Create a SID corresponding to the Local Administrator group */
+    PSID plocal_admin;
+    if (ConvertStringSidToSid(TEXT("S-1-1-0"), &plocal_admin) == 0) {
+        /* unexpected fail */
+        cout << "ConvertStringSidToSid failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    if (AddSIDToBoundaryDescriptor(&boundary, plocal_admin) == 0) {
+        /* unexpected fail */
+        cout << "AddSIDToBoundaryDescriptor failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    /* Create the namespace for Local Administrators only */
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = FALSE;
+    if (ConvertStringSecurityDescriptorToSecurityDescriptor(TEXT("D:(A;;GA;;;BA)"),
+                                                            SDDL_REVISION_1,
+                                                            &sa.lpSecurityDescriptor,
+                                                            NULL) == 0) {
+        /* unexpected fail */
+        cout << "Security Descriptor creation failed. Error code is "
+             << GetLastError() << endl;
+        return;
+    }
+    SECURITY_ATTRIBUTES sa2;
+    sa2.nLength = sizeof(sa2);
+    sa2.bInheritHandle = FALSE;
+    /* The routine calls NtCreatePrivateNamespace. */
+    if (CreatePrivateNamespace(&sa2, NULL, NAMESPACE_NAME) != 0) { /* uninit error */
+        cout << "CreatePrivateNamespace succeeded unexpectedly" << endl;
+    }
+    HANDLE hnamespace = CreatePrivateNamespace(&sa, boundary, NAMESPACE_NAME);
+    if (hnamespace == NULL) {
+        /* unexpected fail */
+        cout << "CreatePrivateNamespace failed. Error code is "
+             << GetLastError() << endl;
+    }
+    ClosePrivateNamespace(hnamespace,
+                          PRIVATE_NAMESPACE_FLAG_DESTROY);
+    DeleteBoundaryDescriptor(boundary);
+    return;
+}
+
 int
 main()
 {
+    cout << "Test sysarg size in field: ";
     test_sysarg_size_in_field();
+    cout << "done" << endl;
+    cout << "Test NtUser[Set/Get]KeyboardState: ";
     test_GetKeyboardState();
+    cout << "done" << endl;
+    cout << "Test NtCreatePrivateNamespaces: ";
+    test_CreatePrivateNamespace();
     cout << "done" << endl;
     return 0;
 }

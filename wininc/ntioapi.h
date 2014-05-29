@@ -33,11 +33,20 @@ NtCancelSynchronousIoFile(
     );
 
 NTSTATUS NTAPI
+NtSetIoCompletion(
+    __in HANDLE IoCompletionHandle,
+    __in ULONG CompletionKey,
+    __in_opt PVOID CompletionValue,
+    __in NTSTATUS IoStatus,
+    __in ULONG_PTR IoStatusInformation
+    );
+
+NTSTATUS NTAPI
 NtSetIoCompletionEx(
     __in HANDLE IoCompletionHandle,
     __in HANDLE IoCompletionReserveHandle,
-    __in PVOID KeyContext,
-    __in_opt PVOID ApcContext,
+    __in ULONG CompletionKey,
+    __in_opt PVOID CompletionValue,
     __in NTSTATUS IoStatus,
     __in ULONG_PTR IoStatusInformation
     );
@@ -45,9 +54,9 @@ NtSetIoCompletionEx(
 NTSTATUS NTAPI
 NtRemoveIoCompletionEx(
     __in HANDLE IoCompletionHandle,
-    __out_ecount(Count) PFILE_IO_COMPLETION_INFORMATION IoCompletionInformation,
+    __out_ecount(Count) FILE_IO_COMPLETION_INFORMATION IoCompletionInformation,
     __in ULONG Count,
-    __out PULONG NumEntriesRemoved,
+    __out PVOID NumEntriesRemoved,
     __in_opt PLARGE_INTEGER Timeout,
     __in BOOLEAN Alertable
     );
