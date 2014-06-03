@@ -57,6 +57,12 @@ NtQueueApcThreadEx(
     __in_opt PVOID ApcArgument3
     );
 
+NTSTATUS
+NTAPI
+NtUmsThreadYield(
+    __in  PVOID SchedulerParam
+    );
+
 #endif /* __PHLIB_NTPSAPI_H */
 
 /* EOF */

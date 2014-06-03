@@ -30,6 +30,11 @@ NtTraceControl(
     __out PULONG ReturnLength
     );
 
+NTSTATUS NTAPI
+NtSetWnfProcessNotificationEvent(
+    __in HANDLE Unknown1
+    );
+
 #endif /* __PHLIB_NTMISC_H */
 
 /* EOF */

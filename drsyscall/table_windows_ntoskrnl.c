@@ -3413,7 +3413,18 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{WIN7,0},"NtEnableLastKnownGood", OK, RNTST, 0, },
-    {{WIN7,0},"NtNotifyChangeSession", UNKNOWN, RNTST, 8, },
+    {{WIN7,0},"NtNotifyChangeSession", OK, RNTST, 8,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, -7, R},
+         {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN7,0},"NtOpenKeyTransactedEx", OK, RNTST, 5,
      {
         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -3475,7 +3486,11 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{WIN7,0},"NtUmsThreadYield", UNKNOWN, RNTST, 1, },
+    {{WIN7,0},"NtUmsThreadYield", OK, RNTST, 1,
+     {
+         {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+     }
+    },
     {{WIN7,0},"NtWow64GetCurrentProcessorNumberEx", OK, RNTST, 1,
      {
         {0, sizeof(PROCESSOR_NUMBER), W},
@@ -3532,7 +3547,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN8,0},"NtUnsubscribeWnfStateChange", UNKNOWN, RNTST, 1, },
     {{WIN8,0},"NtUpdateWnfStateData", UNKNOWN, RNTST, 7, },
     {{WIN8,0},"NtWaitForAlertByThreadId", UNKNOWN, RNTST, 2, },
-    {{WIN8,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
+    {{WIN8,WIN8},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
     {{WIN8,0},"NtWow64AllocateVirtualMemory64", UNKNOWN, RNTST, 7,
      {
          /* XXX: I'm asuming the base and size pointers point at 64-bit values */
@@ -3549,12 +3564,28 @@ syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* Added in Windows 8.1 */
     /* FIXME i#1360: fill in details */
-    {{WIN81,0},"NtCancelTimer2", UNKNOWN, RNTST, 2, },
+    {{WIN81,0},"NtCancelTimer2", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+     }
+    },
     {{WIN81,0},"NtCreateTimer2", UNKNOWN, RNTST, 5, },
     {{WIN81,0},"NtGetCompleteWnfStateSubscription", UNKNOWN, RNTST, 6, },
-    {{WIN81,0},"NtSetTimer2", UNKNOWN, RNTST, 4, },
-    {{WIN81,0},"NtSetWnfProcessNotificationEvent", UNKNOWN, RNTST, 1, },
-    {{WIN81,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
+    {{WIN81,0},"NtSetTimer2", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         /* XXX: Always 0. If not 0 -> NtSetTimer2 returns STATUS_NOT_IMPLEMENTED */
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{WIN81,0},"NtSetWnfProcessNotificationEvent", UNKNOWN, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
 
 };
 

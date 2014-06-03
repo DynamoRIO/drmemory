@@ -218,4 +218,23 @@ NtSetTimerEx(
     __in ULONG TimerSetInformationLength
     );
 
+NTSTATUS
+NTAPI
+NtCancelTimer2(
+    __in HANDLE TimerHandle,
+    __out_opt PBOOLEAN CurrentState
+    );
+
+NTSTATUS
+NTAPI
+NtSetTimer2(
+    __in HANDLE TimerHandle,
+    __in PLARGE_INTEGER DueTime,
+    /* This parameter is always 0, so I don't know its type and meaning.
+     * If it's not 0, NtSetTimer2 returns STATUS_NOT_IMPLEMENTED.
+     */
+    __in ULONG Unknown1,
+    __in PLARGE_INTEGER Period
+    );
+
 #endif /* _NTEXAPI_H_ 1 */

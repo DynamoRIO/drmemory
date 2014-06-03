@@ -22,6 +22,19 @@ NtOpenSession(
     __in POBJECT_ATTRIBUTES ObjectAttributes
     );
 
+NTSTATUS
+NTAPI
+NtNotifyChangeSession(
+    __in HANDLE SessionHandle,
+    __in ULONG IoStateSequence,
+    __in PVOID Reserved,
+    __in ULONG Action,
+    __in IO_SESSION_STATE IoState,
+    __in IO_SESSION_STATE IoState2,
+    __in PVOID Buffer,
+    __in ULONG BufferSize
+    );
+
 #endif /* __PHLIB_NTMMAPI_H */
 
 /* EOF */
