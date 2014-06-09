@@ -139,7 +139,7 @@ JobNotify(HANDLE hiocp)
             printf("GetQueuedCompletionStatusEx failed with error: %u", GetLastError());
             return 1;
         }
-        if ((po_entry[0].lpOverlapped != (LPOVERLAPPED)123456789)|| 
+        if ((po_entry[0].lpOverlapped != (LPOVERLAPPED)123456789)||
             (po_entry[1].lpOverlapped != (LPOVERLAPPED)987654321)||
               entries_removed != 2)
               printf("GetQueuedCompletionStatus received unexpected output values");

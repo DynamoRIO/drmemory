@@ -4381,7 +4381,7 @@ static const_values_t nonzerolptr[] = {
 };
 
 /* FIXME i#1550: Perhaps this structure may be
- * included in lmem_fixed 
+ * included in lmem_fixed
  */
 static const_values_t lmem_discarded[] = {
     {0x4000, "LMEM_DISCARDED"},
