@@ -1841,6 +1841,9 @@ opc_dst_subreg_nonlow(int opc)
     case OP_pinsrb:
     case OP_pinsrw:
     case OP_pinsrd:
+    case OP_vpinsrb:
+    case OP_vpinsrw:
+    case OP_vpinsrd:
     case OP_insertps:
     case OP_movhps:
     case OP_movhpd:
@@ -2801,6 +2804,7 @@ assign_register_shadow(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
     uint shift = 0;
     uint sz, i;
     int opc = comb->opcode;
+
     /* Here we need to de-mux from the side-by-side dests in the array
      * into individual register dests.
      * We ignore some dests:

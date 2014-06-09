@@ -921,7 +921,14 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 static inline opnd_size_t
 shadow_reg_indir_size(opnd_info_t *info)
 {
-    return opnd_size_from_bytes(opnd_size_in_bytes(info->indir_size)/SHADOW_GRANULARITY);
+    uint bytes = opnd_size_in_bytes(info->indir_size);
+    /* For sub-reg (e.g., 12 bytes out of 16 in an xmm reg) we assume
+     * we're just checking definedness and can safely round up.  We'll
+     * need i#1562 to handle shadow destinations.
+     */
+    if (bytes > 8 && bytes < 16)
+        bytes = 16;
+    return opnd_size_from_bytes(bytes/SHADOW_GRANULARITY);
 }
 
 static void
@@ -940,6 +947,9 @@ set_reg_shadow_opnds(fastpath_info_t *mi, opnd_info_t *oi, reg_id_t reg)
         ASSERT(opnd_get_reg(oi->app) == reg, "reg mismatch");
         oi->indir_size = opnd_get_size(oi->app);
         ASSERT(mi->need_nonoffs_reg3, "spill mismatch");
+        /* XXX i#1562: we can't yet handle sub-xmm-reg in fastpath */
+        if (oi->indir_size != reg_get_size(reg))
+            mi->check_definedness = true;
     }
 }
 
@@ -2862,6 +2872,10 @@ subdword_zero_rest_of_dword(void *drcontext, instrlist_t *bb, instr_t *inst,
 static inline opnd_t
 shadow_reg_indir_opnd(opnd_info_t *info, reg_id_t base)
 {
+    /* For sub-reg (e.g., 12 bytes out of 16 in an xmm reg) we assume we're
+     * just checking definedness.  For writing destination shadow values
+     * we'll need extra steps (i#1562).
+     */
     return opnd_create_base_disp
         (base, REG_NULL, 0, opnd_get_immed_int(info->offs), shadow_reg_indir_size(info));
 }
