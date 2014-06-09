@@ -1323,9 +1323,7 @@ const byte shadow_word_addr_not_bit[4][256] = {
 typedef struct _shadow_aux_registers_t {
     /* i#243: shadow xmm registers */
     int xmm[NUM_XMM_REGS];
-#ifdef X64
     int ymmh[NUM_XMM_REGS];
-#endif
     /* i#1473: shadow mmx registers */
     short mm[NUM_MMX_REGS];
     /* XXX i#471: add floating-point registers here as well */
@@ -1396,10 +1394,8 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
 uint
 get_shadow_xmm_offs(reg_id_t reg)
 {
-#ifdef X64
     if (reg_is_ymm(reg))
         return offsetof(shadow_aux_registers_t, ymmh) + sizeof(int)*(reg - DR_REG_YMM0);
-#endif
     if (reg_is_xmm(reg))
         return offsetof(shadow_aux_registers_t, xmm) + sizeof(int)*(reg - DR_REG_XMM0);
     else {
@@ -1566,11 +1562,9 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
     else if (reg_is_gpr(reg))
         return ((byte *)sr) + (reg_to_pointer_sized(reg) - REG_EAX);
     else {
-#ifdef X64
         /* Caller must ask for xmm to get low bits (won't all fit in uint) */
         if (reg_is_ymm(reg))
             return (byte *) &sr->aux->ymmh[reg - DR_REG_YMM0];
-#endif
         if (reg_is_xmm(reg))
             return (byte *) &sr->aux->xmm[reg - DR_REG_XMM0];
         else {
