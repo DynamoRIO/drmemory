@@ -131,13 +131,8 @@ typedef struct {
 
 typedef bool (*malloc_iter_cb_t)(malloc_info_t *info, void *iter_data);
 
-/* system/lib calls we want to intercept */
 #ifdef WINDOWS
-extern int sysnum_mmap;
-extern int sysnum_munmap;
-extern int sysnum_valloc;
-extern int sysnum_vfree;
-extern int sysnum_cbret;
+/* system/lib calls we want to intercept that are shared w/ other modules */
 extern int sysnum_continue;
 extern int sysnum_setcontext;
 extern int sysnum_RaiseException;

@@ -74,6 +74,10 @@ typedef enum _PROCESSINFOCLASS
     ProcessImageFileMapping,
     ProcessAffinityUpdateMode,
     ProcessMemoryAllocationMode,
+    ProcessGroupInformation,
+    ProcessTokenVirtualizationEnabled,
+    ProcessConsoleHostProcess,
+    ProcessWindowInformation,
     MaxProcessInfoClass
 } PROCESSINFOCLASS;
 
@@ -109,5 +113,26 @@ typedef enum _THREADINFOCLASS
     ThreadCSwitchMon,
     MaxThreadInfoClass
 } THREADINFOCLASS;
+
+/* Reverse engineered, not from ReactOS.
+ * This is the data structure for ProcessThreadStackAllocation (0x29).
+ */
+typedef struct _STACK_ALLOC_INFORMATION_VISTA {
+    ULONG_PTR StackReserveSize;
+    ULONG ZeroBits;
+    PULONG_PTR BaseAddress; /* OUT */
+} STACK_ALLOC_INFORMATION_VISTA;
+
+typedef struct _STACK_ALLOC_INFORMATION {
+    /* These four 32-bit fields were added in Win7.  So far they've always been zero. */
+    DWORD Unknown1;
+    DWORD Unknown2;
+    DWORD Unknown3;
+    DWORD Unknown4;
+    ULONG_PTR StackReserveSize;
+    ULONG ZeroBits;
+    PVOID *BaseAddress; /* OUT */
+} STACK_ALLOC_INFORMATION;
+
 
 #endif /*_PSFUNCS_H */

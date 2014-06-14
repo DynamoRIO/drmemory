@@ -67,6 +67,7 @@
 #else
 # include "windefs.h"
 # include "../wininc/crtdbg.h"
+# include "../wininc/ndk_psfuncs.h"
 #endif
 #include "asm_utils.h"
 #include "drsyscall.h"
@@ -90,16 +91,17 @@ alloc_options_t alloc_ops;
 
 #ifdef WINDOWS
 /* system calls we want to intercept */
-int sysnum_mmap = -1;
-int sysnum_mapcmf = -1;
-int sysnum_munmap = -1;
-int sysnum_valloc = -1;
-int sysnum_vfree = -1;
-int sysnum_cbret = -1;
+static int sysnum_mmap = -1;
+static int sysnum_mapcmf = -1;
+static int sysnum_munmap = -1;
+static int sysnum_valloc = -1;
+static int sysnum_vfree = -1;
+static int sysnum_cbret = -1;
 int sysnum_continue = -1;
 int sysnum_setcontext = -1;
 int sysnum_RaiseException = -1;
-int sysnum_UserConnectToServer = -1;
+static int sysnum_UserConnectToServer = -1;
+static int sysnum_SetInformationProcess = -1;
 #endif
 
 #ifdef STATISTICS
@@ -3116,6 +3118,11 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             get_primary_sysnum("NtMapCMFModule", &sysnum_mapcmf,
                                !running_on_Win7_or_later());
             get_primary_sysnum("NtRaiseException", &sysnum_RaiseException, false);
+            if (get_windows_version() >= DR_WINDOWS_VERSION_VISTA) {
+                /* The class we want was added in Vista */
+                get_primary_sysnum("NtSetInformationProcess",
+                                   &sysnum_SetInformationProcess, false);
+            }
 
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
@@ -4343,7 +4350,8 @@ alloc_syscall_filter(void *drcontext, int sysnum)
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
         sysnum == sysnum_RaiseException ||
         sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
-        sysnum == sysnum_UserConnectToServer) {
+        sysnum == sysnum_UserConnectToServer ||
+        sysnum == sysnum_SetInformationProcess) {
         return true;
     } else
         return false;
@@ -4377,12 +4385,13 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
-        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf) {
+        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
+        sysnum == sysnum_SetInformationProcess) {
         HANDLE process;
         pt->expect_sys_to_fail = false;
         if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
             sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
-            sysnum == sysnum_mapcmf) {
+            sysnum == sysnum_mapcmf || sysnum == sysnum_SetInformationProcess) {
             process = (HANDLE)
                 dr_syscall_get_param(drcontext,
                                      (sysnum == sysnum_mmap ||
@@ -4785,6 +4794,37 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         }
     } else if (sysnum == sysnum_UserConnectToServer) {
         handle_post_UserConnectToServer(drcontext, mc, pt);
+    } else if (sysnum == sysnum_SetInformationProcess) {
+        bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
+        PROCESSINFOCLASS cls = (PROCESSINFOCLASS) syscall_get_param(drcontext, 1);
+        /* The ProcessThreadStackAllocation class (0x29) added in Vista reserves memory
+         * at a random address.
+         */
+        if (success && pt->syscall_this_process && cls == ProcessThreadStackAllocation) {
+            app_pc *base_ptr;
+            app_pc base;
+            if (get_windows_version() == DR_WINDOWS_VERSION_VISTA) {
+                STACK_ALLOC_INFORMATION_VISTA *buf = (STACK_ALLOC_INFORMATION_VISTA *)
+                    syscall_get_param(drcontext, 2);
+                base_ptr = (app_pc *) &buf->BaseAddress;
+            } else {
+                STACK_ALLOC_INFORMATION *buf = (STACK_ALLOC_INFORMATION *)
+                    syscall_get_param(drcontext, 2);
+                base_ptr = (app_pc *) &buf->BaseAddress;
+            }
+            if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
+                LOG(1, "WARNING: NtSetInformationProcess: error reading param\n");
+            } else {
+                LOG(2,
+                    "NtSetInformationProcess.ProcessThreadStackAllocation: "PFX"-"PFX"\n",
+                    base, base + allocation_size(base, NULL));
+                /* client_handle_mmap() is only for committed memory: currently
+                 * we have no interface for (non-heap) reservations.  However,
+                 * Dr. Malloc (i#824) will want to provide this, so I'm putting
+                 * this control point in place now.
+                 */
+            }
+        }
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);

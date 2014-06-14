@@ -1706,6 +1706,40 @@ handle_SetInformationProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_inf
                                 bufsz - offsetof(PROCESS_TLS_INFORMATION, ThreadData),
                                 "output data", DRSYS_TYPE_STRUCT, NULL))
             return;
+    } else if (cls == ProcessThreadStackAllocation) {
+        /* i#1563: the struct contains an OUT field */
+        if (win_ver.version == DR_WINDOWS_VERSION_VISTA) {
+            STACK_ALLOC_INFORMATION_VISTA *buf = (STACK_ALLOC_INFORMATION_VISTA *)
+                pt->sysarg[2];
+            size_t bufsz = (size_t) pt->sysarg[3];
+            if (ii->arg->pre) {
+                if (!report_memarg_type(ii, 2, SYSARG_READ, (byte *) buf,
+                                        MIN(bufsz, offsetof(STACK_ALLOC_INFORMATION_VISTA,
+                                                            BaseAddress)),
+                                        "input fields", DRSYS_TYPE_STRUCT, NULL))
+                    return;
+            }
+            if (bufsz >= sizeof(*buf) &&
+                !report_memarg_type(ii, 2, SYSARG_WRITE, (byte *) &buf->BaseAddress,
+                                    sizeof(buf->BaseAddress),
+                                    "output data", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        } else {
+            STACK_ALLOC_INFORMATION *buf = (STACK_ALLOC_INFORMATION *) pt->sysarg[2];
+            size_t bufsz = (size_t) pt->sysarg[3];
+            if (ii->arg->pre) {
+                if (!report_memarg_type(ii, 2, SYSARG_READ, (byte *) buf,
+                                        MIN(bufsz, offsetof(STACK_ALLOC_INFORMATION,
+                                                            BaseAddress)),
+                                        "input fields", DRSYS_TYPE_STRUCT, NULL))
+                    return;
+            }
+            if (bufsz >= sizeof(*buf) &&
+                !report_memarg_type(ii, 2, SYSARG_WRITE, (byte *) &buf->BaseAddress,
+                                    sizeof(buf->BaseAddress),
+                                    "output data", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
     } else {
         if (ii->arg->pre) {
             /* In table this would be "{2, -3, R}" */
