@@ -309,6 +309,11 @@ typedef struct _drsys_arg_t {
      * Unused for the memarg iterator.
      */
     uint64 value64;
+    /**
+     * A string describing the symbolic name of named constant. Indicates
+     * first entry in the set of enum or #define constants. May be NULL.
+     */
+    const char *enum_name;
 } drsys_arg_t;
 
 /** Indicates the category of system call.  Relevant to Windows only. */
