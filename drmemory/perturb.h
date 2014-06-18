@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -38,7 +38,7 @@ perturb_exit(void);
 
 #ifdef STATISTICS
 void
-perturb_dump_statistics(void);
+perturb_dump_statistics(file_t f);
 #endif
 
 void

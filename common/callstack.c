@@ -50,16 +50,18 @@ static callstack_options_t ops;
 #define LINE_PREFIX "    "
 
 #ifdef STATISTICS
-uint find_next_fp_scans;
-uint find_next_fp_cache_hits;
-uint find_next_fp_strings;
-uint find_next_fp_string_structs;
-uint cstack_is_retaddr_tgt_mismatch;
-uint symbol_names_truncated;
-uint cstack_is_retaddr;
-uint cstack_is_retaddr_backdecode;
-uint cstack_is_retaddr_unreadable;
-uint cstack_is_retaddr_unseen;
+static uint callstack_walks;
+static uint callstacks_symbolized;
+static uint find_next_fp_scans;
+static uint find_next_fp_cache_hits;
+static uint find_next_fp_strings;
+static uint find_next_fp_string_structs;
+static uint cstack_is_retaddr_tgt_mismatch;
+static uint symbol_names_truncated;
+static uint cstack_is_retaddr;
+static uint cstack_is_retaddr_backdecode;
+static uint cstack_is_retaddr_unreadable;
+static uint cstack_is_retaddr_unseen;
 #endif
 
 /* Cached frame pointer values to avoid repeated scans (i#1186) */
@@ -366,6 +368,26 @@ callstack_exit(void)
 
     drmgr_unregister_tls_field(tls_idx_callstack);
 }
+
+#ifdef STATISTICS
+void
+callstack_dump_statistics(file_t f)
+{
+    dr_fprintf(f, "callstack walks: %9u, callstacks symbolized: %8u\n",
+               callstack_walks, callstacks_symbolized);
+    dr_fprintf(f, "callstack fp scans: %8u, cache hits: %8u\n",
+               find_next_fp_scans, find_next_fp_cache_hits);
+    dr_fprintf(f, "callstack strings: %6u, structs: %6u, target mismatch: %8u\n",
+               find_next_fp_strings, find_next_fp_string_structs,
+               cstack_is_retaddr_tgt_mismatch);
+    dr_fprintf(f, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
+               cstack_is_retaddr, cstack_is_retaddr_backdecode,
+               cstack_is_retaddr_unreadable);
+    dr_fprintf(f, "callstack is_retaddr cont'd: unseen %8u\n",
+               cstack_is_retaddr_unseen);
+    dr_fprintf(f, "symbol names truncated: %8u\n", symbol_names_truncated);
+}
+#endif
 
 static void
 callstack_set_lowest_frame(void *drcontext)
@@ -1494,6 +1516,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                        (pcs == NULL ? NULL : PCS_FRAME_LOC(pcs, 0).addr));
     }
 #endif
+    STATS_INC(callstack_walks);
 
     LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
         mc->xbp, mc->xsp,
@@ -2032,6 +2055,7 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
 {
     uint i;
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
+    STATS_INC(callstacks_symbolized);
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
         packed_frame_to_symbolized(pcs, &frame, i);
@@ -2047,6 +2071,7 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
                                symbolized_callstack_t *scs OUT)
 {
     uint i;
+    STATS_INC(callstacks_symbolized);
     scs->num_frames = pcs->num_frames;
     scs->num_frames_allocated = pcs->num_frames;
     ASSERT(scs->num_frames > 0, "invalid empty callstack");

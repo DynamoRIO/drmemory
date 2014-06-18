@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -62,7 +62,7 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
 
 #ifdef STATISTICS
 void
-handlecheck_dump_statistics(void);
+handlecheck_dump_statistics(file_t f);
 #endif /* STATISTICS */
 
 void

@@ -229,19 +229,6 @@ enum {
  */
 #define MAX_ERROR_INITIAL_LINES 512
 
-#ifdef STATISTICS
-extern uint find_next_fp_scans;
-extern uint find_next_fp_cache_hits;
-extern uint find_next_fp_strings;
-extern uint find_next_fp_string_structs;
-extern uint cstack_is_retaddr_tgt_mismatch;
-extern uint symbol_names_truncated;
-extern uint cstack_is_retaddr;
-extern uint cstack_is_retaddr_backdecode;
-extern uint cstack_is_retaddr_unreadable;
-extern uint cstack_is_retaddr_unseen;
-#endif
-
 typedef struct _callstack_options_t {
     size_t struct_size;        /* for compatibility checking */
     uint max_frames;
@@ -295,6 +282,11 @@ max_callstack_size(void);
 
 app_pc
 callstack_next_retaddr(dr_mcontext_t *mc);
+
+#ifdef STATISTICS
+void
+callstack_dump_statistics(file_t f);
+#endif
 
 /****************************************************************************
  * Binary callstacks for storing callstacks of allocation sites

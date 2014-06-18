@@ -226,17 +226,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "app mallocs: %8u, frees: %8u, large mallocs: %6u\n",
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
-    dr_fprintf(f_global, "callstack fp scans: %8u, cache hits: %8u\n",
-               find_next_fp_scans, find_next_fp_cache_hits);
-    dr_fprintf(f_global, "callstack strings: %6u, structs: %6u, target mismatch: %8u\n",
-               find_next_fp_strings, find_next_fp_string_structs,
-               cstack_is_retaddr_tgt_mismatch);
-    dr_fprintf(f_global, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
-               cstack_is_retaddr, cstack_is_retaddr_backdecode,
-               cstack_is_retaddr_unreadable);
-    dr_fprintf(f_global, "callstack is_retaddr cont'd: unseen %8u\n",
-               cstack_is_retaddr_unseen);
-    dr_fprintf(f_global, "symbol names truncated: %8u\n", symbol_names_truncated);
+    callstack_dump_statistics(f_global);
 #ifdef USE_DRSYMS
     dr_fprintf(f_global, "symbol lookups: %6u cached %6u, searches: %6u cached %6u\n",
                symbol_lookups, symbol_lookup_cache_hits,
@@ -271,10 +261,10 @@ dump_statistics(void)
     dr_fprintf(f_global, "strings not pointers: %5u\n", strings_not_pointers);
 #ifdef WINDOWS
     if (options.check_handle_leaks)
-        handlecheck_dump_statistics();
+        handlecheck_dump_statistics(f_global);
 #endif
     if (options.perturb) {
-        perturb_dump_statistics();
+        perturb_dump_statistics(f_global);
     }
     if (options.leaks_only) {
         dr_fprintf(f_global, "zeroing loop aborts: %6u fault, %6u thresh\n",

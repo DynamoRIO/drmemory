@@ -807,9 +807,9 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
 
 #ifdef STATISTICS
 void
-handlecheck_dump_statistics(void)
+handlecheck_dump_statistics(file_t f)
 {
-    dr_fprintf(f_global, "handles opened: %6u, closed: %6u\n",
+    dr_fprintf(f, "handles opened: %6u, closed: %6u\n",
                num_handle_add, num_handle_remove);
 }
 #endif /* STATISTICS */

@@ -235,12 +235,12 @@ perturb_exit(void)
 
 #ifdef STATISTICS
 void
-perturb_dump_statistics(void)
+perturb_dump_statistics(file_t f)
 {
     int i;
-    dr_fprintf(f_global, "-perturb delays added:\n");
+    dr_fprintf(f, "-perturb delays added:\n");
     for (i = 0; i < NUM_TYPES; i++)
-        dr_fprintf(f_global, "\t%12s: %9u\n", synch_type[i], count[i]);
+        dr_fprintf(f, "\t%12s: %9u\n", synch_type[i], count[i]);
 }
 #endif
 
