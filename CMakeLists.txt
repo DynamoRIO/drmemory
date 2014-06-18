@@ -97,6 +97,8 @@ if (UNIX AND NOT STATIC_DRSYMS)
   message(FATAL_ERROR "non-static drsyms not supported for Linux")
 endif ()
 
+option(TEST_SUITE "we are running a series of builds for official purposes")
+
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
   set(TOOL_DR_MEMORY OFF)
@@ -893,7 +895,14 @@ endif (APPLE)
 
 find_package(Doxygen)
 if (NOT DOXYGEN_FOUND)
-  message("doxygen is required to build the documentation")
+  # We'd like to require doxygen for Windows pre-commit suite but it's not
+  # installed on our bots so we live with just Linux catching docs errors.
+  if (TEST_SUITE AND UNIX)
+    message(FATAL_ERROR "doxygen is required to build the documentation")
+  else ()
+    # Non-fatal for a single, un-official build, or on Windows
+    message(WARNING "doxygen not found: documentation will NOT be built")
+  endif ()
 else ()
   add_subdirectory(docs)
 endif ()
