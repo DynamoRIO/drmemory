@@ -210,7 +210,6 @@ typedef struct _sysinfo_arg_t {
      * - SYSARG_HAS_TYPE: holds SYSARG_TYPE_* enum value
      */
     int misc;
-    const char *type_name; /* Symbolic name of the arg type. */
 } sysinfo_arg_t;
 
 #define SYSARG_MISC_HAS_TYPE(flags) \

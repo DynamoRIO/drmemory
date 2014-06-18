@@ -25,16 +25,12 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 ##################################################
 # drstracelib
 
-set(srcs
-    drstrace.c
-    drstrace_named_consts.c)
-
 # We do not need libc, and we avoid a 10x size increase in both our
 # dll and pdb (plus we avoid stressing private library isolation) by
 # not using it (i#714).
 set(DynamoRIO_USE_LIBC OFF)
 
-add_library(drstracelib SHARED ${srcs})
+add_library(drstracelib SHARED drstrace.c)
 
 # We share the framework version # for now
 set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION})

@@ -941,7 +941,6 @@ set_return_arg_vals(void *drcontext, cls_syscall_t *pt,
     arg->size = sz;
     arg->reg = DR_REG_NULL;
     arg->start_addr = NULL;
-    arg->enum_name = NULL;
     if (have_retval) {
         get_syscall_result((syscall_info_t *)arg->syscall, pt,
                            NULL, &arg->value64, NULL);
@@ -1718,7 +1717,6 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                 }
             }
             arg->mode = mode_from_flags(sysinfo->arg[compacted].flags);
-            arg->enum_name = sysinfo->arg[compacted].type_name;
             /* Go to next entry.  Skip double entries. */
             while (sysinfo->arg[compacted].param == i &&
                    !sysarg_invalid(&sysinfo->arg[compacted]))
