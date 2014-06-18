@@ -793,8 +793,8 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {4, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "OBJ_INHERIT"},
+         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "DUPLICATE_CLOSE_SOURCE"},
      }
     },
     {{0,0},"NtDuplicateToken", OK, RNTST, 6,
@@ -1146,7 +1146,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
          {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "REG_NOTIFY_CHANGE_NAME"},
          {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {7, -8, R},
          {8, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1693,7 +1693,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQuerySecurityObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(SECURITY_INFORMATION), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(SECURITY_INFORMATION), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "OWNER_SECURITY_INFORMATION"},
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
