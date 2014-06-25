@@ -19,10 +19,11 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-# We need 2.8.10 for multi-export-set support for DRMF.
+# We need 2.8.10.1 for crbug.com/159092
+# (For multi-export-set support for DRMF, we also need >= 2.8.10.)
 # (For Visual Studio generators, we also need >= 2.8.2 for output dir name control.)
 # (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
-cmake_minimum_required(VERSION 2.8.10)
+cmake_minimum_required(VERSION 2.8.10.1)
 
 if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
     "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
