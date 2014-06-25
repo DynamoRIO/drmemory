@@ -2531,7 +2531,8 @@ check_and_not_test(void *drcontext, dr_mcontext_t *mc, instr_t *and, app_pc next
         if (!safe_decode(drcontext, pc, &inst, &pc) ||
             !instr_valid(&inst))
             break;
-        if (instr_is_cti(&inst))
+        /* #1576: call should be ok to continue */
+        if (instr_is_cbr(&inst) || instr_is_ubr(&inst))
             break;
         if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst)))
             break;

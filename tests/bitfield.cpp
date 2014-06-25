@@ -129,6 +129,12 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      ecx, DWORD [REG_XAX] /* undef */
         and      ecx, HEX(00ff0000)
         cmp      eax,ecx /* uninit -- but we disabled byte masks, so no error */
+        /* test i#1576 */
+        and      ecx, HEX(2)
+        call     next_instr
+    next_instr:
+        test     ecx, HEX(1) /* uninit -- but we disabled byte masks, so no error */
+        pop      REG_XCX
 
         /* test i#1523 double-xor */
         push     ebx /* save callee-saved reg */
