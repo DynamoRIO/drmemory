@@ -31,3 +31,5 @@ typedef struct const_values_t {
     int value; /* value of the named constant */
     const char *const_name; /* name of the named constant */
 } const_values_t;
+
+extern const_values_t *const_struct_array[];

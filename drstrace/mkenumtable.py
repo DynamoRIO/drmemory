@@ -127,6 +127,19 @@ def check_output(entry):
             print entry[index]
     return entry
 
+def add_leading_zeros(str_value):
+    '''
+    The routine adds leading zeros
+    in the given string with hex value.
+    '''
+    pattern = "0x[\dA-Fa-f]*"
+    result = re.findall(pattern,str_value)
+    if result:
+        value = int(result[0],16)
+        value = "0x%0.8x" % value
+        str_value = str_value.replace(result[0],str(value))
+    return str_value
+
 def generate_table_entries (raw_table):
     '''
     The routine generates final output to write
@@ -147,6 +160,7 @@ def generate_table_entries (raw_table):
             enum_name = sub_entry.split(" ")
             if ((len(enum_name) > 3) and ("FIXME:" in sub_entry)):
                 enum_value = "".join(enum_name[2:3])
+                enum_value = add_leading_zeros(enum_value)
                 enum_comment = " ".join(enum_name[3:])
                 enum_value = enum_value.replace("|", "|\n      ")
                 output = output + "    {" + enum_value + ', "' \
@@ -154,6 +168,7 @@ def generate_table_entries (raw_table):
                                           + "/* "+ enum_comment + " */\n"
             else:
                 enum_value = "".join(enum_name[2:])
+                enum_value = add_leading_zeros(enum_value)
                 enum_value = enum_value.replace("|", "|\n      ")
                 output = output + "    {" + enum_value + ', "' \
                                           + enum_name[1] + '"},\n'  

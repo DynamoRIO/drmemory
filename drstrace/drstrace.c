@@ -34,6 +34,7 @@
 #include "drmgr.h"
 #include "drx.h"
 #include "drsyscall.h"
+#include "drstrace_named_consts.h"
 #include "utils.h"
 #include <string.h>
 #ifdef WINDOWS
@@ -41,13 +42,18 @@
 # include <windows.h>
 #endif
 
+extern size_t get_const_arrays_num(void);
+
 /* Where to write the trace */
 static file_t outf;
+
+static hashtable_t nconsts_table;
 
 /* We buffer the output via a stack-allocated buffer.  We flush prior to
  * each system call.
  */
 #define OUTBUF_SIZE 2048
+#define HASHTABLE_BITSIZE 10 /* 512 < entries # < 1024 */
 
 typedef struct _buf_info_t {
     char buf[OUTBUF_SIZE];
@@ -111,6 +117,90 @@ print_simple_value(buf_info_t *buf, drsys_arg_t *arg, bool leading_zeroes)
     }
 }
 
+static bool
+drstrace_print_enum_const_name(buf_info_t *buf, drsys_arg_t *arg)
+{
+    /* The routine returns false when can't
+     * find symbolic name in the hashtable.
+     */
+    int iterator = 0;
+    const_values_t *named_consts;
+    const_values_t *named_consts_save;
+    bool has_out = false;
+    /* Trying to find enum_name in the hashtable */
+    named_consts = (const_values_t *)
+        hashtable_lookup(&nconsts_table, (void *) arg->enum_name);
+    if (named_consts == NULL) {
+        OUTPUT(buf, PIFX, arg->value);
+        return false;
+    }
+    /* There are a lot of named constants with incremental values
+     * (e.g. REG_NONE 0, REG_SZ 1, REG_EXPAND_SZ 2, REG_BINARY 3).
+     * So, firstly, we're trying to determine such cases.
+     */
+    named_consts_save = named_consts;
+    while (named_consts_save->const_name != NULL) {
+        if (arg->value == named_consts_save->value) {
+            if (has_out)
+                OUTPUT(buf, " or ");
+            OUTPUT(buf, "%s", named_consts_save->const_name);
+            has_out = true;
+        }
+        named_consts_save++;
+    }
+    if (has_out)
+        return true;
+   /* If not, we perform linear search for composite named constants
+    * (e.g. FILE_SHARE_READ | FILE_SHARE_WRITE). We're using linear
+    * search instead of random access b/c current table entries may
+    * contain the same values for different named constants as well as
+    * combination values, which make it difficult, such as:
+    * ...
+    * {0x00800000, "FILE_OPEN_FOR_FREE_SPACE_QUERY"},
+    * {0x00ffffff, "FILE_VALID_OPTION_FLAGS"},
+    * ...
+    */
+    has_out = false;
+    while (named_consts->const_name != NULL) {
+        if (TESTALL(named_consts->value, arg->value)) {
+            if (has_out)
+                OUTPUT(buf, "|");
+            /* FIXME i#1550: We don't perform additional search to
+             * include entries with the same values in the output.
+             * Ideally the tables shouldn't contain such entries.
+             */
+            OUTPUT(buf, "%s", named_consts->const_name);
+            has_out = true;
+        }
+        named_consts++;
+    }
+    if (!has_out) {
+        OUTPUT(buf, PIFX, arg->value);
+        return false;
+    }
+
+    return true;
+}
+
+static void
+drstrace_get_arg_symname(buf_info_t *buf, drsys_arg_t *arg)
+{
+    /* FIXME i#1540: We should determine parameter type (named const or
+     * structure or etc.) and call corresponding output function. Now we
+     * only print named constant symname to check this functionality.
+     */
+    if (arg->enum_name != NULL) {
+        if (drstrace_print_enum_const_name(buf, arg)) {
+            OUTPUT(buf, " (type=named constant, value="PIFX", size="PIFX")\n",
+                   arg->value,
+                   arg->size);
+        } else {
+            OUTPUT(buf, " (type=named constant, size="PIFX")\n",
+                   arg->size);
+        }
+    }
+}
+
 static void
 print_arg(buf_info_t *buf, drsys_arg_t *arg)
 {
@@ -118,6 +208,11 @@ print_arg(buf_info_t *buf, drsys_arg_t *arg)
         OUTPUT(buf, "\tretval: ");
     else
         OUTPUT(buf, "\targ %d: ", arg->ordinal);
+
+    if (arg->enum_name != NULL) {
+        drstrace_get_arg_symname(buf, arg);
+        return;
+    }
     /* XXX: add return value to dr_fprintf so we can more easily align
      * after PFX vs PIFX w/o having to print to buffer
      */
@@ -190,11 +285,9 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 {
     buf_info_t *buf = (buf_info_t *) user_data;
     ASSERT(arg->valid, "no args should be invalid");
-
     if ((arg->pre && !TEST(DRSYS_PARAM_RETVAL, arg->mode)) ||
         (!arg->pre && TESTANY(DRSYS_PARAM_OUT|DRSYS_PARAM_RETVAL, arg->mode)))
-        print_arg(buf, arg);
-
+            print_arg(buf, arg);
     return true; /* keep going */
 }
 
@@ -299,6 +392,7 @@ void exit_event(void)
         ASSERT(false, "drsys failed to exit");
     drx_exit();
     drmgr_exit();
+    hashtable_delete(&nconsts_table);
 }
 
 static void
@@ -335,6 +429,8 @@ options_init(client_id_t id)
 DR_EXPORT
 void dr_init(client_id_t id)
 {
+    uint i = 0;
+    uint const_arrays_num;
     drsys_options_t ops = { sizeof(ops), 0, };
 
 #ifdef WINDOWS
@@ -354,6 +450,18 @@ void dr_init(client_id_t id)
     drmgr_register_post_syscall_event(event_post_syscall);
     if (drsys_filter_all_syscalls() != DRMF_SUCCESS)
         ASSERT(false, "drsys_filter_all_syscalls should never fail");
-
     open_log_file();
+
+    const_arrays_num = get_const_arrays_num();
+    hashtable_init(&nconsts_table, HASHTABLE_BITSIZE, HASH_STRING, false);
+    while (i < const_arrays_num) {
+        const_values_t *named_consts = const_struct_array[i];
+        bool res = hashtable_add(&nconsts_table,
+                                 (void *) named_consts[0].const_name,
+                                 (void *) named_consts);
+        if (!res)
+            ASSERT(false, "drstrace failed to add to hashtable");
+        i++;
+    }
+
 }
