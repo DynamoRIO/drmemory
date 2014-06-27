@@ -158,7 +158,11 @@ syscall_info_t syscall_kernel32_info[] = {
     {{0,0},"SetLastConsoleEventActiveInternal", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"ShowConsoleCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"UnregisterConsoleIMEInternal", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
-    {{0,0},"VerifyConsoleIoHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{0,0},"VerifyConsoleIoHandle", OK, DRSYS_TYPE_BOOL, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"WriteConsoleInputInternal", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"WriteConsoleInternal", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"WriteConsoleOutputInternal", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
