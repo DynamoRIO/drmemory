@@ -145,6 +145,19 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      REG_XBX
         pop      REG_XDX
 
+        /* test 4-byte div: really we want to ensure on fastpath (i#1573), but
+         * how???
+         */
+        push     REG_XDX
+        push     REG_XAX
+        mov      ecx, DWORD [REG_XDX] /* def */
+        mov      edx, DWORD [REG_XDX] /* def */
+        div      DWORD [REG_XSP] /* 3 srcs and 2 dsts */
+        cmp      eax,0 /* NOT uninit */
+        cmp      edx,0 /* NOT uninit */
+        pop      REG_XAX
+        pop      REG_XDX
+
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).
          */

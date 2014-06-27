@@ -669,19 +669,6 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             mi->load2x = true;
         }
         return true;
-    case OP_idiv:
-    case OP_div:
-        if (opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
-            /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
-            if (!opnd_ok_for_fastpath(opc, opnd_create_reg(REG_AX), 0, true, mi))
-                return false;
-            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
-                return false;
-            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
-                return false;
-            return true;
-        }
-        return false;
     case OP_pinsrb:
     case OP_pinsrw:
     case OP_pinsrd:
@@ -700,6 +687,21 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
          * Bail for now.
          */
         return false;
+    case OP_idiv:
+    case OP_div:
+        if (opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
+            /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
+            if (!opnd_ok_for_fastpath(opc, opnd_create_reg(REG_AX), 0, true, mi))
+                return false;
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
+                return false;
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
+                return false;
+            return true;
+        }
+        /* else fall-through: 2-byte is check-defined (i#401 covers doing better)
+         * and 4-byte is handled normally
+         */
     default: {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
