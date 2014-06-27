@@ -23,71 +23,71 @@
 
 #include "gtest/gtest.h"
 
-HANDLE hTimerRoutineDoneEvent;
+HANDLE timer_routine_done_event;
 
 VOID CALLBACK
-TimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
+timer_routine(PVOID param, BOOLEAN timer_or_wait_fired)
 {
-    ASSERT_NE((PVOID)NULL, lpParam);
-    ASSERT_EQ(0xC0DE, *(ULONG*)lpParam);
-    SetEvent(hTimerRoutineDoneEvent);
+    ASSERT_NE((PVOID)NULL, param);
+    ASSERT_EQ(0xC0DE, *(ULONG*)param);
+    SetEvent(timer_routine_done_event);
 }
 
 TEST(NtExApiTest, NtSetTimer2) {
-    HANDLE hTimer = NULL;
+    HANDLE timer = NULL;
     ULONG arg = 0xC0DE;
-    BOOL bResult = FALSE;
-    DWORD dwWaitResult;
+    BOOL result = FALSE;
+    DWORD wait_result;
 
-    hTimerRoutineDoneEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-    ASSERT_NE((HANDLE)NULL, hTimerRoutineDoneEvent);
+    timer_routine_done_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    ASSERT_NE((HANDLE)NULL, timer_routine_done_event);
 
     /* NtSetTimer2 is used by CreateTimerQueueTimer in Win 8.1 */
-    bResult = CreateTimerQueueTimer(&hTimer,
+    result = CreateTimerQueueTimer(&timer,
                                     NULL,
-                                    (WAITORTIMERCALLBACK)TimerRoutine,
+                                    (WAITORTIMERCALLBACK)timer_routine,
                                     &arg, /* Parameter */
                                     10,   /* DueTime in millseconds */
                                     0,    /* Period in millseconds */
                                     0     /* Flags */);
-    ASSERT_NE(FALSE, bResult);
+    ASSERT_NE(FALSE, result);
 
-    dwWaitResult = WaitForSingleObject(hTimerRoutineDoneEvent, 1000 /* ms */);
-    ASSERT_EQ(WAIT_OBJECT_0, dwWaitResult);
+    wait_result = WaitForSingleObject(timer_routine_done_event, 1000 /* ms */);
+    ASSERT_EQ(WAIT_OBJECT_0, wait_result);
 
-    CloseHandle(hTimerRoutineDoneEvent);
-    bResult = DeleteTimerQueueTimer(NULL, hTimer, NULL);
-    ASSERT_NE(FALSE, bResult);
+    CloseHandle(timer_routine_done_event);
+    result = DeleteTimerQueueTimer(NULL, timer, INVALID_HANDLE_VALUE);
+    ASSERT_NE(FALSE, result);
 }
 
 TEST(NtExApiTest, NtCancelTimer2) {
-    HANDLE hTimer = NULL;
+    HANDLE timer = NULL;
     ULONG arg = 0xC0DE;
-    BOOL bResult = FALSE;
-    DWORD dwWaitResult;
+    BOOL result = FALSE;
+    DWORD wait_result;
 
-    hTimerRoutineDoneEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-    ASSERT_NE((HANDLE)NULL, hTimerRoutineDoneEvent);
+    timer_routine_done_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    ASSERT_NE((HANDLE)NULL, timer_routine_done_event);
 
-    bResult = CreateTimerQueueTimer(&hTimer,
+    result = CreateTimerQueueTimer(&timer,
                                     NULL,
-                                    (WAITORTIMERCALLBACK)TimerRoutine,
+                                    (WAITORTIMERCALLBACK)timer_routine,
                                     &arg,  /* Parameter */
                                     10000, /* DueTime in millseconds */
                                     0,     /* Period in millseconds */
                                     0      /* Flags */);
-    ASSERT_NE(FALSE, bResult);
+    ASSERT_NE(FALSE, result);
 
     /* NtCancelTimer2 is used by CreateTimerQueueTimer in Win 8.1 */
-    bResult = ChangeTimerQueueTimer(NULL, hTimer,
+    result = ChangeTimerQueueTimer(NULL, timer,
                                     100, /* DueTime in millseconds */
                                     0    /* Period in millseconds */);
-    ASSERT_NE(FALSE, bResult);
+    ASSERT_NE(FALSE, result);
 
-    dwWaitResult = WaitForSingleObject(hTimerRoutineDoneEvent, 1000/* ms */);
-    ASSERT_EQ(WAIT_OBJECT_0, dwWaitResult);
+    wait_result = WaitForSingleObject(timer_routine_done_event, 1000 /* ms */);
+    ASSERT_EQ(WAIT_OBJECT_0, wait_result);
 
-    CloseHandle(hTimerRoutineDoneEvent);
-    bResult = DeleteTimerQueueTimer(NULL, hTimer, NULL);
-    ASSERT_NE(FALSE, bResult);
+    CloseHandle(timer_routine_done_event);
+    result = DeleteTimerQueueTimer(NULL, timer, INVALID_HANDLE_VALUE);
+    ASSERT_NE(FALSE, result);
 }
