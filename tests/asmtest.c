@@ -30,6 +30,7 @@
 #include <stdlib.h>
 
 void asm_test(char *undef, char *def);
+void asm_test_avx(char *undef, char *def);
 
 static void
 asm_test_C(void)
@@ -37,6 +38,7 @@ asm_test_C(void)
     char undef[128];
     char def[128] = {0,};
     asm_test(undef, def);
+    asm_test_avx(undef, def);
 }
 
 int
@@ -80,12 +82,6 @@ GLOBAL_LABEL(FUNCNAME:)
         pxor     xmm1, xmm1
         mov      ecx, DWORD [REG_XDX] /* def */
         pinsrd   xmm0, ecx, 0
-        comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
-
-        movdqu   xmm0, [REG_XAX] /* undef */
-        pxor     xmm1, xmm1
-        mov      ecx, DWORD [REG_XDX] /* def */
-        vpinsrd  xmm0, xmm0, ecx, 0 /* test vpinsrd (i#1559) */
         comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
 
         movdqu   xmm0, [REG_XAX] /* undef */
@@ -159,7 +155,8 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      REG_XDX
 
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
-         * edx (holds def mem).
+         * edx (holds def mem).  Do not place AVX instructions here: put them
+         * into asm_test_avx().
          */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
@@ -168,6 +165,49 @@ GLOBAL_LABEL(FUNCNAME:)
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
+
+
+#define FUNCNAME asm_test_avx
+/* void asm_test_avx(char *undef, char *def); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XDX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* i#1577: only run AVX instructions on processors that support them */
+        push     REG_XAX
+        push     REG_XDX
+        mov      eax, 1
+        cpuid
+#       define HAS_AVX 28
+        mov      edx, 1
+        shl      edx, 28
+        test     edx, ecx
+        pop      REG_XDX
+        pop      REG_XAX
+        je       no_avx
+
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, DWORD [REG_XDX] /* def */
+        vpinsrd  xmm0, xmm0, ecx, 0 /* test vpinsrd (i#1559) */
+        comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
+
+        /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
+         * edx (holds def mem).
+         */
+
+     no_avx:
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
 
 END_FILE
 #endif
