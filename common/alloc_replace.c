@@ -1556,9 +1556,21 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
     return head;
 }
 
+/* i#1581: to avoid retaddr local vars from callstack walks messing up app
+ * callstacks, we invoke the 2nd layer on a clean dstack (this lets us keep
+ * just the outer layer as stdcall, and avoids complicating drwrap further).
+ */
+#define ONDSTACK_REPLACE_ALLOC_COMMON(arena, sz, flags, dc, mc, caller, alloc_type) \
+    dr_call_on_clean_stack(dc, (void* (*)(void)) replace_alloc_common, arena,       \
+                           (void *)(ptr_uint_t)(sz), (void *)(ptr_uint_t)(flags), \
+                           dc, mc, caller, (void *)(ptr_uint_t)(alloc_type), NULL)
+
 /* As noted in the flag definitions, ALLOC_INVOKE_CLIENT_* in flags
  * only applies to successful allocation: client is still notified on failure
  * and when client user data is freed or shifted.
+ *
+ * If invoked from an outer drwrap_replace_native() layer, this should be invoked
+ * via ONDSTACK_REPLACE_ALLOC_COMMON().
  */
 static byte *
 replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t flags,
@@ -1740,8 +1752,21 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
 #endif
 }
 
+/* See i#1581 notes above.
+ * Unfortunately we can't easily cast to the bool return type (from void*) here
+ * as gcc then complains about the calls that ignore the return value: so each
+ * caller who needs the return value must cast.
+ */
+#define ONDSTACK_REPLACE_FREE_COMMON(arena, ptr, flags, dc, mc, caller, free_type) \
+    dr_call_on_clean_stack(dc, (void* (*)(void)) replace_free_common, arena, ptr,  \
+                           (void *)(ptr_uint_t)(flags), dc, mc, caller,            \
+                           (void *)(ptr_uint_t)(free_type), NULL)
+
 /* Up to caller to verify that ptr is inside arena.
  * invoke_client controls whether client_handle_free() is called.
+ *
+ * If invoked from an outer drwrap_replace_native() layer, this should be invoked
+ * via ONDSTACK_REPLACE_FREE_COMMON().
  */
 static bool
 replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
@@ -1889,6 +1914,15 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
     return true;
 }
 
+/* See i#1581 notes above */
+#define ONDSTACK_REPLACE_REALLOC_COMMON(arena, ptr, size, flags, dc, mc, caller, type) \
+    dr_call_on_clean_stack(dc, (void* (*)(void)) replace_realloc_common, arena, ptr,   \
+                           (void *)(ptr_uint_t)(size), (void *)(flags), dc, mc, caller,\
+                           (void *)(ptr_uint_t)(type))
+
+/* If invoked from an outer drwrap_replace_native() layer, this should be invoked
+ * via ONDSTACK_REPLACE_REALLOC_COMMON().
+ */
 static byte *
 replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                        alloc_flags_t flags, void *drcontext, dr_mcontext_t *mc,
@@ -1912,7 +1946,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         }
         return res;
     } else if (size == 0 && !TEST(ALLOC_ALLOW_EMPTY, flags)) {
-        replace_free_common(arena, ptr, flags | ALLOC_IS_REALLOC | ALLOC_INVOKE_CLIENT,
+        replace_free_common(arena, ptr,
+                            flags | ALLOC_IS_REALLOC | ALLOC_INVOKE_CLIENT,
                             drcontext, mc, caller, alloc_type);
         return NULL;
     } else if (!is_live_alloc(ptr, arena, head)) {
@@ -1996,7 +2031,10 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     return res;
 }
 
-/* returns -1 on failure */
+/* Returns -1 on failure.
+ * We don't bother to swap stacks here as we do not expect to walk the
+ * callstack.
+ */
 static size_t
 replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
                     void *drcontext, dr_mcontext_t *mc, app_pc caller,
@@ -2337,7 +2375,7 @@ replace_malloc(size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
-    res = (void *) replace_alloc_common(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, &mc, (app_pc)replace_malloc,
                                         MALLOC_ALLOCATOR_MALLOC);
@@ -2358,7 +2396,7 @@ replace_malloc_nomatch(size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
-    res = (void *) replace_alloc_common(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, &mc,
                                         (app_pc)replace_malloc/*avoid confusion*/,
@@ -2382,10 +2420,11 @@ replace_calloc(size_t nmemb, size_t size)
         client_handle_alloc_failure(UINT_MAX, (app_pc)replace_calloc, &mc);
         res = NULL;
     } else {
-        res = replace_alloc_common(arena, nmemb * size,
-                                   ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
-                                   drcontext, &mc, (app_pc)replace_calloc,
-                                   MALLOC_ALLOCATOR_MALLOC);
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, nmemb * size,
+             ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_calloc,
+             MALLOC_ALLOCATOR_MALLOC);
     }
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
     exit_client_code(drcontext, false/*need swap*/);
@@ -2407,11 +2446,12 @@ replace_calloc_nomatch(size_t nmemb, size_t size)
         client_handle_alloc_failure(UINT_MAX, (app_pc)replace_calloc, &mc);
         res = NULL;
     } else {
-        res = replace_alloc_common(arena, nmemb * size,
-                                   ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
-                                   drcontext, &mc,
-                                   (app_pc)replace_calloc/*avoid confusion*/,
-                                   MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, nmemb * size,
+             ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc,
+             (app_pc)replace_calloc/*avoid confusion*/,
+             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
     }
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
     exit_client_code(drcontext, false/*need swap*/);
@@ -2427,10 +2467,10 @@ replace_realloc(void *ptr, size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
-    res = replace_realloc_common(arena, ptr, size,
-                                 ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
-                                 drcontext, &mc, (app_pc)replace_realloc,
-                                 MALLOC_ALLOCATOR_MALLOC);
+    res = ONDSTACK_REPLACE_REALLOC_COMMON(arena, ptr, size,
+                                          ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
+                                          drcontext, &mc, (app_pc)replace_realloc,
+                                          MALLOC_ALLOCATOR_MALLOC);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return res;
@@ -2446,11 +2486,11 @@ replace_realloc_nomatch(void *ptr, size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
-    res = replace_realloc_common(arena, ptr, size,
-                                 ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
-                                 drcontext, &mc,
-                                 (app_pc)replace_realloc/*avoid confusion*/,
-                                 MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+    res = ONDSTACK_REPLACE_REALLOC_COMMON(arena, ptr, size,
+                                          ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
+                                          drcontext, &mc,
+                                          (app_pc)replace_realloc/*avoid confusion*/,
+                                          MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return res;
@@ -2464,8 +2504,9 @@ replace_free(void *ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
-    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
-                        &mc, (app_pc)replace_free, MALLOC_ALLOCATOR_MALLOC);
+    ONDSTACK_REPLACE_FREE_COMMON(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                                 drcontext, &mc, (app_pc)replace_free,
+                                 MALLOC_ALLOCATOR_MALLOC);
     exit_client_code(drcontext, false/*need swap*/);
 }
 
@@ -2478,9 +2519,10 @@ replace_free_nomatch(void *ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
-    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
-                        &mc, (app_pc)replace_free/*deliberate: avoid confusion*/,
-                        MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
+    ONDSTACK_REPLACE_FREE_COMMON(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                                 drcontext, &mc,
+                                 (app_pc)replace_free/*deliberate: avoid confusion*/,
+                                 MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_NOCHECK);
     exit_client_code(drcontext, false/*need swap*/);
 }
 
@@ -2546,7 +2588,7 @@ replace_operator_new_common(void *drcontext, dr_mcontext_t *mc, size_t size,
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     LOG(2, "replace_operator_new size=%d abort_on_oom=%d type=%d\n",
         size, abort_on_oom, alloc_type);
-    res = (void *) replace_alloc_common(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, mc, caller, alloc_type);
     LOG(2, "\treplace_operator_new %d => "PFX"\n", size, res);
@@ -2627,9 +2669,9 @@ replace_operator_delete_common(void *drcontext, dr_mcontext_t *mc, void *ptr,
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     LOG(2, "replace_operator_delete "PFX"%s\n", ptr,
         ignore_mismatch ? " (ignore mismatches)" : "");
-    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT |
-                        (ignore_mismatch ? ALLOC_IGNORE_MISMATCH : 0), drcontext,
-                        mc, caller, alloc_type);
+    ONDSTACK_REPLACE_FREE_COMMON(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT |
+                                 (ignore_mismatch ? ALLOC_IGNORE_MISMATCH : 0),
+                                 drcontext, mc, caller, alloc_type);
 }
 
 /* We do not bother to report mismatches on nothrow vs regular so we
@@ -3191,14 +3233,15 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlAllocateHeap);
     else {
-        res = replace_alloc_common(arena, size,
-                                   ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
-                                     !TEST(HEAP_NO_SERIALIZE, flags)) ?
-                                    ALLOC_SYNCHRONIZE : 0) |
-                                   (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
-                                   ALLOC_INVOKE_CLIENT, drcontext,
-                                   &mc, (app_pc)replace_RtlAllocateHeap,
-                                   MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size,
+             ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+               !TEST(HEAP_NO_SERIALIZE, flags)) ?
+              ALLOC_SYNCHRONIZE : 0) |
+             (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
+             ALLOC_INVOKE_CLIENT, drcontext,
+             &mc, (app_pc)replace_RtlAllocateHeap,
+             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
     }
     dr_switch_to_app_state(drcontext);
     if (res == NULL)
@@ -3221,17 +3264,18 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlReAllocateHeap);
     else {
         /* unlike libc realloc(), HeapReAlloc fails when ptr==NULL */
-        res = replace_realloc_common(arena, ptr, size,
-                                     ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
-                                       !TEST(HEAP_NO_SERIALIZE, flags)) ?
-                                      ALLOC_SYNCHRONIZE : 0) |
-                                     (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
-                                     (TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags) ?
-                                      ALLOC_IN_PLACE_ONLY : 0) |
-                                     ALLOC_ALLOW_EMPTY
-                                     /* fails on NULL */,
-                                     drcontext, &mc, (app_pc)replace_RtlReAllocateHeap,
-                                     MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+        res = ONDSTACK_REPLACE_REALLOC_COMMON
+            (arena, ptr, size,
+             ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+               !TEST(HEAP_NO_SERIALIZE, flags)) ?
+              ALLOC_SYNCHRONIZE : 0) |
+             (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
+             (TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags) ?
+              ALLOC_IN_PLACE_ONLY : 0) |
+             ALLOC_ALLOW_EMPTY
+             /* fails on NULL */,
+             drcontext, &mc, (app_pc)replace_RtlReAllocateHeap,
+             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
     }
     dr_switch_to_app_state(drcontext);
     if (res == NULL)
@@ -3252,13 +3296,14 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlFreeHeap);
     else {
-        bool ok = replace_free_common(arena, ptr,
-                                      ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
-                                        !TEST(HEAP_NO_SERIALIZE, flags)) ?
-                                       ALLOC_SYNCHRONIZE : 0) |
-                                      ALLOC_INVOKE_CLIENT,
-                                      drcontext, &mc, (app_pc)replace_RtlFreeHeap,
-                                      MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+        bool ok = (bool)(ptr_uint_t) ONDSTACK_REPLACE_FREE_COMMON
+            (arena, ptr,
+             ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+               !TEST(HEAP_NO_SERIALIZE, flags)) ?
+              ALLOC_SYNCHRONIZE : 0) |
+             ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_RtlFreeHeap,
+             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
         res = !!ok; /* convert from bool to BOOL */
     }
     dr_switch_to_app_state(drcontext);
@@ -3527,11 +3572,11 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
     LOG(2, "%s ptr="PFX"\n", __FUNCTION__, ptr);
     ASSERT(arena != NULL, "process_heap should always have an arena");
     if (arena != NULL) {
-        ok = replace_free_common(arena, ptr,
-                                 (!TEST(HEAP_NO_SERIALIZE, arena->flags) ?
-                                  ALLOC_SYNCHRONIZE : 0) | ALLOC_INVOKE_CLIENT,
-                                 drcontext, &mc, (app_pc)replace_NtdllpFreeStringRoutine,
-                                 MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+        ok = (bool)(ptr_uint_t) ONDSTACK_REPLACE_FREE_COMMON
+            (arena, ptr, (!TEST(HEAP_NO_SERIALIZE, arena->flags) ?
+                          ALLOC_SYNCHRONIZE : 0) | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_NtdllpFreeStringRoutine,
+             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
         res = !!ok; /* convert from bool to BOOL */
     }
     dr_switch_to_app_state(drcontext);

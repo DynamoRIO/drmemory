@@ -21,13 +21,13 @@
 #
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:942
+registers.c_asm.asm:989
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:954
+registers.c_asm.asm:1001
 Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:967
+registers.c_asm.asm:1014
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:968
+registers.c_asm.asm:1015
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
