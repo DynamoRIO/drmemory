@@ -557,6 +557,17 @@ actions:
 drmemory.exe -nudge <processid>
 \endverbatim
 
+********************
+\section sec_perf Tuning for Performance
+
+Dr. Memory's default options are set up to find the most errors.  Several
+key options can be adjusted to improve performance, at the cost of less
+information on each error report or even identification of fewer error
+types.  Reducing \p -malloc_max_frames, disabling \p -delay_frees_stack,
+and disabling leak checking can improve performance on malloc-intensive
+applications.  For more significant improvements, consider using
+Dr. Memory's \ref page_light.
+
 \if ISSUE_446
 ********************
 \section sec_twostep Post-Run Symbol Processing

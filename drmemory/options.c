@@ -519,8 +519,10 @@ options_init(const char *opstr)
             NULL_TERMINATE_BUFFER(options.callstack_srcfile_prefix);
         }
 # endif
-        /* kind of a hack for now, making -brief "better reports", until
-         * resolve perf issues w/ this option (i#205)
+        /* Kind of a hack for now, making -brief "better reports", until
+         * resolve perf issues w/ this option (i#205).  Those are now resolved:
+         * but I'm leaving this so we don't lose it if we reverse the
+         * default for -delay_frees_stack in the future.
          */
         if (!option_specified.delay_frees_stack)
             options.delay_frees_stack = true;
