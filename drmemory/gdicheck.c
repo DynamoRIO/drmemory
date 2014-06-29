@@ -210,7 +210,7 @@ gdicheck_dc_alloc(HDC hdc, gdi_dc_alloc_t flags, drsys_sysnum_t sysnum,
     pdc->flags = flags;
     pdc->exited = false;
     pdc->non_stock_selected = 0;
-    packed_callstack_record(&pdc->pcs, mc, loc);
+    packed_callstack_record(&pdc->pcs, mc, loc, options.callstack_max_frames);
     if (!hashtable_add(&dc_table, (void *)hdc, (void *)pdc)) {
         per_dc_free((void *)pdc);
         /* Note that we don't report an error for calling GetDC again without

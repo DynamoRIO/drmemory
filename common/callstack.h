@@ -231,7 +231,11 @@ enum {
 
 typedef struct _callstack_options_t {
     size_t struct_size;        /* for compatibility checking */
-    uint max_frames;
+    /* This is the absolute maximum, used for setting buffer sizes up front.
+     * Individual callstacks pass in their own maximums, but they all must be
+     * <= this value.
+     */
+    uint global_max_frames;
     uint stack_swap_threshold;
     uint fp_flags;             /* set of FP_ flags */
     size_t fp_scan_sz;
@@ -297,7 +301,7 @@ typedef struct _packed_callstack_t packed_callstack_t;
 
 void
 packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
-                        app_loc_t *loc);
+                        app_loc_t *loc, uint max_frames);
 
 void
 packed_callstack_first_frame_retaddr(packed_callstack_t *pcs);
@@ -454,14 +458,15 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
-                bool for_log);
+                bool for_log, uint max_frames);
 
 void
 print_buffer(file_t f, char *buf);
 
 #ifdef DEBUG
 void
-print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f);
+print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f,
+                        uint max_frames);
 #endif
 
 #ifdef USE_DRSYMS

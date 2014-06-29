@@ -347,7 +347,8 @@ open_close_pair_add(handle_callstack_info_t *hci/* callstack of creation */,
     packed_callstack_add_ref(hci->pcs);
     /* create pair->close.pcs and add it into handle_stack_table */
     syscall_to_loc(&pair->close.loc, sysnum, NULL);
-    packed_callstack_record(&pair->close.pcs, mc, &pair->close.loc);
+    packed_callstack_record(&pair->close.pcs, mc, &pair->close.loc,
+                            options.callstack_max_frames);
     pair->close.pcs = packed_callstack_add_to_table(&handle_stack_table,
                                                     pair->close.pcs
                                                     _IF_STATS(&handle_stack_count));
@@ -399,7 +400,7 @@ handle_callstack_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
         syscall_to_loc(&hci->loc, sysnum, NULL);
     else
         pc_to_loc(&hci->loc, pc);
-    packed_callstack_record(&hci->pcs, mc, &hci->loc);
+    packed_callstack_record(&hci->pcs, mc, &hci->loc, options.callstack_max_frames);
     hci->pcs = packed_callstack_add_to_table(&handle_stack_table, hci->pcs
                                              _IF_STATS(&handle_stack_count));
     return hci;

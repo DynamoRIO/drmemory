@@ -3869,8 +3869,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     }
     LOG(2, "MALLOC "PFX"-"PFX"\n", start, end);
     DOLOG(3, {
-        print_callstack_to_file(dr_get_current_drcontext(), mc, post_call,
-                                INVALID_FILE/*use pt->f*/);
+        client_print_callstack(dr_get_current_drcontext(), mc, post_call);
     });
 }
 
@@ -6706,8 +6705,8 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                "error in user_data passed to pre-alloc hook");
     });
     DOLOG(4, {
-        print_callstack_to_file(drcontext, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
-                                call_site, INVALID_FILE/*use pt->f*/);
+        client_print_callstack(drcontext, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
+                               call_site);
     });
 #if defined(WINDOWS) && defined (USE_DRSYMS)
     DODEBUG({
@@ -6869,7 +6868,7 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         func, get_alloc_routine_name(func),
         pt->in_heap_routine, pt->in_heap_adjusted);
     DOLOG(4, {
-        print_callstack_to_file(drcontext, mc, post_call, INVALID_FILE/*use pt->f*/);
+        client_print_callstack(drcontext, mc, post_call);
     });
     if (pt->in_heap_routine == pt->in_heap_adjusted) {
         pt->in_heap_adjusted = 0;

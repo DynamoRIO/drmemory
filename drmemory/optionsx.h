@@ -228,9 +228,15 @@ OPTION_CLIENT_BOOL(drmemscope, dump_at_unaddressable, false,
 #endif
 
 #ifdef TOOL_DR_MEMORY
-OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
+OPTION_CLIENT(client, callstack_max_frames, uint, 20, 0, 4096,
               "How many call stack frames to record",
-              "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
+              "How many call stack frames to record for each non-leak error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool if there are many error reports with large callstacks.  The separate option -malloc_max_frames controls the callstack size for leak reports.  This option must be larger than the largest suppression supplied to -suppress.")
+OPTION_CLIENT(client, malloc_max_frames, uint, 12, 0, 4096,
+              "How many call stack frames to record on each malloc",
+              "How many call stack frames to record on each malloc, for use in leak error reports as well as alloc/free mismatch error reports.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool.")
+OPTION_CLIENT(client, free_max_frames, uint, 6, 0, 4096,
+              "How many call stack frames to record on each free",
+              "If -delay_frees_stack is enabled, this controls how many call stack frames to record for each use-after-free informational report.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool.")
 #endif
 
 OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x1fff,
@@ -471,7 +477,7 @@ OPTION_CLIENT_SCOPE(drmemscope, delay_frees_maxsz, uint, 20000000, 0, UINT_MAX,
                     "Maximum size of frees to delay before committing.  The larger this number, the greater the likelihood that "TOOLNAME" will identify use-after-free errors.  However, the larger this number, the more memory will be used.  This value is separate for each set of allocation routines and each Windows Heap.")
 OPTION_CLIENT_BOOL(drmemscope, delay_frees_stack, false,
                    "Record callstacks on free to use when reporting use-after-free",
-                   "Record callstacks on free to use when reporting use-after-free or other errors that overlap with freed objects.  There is a slight performance hit incurred by this feature for malloc-intensive applications.")
+                   "Record callstacks on free to use when reporting use-after-free or other errors that overlap with freed objects.  There is a slight performance hit incurred by this feature for malloc-intensive applications.  The callstack size is controlled by -free_max_frames.")
 OPTION_CLIENT_BOOL(drmemscope, leaks_only, false,
                    "Check only for leaks and not memory access errors",
                    "Puts "TOOLNAME" into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")

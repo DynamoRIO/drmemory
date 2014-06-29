@@ -3065,9 +3065,10 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     uint i;
     app_pc modbase;
 #   define CRT_HEAP_INIT_ROUTINE "_heap_init"
+#   define CRT_HEAP_INIT_FRAMES 12
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     DOLOG(2, { report_callstack(drcontext, &mc); });
-    packed_callstack_record(&pcs, &mc, NULL/*skip replace_ frame*/);
+    packed_callstack_record(&pcs, &mc, NULL/*skip replace_ frame*/, CRT_HEAP_INIT_FRAMES);
     packed_callstack_to_symbolized(pcs, &scs);
     /* Look for 2 frames of ntdll (trying to rule out qsort or
      * other callback) calling entry point of dll, some other

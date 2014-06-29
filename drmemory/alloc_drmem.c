@@ -396,9 +396,13 @@ client_malloc_data_free(void *data)
     shared_callstack_free(pcs);
 }
 
+/* Be sure to pass the same max_frames for all callstacks that we want
+ * a comparison to.  Currently we use a separate one for malloc vs
+ * free, but we expect them to never match anyway.
+ */
 static packed_callstack_t *
 get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
-                     app_pc post_call)
+                     app_pc post_call, uint max_frames)
 {
     /* XXX i#75: when the app has a ton of mallocs that are quickly freed,
      * we spend a lot of time building and tearing down callstacks
@@ -416,7 +420,7 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
     else {
         app_loc_t loc;
         pc_to_loc(&loc, post_call);
-        packed_callstack_record(&pcs, mc, &loc);
+        packed_callstack_record(&pcs, mc, &loc, max_frames);
         /* our malloc and free callstacks use post-call as the top frame when wrapping */
         if (!options.replace_malloc)
             packed_callstack_first_frame_retaddr(pcs);
@@ -447,7 +451,8 @@ client_add_malloc_pre(malloc_info_t *mal, dr_mcontext_t *mc, app_pc post_call)
     if (!options.count_leaks && !options.track_origins_unaddr)
         return NULL;
     return (void *)
-        get_shared_callstack((packed_callstack_t *)mal->client_data, mc, post_call);
+        get_shared_callstack((packed_callstack_t *)mal->client_data, mc, post_call,
+                             options.malloc_max_frames);
 }
 
 void
@@ -905,7 +910,7 @@ client_handle_free(malloc_info_t *mal, byte *tofree, dr_mcontext_t *mc,
         info->delay_free_list[idx].has_redzone = mal->has_redzone;
         if (options.delay_frees_stack) {
             info->delay_free_list[idx].pcs =
-                get_shared_callstack(NULL, mc, free_routine);
+                get_shared_callstack(NULL, mc, free_routine, options.free_max_frames);
         } else
             info->delay_free_list[idx].pcs = NULL;
 
@@ -951,7 +956,8 @@ client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_c
     shared_callstack_free(pcs);
     /* replace malloc callstack with free callstack */
     if (options.delay_frees_stack) {
-        return (void *) get_shared_callstack(NULL, mc, post_call);
+        return (void *)
+            get_shared_callstack(NULL, mc, post_call, options.free_max_frames);
     } else {
         /* XXX: could keep the malloc callstack and report that, if labeled properly */
         return NULL;
@@ -1324,6 +1330,15 @@ client_write_memory(byte *start, size_t size)
     if (options.shadowing && options.check_uninitialized)
         shadow_set_range(start, start + size, SHADOW_DEFINED);
 }
+
+#ifdef DEBUG
+void
+client_print_callstack(void *drcontext, dr_mcontext_t *mc, app_pc pc)
+{
+    print_callstack_to_file(drcontext, mc, pc, INVALID_FILE/*use pt->f*/,
+                            options.callstack_max_frames);
+}
+#endif
 
 /***************************************************************************
  * SIGNALS AND SYSTEM CALLS

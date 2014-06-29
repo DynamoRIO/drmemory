@@ -764,7 +764,7 @@ client_add_malloc_pre(malloc_info_t *info, dr_mcontext_t *mc, app_pc post_call)
         packed_callstack_t *pcs;
         app_loc_t loc;
         pc_to_loc(&loc, post_call);
-        packed_callstack_record(&pcs, mc, &loc);
+        packed_callstack_record(&pcs, mc, &loc, options.callstack_max_frames);
 
 #if defined(USE_MD5) || defined(CHECK_WITH_MD5)
         packed_callstack_md5(pcs, md5);
@@ -1086,6 +1086,14 @@ void
 client_write_memory(byte *start, size_t size)
 {
 }
+
+#ifdef DEBUG
+void
+client_print_callstack(void *drcontext, dr_mcontext_t *mc, app_pc pc)
+{
+    print_callstack_to_file(drcontext, mc, pc, f_global, options.callstack_max_frames);
+}
+#endif
 
 void
 client_pre_syscall(void *drcontext, int sysnum)
@@ -2251,7 +2259,7 @@ dr_init(client_id_t client_id)
 
     snapshot_init();
 
-    callstack_ops.max_frames = options.callstack_max_frames;
+    callstack_ops.global_max_frames = options.callstack_max_frames;
     callstack_ops.stack_swap_threshold = 0x10000;
     /* default flags: but if we have apps w/ DGC we may
      * want to expose some flags as options

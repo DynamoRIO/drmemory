@@ -755,14 +755,11 @@ if (TOOL_DR_MEMORY)
       OFF "" 0)
     newtest(syscalls_win syscalls_win.cpp)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
-    # FIXME i#672: some handle is created with deep call stack, so we increase
-    # the max frames for suppression. In long term, we should implement
-    # i#672, i.e. separate max frames per error type, to solve this problem.
     newtest_ex(handle handle.cpp ""
-      "-light;-check_handle_leaks;-callstack_max_frames;100;-verify_sysnums"
+      "-light;-check_handle_leaks;-verify_sysnums"
       "" OFF "" 0)
     newtest_nobuild(handle_only handle ""
-      "-handle_leaks_only;-callstack_max_frames;100" "" OFF "handle_only")
+      "-handle_leaks_only" "" OFF "handle_only")
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
     newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" 0)
   endif (WIN32)
@@ -906,9 +903,8 @@ else (NOT X64)
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
     "" OFF "track_origins" 0)
   if (WIN32)
-    # FIXME i#672: see earlier comment on # callstack frames
     newtest_ex(handle handle.cpp ""
-      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0" ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blacklist_frames;0" ""
       OFF "" 0)
   endif (WIN32)
 endif (NOT X64)

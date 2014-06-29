@@ -1564,7 +1564,7 @@ report_init(void)
 #endif
 
     /* must be BEFORE read_suppression_file (PR 474542) */
-    callstack_ops.max_frames = options.callstack_max_frames;
+    callstack_ops.global_max_frames = options.callstack_max_frames;
     /* I used to use options.stack_swap_threshold but that
      * was decreased for PR 525807 and anything smaller than
      * ~0x20000 leads to bad callstacks on gcc b/c of a huge
@@ -2156,6 +2156,8 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
         reg_t save_xbp = mc->xbp;
         bool zeroed_xbp = false;
         const char *modpath = NULL;
+        uint max_frames = (type_is_leak(type) ? options.malloc_max_frames :
+                           options.callstack_max_frames);
         if (options.callstack_use_top_fp_selectively && HAVE_STALE_RETADDRS()) {
             /* We need the module of the top frame for checks below */
             if (loc->type == APP_LOC_PC) {
@@ -2205,7 +2207,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                 mc->xbp = 0;
             }
         }
-        packed_callstack_record(&err->pcs, mc, loc);
+        packed_callstack_record(&err->pcs, mc, loc, max_frames);
         if (zeroed_xbp) {
             mc->xbp = save_xbp;
             /* i#1049: scan may not have been far enough so re-try w/ ebp */
@@ -2213,7 +2215,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                 IF_DEBUG(uint ref = )
                     packed_callstack_free(err->pcs);
                 ASSERT(ref == 0, "invalid ref count");
-                packed_callstack_record(&err->pcs, mc, loc);
+                packed_callstack_record(&err->pcs, mc, loc, max_frames);
             }
         }
     } else {
@@ -3456,7 +3458,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%s "PFX"-"PFX"\n", routine, start, end);
         print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/,
-                        NULL, 0, true);
+                        NULL, 0, true, options.callstack_max_frames);
         report_error_from_buffer(LOGFILE_GET(drcontext), pt->errbuf, false);
     });
 }
@@ -3483,7 +3485,8 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
         BUFPRINT(buf, bufsz, sofar, len,
                  "%s heap region "PFX"-"PFX"\n",
                  add ? "adding" : "removing", start, end);
-        print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0, true);
+        print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0, true,
+                        options.callstack_max_frames);
         report_error_from_buffer(f_global, buf, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
@@ -3499,7 +3502,8 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
 void
 report_callstack(void *drcontext, dr_mcontext_t *mc)
 {
-    print_callstack_to_file(drcontext, mc, mc->xip, INVALID_FILE/*use pt->f*/);
+    print_callstack_to_file(drcontext, mc, mc->xip, INVALID_FILE/*use pt->f*/,
+                            options.callstack_max_frames);
 }
 #endif /* DEBUG */
 
@@ -3529,7 +3533,7 @@ report_child_thread(void *drcontext, thread_id_t child)
             print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, false);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
-                            NULL, 0, false);
+                            NULL, 0, false, options.callstack_max_frames);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_buffer(LOGFILE_GET(drcontext), pt->errbuf);
         } else {
@@ -3537,7 +3541,7 @@ report_child_thread(void *drcontext, thread_id_t child)
             /* XXX DRi#640: despite DRi#442, pc is no good here: points at wow64
              * do-syscall, so we pass NULL for app_loc_t and skip top frame
              */
-            packed_callstack_record(&pcs, &mc, NULL);
+            packed_callstack_record(&pcs, &mc, NULL, options.callstack_max_frames);
             dr_mutex_lock(thread_table_lock);
             hashtable_add(&thread_table, (void *)(ptr_int_t)child, (void *)pcs);
             dr_mutex_unlock(thread_table_lock);

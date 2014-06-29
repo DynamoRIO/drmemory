@@ -61,6 +61,11 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.7.0 include:
+ - Changed details of the callstack maximum frame options.
+   Added two new options: -malloc_max_frames, used for leak reports (and
+   mismatch aux info), and -free_max_frames, used for -delay_frees_stack.
+   Changed the default -callstack_max_frames to 20.  -malloc_max_frames
+   defaults to the original 12, and -free_max_frames is at 6.
  - Added a new option -check_uninit_blacklist to reduce overhead on modules
    where no uninitialized read error reporting is desired.
    Dr. Memory automatically adds to this list when it sees a whole-module

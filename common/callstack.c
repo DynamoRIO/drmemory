@@ -71,7 +71,7 @@ typedef struct _fpscan_cache_entry {
     app_pc retaddr;
 } fpscan_cache_entry;
 
-/* XXX: perhaps this should be based on ops.max_frames, though if someone
+/* XXX: perhaps this should be based on the max frames, though if someone
  * asks for a ton of frames and optimizes his app with FPO he can't expect
  * great performance.
  */
@@ -311,7 +311,7 @@ max_callstack_size(void)
     max_addr_sym_len += 1/*' '*/ + MAX_SYMBOL_LEN + 1/*\n*/ +
         strlen(LINE_PREFIX) + MAX_FILE_LINE_LEN;
 #endif
-    return ((ops.max_frames+1)/*for the ... line: over-estimate*/
+    return ((ops.global_max_frames+1)/*for the ... line: over-estimate*/
             *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
 
@@ -1481,7 +1481,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
-                bool for_log)
+                bool for_log, uint max_frames)
 {
     void *drcontext = dr_get_current_drcontext();
     tls_callstack_t *pt = (tls_callstack_t *)
@@ -1501,6 +1501,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     bool scanned = false;
     bool last_frame = false;
     byte *tos = (mc == NULL ? NULL : (byte *) mc->xsp);
+
+    ASSERT(max_frames <= ops.global_max_frames, "max_frames > global_max_frames");
 
     if (mc == NULL)
         goto print_callstack_done;
@@ -1657,7 +1659,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         }
         first_iter = false;
         /* pcs->num_frames could be larger if frames were printed before this routine */
-        if (num >= ops.max_frames || (pcs != NULL && pcs->num_frames >= ops.max_frames)) {
+        if (num >= max_frames || (pcs != NULL && pcs->num_frames >= max_frames)) {
             if (buf != NULL)
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"..."NL);
             LOG(4, "truncating callstack: hit max frames %d %d\n",
@@ -1810,7 +1812,8 @@ print_buffer(file_t f, char *buf)
  * else prints to the f passed in.
  */
 void
-print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
+print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f,
+                        uint max_frames)
 {
     size_t sofar = 0;
     ssize_t len;
@@ -1822,10 +1825,12 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
         return;
     }
 
+    ASSERT(max_frames <= ops.global_max_frames, "max_frames > global_max_frames");
+
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "# 0 ");
     print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL, true/*for log*/);
     print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
-                    true/*incl fp*/, NULL, 1, true);
+                    true/*incl fp*/, NULL, 1, true, max_frames);
     print_buffer(f == INVALID_FILE ? LOGFILE_GET(drcontext) : f, pt->errbuf);
 }
 #endif /* DEBUG */
@@ -1835,8 +1840,7 @@ callstack_next_retaddr(dr_mcontext_t *mc)
 {
     app_pc res = NULL;
     packed_callstack_t *pcs;
-    /* XXX: pass in a max # frames, as we only need 1 */
-    packed_callstack_record(&pcs, mc, NULL);
+    packed_callstack_record(&pcs, mc, NULL, 1);
     res = PCS_FRAME_LOC(pcs, 0).addr;
     packed_callstack_destroy(pcs);
     return res;
@@ -1851,24 +1855,25 @@ callstack_next_retaddr(dr_mcontext_t *mc)
  */
 void
 packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
-                        app_loc_t *loc)
+                        app_loc_t *loc, uint max_frames)
 {
     packed_callstack_t *pcs = (packed_callstack_t *)
         global_alloc(sizeof(*pcs), HEAPSTAT_CALLSTACK);
     size_t sz_out;
     int num_frames_printed = 0;
+    ASSERT(max_frames <= ops.global_max_frames, "max_frames > global_max_frames");
     ASSERT(pcs_out != NULL, "invalid args");
     memset(pcs, 0, sizeof(*pcs));
     pcs->refcount = 1;
     if (modname_array_end < MAX_MODNAMES_STORED) {
         pcs->is_packed = true;
         pcs->frames.packed = (packed_frame_t *)
-            global_alloc(sizeof(*pcs->frames.packed) * ops.max_frames,
+            global_alloc(sizeof(*pcs->frames.packed) * max_frames,
                          HEAPSTAT_CALLSTACK);
     } else {
         pcs->is_packed = false;
         pcs->frames.full = (full_frame_t *)
-            global_alloc(sizeof(*pcs->frames.full) * ops.max_frames, HEAPSTAT_CALLSTACK);
+            global_alloc(sizeof(*pcs->frames.full) * max_frames, HEAPSTAT_CALLSTACK);
     }
     if (loc != NULL) {
         if (loc->type == APP_LOC_SYSCALL) {
@@ -1897,7 +1902,8 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         }
         num_frames_printed = 1;
     }
-    print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed, false);
+    print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed, false,
+                    max_frames);
     if (pcs->is_packed) {
         packed_frame_t *frames_out;
         sz_out = sizeof(*pcs->frames.packed) * pcs->num_frames;
@@ -1907,7 +1913,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             frames_out = (packed_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
             memcpy(frames_out, pcs->frames.packed, sz_out);
         }
-        global_free(pcs->frames.packed, sizeof(*pcs->frames.packed) * ops.max_frames,
+        global_free(pcs->frames.packed, sizeof(*pcs->frames.packed) * max_frames,
                     HEAPSTAT_CALLSTACK);
         pcs->frames.packed = frames_out;
     } else {
@@ -1919,7 +1925,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             frames_out = (full_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
             memcpy(frames_out, pcs->frames.full, sz_out);
         }
-        global_free(pcs->frames.full, sizeof(*pcs->frames.full) * ops.max_frames,
+        global_free(pcs->frames.full, sizeof(*pcs->frames.full) * max_frames,
                     HEAPSTAT_CALLSTACK);
         pcs->frames.full = frames_out;
     }
