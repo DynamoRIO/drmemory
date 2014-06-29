@@ -197,10 +197,11 @@ typedef struct _chunk_header_t {
              */
             ushort prev_size_shr;
 #ifdef X64
-            /* compiler will add anyway: just making explicit.  we need the header
+            /* Compiler will add anyway: just making explicit.  we need the header
              * size to be aligned to 8 so we can't pack.  for alloc_ops.external_headers
              * we eat this overhead to provide runtime flexibility w/ the same
              * data struct as we don't need it there.
+             * Update: actually we need to align to 16.
              */
             uint pad;
 #endif
@@ -4162,7 +4163,8 @@ alloc_replace_init(void)
         ASSERT(false, "drmgr registration failed");
 
     if (alloc_ops.shared_redzones) {
-        header_size = sizeof(chunk_header_t);
+        /* For x64 we have to add 8 extra bytes to align this */
+        header_size = ALIGN_FORWARD(sizeof(chunk_header_t), CHUNK_ALIGNMENT);
     } else {
         /* See comment up top: we pay in extra space for simplicity of keeping
          * the free list next pointer out of the redzone.
