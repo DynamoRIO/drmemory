@@ -2330,8 +2330,25 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                                        idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
                     STATS_INC(symbol_search_cache_hits);
                     edata.processed[i] = true;
-                    if (modoffs != 0)
+                    if (modoffs != 0) {
+                        byte buf;
+                        /* i#1456: we may have a corrupted symcache, so we check if
+                         * mod->start + modoffs is accessible to avoid crash
+                         * later in decoding.
+                         */
+                        if (!safe_read(mod->start + modoffs, sizeof(buf), &buf)) {
+                            const char *modname = dr_module_preferred_name(mod);
+                            NOTIFY("SYMCACHE ERROR: module %s (base @"PFX")"
+                                   " with entry %s (offset @"PFX")"
+                                   " is not accessible!" NL,
+                                   modname == NULL ? "unknown module" : modname,
+                                   mod->start, possible[i].name, modoffs);
+                            all_processed = false;
+                            edata.processed[i] = false;
+                            break;
+                        }
                         add_to_alloc_set(&edata, mod->start + modoffs, i);
+                    }
                 }
                 if (all_processed && !edata.processed[i])
                     all_processed = false;
