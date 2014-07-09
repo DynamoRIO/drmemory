@@ -93,6 +93,13 @@ typedef struct _alloc_options_t {
     /* Whether to query and update drsymcache for all symbol lookups */
     bool use_symcache;
 
+    /* i#1565: we keep nosy allocs (where Rtl code delves into heap headers
+     * and xors in cookies and derefs the result, crashing if we use our headers
+     * or have a redzone there) native by default.  Turning this option on
+     * disables that, and will lead to crashes on x64.
+     */
+    bool replace_nosy_allocs;
+
     /* Add new options here */
 } alloc_options_t;
 

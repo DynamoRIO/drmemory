@@ -906,5 +906,7 @@ else (NOT X64)
     newtest_ex(handle handle.cpp ""
       "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blacklist_frames;0" ""
       OFF "" 0)
+    newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blacklist_frames;0" "" OFF
+      "procterm.addronly" 0)
   endif (WIN32)
 endif (NOT X64)

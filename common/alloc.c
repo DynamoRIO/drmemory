@@ -173,7 +173,7 @@ malloc_wrap_init(void);
  */
 
 /* all our data is callback-private */
-int cls_idx_alloc = -1;
+static int cls_idx_alloc = -1;
 
 #define MAX_HEAP_NESTING 12
 

@@ -361,6 +361,7 @@ static uint num_splits;
 static uint num_coalesces;
 static uint num_dealloc;
 static uint dbgcrt_mismatch;
+static uint allocs_left_native;
 #endif
 
 #ifdef DEBUG
@@ -3204,6 +3205,210 @@ replace_RtlDestroyHeap(HANDLE heap)
     return res;
 }
 
+# ifdef X64
+/***************************************************************************
+ * i#1565: 64-bit win7/win8 RtlGetThreadPreferredUILanguages and several private
+ * helper routines it calls (LdrpMergeLangFallbackLists and
+ * RtlpMuiRegAddMultiSzToLangFallbackList, at the least) perform
+ * abstraction-violating tests on precise heap block header fields which of course
+ * our replacement headers do not match.  I'm calling this being "nosy".  Worse, they
+ * allocate using RtlAllocateHeap yet free using RtlpFreeHeap.  In some cases they
+ * seem to not even use the heap block they allocate for anything but these checks.
+ * The checks are very similar for each routine, with particular patterns of checks
+ * involving prefetch fields and other things we could pattern-match (limiting the
+ * checks to only when inside RtlGetThreadPreferredUILanguages for accuracy and
+ * perf), but we would still have to identify RtlpFreeHeap if we want to replace
+ * these allocs.  Thus for now we go with the simplest solution we have that works:
+ * we let all allocs inside RtlGetThreadPreferredUILanguages that pass
+ * HEAP_ZERO_MEMORY go native.
+ *
+ * XXX: the current solution works for pattern mode but we might hit false positives
+ * in shadow mode on accesses to these native allocs.  We'll have to revisit at that
+ * point and perhaps try to do what's mentioned above: pattern-match the heap header
+ * accesses (in shadow mode we can wait for the unaddr reports), and locate the call
+ * to RtlpFreeHeap.
+ */
+
+/* If we add more fields, we should move this up top-level */
+static int cls_idx_replace = -1;
+
+typedef struct _cls_replace_t {
+    uint in_nosy_heap_region; /* are we inside RtlGetThreadPreferredUILanguages */
+} cls_replace_t;
+
+typedef NTSYSAPI PVOID (NTAPI *RtlAllocateHeap_t)(HANDLE, ULONG, SIZE_T);
+static RtlAllocateHeap_t native_RtlAllocateHeap;
+
+static app_pc addr_RtlGetThreadPreferredUILanguages;
+static app_pc addr_RtlFreeHeap;
+
+static app_pc ntdll_base;
+static app_pc ntdll_end;
+
+static void
+replace_context_init(void *drcontext, bool new_depth)
+{
+    cls_replace_t *data;
+    if (new_depth) {
+        data = (cls_replace_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_WRAP);
+        drmgr_set_cls_field(drcontext, cls_idx_replace, data);
+    } else
+        data = (cls_replace_t *) drmgr_get_cls_field(drcontext, cls_idx_replace);
+    memset(data, 0, sizeof(*data));
+}
+
+static void
+replace_context_exit(void *drcontext, bool thread_exit)
+{
+    if (thread_exit) {
+        cls_replace_t *data = (cls_replace_t *)
+            drmgr_get_cls_field(drcontext, cls_idx_replace);
+        thread_free(drcontext, data, sizeof(*data), HEAPSTAT_WRAP);
+    }
+    /* else, nothing to do: we leave the struct for re-use on next callback */
+}
+
+static void
+replace_start_nosy_sequence(void *wrapcxt, OUT void **user_data)
+{
+    cls_replace_t *data = (cls_replace_t *)
+        drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_replace);
+    data->in_nosy_heap_region++;
+}
+
+static void
+replace_stop_nosy_sequence(void *wrapcxt, OUT void **user_data)
+{
+    cls_replace_t *data = (cls_replace_t *)
+        drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_replace);
+    ASSERT(data->in_nosy_heap_region > 0, "missed in_native stop");
+    if (data->in_nosy_heap_region > 0) /* try to recover */
+        data->in_nosy_heap_region--;
+}
+
+static void
+replace_nosy_init(void)
+{
+    module_data_t *ntdll = dr_lookup_module_by_name("ntdll.dll");
+    ASSERT(ntdll != NULL, "cannot find ntdll.dll");
+    ntdll_base = ntdll->start;
+    ASSERT(ntdll_base != NULL, "internal error finding ntdll.dll base");
+    ntdll_end = ntdll->end;
+
+    native_RtlAllocateHeap = (RtlAllocateHeap_t)
+        dr_get_proc_address(ntdll->handle, "RtlAllocateHeap");
+    ASSERT(native_RtlAllocateHeap != NULL, "internal error finding RtlAllocateHeap");
+
+    addr_RtlGetThreadPreferredUILanguages = (app_pc)
+        dr_get_proc_address(ntdll->handle, "RtlGetThreadPreferredUILanguages");
+    ASSERT(addr_RtlGetThreadPreferredUILanguages != NULL ||
+           get_windows_version() < DR_WINDOWS_VERSION_VISTA,
+           "failed to find RtlGetThreadPreferredUILanguages");
+    if (addr_RtlGetThreadPreferredUILanguages != NULL) {
+        if (!drwrap_wrap(addr_RtlGetThreadPreferredUILanguages,
+                         replace_start_nosy_sequence, replace_stop_nosy_sequence))
+            ASSERT(false, "failed to wrap");
+    }
+    addr_RtlFreeHeap = (app_pc) dr_get_proc_address(ntdll->handle, "RtlFreeHeap");
+    ASSERT(addr_RtlFreeHeap != NULL, "failed to find RtlFreeHeap");
+    dr_free_module_data(ntdll);
+
+    cls_idx_replace =
+        drmgr_register_cls_field(replace_context_init, replace_context_exit);
+    ASSERT(cls_idx_replace > -1, "unable to reserve CLS field");
+}
+
+static void
+replace_nosy_exit(void)
+{
+    if (addr_RtlGetThreadPreferredUILanguages != NULL) {
+        if (!drwrap_unwrap(addr_RtlGetThreadPreferredUILanguages,
+                           replace_start_nosy_sequence, replace_stop_nosy_sequence))
+            ASSERT(false, "failed to unwrap");
+    }
+    drmgr_unregister_cls_field(replace_context_init, replace_context_exit,
+                               cls_idx_replace);
+}
+
+/* Returns whether an RtlAllocateHeap call should go native */
+static bool
+replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
+                     ULONG flags, SIZE_T size)
+{
+    /* i#1565: ntdll!RtlpMuiRegAddMultiSzToLangFallbackList on 64-bit win7 and
+     * win8 allocates a heap object and then performs quite a few sanity checks
+     * on it, directly reading the object's header as well as the header of
+     * PEB->ProcessHeap.  It xors in some cookies and de-references the result,
+     * ending up in a crash, so we have to do more than just ignore/suppress the
+     * unaddrs.  Plus, it frees it via RtlpFreeHeap.
+     */
+    cls_replace_t *data;
+    if (alloc_ops.replace_nosy_allocs)
+        return false;
+    if (get_windows_version() != DR_WINDOWS_VERSION_7 &&
+        get_windows_version() != DR_WINDOWS_VERSION_8)
+        return false;
+    if (heap != process_heap ||
+        /* every instance so far has this and only this flag set */
+        flags != HEAP_ZERO_MEMORY)
+        return false;
+    data = (cls_replace_t *) drmgr_get_cls_field(drcontext, cls_idx_replace);
+    if (data->in_nosy_heap_region > 0) {
+        /* We perform one more check: to rule out a regular alloc in
+         * RtlpMuiRegTryToAppendLanguageName (for which we then raise an invalid
+         * heap arg potential error) we decode forward and look for a call to
+         * RtlFreeHeap.  On Win7x64 that call is 195 bytes away.
+         * XXX: if we end up having even more regular allocs that we made native, we
+         * may want to put in a hashtable of native allocs so we can ignore them in
+         * replace_RtlFreeHeap.
+         */
+        bool found_normal_free = false;
+        instr_t inst;
+        app_pc pc, app_caller = callstack_next_retaddr(mc);
+#       define NOSY_MAX_DECODE 512
+        if (app_caller < ntdll_base || app_caller > ntdll_end) /* sanity check */
+            return false;
+        instr_init(drcontext, &inst);
+        DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+            for (pc = app_caller; pc < app_caller + NOSY_MAX_DECODE; ) {
+                pc = decode(drcontext, pc, &inst);
+                if (instr_valid(&inst) && instr_is_call(&inst)) {
+                    if (opnd_get_pc(instr_get_target(&inst)) == addr_RtlFreeHeap) {
+                        LOG(3, "%s: found call to RtlFreeHeap => not a native alloc\n",
+                            __FUNCTION__);
+                        DOLOG(3, {
+                            client_print_callstack(dr_get_current_drcontext(), mc,
+                                                   (app_pc)native_RtlAllocateHeap);
+                        });
+                        found_normal_free = true;
+                        break;
+                    }
+                }
+                instr_reset(drcontext, &inst);
+            }
+        }, { /* EXCEPT */
+            found_normal_free = false;
+        });
+        instr_free(drcontext, &inst);
+        if (!found_normal_free) {
+            LOG(3, "%s: inside RtlGetThreadPreferredUILanguages => native alloc\n",
+                __FUNCTION__);
+            DOLOG(3, {
+                client_print_callstack(dr_get_current_drcontext(), mc,
+                                       (app_pc)native_RtlAllocateHeap);
+            });
+            STATS_INC(allocs_left_native);
+            return true;
+        }
+    }
+    return false;
+}
+# endif /* X64 */
+
+/***************************************************************************
+ * Continue RtlHeap API replacement routines:
+ */
+
 static void
 handle_Rtl_alloc_failure(void *drcontext, arena_header_t *arena, ULONG flags)
 {
@@ -3234,6 +3439,15 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
         __FUNCTION__, heap, arena, flags, size);
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlAllocateHeap);
+# ifdef X64
+    else if (replace_leave_native(drcontext, &mc, heap, flags, size)) {
+        /* We can't directly invoke RtlAllocateHeap as DR's private loader
+         * will redirect it.
+         */
+        res = (*native_RtlAllocateHeap)(heap, flags, size);
+        LOG(2, "\tnative alloc => "PFX"\n",  res);
+    }
+# endif
     else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
             (arena, size,
@@ -4205,6 +4419,10 @@ alloc_replace_init(void)
 #ifdef WINDOWS
     if (alloc_ops.global_lock)
         global_lock = dr_recurlock_create();
+
+# ifdef X64
+    replace_nosy_init();
+# endif
 #endif
 
 #ifdef LINUX
@@ -4309,6 +4527,7 @@ alloc_replace_exit(void)
     LOG(1, "  coalesces:          %9d\n", num_coalesces);
     LOG(1, "  deallocs:           %9d\n", num_dealloc);
     LOG(1, "  dbgcrt mismatches:  %9d\n", dbgcrt_mismatch);
+    LOG(1, "  allocs left native: %9d\n", allocs_left_native);
 #endif
 
     alloc_iterate(free_user_data_at_exit, NULL, false/*free too*/);
@@ -4326,6 +4545,10 @@ alloc_replace_exit(void)
     hashtable_delete_with_stats(&pre_us_table, "pre_us");
 
 #ifdef WINDOWS
+# ifdef X64
+    replace_nosy_exit();
+# endif
+
     /* Free any pre-us heaps that are still around */
     for (i = 0; i < HASHTABLE_SIZE(crtheap_handle_table.table_bits); i++) {
         hash_entry_t *he, *next;

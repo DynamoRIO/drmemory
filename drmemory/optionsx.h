@@ -751,3 +751,8 @@ OPTION_CLIENT(internal, native_until_thread, uint, 0, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(internal, native_parent, false,
                    "Run this process natively, but follow into children.",
                    "Run natively the entire execution of the initial process, but configure child processes to execute normally.  This mode also watches for process termination and implements -soft_kills (unless termination is not done via standard system call wrapper).")
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(internal, replace_nosy_allocs, false,
+                   "Attempt to replace allocations whose headers are scrutinized.",
+                   "Some Rtl allocations are scrutinized and freed without going through interfaces, making it difficult for Dr. Memory to replace them.  If this option is off, Dr. Memory leaves such allocations as native allocations.  Its methodology may also leave some normal allocations as native.  Xref i#1565.")
+#endif

@@ -169,7 +169,7 @@ is_register_defined(void *drcontext, reg_id_t reg);
 void
 alloc_drmem_init(void)
 {
-    alloc_options_t alloc_ops;
+    alloc_options_t alloc_ops = {0,};
     alloc_ops.track_allocs = options.track_allocs;
     alloc_ops.track_heap = options.track_heap;
     alloc_ops.redzone_size = options.redzone_size;
@@ -207,6 +207,9 @@ alloc_drmem_init(void)
 #endif
     alloc_ops.global_lock = false; /* we don't need it => can't call malloc_lock() */
     alloc_ops.use_symcache = options.use_symcache;
+#ifdef WINDOWS
+    alloc_ops.replace_nosy_allocs = options.replace_nosy_allocs;
+#endif
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
