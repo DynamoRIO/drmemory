@@ -38,12 +38,14 @@ Error #14: HANDLE LEAK:
 Error #15: HANDLE LEAK:
 Error #16: HANDLE LEAK:
 Error #17: HANDLE LEAK:
+Error #18: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
 system call NtGdiCreateCompatibleBitmap
 system call NtGdiCreateCompatibleDC
 system call NtGdiCreateBitmap
+system call NtGdiDeleteClientObj
 system call NtCreateThreadEx
 system call NtCreateFile
 system call NtOpenFile

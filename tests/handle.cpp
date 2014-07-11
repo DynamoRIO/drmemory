@@ -46,11 +46,16 @@ test_gdi_handles(bool close)
     assert(mybmA != NULL);
     HBITMAP mybmB = CreateCompatibleBitmap(dupdc, 30, 30);
     assert(mybmB != NULL);
+    HDC emf_dc = CreateEnhMetaFile(mydc, NULL, NULL, NULL);
+    assert(emf_dc != NULL);
+    HENHMETAFILE hemf = CloseEnhMetaFile(emf_dc);
+    assert(hemf != NULL);
     if (close) {
         DeleteObject(mybmB);
         DeleteObject(mybmA);
         DeleteObject(mypen);
         DeleteDC(dupdc);
+        DeleteEnhMetaFile(hemf);
         ReleaseDC(NULL, mydc);
     }
 }
