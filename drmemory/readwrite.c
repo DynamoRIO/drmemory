@@ -2531,11 +2531,18 @@ check_and_not_test(void *drcontext, dr_mcontext_t *mc, instr_t *and, app_pc next
         if (!safe_decode(drcontext, pc, &inst, &pc) ||
             !instr_valid(&inst))
             break;
-        /* #1576: call should be ok to continue */
-        if (instr_is_cbr(&inst) || instr_is_ubr(&inst))
+        /* for case like: and %ecx 0x80; jecxz */
+        if (instr_is_cbr(&inst))
             break;
         if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst)))
             break;
+        if (/* report match on aflags written by other following instr */
+            TESTALL(EFLAGS_WRITE_6, instr_get_eflags(&inst)) ||
+            /* i#1576, i#1586: report match on non-cbr-cti */
+            instr_is_cti(&inst)) {
+            count = AND_NOT_TEST_INSTRS_TO_CHECK;
+            break;
+        }
         instr_reset(drcontext, &inst);
     }
     if (count == AND_NOT_TEST_INSTRS_TO_CHECK) {
