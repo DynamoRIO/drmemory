@@ -2398,6 +2398,17 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 add_to_alloc_set(&edata, pc, i);
         }
 # endif /* X64 */
+        if (possible == possible_cpp_routines &&
+            possible[i].type == HEAP_ROUTINE_DebugHeapDelete) {
+            /* We can only find this via regex: there's no point wasting time
+             * looking for the symbol with empty template "<>".
+             */
+            if (edata.processed != NULL)
+                edata.processed[i] = true;
+            if (alloc_ops.use_symcache)
+                drsymcache_add(mod, name, 0);
+            continue;
+        }
 #endif /* WINDOWS */
 #ifdef USE_DRSYMS
         if (is_operator_nothrow_routine(possible[i].type)) {
