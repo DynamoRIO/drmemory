@@ -185,7 +185,7 @@ symcache_get_filename(const char *modname, char *symfile, size_t symfile_count)
 /* If an entry already exists and is 0, replaces it; else adds a new
  * offset for that symbol.
  *
- * Caller must hold symcache_lock.
+ * If symtable is visible outside of this thread, the caller must hold symcache_lock.
  */
 static bool
 symcache_symbol_add(const char *modname, hashtable_t *symtable,
@@ -276,6 +276,8 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     char symfile[MAXIMUM_PATH];
     char symfile_tmp[MAXIMUM_PATH];
     int64 file_size;
+
+    ASSERT(dr_mutex_self_owns(symcache_lock), "missing symcache lock");
 
     /* if from file, we assume it's a waste of time to re-write file:
      * the version matched after all, unless we appended to it.
@@ -374,9 +376,13 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 
 #define MAX_SYMLEN 256
 
-/* Sets modcache->has_debug_info */
+/* Sets modcache->has_debug_info.
+ * No lock is needed as we assume the caller hasn't exposed modcache outside this
+ * thread yet.
+ */
 static bool
-symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t *modcache)
+symcache_read_symfile(const module_data_t *mod, const char *modname,
+                      mod_cache_t *modcache)
 {
     hashtable_t *symtable = &modcache->table;
     bool res = false;
@@ -543,6 +549,15 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         }
         if (comma != NULL && symlen < MAX_SYMLEN && symbol[0] != '\0' &&
             dr_sscanf(comma, ",0x%x", (uint *)&offs) == 1) {
+#ifdef WINDOWS
+            /* Guard against corrupted files that cause DrMem to crash (i#1465) */
+            if (offs >= modcache->module_internal_size) {
+                /* This one we want to know about */
+                NOTIFY("SYMCACHE ERROR: %s file has too-large entry "PIFX" for %s"NL,
+                       modname, offs, symbol);
+                goto symcache_read_symfile_done;
+            }
+#endif
             symcache_symbol_add(modname, symtable, symbol, offs);
         } else {
             WARN("WARNING: malformed symbol cache line \"%.*s\"\n",
@@ -733,7 +748,7 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     modcache = (mod_cache_t *) global_alloc(sizeof(*modcache), HEAPSTAT_HASHTABLE);
     memset(modcache, 0, sizeof(*modcache));
     hashtable_init_ex(&modcache->table, SYMCACHE_MODULE_TABLE_HASH_BITS,
-                      HASH_STRING, true/*strdup*/, true/*synch*/,
+                      HASH_STRING, true/*strdup*/, false/*!synch: using global synch*/,
                       symcache_free_list, NULL, NULL);
 
     /* store consistency fields */
