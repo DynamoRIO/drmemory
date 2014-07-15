@@ -183,6 +183,26 @@ search_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
     return false; /* stop iterating: we want first match */
 }
 
+# ifdef WINDOWS
+/* See i#1465 note below: we ensure SymFromName (answer passed in data) matches
+ * SymSearch (this callback).
+ */
+static bool
+verify_lookup_cb(drsym_info_t *info, drsym_error_t status, void *data)
+{
+    size_t *ans = (size_t *) data;
+    LOG(3, "verify lookup cb: %s "PIFX" vs "PIFX"\n", info->name, *ans, info->start_offs);
+    ASSERT(ans != NULL, "invalid param");
+    if (*ans != info->start_offs) {
+        NOTIFY("DBGHELP ERROR: mismatch for %s between SymFromName ("PIFX
+               ") and SymSearch ("PIFX")!"NL,
+               info->name, *ans, info->start_offs);
+        ASSERT(false, "mismatch between SymFromName and SymSearch");
+    }
+    return false; /* stop iterating: we want first match */
+}
+# endif
+
 typedef struct _search_regex_t {
     const char *regex;
     drsym_enumerate_ex_cb orig_cb;
@@ -280,6 +300,20 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         /* A SymSearch full search is slower than SymFromName */
         symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs,
                                      DRSYM_DEMANGLE);
+# ifdef WINDOWS
+        /* i#1465: our theory to explain bogus symbols is that dbghelp is
+         * giving them to us, so we live w/ the cost of a sanity check here
+         * until we fix that bug.  Only a few queries come here: only one per
+         * typical module (most go to SymSearch).
+         */
+        if (symres == DRSYM_SUCCESS) {
+            drsym_error_t search_res =
+                drsym_search_symbols_ex(mod->full_path, sym_with_mod,
+                                        DRSYM_FULL_SEARCH | DRSYM_DEFAULT_FLAGS,
+                                        verify_lookup_cb, sizeof(drsym_info_t), &modoffs);
+            ASSERT(search_res == DRSYM_SUCCESS, "Search failed but FromName worked");
+        }
+# endif
     } else {
         /* drsym_search_symbols() is faster than either drsym_lookup_symbol() or
          * drsym_enumerate_symbols() (i#313)
