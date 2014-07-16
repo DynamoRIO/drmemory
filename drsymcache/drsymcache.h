@@ -183,24 +183,37 @@ drsymcache_add(const module_data_t *mod, const char *symbol, size_t offs);
 DR_EXPORT
 /**
  * Queries the symbol cache for \p mod.  If \p symbol is not present in
- * the cache, returns DRMF_ERROR_NOT_FOUND.
+ * the cache, returns DRMF_ERROR_NOT_FOUND.  If \p symbol is present,
+ * allocates and returns an array of all entries found.  The size of
+ * the array is returned in \p num.  The array must be freed by
+ * calling drsymcache_free_lookup().
  *
  * @param[in]  mod    The module being queried.
  * @param[in]  symbol The name of the symbol being queried.
- * @param[in]  idx    The ordinal for which offset to return.  Each symbol can
- *     have multiple values in the symbol cache.  The values are ordered, and
- *     the idx-th value is returned.
- * @param[out] offs   The offset from the module base of the location of the
- *     idx-th instance of the symbol.  If the symbol is not present in the
- *     module, offs is 0.
- * @param[out] num    The total count of instances of symbol within the module.
+ * @param[out] offs_array  Returns a pointer to an array of offsets from the module
+ *     base containing the locations of each instance of the symbol.  If the
+ *     symbol is not present in the module, there will only be one entry with
+ *     offset of 0.
+ * @param[out] offs_single  Since many symbols have only one entry, to avoid
+ *     the overhead of allocating memory the caller must pass in a single
+ *     slot that offs_array will point to if num_entries is just 1.
+ * @param[out] num_entries  The total count of instances of symbol within the module.
  *
  * \return success code.
  */
 drmf_status_t
-drsymcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
-                  OUT size_t *offs, OUT uint *num);
+drsymcache_lookup(const module_data_t *mod, const char *symbol,
+                  OUT size_t **offs_array, OUT uint *num_entries,
+                  OUT size_t *offs_single);
 
+DR_EXPORT
+/**
+ * Frees the array of offsets allocated by drsymcache_lookup().
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsymcache_free_lookup(size_t *offs, uint num);
 
 /*@}*/ /* end doxygen group */
 

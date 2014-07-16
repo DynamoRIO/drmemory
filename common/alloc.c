@@ -2312,7 +2312,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         /* First we check the symbol cache */
         if (alloc_ops.use_symcache &&
             drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res) {
-            size_t modoffs;
+            size_t *modoffs, single;
             uint count;
             uint idx;
             for (i = 0; i < num_possible; i++) {
@@ -2324,14 +2324,15 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                  * names.  We use special names for the overloads we want
                  * to distinguish (currently, nothrow).
                  */
-                for (idx = 0, count = 1;
-                     idx < count &&
-                     drsymcache_lookup(mod, possible[i].name,
-                                       idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
+                if (drsymcache_lookup(mod, possible[i].name,
+                                      &modoffs, &count, &single) == DRMF_SUCCESS) {
                     STATS_INC(symbol_search_cache_hits);
-                    edata.processed[i] = true;
-                    if (modoffs != 0)
-                        add_to_alloc_set(&edata, mod->start + modoffs, i);
+                    for (idx = 0; idx < count; idx++) {
+                        edata.processed[i] = true;
+                        if (modoffs[idx] != 0)
+                            add_to_alloc_set(&edata, mod->start + modoffs[idx], i);
+                    }
+                    drsymcache_free_lookup(modoffs, count);
                 }
                 if (all_processed && !edata.processed[i])
                     all_processed = false;
@@ -3164,21 +3165,22 @@ alloc_load_symcache_postcall(const module_data_t *info)
     ASSERT(info != NULL, "invalid args");
     ASSERT(dr_mutex_self_owns(post_call_lock), "caller must hold lock");
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
-        size_t modoffs;
+        size_t *modoffs, single;
         uint count;
         uint idx;
         IF_DEBUG(bool res;)
         ASSERT(drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res,
                "must have symcache");
-        for (idx = 0, count = 1;
-             idx < count &&
-             drsymcache_lookup(info, POST_CALL_SYMCACHE_NAME,
-                               idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
-            /* XXX: drwrap_mark_as_post_call is going to go grab yet another
-             * lock.  Should we expose drwrap's locks?
-             */
-            if (modoffs != 0)
-                drwrap_mark_as_post_call(info->start + modoffs);
+        if (drsymcache_lookup(info, POST_CALL_SYMCACHE_NAME,
+                              &modoffs, &count, &single) == DRMF_SUCCESS) {
+            for (idx = 0; idx < count; idx++) {
+                /* XXX: drwrap_mark_as_post_call is going to go grab yet another
+                 * lock.  Should we expose drwrap's locks?
+                 */
+                if (modoffs[idx] != 0)
+                    drwrap_mark_as_post_call(info->start + modoffs[idx]);
+            }
+            drsymcache_free_lookup(modoffs, count);
         }
     }
 }

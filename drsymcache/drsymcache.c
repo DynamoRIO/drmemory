@@ -160,11 +160,12 @@ module_has_symbols(const module_data_t *mod)
     return (drsym_module_has_symbols(mod->full_path) == DRSYM_SUCCESS);
 }
 
+/* caller must hold symcache_lock, even at exit time */
 static void
 symcache_free_entry(void *v)
 {
-    /* caller holds symcache_lock, or exit time */
     mod_cache_t *modcache = (mod_cache_t *) v;
+    ASSERT(dr_mutex_self_owns(symcache_lock), "missing symcache lock");
     if (modcache != NULL) {
         hashtable_delete(&modcache->table);
         if (modcache->modname != NULL) {
@@ -906,19 +907,10 @@ drsymcache_add(const module_data_t *mod, const char *symbol, size_t offs)
     return DRMF_SUCCESS;
 }
 
-/* Returns true if the symbol is in the cache, which contains positive and
- * negative entries.  offs==0 indicates the symbol does not exist in the module.
- */
-/* Some symbols have multiple offsets.  The majority have just one.
- * Rather than allocate an array and have the caller free it, or use
- * callbacks or an iterator across which we hold our lock, we have the
- * caller pass us an index as a stateless iterator.  The table is
- * unlikely to be changed in between so we avoid complexity there.
- */
 DR_EXPORT
 drmf_status_t
-drsymcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
-                  size_t *offs OUT, uint *num OUT)
+drsymcache_lookup(const module_data_t *mod, const char *symbol,
+                  size_t **offs_array OUT, uint *num_entries OUT, size_t *offs_single OUT)
 {
     offset_list_t *olist;
     offset_entry_t *e;
@@ -929,7 +921,8 @@ drsymcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
         return DRMF_ERROR_INVALID_PARAMETER; /* don't support caching */
     if (!initialized)
         return DRMF_ERROR_NOT_INITIALIZED;
-    if (symbol == NULL || offs == NULL || num == NULL)
+    if (symbol == NULL || offs_array == NULL || num_entries == NULL ||
+        offs_single == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
@@ -942,26 +935,31 @@ drsymcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
         dr_mutex_unlock(symcache_lock);
         return DRMF_ERROR_NOT_FOUND;
     }
-    *num = olist->num;
-    if (olist->iter_entry != NULL && olist->iter_idx <= idx) {
-        /* start at cached location */
-        e = olist->iter_entry;
-        i = olist->iter_idx;
-    } else {
-        /* start at the beginning */
-        e = olist->list;
-        i = 0;
+    ASSERT(olist->num > 0, "empty list not allowed");
+    if (olist->num == 1)
+        *offs_array = offs_single;
+    else {
+        *offs_array = (size_t *) global_alloc(olist->num * sizeof(size_t),
+                                              HEAPSTAT_HASHTABLE);
     }
-    for (; i < idx && e != NULL; i++, e = e->next)
-        ; /* nothing */
-    if (e != NULL)
-        *offs = e->offs;
-    else
-        *offs = 0;
-    olist->iter_idx = idx;
-    olist->iter_entry = e;
+    *num_entries = olist->num;
+    for (e = olist->list, i = 0; e != NULL; i++, e = e->next) {
+        ASSERT(i < olist->num, "symcache count is off");
+        (*offs_array)[i] = e->offs;
+        LOG(2, "sym lookup of %s in %s => symcache hit %d of %d == "PIFX"\n",
+            symbol, mod->full_path, i, olist->num, e->offs);
+    }
     dr_mutex_unlock(symcache_lock);
-    LOG(2, "sym lookup of %s in %s => symcache hit "PIFX"\n",
-        symbol, mod->full_path, *offs);
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsymcache_free_lookup(size_t *offs, uint num)
+{
+    if (num == 0 || offs == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (num > 1) /* else we used the singleton passed to us */
+        global_free(offs, num * sizeof(size_t), HEAPSTAT_HASHTABLE);
     return DRMF_SUCCESS;
 }

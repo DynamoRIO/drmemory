@@ -1284,25 +1284,25 @@ replace_in_module(const module_data_t *mod, bool add)
      * entry for that symbol in the symcache.
      */
     for (i = 0; i < REPLACE_NUM; i++) {
-        size_t modoffs;
+        size_t *modoffs, single;
         uint count;
         uint idx;
         bool res;
         LOG(3, "Search %s in symcache\n", replace_routine_name[i]);
         if (options.use_symcache &&
-            drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res) {
-            for (idx = 0, count = 1;
-                 idx < count &&
-                 drsymcache_lookup(mod, replace_routine_name[i],
-                                   idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
-                STATS_INC(symbol_search_cache_hits);
-                edata.processed[i] = true;
-                if (modoffs != 0) {
-                    replace_routine(add, mod, mod->start + modoffs, i
+            drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res &&
+            drsymcache_lookup(mod, replace_routine_name[i],
+                              &modoffs, &count, &single) == DRMF_SUCCESS) {
+            STATS_INC(symbol_search_cache_hits);
+            edata.processed[i] = true;
+            IF_DEBUG(edata.processed_some[i] = true);
+            for (idx = 0; idx < count; idx++) {
+                if (modoffs[idx] != 0) {
+                    replace_routine(add, mod, mod->start + modoffs[idx], i
                                     _IF_DEBUG(edata.processed_some[i]));
                 }
-                IF_DEBUG(edata.processed_some[i] = true);
             }
+            drsymcache_free_lookup(modoffs, count);
         }
         if (!edata.processed[i]) {
             LOG(2, "did not find %s in symcache\n", replace_routine_name[i]);

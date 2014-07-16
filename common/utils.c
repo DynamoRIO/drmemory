@@ -253,9 +253,12 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     if (callback == NULL) {
         if (op_use_symcache) {
             uint count;
-            /* if there are multiple we just return the first one */
-            if (drsymcache_lookup(mod, sym_pattern, 0, &modoffs, &count) ==
-                DRMF_SUCCESS) {
+            size_t *array, single;
+            if (drsymcache_lookup(mod, sym_pattern, &array, &count,
+                                  &single) == DRMF_SUCCESS) {
+                /* if there are multiple we just return the first one */
+                modoffs = array[0];
+                drsymcache_free_lookup(array, count);
                 STATS_INC(symbol_lookup_cache_hits);
                 if (modoffs == 0)
                     return NULL;
