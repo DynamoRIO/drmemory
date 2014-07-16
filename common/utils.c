@@ -184,8 +184,9 @@ search_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
 }
 
 # ifdef WINDOWS
-/* See i#1465 note below: we ensure SymFromName (answer passed in data) matches
- * SymSearch (this callback).
+/* XXX i#1465: we ensure SymFromName (answer passed in data) matches
+ * SymSearch (this callback) and make it visible, until we've figured out
+ * the underlying bug(s) behind symbol cache corruption.
  */
 static bool
 verify_lookup_cb(drsym_info_t *info, drsym_error_t status, void *data)
@@ -194,10 +195,10 @@ verify_lookup_cb(drsym_info_t *info, drsym_error_t status, void *data)
     LOG(3, "verify lookup cb: %s "PIFX" vs "PIFX"\n", info->name, *ans, info->start_offs);
     ASSERT(ans != NULL, "invalid param");
     if (*ans != info->start_offs) {
-        NOTIFY("DBGHELP ERROR: mismatch for %s between SymFromName ("PIFX
-               ") and SymSearch ("PIFX")!"NL,
-               info->name, *ans, info->start_offs);
-        ASSERT(false, "mismatch between SymFromName and SymSearch");
+        NOTIFY_ERROR("DBGHELP ERROR: mismatch for %s between SymFromName ("PIFX
+                     ") and SymSearch ("PIFX")!"NL,
+                     info->name, *ans, info->start_offs);
+        dr_abort(); /* make sure we see this on bots */
     }
     return false; /* stop iterating: we want first match */
 }

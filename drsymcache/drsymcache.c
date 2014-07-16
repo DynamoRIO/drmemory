@@ -204,6 +204,13 @@ symcache_symbol_add(const char *modname, hashtable_t *symtable,
             }
             olist->list->offs = offs;
             return true;
+        } else if (olist->num == 1 && offs == 0) {
+            /* XXX i#1465: temporary fatal error sanity check as we try to diagnose
+             * our symbol cache errors.
+             */
+            NOTIFY_ERROR("SYMCACHE ERROR: appending 0 to non-0 for %s!%s"NL,
+                         modname, symbol);
+            dr_abort(); /* make sure we see this on bots */
         }
         if (olist->table != NULL) {
             if (hashtable_lookup(olist->table, (void *)(offs + 1)) != NULL) {
