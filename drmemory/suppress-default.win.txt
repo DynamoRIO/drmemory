@@ -978,4 +978,21 @@ LEAK
 name=default i#1535 AddSidToBoundaryDescriptor false positive
 ...
 ntdll.dll!RtlAddSIDToBoundaryDescriptor
-*.dll!AddSIDToBoundaryDescriptor
+*!AddSIDToBoundaryDescriptor
+
+##################################################
+# i#1588: GDI usage error from SHELL32.dll!CDragDropHelper::InitializeFromBitmap
+
+GDI USAGE ERROR
+name=default i#1588: InitializeFromBitmap with symbol
+system call NtGdiDeleteObjectApp
+GDI32.dll!InternalDeleteDC
+GDI32.dll!DeleteDC
+SHELL32.dll!CDragDropHelper::*
+
+GDI USAGE ERROR
+name=default i#1588: InitializeFromBitmap without symbol
+system call NtGdiDeleteObjectApp
+GDI32.dll!DeleteDC
+GDI32.dll!DeleteDC
+SHELL32.dll!Ordinal*
