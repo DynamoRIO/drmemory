@@ -38,6 +38,13 @@
 #define SYSTABLE_HASH_BITS 9 /* ~2x the # of entries */
 hashtable_t systable;
 
+/* Table that maps secondary system call number to a syscall_info_t*
+ * We leave this table empty to be in sync with Windows & Linux solutions.
+ * xref i#1438 i#1549.
+ */
+#define SECONDARY_SYSTABLE_HASH_BITS 1 /* now we haven't any entries */
+hashtable_t secondary_systable;
+
 /* The tables are in separate files as they are quite large */
 
 /* BSD syscalls */
@@ -125,6 +132,12 @@ drsyscall_os_init(void *drcontext)
     uint i;
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
                       false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
+    /* We initialize & leave secondary_systable empty to be in sync with our
+     * Windows & Linux solutions. Xref i#1438 i#1549.
+     */
+    hashtable_init_ex(&secondary_systable, SECONDARY_SYSTABLE_HASH_BITS,
+                      HASH_INTPTR, false/*!strdup*/, false/*!synch*/, NULL,
+                      sysnum_hash, sysnum_cmp);
 
     hashtable_init(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING,
                    false/*!strdup*/);

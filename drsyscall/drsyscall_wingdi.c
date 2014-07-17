@@ -64,9 +64,6 @@ drsys_sysnum_t sysnum_UserCreateAcceleratorTable = {-1,0};
 drsys_sysnum_t sysnum_UserCopyAcceleratorTable = {-1,0};
 drsys_sysnum_t sysnum_UserSetScrollInfo = {-1,0};
 
-/* forward decl so "extern" */
-extern syscall_info_t syscall_usercall_info[];
-
 /* Table that maps usercall names to secondary syscall numbers.
  * Number can be 0 so we store +1.
  */
@@ -160,62 +157,26 @@ drsys_sysnum_t sysnum_GdiPolyPolyDraw = {-1,0};
 extern void
 name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw);
 
-/* used to handle the single zero-secondary syscall (i#1364) */
-static drsys_sysnum_t sysnum_secondary_zero = {0/*filled in at init time*/, -1};
-static bool found_secondary_zero;
-
-static void
-wingdi_secondary_syscall_setup(void *drcontext)
+uint
+wingdi_get_secondary_syscall_num(const char *name, uint primary_num)
 {
-    uint i;
-    for (i = 0; i < num_usercall_syscalls(); i++) {
-        syscall_info_t *syslist = &syscall_usercall_info[i];
-        uint secondary = (uint)
-            hashtable_lookup(&usercall_table, (void *)syslist->name);
-        if (secondary != 0) {
-            drsys_sysnum_t *num_to_store = &syslist->num;
-            const char *skip_primary;
-            IF_DEBUG(bool ok =)
-                os_syscall_get_num(usercall_primary[i], &syslist->num);
-            ASSERT(ok, "failed to get syscall number");
-            ASSERT(syslist->num.secondary == 0, "primary should have no secondary");
-            syslist->num.secondary = secondary - 1/*+1 in usercall table*/;
+    drsys_sysnum_t num;
+    const char *skip_primary;
 
-            ASSERT(syslist->num.secondary != -1, "secondary collision with sentinel");
-            if (syslist->num.secondary == 0) {
-                /* i#1364: to avoid colliding w/ the primary entry in the main
-                 * syscall table, we store the ".0" secondary under number -1
-                 * and resolve in syscall_lookup().  We need a pointer to a
-                 * sysnum for the table, so we use a global one as there's only
-                 * one secondary zero.
-                 */
-                ASSERT(!found_secondary_zero, "only 1 zero secondary supported");
-                found_secondary_zero = true;
-                num_to_store = &sysnum_secondary_zero;
-                ASSERT(num_to_store->secondary == -1, "invalid secondary sentinel");
-                num_to_store->number = syslist->num.number;
-            }
-            IF_DEBUG(ok =)
-                hashtable_add(&systable, (void *) num_to_store, (void *) syslist);
-            ASSERT(ok, "no dups in systable");
-
-            /* Add with and without the primary prefix */
-            name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
-            skip_primary = strstr(syslist->name, "Param.");
-            if (skip_primary != NULL) {
-                name2num_entry_add(skip_primary + strlen("Param."),
-                                   syslist->num, false/*no dup*/);
-            }
-
-            if (syslist->num_out != NULL)
-                *syslist->num_out = syslist->num;
-            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d.%d (0x%04x.%x)\n",
-                syslist->name, syslist->num.number, syslist->num.secondary,
-                syslist->num.number, syslist->num.secondary);
-        } else {
-            LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", syslist->name);
-        }
+    num.secondary = (uint) hashtable_lookup(&usercall_table, (void *)name);
+    if (num.secondary == 0) {
+        LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", name);
+        return -1;
     }
+    num.secondary = num.secondary - 1/*+1 in usercall table*/;
+    num.number = primary_num;
+
+    /* add secondary usercall with & without primary prefix */
+    name2num_entry_add(name, num, false/*no dup*/);
+    skip_primary = strstr(name, "Param.");
+    if (skip_primary != NULL)
+        name2num_entry_add(skip_primary + strlen("Param."), num, false/*no dup*/);
+    return num.secondary;
 }
 
 drmf_status_t
@@ -255,10 +216,6 @@ drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *
             ASSERT(ok, "no dup entries in usercall_table");
         }
     }
-    ASSERT(NUM_USERCALL_NAMES == num_usercall_syscalls(),
-           "mismatch in usercall tables");
-
-    wingdi_secondary_syscall_setup(drcontext);
 
     return DRMF_SUCCESS;
 }

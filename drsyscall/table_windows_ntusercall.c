@@ -44,7 +44,11 @@
  * syscalls in this file.
  */
 
-syscall_info_t syscall_usercall_info[] = {
+/* These entries require special handling since related sys numbers are not 0 through N.
+ * We use special callback routine wingdi_get_secondary_syscall_num to return secondary
+ * number using syscall name & primary number.
+ */
+syscall_info_t syscall_UserCallNoParam_info[] = {
     {{0,0},"NtUserCallNoParam.CREATEMENU", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.CREATEMENUPOPUP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.DISABLEPROCWNDGHSTING", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
@@ -79,7 +83,10 @@ syscall_info_t syscall_usercall_info[] = {
     {{0,0},"NtUserCallNoParam.INIT_MESSAGE_PUMP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.UNINIT_MESSAGE_PUMP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.LOADUSERAPIHOOK", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
 
+syscall_info_t syscall_UserCallOneParam_info[] = {
     {{0,0},"NtUserCallOneParam.BEGINDEFERWNDPOS", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*int count.  allocates memory but in the kernel*/},
     {{0,0},"NtUserCallOneParam.GETSENDMSGRECVR", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{0,0},"NtUserCallOneParam.WINDOWFROMDC", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*HDC*/},
@@ -136,16 +143,24 @@ syscall_info_t syscall_usercall_info[] = {
 
     {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
-
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
+syscall_info_t syscall_UserCallHwnd_info[] = {
     {{0,0},"NtUserCallHwnd.DEREGISTERSHELLHOOKWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwnd.DWP_GETENABLEDPOPUP", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {{0,0},"NtUserCallHwnd.GETWNDCONTEXTHLPID", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwnd.REGISTERSHELLHOOKWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwnd.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
 
+syscall_info_t syscall_UserCallHwndOpt_info[] = {
     {{0,0},"NtUserCallHwndOpt.SETPROGMANWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndOpt.SETTASKMANWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
 
+syscall_info_t syscall_UserCallHwndParam_info[] = {
     {{0,0},"NtUserCallHwndParam.GETCLASSICOCUR", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserCallHwndParam.CLEARWINDOWSTATE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserCallHwndParam.KILLSYSTEMTIMER", OK, SYSARG_TYPE_UINT32, 3, /*HWND, timer id*/},
@@ -153,7 +168,10 @@ syscall_info_t syscall_usercall_info[] = {
     {{0,0},"NtUserCallHwndParam.SETVISIBLE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserCallHwndParam.SETWNDCONTEXTHLPID", OK, SYSARG_TYPE_UINT32, 3, /*HWND, HANDLE*/},
     {{0,0},"NtUserCallHwndParam.SETWINDOWSTATE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
 
+syscall_info_t syscall_UserCallHwndLock_info[] = {
     /* XXX: confirm the rest: assuming for now all just take HWND */
     {{0,0},"NtUserCallHwndLock.WINDOWHASSHADOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndLock.ARRANGEICONICWINDOWS", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
@@ -168,14 +186,15 @@ syscall_info_t syscall_usercall_info[] = {
     {{0,0},"NtUserCallHwndLock.UPDATECKIENTRECT", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndLock.UPDATEWINDOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};
 
+syscall_info_t syscall_UserCallTwoParam_info[] = {
     {{0,0},"NtUserCallTwoParam.ENABLEWINDOW", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
     {{0,0},"NtUserCallTwoParam.REDRAWTITLE", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.SHOWOWNEDPOPUPS", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
     {{0,0},"NtUserCallTwoParam.SWITCHTOTHISWINDOW", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.UPDATEWINDOWS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
-
-    {{0,0},"NtUserCallHwndParamLock.VALIDATERGN", OK, SYSARG_TYPE_UINT32, 3, /*HWND, HRGN*/},
 
     {{0,0},"NtUserCallTwoParam.CHANGEWNDMSGFILTER", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.GETCURSORPOS", OK, DRSYS_TYPE_UNSIGNED_INT, 3,
@@ -208,12 +227,10 @@ syscall_info_t syscall_usercall_info[] = {
     {{0,0},"NtUserCallTwoParam.SETPHYSCURSORPOS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.UNHOOKWINDOWSHOOK", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*int, HOOKPROC*/},
     {{0,0},"NtUserCallTwoParam.WOWCLEANUP", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
 };
-#define NUM_USERCALL_SYSCALLS \
-    (sizeof(syscall_usercall_info)/sizeof(syscall_usercall_info[0]))
 
-size_t
-num_usercall_syscalls(void)
-{
-    return NUM_USERCALL_SYSCALLS;
-}
+syscall_info_t syscall_UserCallHwndParamLock_info[] = {
+    {{0,0},"NtUserCallHwndParamLock.VALIDATERGN", OK, SYSARG_TYPE_UINT32, 3, /*HWND, HRGN*/},
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+};

@@ -38,6 +38,16 @@
 
 #define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
 
+/* Flag indicates last entry in the additional syscall table.
+ * drsys_num_t number field is used for this value.
+ */
+#define SECONDARY_TABLE_ENTRY_MAX_NUMBER -1
+/* There are enumeration classes with gaps (e.g. 0-2-4-8). We use
+ * special flag to handle such cases. drsys_num_t number field is
+ * used for this value.
+ */
+#define SECONDARY_TABLE_SKIP_ENTRY -2
+
 /* for diagnostics: eventually provide some runtime option,
  * -logmask or something: for now have to modify this constant
  */
@@ -330,6 +340,9 @@ typedef struct _sysarg_iter_info_t {
     bool abort;
 } sysarg_iter_info_t;
 
+/* Type of callback for routine which returns secondary number. */
+typedef uint (*drsys_get_secnum_cb_t)(const char *name, uint primary_number);
+
 /* Hashtable maintained in os-specific code that maps drsys_sysnum_t to
  * syscall_info_t*.
  * To gain efficiency and merge static and dynamic queries, our API
@@ -339,7 +352,13 @@ typedef struct _sysarg_iter_info_t {
  * and never changed afterward.
  */
 extern hashtable_t systable;
-/* lock for systable, maintained in drsyscall.c */
+
+/* i#1549: We use separate hashtable to handle syscalls with secondary
+ * components.
+ */
+extern hashtable_t secondary_systable;
+
+/* lock for systable & secondary_systable, maintained in drsyscall.c */
 extern void *systable_lock;
 
 drmf_status_t

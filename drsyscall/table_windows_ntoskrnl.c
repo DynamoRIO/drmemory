@@ -96,6 +96,10 @@ extern drsys_sysnum_t sysnum_SetInformationFile;
 extern drsys_sysnum_t sysnum_PowerInformation;
 extern drsys_sysnum_t sysnum_QueryVirtualMemory;
 
+
+/* The secondary tables are large, so we separate them into their own file: */
+extern syscall_QueryKey_info[];
+
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
  * So a truly unknown memory type must be explicitly marked DRSYS_TYPE_UNKNOWN.
@@ -1591,15 +1595,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryKey", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryKey", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(KEY_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+       {1,}
+     }, (drsys_sysnum_t *)syscall_QueryKey_info
     },
     {{0,0},"NtQueryMultipleValueKey", OK, RNTST, 6,
      {

@@ -229,6 +229,10 @@ name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw)
 #define SYSTABLE_HASH_BITS 12 /* has ntoskrnl and win32k.sys */
 hashtable_t systable;
 
+/* We need separate hashtable to map syscalls with secondary components in table. */
+#define SECONDARY_SYSTABLE_HASH_BITS 10 /*has ntoskrnl and user32 secondary syscalls*/
+hashtable_t secondary_systable;
+
 /* Syscalls that need special processing.  The address of each is kept
  * in the syscall_info_t entry so we don't need separate lookup.
  */
@@ -255,8 +259,6 @@ extern syscall_info_t syscall_user32_info[];
 extern size_t num_user32_syscalls(void);
 extern syscall_info_t syscall_gdi32_info[];
 extern size_t num_gdi32_syscalls(void);
-extern syscall_info_t syscall_usercall_info[];
-extern size_t num_usercall_syscalls(void);
 
 /* Takes in any Nt syscall wrapper entry point.
  * Will accept other entry points (e.g., we call it for gdi32!GetFontData)
@@ -356,16 +358,16 @@ check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *
     }
 }
 
-static void
-add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
-                  const char *optional_prefix, bool add_name2num)
+static bool
+get_primary_syscall_num(void *drcontext, const module_data_t *info,
+                        syscall_info_t *syslist OUT, const char *optional_prefix)
 {
     bool ok = false;
     /* Windows version-specific entry feature */
     if (syslist->num.number != 0 && win_ver.version < syslist->num.number)
-        return;
+        return ok;
     if (syslist->num.secondary != 0 && win_ver.version > syslist->num.secondary)
-        return;
+        return ok;
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
     if (info != NULL) {
@@ -389,28 +391,92 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
             syslist->name);
         ok = os_syscall_get_num(syslist->name, &syslist->num);
     }
-    if (ok) {
-        IF_DEBUG(bool ok;)
+    DOLOG(SYSCALL_VERBOSE, {
+        if (!ok) {
+            LOG(SYSCALL_VERBOSE,
+                "WARNING: could not find system call %s\n",
+                syslist->name);
+        }
+    });
+
+    return ok;
+}
+
+/* user should set is_secondary flag to add syscall in secondary hashtable */
+static void
+add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
+                  const char *optional_prefix, bool add_name2num, bool is_secondary)
+{
+    IF_DEBUG(bool ok;)
+    bool result = false;
+    if (is_secondary) {
+        dr_recurlock_lock(systable_lock);
+        IF_DEBUG(ok =)
+            hashtable_add(&secondary_systable, (void *) &syslist->num, (void *) syslist);
+    } else {
+        result = get_primary_syscall_num(drcontext, info, syslist, optional_prefix);
+        if (!result)
+            return;
         dr_recurlock_lock(systable_lock);
         IF_DEBUG(ok =)
             hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
-        /* We do have a dup with GetThreadDesktop on many platforms */
-        ASSERT(ok || strcmp(syslist->name, "GetThreadDesktop") == 0,
-               "no dups in sys num to call table");
-        dr_recurlock_unlock(systable_lock);
+    }
+    dr_recurlock_unlock(systable_lock);
+    /* We do have a dup with GetThreadDesktop on many platforms */
+    ASSERT(ok || strcmp(syslist->name, "GetThreadDesktop") == 0,
+            "no dups in sys num to call table");
+    LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
+        "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
+        syslist->num.secondary, syslist->num.number, syslist->num.secondary);
+    if (syslist->num_out != NULL)
+        *syslist->num_out = syslist->num;
+    if (add_name2num) {
+        name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
+        /* Add the Zw variant */
+        name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/);
+    }
+}
 
-        LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
-            "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
-            syslist->num.secondary, syslist->num.number, syslist->num.secondary);
-        if (syslist->num_out != NULL)
-            *syslist->num_out = syslist->num;
-        if (add_name2num) {
-            name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
-            /* Add the Zw variant */
-            name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/);
+
+/* The routine adds secondary syscall entries in the separate hashtable.
+ * User should provide callback routine to add user32 syscall in the hashtable.
+ */
+static void
+secondary_syscall_setup(void *drcontext, const module_data_t *info,
+                        syscall_info_t *syslist, drsys_get_secnum_cb_t cb)
+{
+    uint entry_index = 0;
+    uint second_entry_num = 0;
+    bool is_ntoskrnl = false;
+    const char *skip_primary;
+    syscall_info_t *syscall_info_second = (syscall_info_t *)syslist->num_out;
+    if (syscall_info_second[entry_index].num.number == SECONDARY_TABLE_SKIP_ENTRY)
+        entry_index++;
+
+    while (syscall_info_second[entry_index].num.number !=
+           SECONDARY_TABLE_ENTRY_MAX_NUMBER) {
+        if (cb != NULL) {
+            second_entry_num =
+                cb(syscall_info_second[entry_index].name, syslist->num.number);
+            if (second_entry_num == -1) {
+                LOG(SYSCALL_VERBOSE, "can't resolve secondary number for %s syscall",
+                    syscall_info_second[entry_index].name);
+                entry_index++;
+                continue;
+            }
+        } else {
+            is_ntoskrnl = true;
+            second_entry_num = entry_index;
         }
-    } else {
-        LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
+
+        syscall_info_second[entry_index].num.secondary = second_entry_num;
+        /* already have primary num */
+        syscall_info_second[entry_index].num.number = syslist->num.number;
+        add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
+                          is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
+                          true/*add syscall in secondary hashtable*/);
+
+        entry_index++;
     }
 }
 
@@ -500,6 +566,10 @@ drsyscall_os_init(void *drcontext)
 
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
                       false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
+    /* i#1549: We init additional table for syscalls with secondary components */
+    hashtable_init_ex(&secondary_systable, SECONDARY_SYSTABLE_HASH_BITS, HASH_INTPTR,
+                      false/*!strdup*/, false/*!synch*/, NULL, sysnum_hash,
+                      sysnum_cmp);
 
     data = dr_lookup_module_by_name("ntdll.dll");
     ASSERT(data != NULL, "cannot find ntdll.dll");
@@ -510,33 +580,46 @@ drsyscall_os_init(void *drcontext)
     /* Add all entries at process init time, to support drsys_name_to_syscall()
      * for secondary win32k.sys and drsys_number_to_syscall() in dr_init.
      */
-    for (i = 0; i < num_ntdll_syscalls(); i++)
-        add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true);
+    for (i = 0; i < num_ntdll_syscalls(); i++) {
+        /* check whether syscall has additional entries */
+        add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true, false);
+        if (TEST(SYSINFO_SECONDARY_TABLE, syscall_ntdll_info[i].flags))
+            secondary_syscall_setup(drcontext, data, &syscall_ntdll_info[i], NULL);
+    }
     for (i = 0; i < num_kernel32_syscalls(); i++) {
         add_syscall_entry(drcontext, NULL, &syscall_kernel32_info[i], NULL,
-                          false/*already added*/);
+                          false/*already added*/, false);
     }
+
+    if (drsyscall_wingdi_init(drcontext, ntdll_base, &win_ver) != DRMF_SUCCESS)
+        ASSERT(false, "wingdi_init unexpectedly failed");
+
     for (i = 0; i < num_user32_syscalls(); i++) {
         /* We ignore SYSINFO_IMM32_DLL here.  We check vs dlls in
          * drsyscall_os_module_load().
          */
         add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
-                          false/*already added*/);
+                          false/*already added*/, false);
+        if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
+            secondary_syscall_setup(drcontext, data, &syscall_user32_info[i],
+                                    wingdi_get_secondary_syscall_num);
+        }
     }
     for (i = 0; i < num_gdi32_syscalls(); i++) {
         add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",
-                          false/*already added*/);
+                          false/*already added*/, false);
     }
 
     dr_free_module_data(data);
 
-    return drsyscall_wingdi_init(drcontext, ntdll_base, &win_ver);
+    return DRMF_SUCCESS;
 }
 
 void
 drsyscall_os_exit(void)
 {
     hashtable_delete(&systable);
+    hashtable_delete(&secondary_systable);
     hashtable_delete(&name2num_table);
     drsyscall_wingdi_exit();
 }
@@ -743,10 +826,12 @@ drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
+    /* We have usercalls which are not in a single table. So we also check
+     * that syscall names start with "NtUser" to determine their type.
+     */
     if ((sysinfo >= &syscall_user32_info[0] &&
          sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
-        (sysinfo >= &syscall_usercall_info[0] &&
-         sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
+        (strstr(sysinfo->name, "NtUser") == sysinfo->name))
         *type = DRSYS_SYSCALL_TYPE_USER;
     else if (sysinfo >= &syscall_gdi32_info[0] &&
              sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])

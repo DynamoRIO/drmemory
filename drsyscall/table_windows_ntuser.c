@@ -69,7 +69,14 @@ extern drsys_sysnum_t sysnum_UserCreateAcceleratorTable;
 extern drsys_sysnum_t sysnum_UserCopyAcceleratorTable;
 extern drsys_sysnum_t sysnum_UserSetScrollInfo;
 
-extern syscall_info_t syscall_usercall_info[];
+extern syscall_info_t syscall_UserCallNoParam_info[];
+extern syscall_info_t syscall_UserCallOneParam_info[];
+extern syscall_info_t syscall_UserCallTwoParam_info[];
+extern syscall_info_t syscall_UserCallHwnd_info[];
+extern syscall_info_t syscall_UserCallHwndLock_info[];
+extern syscall_info_t syscall_UserCallHwndOpt_info[];
+extern syscall_info_t syscall_UserCallHwndParam_info[];
+extern syscall_info_t syscall_UserCallHwndParamLock_info[];
 
 syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserActivateKeyboardLayout", OK, DRSYS_TYPE_HANDLE, 2,
@@ -195,27 +202,27 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserCallHwnd", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 2,
      {
          {1,}  /* code is param #1 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallHwnd_info
     },
     {{0,0},"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_BOOL32, 2,
      {
          {1,}  /* code is param #1 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallHwndLock_info
     },
     {{0,0},"NtUserCallHwndOpt", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_HANDLE, 2,
      {
          {1,}  /* code is param #1 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallHwndOpt_info
     },
     {{0,0},"NtUserCallHwndParam", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
          {2,}  /* code is param #2 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallHwndParam_info
     },
     {{0,0},"NtUserCallHwndParamLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
          {2,}  /* code is param #2 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallHwndParamLock_info
     },
     {{0,0},"NtUserCallMsgFilter", UNKNOWN, SYSARG_TYPE_BOOL32, 2,
      {
@@ -234,17 +241,17 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserCallNoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 1,
      {
          {0,}  /* code is param #0 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallNoParam_info
     },
     {{0,0},"NtUserCallOneParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 2,
      {
          {1,}  /* code is param #1 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallOneParam_info
     },
     {{0,0},"NtUserCallTwoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 3,
      {
          {2,}  /* code is param #2 */
-     }, (drsys_sysnum_t*)syscall_usercall_info
+     }, (drsys_sysnum_t*)syscall_UserCallTwoParam_info
     },
     {{0,0},"NtUserChangeClipboardChain", OK, SYSARG_TYPE_BOOL32, 2,
      {

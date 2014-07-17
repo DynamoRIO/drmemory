@@ -38,6 +38,9 @@ handle_cwstring(sysarg_iter_info_t *ii, const char *id,
 
 /* drsyscall_wingdi.c */
 
+uint
+wingdi_get_secondary_syscall_num(const char *secondary_syscall, uint primary_num);
+
 drmf_status_t
 drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver);
 

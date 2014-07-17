@@ -77,6 +77,10 @@ union ioctl_data {
 #define SYSTABLE_HASH_BITS 9 /* ~2x the # of entries */
 hashtable_t systable;
 
+/* Additional table that maps ioctl system call number to a syscall_info_t* */
+#define SECONDARY_SYSTABLE_HASH_BITS 9 /* ~ 440 # of entries */
+hashtable_t secondary_systable;
+
 /* The tables are in separate files as they are quite large */
 extern syscall_info_t syscall_info[];
 extern size_t count_syscall_info;
@@ -99,6 +103,10 @@ drsyscall_os_init(void *drcontext)
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
                       false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
 
+    hashtable_init_ex(&secondary_systable, SECONDARY_SYSTABLE_HASH_BITS,
+                      HASH_INTPTR, false/*!strdup*/, false/*!synch*/, NULL,
+                      sysnum_hash, sysnum_cmp);
+
     hashtable_init(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING,
                    false/*!strdup*/);
 
@@ -117,12 +125,14 @@ drsyscall_os_init(void *drcontext)
             ASSERT(ok || strcmp(syscall_info[i].name, "ni_syscall") == 0, "no dups");
         }
     }
-
+    /* i#1549: We place ioctl secondary syscalls into separate hashtable
+     * to be in sync with our solution for Windows.
+     */
     for (i = 0; i < count_syscall_ioctl_info; i++) {
         syscall_info_t *info = &syscall_ioctl_info[i];
         info->num.number = UNPACK_NATIVE(info->num.number);
         IF_DEBUG(bool ok =)
-            hashtable_add(&systable, (void *) &info->num, (void *) info);
+            hashtable_add(&secondary_systable, (void *) &info->num, (void *) info);
         ASSERT(ok, "no dups");
         IF_DEBUG(ok =)
             hashtable_add(&name2num_table, (void *) info->name,
@@ -137,6 +147,7 @@ void
 drsyscall_os_exit(void)
 {
     hashtable_delete(&systable);
+    hashtable_delete(&secondary_systable);
     hashtable_delete(&name2num_table);
 }
 

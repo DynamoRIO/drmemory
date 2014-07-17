@@ -221,11 +221,17 @@ drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
     drsys_sysnum_t sysnum;
     syscall_info_t *sysinfo;
     bool ok;
+
     if (name == NULL || syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     ok = os_syscall_get_num(name, &sysnum);
     if (!ok)
         return DRMF_ERROR_NOT_FOUND;
+
+    /* We're looking for secondary table here b/c there are usercalls
+     * without primary name (e.g. ReleaseDC) which should be looked
+     * in secondary table.
+     */
     sysinfo = syscall_lookup(sysnum, true/*resolve 2ndary*/);
     if (sysinfo == NULL) {
         ASSERT(false, "name2num should return num in systable");
@@ -263,18 +269,19 @@ sysnum_cmp(void *v1, void *v2)
 syscall_info_t *
 syscall_lookup(drsys_sysnum_t num, bool resolve_secondary)
 {
-    syscall_info_t *res;
-    dr_recurlock_lock(systable_lock);
-    res = (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
-    /* i#1364: to distinguish the first table's primary.0 entry from the secondary
-     * table's first entry we store the latter as number -1 in the num2syscall
-     * table.  We assume -1 is a sentinel separate from any real secondary.
-     * We have to store the initial entry for our pre-syscall lookup before
-     * we even know the secondary code.
+    /* The common case is lookup for syscalls without secondary component,
+     * which requires only one hashtable lookup. So we pay a cost of second
+     * lookup only if user queries it.
      */
-    if (res != NULL && resolve_secondary && TEST(SYSINFO_SECONDARY_TABLE, res->flags)) {
-        ASSERT(num.secondary == 0, "should hit secondary on 0 entry only");
-        num.secondary = -1;
+    syscall_info_t *res = NULL;
+    /* First we look for secondary table to avoid collision with primary table
+     * in case when user looks for secondary table for entry with .0 secondary num.
+     */
+    dr_recurlock_lock(systable_lock);
+    if (resolve_secondary) {
+        res = (syscall_info_t *) hashtable_lookup(&secondary_systable, (void *) &num);
+    }
+    if (res == NULL) {
         res = (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
     }
     dr_recurlock_unlock(systable_lock);
