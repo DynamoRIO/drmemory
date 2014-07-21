@@ -4653,6 +4653,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
                                        OPND_CREATE_MEM8(mi->reg1.reg, diff)));
+                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             } else {
                 mi->bb->shared_disp_reg1 += diff;
                 /* No reason to avoid eflags since will use cmp below anyway */

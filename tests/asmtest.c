@@ -166,6 +166,21 @@ GLOBAL_LABEL(FUNCNAME:)
         jmp force_bb_i1590_end
     force_bb_i1590_end:
 
+        /* Test i#1595: arrange for xl8 sharing with a 3rd scratch reg
+         * to ensure we restore it properly.
+         */
+        jmp force_bb_i1595
+    force_bb_i1595:
+        /* Get ebx and ecx as scratch to ensure we share (xref i#1590) and
+         * get edx as 3rd scratch so we crash if we mess it up.
+         */
+        mov      REG_XCX, REG_XAX
+        mov      REG_XAX, REG_XAX
+        cmp      BYTE [4 + REG_XDX], 0
+        cmp      BYTE [5 + REG_XDX], 0
+        jmp force_bb_i1595_end
+    force_bb_i1595_end:
+
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).  Do not place AVX instructions here: put them
          * into asm_test_avx().
