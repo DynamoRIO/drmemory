@@ -182,6 +182,7 @@ uint addressable_checks_elided;
 uint aflags_saved_at_top;
 uint xl8_shared;
 uint xl8_not_shared_reg_conflict;
+uint xl8_not_shared_scratch_conflict;
 uint xl8_not_shared_disp_too_big;
 uint xl8_not_shared_unaligned;
 uint xl8_not_shared_mem2mem;

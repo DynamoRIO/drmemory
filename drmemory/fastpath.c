@@ -1343,7 +1343,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
 static inline bool
 should_share_addr_helper(fastpath_info_t *mi)
 {
-    /* FIXME OPT: PR 494727: expand sharing of shadow translation
+    /* FIXME OPT: i#165/PR 494727: expand sharing of shadow translation
      * across more cases:
      * - mem2mem (in particular push-mem, pop-mem, and call-ind)
      *   or load2x
@@ -4236,6 +4236,26 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     mi->reg2_8h = reg_ptrsz_to_8h(mi->reg2.reg);
     mi->reg3_8 = (mi->reg3.reg == REG_NULL) ? REG_NULL : reg_ptrsz_to_8(mi->reg3.reg);
 
+    /* i#1590: if our scratch regs are ecx and eax and we have sub-dword memrefs, we
+     * can't share them, either w/ prior (mi->use_shared) or next (share_addr) inst.
+     * XXX i#165: add whole-bb xl8-sharing analysis and measure the usage of the
+     * 3rd-best scratch reg and if the extra spills+restores will be outweighed
+     * by the elimination of xl8 we should use edx or ebx as our 1st scratch.
+     */
+    if ((mi->use_shared || share_addr) && mi->reg1.reg != mi->bb->reg1.reg) {
+        DOLOG(3, {
+            LOG(3, "disabling sharing b/c reg1 is ");
+            opnd_disassemble(drcontext, opnd_create_reg(mi->reg1.reg),
+                             LOGFILE(PT_GET(drcontext)));
+            LOG(3, "\n");
+        });
+        STATS_INC(xl8_not_shared_scratch_conflict);
+        share_addr = false;
+        mi->use_shared = false;
+        mi->bb->shared_memop = opnd_create_null();
+        mi->bb->shared_disp_implicit = 0;
+    }
+
 #ifdef TOOL_DR_MEMORY
     /* point at the locations of shadow values for operands */
     set_shadow_opnds(mi);
@@ -5513,6 +5533,25 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
         bi->reg1 = bi->reg2;
         bi->reg2 = tmp;
     }
+    /* We don't want ecx in reg1, for sharing.  Even though we swap
+     * when we need ecx as a 3rd reg, sharing really wants reg1==whole-bb reg1.
+     */
+    else if (bi->reg1.reg == DR_REG_XCX && bi->reg2.reg != DR_REG_XAX) {
+        scratch_reg_info_t tmp = bi->reg1;
+        ASSERT(bi->reg2.reg != DR_REG_XCX, "reg2 shouldn't equal reg1");
+        DOLOG(3, {
+                void *drcontext = dr_get_current_drcontext();
+            LOG(3, "swapping reg1 ");
+            opnd_disassemble(drcontext, opnd_create_reg(bi->reg1.reg),
+                             LOGFILE(PT_GET(drcontext)));
+            LOG(3, " and reg2 ");
+            opnd_disassemble(drcontext, opnd_create_reg(bi->reg2.reg),
+                             LOGFILE(PT_GET(drcontext)));
+            LOG(3, "\n");
+        });
+        bi->reg1 = bi->reg2;
+        bi->reg2 = tmp;
+    }
     ASSERT(bi->reg1.reg <= DR_REG_XBX, "NYI non-a/b/c/d reg");
     bi->reg1.slot = SPILL_SLOT_1;
     /* Dead-across-whole-bb is rare so we don't bother to support xchg */
@@ -5781,7 +5820,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
                     instr_writes_to_reg(inst, bi->reg2.reg) ||
                     /* must consider reading the other reg (PR 494169) */
                     instr_reads_from_reg(inst, bi->reg2.reg)) {
-                    /* give up: not worth complexity (PR 494727 covers handling) */
+                    /* give up: not worth complexity (i#165 covers handling) */
                     STATS_INC(xl8_not_shared_reg_conflict);
                     bi->shared_memop = opnd_create_null();
                 } else {
@@ -5832,7 +5871,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (!opnd_is_null(bi->shared_memop)) {
             if (restored_for_read ||
                 (instr_writes_to_reg(inst, bi->reg2.reg) && !bi->reg2.dead)) {
-                /* give up: not worth complexity for now (PR 494727 covers handling) */
+                /* give up: not worth complexity for now (i#165 covers handling) */
                 STATS_INC(xl8_not_shared_reg_conflict);
                 bi->shared_memop = opnd_create_null();
             } else {

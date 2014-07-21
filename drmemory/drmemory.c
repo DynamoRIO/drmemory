@@ -247,6 +247,8 @@ dump_statistics(void)
                "\t%6u not:slowpaths, %6u not:unalign, %6u not:mem2mem, %6u not:offs\n",
                xl8_not_shared_slowpaths, xl8_not_shared_unaligned,
                xl8_not_shared_mem2mem, xl8_not_shared_offs);
+    dr_fprintf(f_global, "\t%6u not:scratch conflict\n",
+               xl8_not_shared_scratch_conflict);
     dr_fprintf(f_global, "\t%6u instrs slowpath, %6u count slowpath\n",
                xl8_shared_slowpath_instrs, xl8_shared_slowpath_count);
 #ifdef WINDOWS

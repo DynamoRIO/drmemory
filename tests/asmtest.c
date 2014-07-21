@@ -154,6 +154,18 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      REG_XAX
         pop      REG_XDX
 
+        /* Test i#1590 where whole-bb scratch regs conflict with sharing on
+         * sub-dword instrs.  We need a bb with scratch ecx and eax.
+         */
+        jmp force_bb_i1590
+    force_bb_i1590:
+        cmp      BYTE [2 + REG_XDX], 0
+        cmp      BYTE [3 + REG_XDX], 0
+        test     dl, dl
+        test     bl, bl
+        jmp force_bb_i1590_end
+    force_bb_i1590_end:
+
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).  Do not place AVX instructions here: put them
          * into asm_test_avx().
