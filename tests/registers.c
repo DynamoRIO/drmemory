@@ -250,7 +250,7 @@ float_test(void)
     float_test_asm(&val);
 }
 
-void
+static void
 subdword_test2(void)
 {
     /* source of uninits: on Windows a stack buffer is filled w/ 0xcc
@@ -268,7 +268,7 @@ subdword_test2(void)
     free(undef);
 }
 
-void
+static void
 addronly_test(void)
 {
     /* test state restoration on ud2a fault path (in particular, i#533)
@@ -284,7 +284,7 @@ addronly_test(void)
 }
 
 /* Tests weird nops with memory operands. */
-void
+static void
 nop_test(void)
 {
 #ifdef WINDOWS
@@ -314,7 +314,7 @@ nop_test(void)
 #endif
 }
 
-void
+static void
 multi_dst_test(void)
 {
     /* try to avoid divide-by-zero by initializing our uninit */
@@ -328,7 +328,7 @@ multi_dst_test(void)
 }
 
 /* i#1127 */
-void
+static void
 data16_div_test(void)
 {
     /* Declare here to avoid disturbing line numbers. */
@@ -349,7 +349,7 @@ void copy_through_xmm_asm(char *dst, char *src);
 void copy_through_xmm_asm_ebp(char *dst, char *src);
 void xmm_operations(char *dst, char *src);
 
-void
+static void
 copy_through_xmm_test(void)
 {
     char dst1[16];
@@ -374,7 +374,7 @@ copy_through_xmm_test(void)
 void copy_through_mmx(char *dst, char *src);
 void mmx_operations(char *dst, char *src);
 
-void
+static void
 mmx_test(void)
 {
     char dst1[8];
@@ -389,6 +389,17 @@ mmx_test(void)
         printf("got x\n");
     if (dst2[3] == 'x') /* uninit! */
         array[127] = 4;
+}
+
+/* i#1597: sub-dword xl8 sharing*/
+void xl8_share_subdword(char *undef, char *def);
+
+static void
+sharing_test(void)
+{
+    char undef[128];
+    char def[128] = {0,};
+    xl8_share_subdword(undef, def);
 }
 
 int
@@ -431,6 +442,8 @@ main(int argc, char *argv[])
     copy_through_xmm_test();
 
     mmx_test();
+
+    sharing_test();
 
     return 0;
 }
@@ -909,6 +922,84 @@ GLOBAL_LABEL(FUNCNAME:)
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
+
+#define FUNCNAME xl8_share_subdword
+/* void xl8_share_subdword(char *undef, char *def); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XDX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* Test i#1597: ensure xl8 sharing of sub-dword cmp works across
+         * dword boundaries.
+         */
+
+        /* Forward 1-byte */
+        mov      cl, BYTE [REG_XAX] /* undef */
+        mov      BYTE [8 + REG_XDX], cl
+        jmp force_bb_i1597_forw_1
+    force_bb_i1597_forw_1:
+        mov      REG_XCX, REG_XAX
+        mov      REG_XAX, REG_XAX
+        cmp      BYTE [7 + REG_XDX], 0
+        cmp      BYTE [8 + REG_XDX], 0
+        jmp force_bb_i1597_forw_1_end
+    force_bb_i1597_forw_1_end:
+        mov      cl, BYTE [REG_XDX] /* restore to def */
+        mov      BYTE [8 + REG_XDX], cl
+
+        /* Backward 1-byte */
+        mov      cl, BYTE [REG_XAX] /* undef */
+        mov      BYTE [7 + REG_XDX], cl
+        jmp force_bb_i1597_backw_1
+    force_bb_i1597_backw_1:
+        mov      REG_XCX, REG_XAX
+        mov      REG_XAX, REG_XAX
+        cmp      BYTE [8 + REG_XDX], 0
+        cmp      BYTE [7 + REG_XDX], 0
+        jmp force_bb_i1597_backw_1_end
+    force_bb_i1597_backw_1_end:
+        mov      cl, BYTE [REG_XDX] /* restore to def */
+        mov      BYTE [7 + REG_XDX], cl
+
+        /* Forward 2-byte */
+        mov      cx, WORD [REG_XAX] /* undef */
+        mov      WORD [8 + REG_XDX], cx
+        jmp force_bb_i1597_forw_2
+    force_bb_i1597_forw_2:
+        mov      REG_XCX, REG_XAX
+        mov      REG_XAX, REG_XAX
+        cmp      WORD [6 + REG_XDX], 0
+        cmp      WORD [8 + REG_XDX], 0
+        jmp force_bb_i1597_forw_2_end
+    force_bb_i1597_forw_2_end:
+        mov      cx, WORD [REG_XDX] /* restore to def */
+        mov      WORD [8 + REG_XDX], cx
+
+        /* Backward 2-byte */
+        mov      cx, WORD [REG_XAX] /* undef */
+        mov      WORD [6 + REG_XDX], cx
+        jmp force_bb_i1597_backw_2
+    force_bb_i1597_backw_2:
+        mov      REG_XCX, REG_XAX
+        mov      REG_XAX, REG_XAX
+        cmp      WORD [8 + REG_XDX], 0
+        cmp      WORD [6 + REG_XDX], 0
+        jmp force_bb_i1597_backw_2_end
+    force_bb_i1597_backw_2_end:
+        mov      cx, WORD [REG_XDX] /* restore to def */
+        mov      WORD [6 + REG_XDX], cx
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
 
 END_FILE
 #endif

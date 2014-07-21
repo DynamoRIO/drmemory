@@ -4377,7 +4377,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     /* lea before any reg write (incl eflags eax) in case address calc uses that reg */
     if (mi->load || mi->store) {
-        if (!mi->use_shared) { /* don't need lea if sharing trans */
+        if (mi->use_shared && mi->memsz < 4) {
+            /* i#1597: reg1 holds xl8 share, but we need addr to check dword bounds */
+            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
+            insert_lea(drcontext, bb, inst, mi->memop, mi->reg2.reg);
+        } else if (!mi->use_shared) { /* don't need lea if sharing trans */
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
             insert_lea(drcontext, bb, inst, mi->memop, mi->reg1.reg);
         }
@@ -4644,6 +4648,40 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             LOG(3, "  sharing shadow addr: disp = %d - (%d + %d) => %d /4 - %d\n",
                 opnd_get_disp(mi->memop), opnd_get_disp(mi->bb->shared_memop),
                 mi->bb->shared_disp_implicit, diff, mi->bb->shared_disp_reg1);
+            if (mi->use_shared && mi->memsz < 4 && diff != 0) {
+                /* i#1597: check for and handle dword boundaries.  We did a
+                 * lea into reg2 above, and here we check whether we just crossed
+                 * a dword boundary (b/c our shadow is 1B-2b) and we need the
+                 * next or prior shadow byte instead of the one the prior
+                 * memref wanted.
+                 * XXX: is all this complexity worth it?  We avoid the table
+                 * lookup memref but we complicate the code.  This is all
+                 * unnecessary for byte-to-byte shadowing.
+                 */
+                instr_t *adjust_sharing = INSTR_CREATE_label(drcontext);
+                instr_t *no_adjust_sharing = INSTR_CREATE_label(drcontext);
+                PRE(bb, inst,
+                    INSTR_CREATE_and(drcontext, opnd_create_reg(mi->reg2.reg),
+                                     /* 1-byte: check for mod 4 == 0 or 3;
+                                      * 2-byte: check for mod 4 == 0,1 vs 2,3.
+                                      */
+                                     OPND_CREATE_INT8(mi->memsz == 2 ? 2 : 3)));
+                PRE(bb, inst,
+                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2.reg),
+                                     OPND_CREATE_INT32(diff > 0 ?
+                                                       (mi->memsz == 2 ? 0 : 0) :
+                                                       (mi->memsz == 2 ? 2 : 3))));
+                PRE(bb, inst,
+                    INSTR_CREATE_jcc(drcontext, OP_je,
+                                     opnd_create_instr(adjust_sharing)));
+                PRE(bb, inst,
+                    INSTR_CREATE_jmp(drcontext, opnd_create_instr(no_adjust_sharing)));
+                PRE(bb, inst, adjust_sharing);
+                PRE(bb, inst,
+                    INSTR_CREATE_add(drcontext, opnd_create_reg(mi->reg1.reg),
+                                     OPND_CREATE_INT8(diff > 0 ? 1 : -1)));
+                PRE(bb, inst, no_adjust_sharing);
+            }
             /* See alignment comments in should_share_addr() */
             ASSERT(ALIGNED(diff, mi->memsz), "can only share aligned references");
             diff /= 4; /* 2 shadow bits per byte */

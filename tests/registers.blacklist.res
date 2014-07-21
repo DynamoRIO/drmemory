@@ -21,23 +21,23 @@
 #
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:989
+registers.c_asm.asm:1002
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:1001
-Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c_asm.asm:1014
+Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c_asm.asm:1027
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:1015
+registers.c_asm.asm:1028
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:531
+registers.c_asm.asm:544
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:543
-Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c_asm.asm:556
+Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c_asm.asm:569
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c_asm.asm:557
+registers.c_asm.asm:570
 %endif
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
