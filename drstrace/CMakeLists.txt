@@ -56,6 +56,7 @@ configure_DynamoRIO_client(drstracelib)
 use_DynamoRIO_extension(drstracelib drsyscall_static)
 use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
+use_DynamoRIO_extension(drstracelib drsyms_static)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib

@@ -53,6 +53,7 @@ static hashtable_t nconsts_table;
  * each system call.
  */
 #define OUTBUF_SIZE 2048
+#define TYPE_OUTPUT_SIZE 2048
 #define HASHTABLE_BITSIZE 10 /* 512 < entries # < 1024 */
 
 typedef struct _buf_info_t {
@@ -86,6 +87,7 @@ static uint verbose = 1;
 
 typedef struct _drstrace_options_t {
     char logdir[MAXIMUM_PATH];
+    char sympath[MAXIMUM_PATH];
 } drstrace_options_t;
 
 static drstrace_options_t options;
@@ -182,14 +184,141 @@ drstrace_print_enum_const_name(buf_info_t *buf, drsys_arg_t *arg)
     return true;
 }
 
+/* NOTE: the routine returns up to 64 bit memory values */
+static int64
+safe_read_field(void *addr_to_resolve, size_t addr_size)
+{
+    int64 mem_value = 0;
+    ASSERT(addr_size <= sizeof(mem_value), "too-big mem value to read");
+    if (!dr_safe_read(addr_to_resolve, addr_size, &mem_value, NULL))
+        ASSERT(false, "dr_safe_read failed");
+    return mem_value;
+}
+
 static void
+print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *addr)
+{
+    int i;
+    if (type->kind == DRSYM_TYPE_COMPOUND) {
+        drsym_compound_type_t *compound_type =
+            (drsym_compound_type_t *)type;
+        OUTPUT(buf, "%s {", compound_type->name);
+        for (i = 0; i < compound_type->num_fields; i++) {
+            print_structure(buf, compound_type->field_types[i], arg, addr);
+            addr = (char *)addr + compound_type->field_types[i]->size;
+            OUTPUT(buf, ", ");
+        }
+        OUTPUT(buf, "}");
+    } else {
+        /* Print type fields */
+        if (type->kind == DRSYM_TYPE_VOID) {
+            int64 value = safe_read_field(addr, type->size);
+            OUTPUT(buf, "void="PFX, value);
+            return;
+        } else if (type->kind == DRSYM_TYPE_PTR) {
+            drsym_ptr_type_t *ptr_type = (drsym_ptr_type_t *)type;
+            /* We're expecting an address here. So we truncate int64 to void* */
+            void *mem_value = (void *)safe_read_field(addr, ptr_type->type.size);
+            print_structure(buf, ptr_type->elt_type, arg, mem_value);
+            OUTPUT(buf, "*");
+            return;
+        } else {
+            /* Print integer base types */
+            int64 value = safe_read_field(addr, type->size);
+            switch (type->size) {
+                case 1:
+                    OUTPUT(buf, "byte|bool="PFX, value);
+                    break;
+                case 2:
+                    OUTPUT(buf,"short=" PFX, value);
+                    break;
+                case 4:
+                    OUTPUT(buf, "int="PFX, value);
+                    break;
+                case 8:
+                    OUTPUT(buf, "long long="PFX, value);
+                    break;
+                default:
+                    OUTPUT(buf, "unknown type="PFX, value);
+                    break;
+            }
+            return;
+        }
+    }
+    return;
+}
+
+static bool
+type_has_unknown_components(drsym_type_t *type)
+{
+    int i;
+    drsym_compound_type_t *compound_type = (drsym_compound_type_t *)type;
+    drsym_type_t **field_types = compound_type->field_types;
+    for (i = 0; i < compound_type->num_fields; i++) {
+        if (field_types[i]->size == 0) {
+            return false;
+        } else if (field_types[i]->kind == DRSYM_TYPE_PTR) {
+            drsym_ptr_type_t *ptr_type = (drsym_ptr_type_t *)field_types[0];
+            if (ptr_type->elt_type->size == 0)
+                return false;
+        }
+    }
+    return true;
+}
+
+static bool
+drstrace_print_info_class_struct(buf_info_t *buf, drsys_arg_t *arg)
+{
+    char buf_tmp[TYPE_OUTPUT_SIZE];
+    drsym_type_t *type;
+    drsym_type_t *expand_type;
+    drsym_error_t r;
+
+    r = drsym_get_type_by_name(options.sympath, arg->enum_name,
+                               buf_tmp, BUFFER_SIZE_BYTES(buf_tmp),
+                               &type);
+    if (r != DRSYM_SUCCESS) {
+        NOTIFY("Value to symbol %s lookup failed", arg->enum_name);
+        return false;
+    }
+
+    r = drsym_expand_type(options.sympath, type->id, UINT_MAX,
+                          buf_tmp, BUFFER_SIZE_BYTES(buf_tmp),
+                          &expand_type);
+    if (r != DRSYM_SUCCESS) {
+        NOTIFY("%s structure expanding failed", arg->enum_name);
+        return false;
+    }
+    if (!type_has_unknown_components(expand_type)) {
+        NOTIFY("%s structure has unknown types", arg->enum_name);
+        return false;
+    }
+
+    if (arg->valid && !arg->pre) {
+        /* Get start memory address to iterate over structure values.
+         * We're expecting an address here. So we truncate int64 to void*.
+         */
+        void *mem_value = (void *)safe_read_field(arg->start_addr, arg->size);
+        print_structure(buf, expand_type, arg, mem_value);
+    } else {
+        return false;
+    }
+
+    return true;
+}
+
+static bool
 drstrace_get_arg_symname(buf_info_t *buf, drsys_arg_t *arg)
 {
-    /* FIXME i#1540: We should determine parameter type (named const or
-     * structure or etc.) and call corresponding output function. Now we
-     * only print named constant symname to check this functionality.
-     */
-    if (arg->enum_name != NULL) {
+    if (arg->type >= DRSYS_TYPE_STRUCT) {
+        if (drstrace_print_info_class_struct(buf, arg)) {
+            OUTPUT(buf, " (type=<struct>*, size="PIFX")\n",
+                   arg->size);
+            return true;
+        } else {
+            return false;
+        }
+    } else if (arg->enum_name != NULL) {
         if (drstrace_print_enum_const_name(buf, arg)) {
             OUTPUT(buf, " (type=named constant, value="PIFX", size="PIFX")\n",
                    arg->value,
@@ -198,7 +327,9 @@ drstrace_get_arg_symname(buf_info_t *buf, drsys_arg_t *arg)
             OUTPUT(buf, " (type=named constant, size="PIFX")\n",
                    arg->size);
         }
+        return true;
     }
+    return false;
 }
 
 static void
@@ -210,8 +341,8 @@ print_arg(buf_info_t *buf, drsys_arg_t *arg)
         OUTPUT(buf, "\targ %d: ", arg->ordinal);
 
     if (arg->enum_name != NULL) {
-        drstrace_get_arg_symname(buf, arg);
-        return;
+        if (drstrace_get_arg_symname(buf, arg))
+            return;
     }
     /* XXX: add return value to dr_fprintf so we can more easily align
      * after PFX vs PIFX w/o having to print to buffer
@@ -390,6 +521,7 @@ void exit_event(void)
         dr_close_file(outf);
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
+    drsym_exit();
     drx_exit();
     drmgr_exit();
     hashtable_delete(&nconsts_table);
@@ -419,6 +551,14 @@ options_init(client_id_t id)
                 int res = dr_sscanf(token, "%u", &verbose);
                 USAGE_CHECK(res == 1, "invalid -verbose number");
             }
+        } else if (strcmp(token, "-symdir") == 0) {
+            s = dr_get_token(s, options.sympath,
+                             BUFFER_SIZE_ELEMENTS(options.sympath));
+            USAGE_CHECK(s != NULL, "missing symcache dir path");
+            /* append pdb name to path */
+            dr_snprintf(options.sympath, BUFFER_SIZE_ELEMENTS(options.sympath),
+                        "%s/%s", options.sympath, "wintypes.pdb");
+            ALERT(1, "<drstrace symbol source is %s>\n", options.sympath);
         } else {
             ALERT(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);
             USAGE_CHECK(false, "invalid option");
@@ -438,9 +578,10 @@ void dr_init(client_id_t id)
 #endif
 
     options_init(id);
-
+    drsym_init(0);
     drmgr_init();
     drx_init();
+
     if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
