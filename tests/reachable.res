@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,18 +27,12 @@ cs2bug.cpp:95
 cs2bug.cpp:97
 memory was allocated here:
 cs2bug.cpp:91
-%OPTIONAL # Not present on Linux when wrapping b/c operator new turns 0 into 1
 : UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:101
 refers to 0 byte(s) beyond last valid byte in prior malloc
-%ENDOPTIONAL
 : UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:105
-%ANYLINE
-# Linux wrap will say "1", else "2"
-refers to 0 byte(s) beyond last valid byte in prior malloc
 refers to 1 byte(s) beyond last valid byte in prior malloc
-%ENDANYLINE
 : UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:109
 refers to 0 byte(s) beyond last valid byte in prior malloc

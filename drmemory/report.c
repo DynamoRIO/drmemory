@@ -2332,7 +2332,14 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
     /* If we can't find a higher malloc better to not print anything since we're
      * using heuristics and could be wrong (if we had rbtree I'd print "no higher")
      */
-    for (start = addr; start > addr - PAGE_SIZE; ) {
+    /* i#1145: we need an explicit check for 0-sized mallocs */
+    size = malloc_chunk_size((byte *)ALIGN_BACKWARD(addr, MALLOC_CHUNK_ALIGNMENT));
+    if (size > -1) {
+        found = true;
+        etp->prev_end = (byte *)ALIGN_BACKWARD(addr, MALLOC_CHUNK_ALIGNMENT) + size;
+        etp->prev_size = size;
+    }
+    for (start = addr; etp->prev_end == NULL && start > addr - PAGE_SIZE; ) {
         if (options.shadowing &&
             !shadow_check_range_backward(start, PAGE_SIZE,
                                          SHADOW_UNADDRESSABLE, &end)) {
