@@ -18,7 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 10 byte(s)
+Error #1: UNADDRESSABLE ACCESS of freed memory: reading 10 byte(s)
 system call open
 unaddr_open
 syscalls_unix.c:66
@@ -29,7 +29,7 @@ system call open
 uninit_open
 syscalls_unix.c:85
 
-Error #3: UNADDRESSABLE ACCESS: reading 12 byte(s)
+Error #3: UNADDRESSABLE ACCESS of freed memory: reading 12 byte(s)
 system call finit_module
 unaddr_finit_module
 syscalls_unix.c:161
@@ -41,7 +41,7 @@ system call finit_module
 uninit_finit_module
 syscalls_unix.c:150
 
-Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #5: UNADDRESSABLE ACCESS of freed memory: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
 syscalls_unix.c:177

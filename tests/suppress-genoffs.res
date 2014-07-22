@@ -109,7 +109,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test1
 suppress.c:110
 suppress!test
@@ -119,7 +119,7 @@ suppress.c
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
-Error #9: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #9: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test2
 suppress.c:117
 suppress!test
@@ -129,7 +129,7 @@ suppress.c
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
-Error #10: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #10: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test3
 suppress.c:124
 suppress!test
@@ -139,7 +139,7 @@ suppress.c
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
-Error #11: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #11: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test4
 suppress.c:131
 suppress!test
@@ -237,7 +237,7 @@ suppress-mod-foo.c
 suppress!mod_ellipsis_test
 suppress.c
 
-Error #17: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:198
@@ -246,7 +246,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #18: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #18: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:200
@@ -255,7 +255,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #19: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #19: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:200

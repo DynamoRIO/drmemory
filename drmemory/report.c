@@ -192,6 +192,12 @@ typedef struct _error_toprint_t {
 
     /* For unaddrs, warnings, and invalid heap args: */
     bool report_neighbors;      /* Whether to report neighboring heap allocs. */
+    /* Computed by gather_heap_info() */
+    bool use_after_free;
+    byte *free_start, *next_start, *prev_end;
+    size_t free_size, next_size, prev_size;
+    packed_callstack_t *neighbor_pcs;
+    packed_callstack_t *free_pcs;
 
     /* For unaddrs and uninits: */
     app_pc container_start;     /* Container start. */
@@ -2257,20 +2263,17 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
 }
 
 /* PR 535568: report nearest mallocs and whether freed.
- * Should this go up by the container range?  Would have to be same
- * line, else adjust postprocess.pl.
- * FIXME PR 423750: provide this info on dups not just 1st unique.
+ * Stores results in etp fields which the caller must zero ahead of time.
+ * The results are then printed in report_heap_info().
+ * This two-part scheme allows putting heap info in the error title (i#1593).
  */
 static void
-report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
-                 bool invalid_heap_arg, bool for_log)
+gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
 {
-    void *drcontext = dr_get_current_drcontext();
-    ssize_t len = 0;
-    byte *start, *end, *next_start = NULL, *prev_end = NULL;
+    byte *start, *end;
     ssize_t size;
     bool found = false;
-    packed_callstack_t *pcs = NULL;
+
     if (!is_in_heap_region(addr))
         return;
     /* I measured replacing the malloc hashtable with an interval tree
@@ -2298,23 +2301,13 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             }
             if (size > -1) {
                 found = true;
-                next_start = start;
                 /* we don't have the malloc lock so races could result in
                  * inaccurate adjacent malloc info: only print if accurate
                  */
-                if (next_start >= addr+sz) {
-                    if (next_start - addr+sz < 8 && next_start > addr+sz) {
-                        BUFPRINT(buf, bufsz, *sofar, len,
-                                 "%srefers to %d byte(s) before next malloc"NL,
-                                 INFO_PFX, next_start - addr+sz-1);
-                    }
-                    if (!options.brief) {
-                        BUFPRINT(buf, bufsz, *sofar, len,
-                                 "%snext higher malloc: "PFX"-"PFX""NL,
-                                 INFO_PFX, start, start+size);
-                    }
-                } else
-                    next_start = NULL;
+                if (start >= addr+sz) {
+                    etp->next_start = start;
+                    etp->next_size = size;
+                }
                 break;
             } /* else probably an earlier unaddr error, for which we marked
                * the memory as addressable!
@@ -2348,26 +2341,13 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                 }
                 if (size > -1) {
                     found = true;
-                    prev_end = start + size;
                     /* we don't have the malloc lock so races could result in
                      * inaccurate adjacent malloc info: only print if accurate
                      */
-                    if (prev_end <= addr) {
-                        if (addr - prev_end < 8) {
-                            BUFPRINT(buf, bufsz, *sofar, len,
-                                     "%srefers to %d byte(s) beyond last valid byte in prior malloc"NL,
-                                     /* I used to have +1 to avoid "0 bytes" but
-                                      * I think that's more confusing then it helps
-                                      */
-                                     INFO_PFX, addr - prev_end);
-                        }
-                        if (!options.brief) {
-                            BUFPRINT(buf, bufsz, *sofar, len,
-                                     "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX,
-                                     start, prev_end);
-                        }
-                    } else
-                        prev_end = NULL;
+                    if (start + size <= addr) {
+                        etp->prev_end = start + size;
+                        etp->prev_size = size;
+                    }
                     break;
                 } /* else probably an earlier unaddr error, for which we marked
                    * the memory as addressable!
@@ -2378,32 +2358,12 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
     }
     /* in pattern mode, we walk the whole hashtable to find the region */
     if (options.pattern != 0 && options.redzone_size > 0 &&
-        region_in_redzone(addr, sz, &pcs, &start, &end, NULL, NULL)) {
-        BUFPRINT(buf, bufsz, *sofar, len,
-                 "%srefers to %d bytes(s) %s malloc"NL,
-                 INFO_PFX,
-                 addr >= end ? (addr - end) : (start - addr+sz-1),
-                 addr >= end ? "beyond last valid byte in prior" : "before next");
-        if (!options.brief) {
-            BUFPRINT(buf, bufsz, *sofar, len,
-                     "%s%s malloc: "PFX"-"PFX"",
-                     INFO_PFX,
-                     addr >= end ? "prev lower" : "next higher",
-                     start, end);
-            if (pcs != NULL) {
-                symbolized_callstack_t scs;
-                BUFPRINT(buf, bufsz, *sofar, len, " here:"NL);
-                /* to get var-align we need to convert to symbolized.
-                 * if we remove var-align feature, should use direct
-                 * packed_callstack_print and avoid this extra work
-                 */
-                packed_callstack_to_symbolized(pcs, &scs);
-                symbolized_callstack_print(&scs, buf, bufsz, sofar,
-                                           info_cstack_pfx, for_log);
-                symbolized_callstack_free(&scs);
-            } else
-                BUFPRINT(buf, bufsz, *sofar, len, NL);
-        }
+        region_in_redzone(addr, sz, &etp->neighbor_pcs, &start, &end, NULL, NULL)) {
+        if (addr >= end)
+            etp->prev_end = end;
+        else
+            etp->next_start = start;
+        etp->prev_size = (end - start);
     }
 
     /* Look at both delay free list and at malloc entries marked
@@ -2411,17 +2371,18 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
      * delay list as well as free-by-realloc (xref i#69: we now
      * replace realloc so realloc frees will be on the queue).
      */
-    found = overlaps_delayed_free(addr, addr+sz, &start, &end, &pcs,
+    found = overlaps_delayed_free(addr, addr+sz, &start, &end, &etp->free_pcs,
                                   /* While it would be nice to include
                                    * free-list chunks, we don't want to report
                                    * on a former redzone in a coalesced chunk,
                                    * so we limit to delayed chunks.
                                    */
                                   true);
-    if (!found && next_start != NULL) {
+    if (!found && etp->next_start != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_FORWARD(addr, MALLOC_CHUNK_ALIGNMENT);
-             start < addr+sz && start < next_start; start += MALLOC_CHUNK_ALIGNMENT) {
+             start < addr+sz && start < etp->next_start;
+             start += MALLOC_CHUNK_ALIGNMENT) {
             size = malloc_chunk_size_invalid_only(start);
             if (size > -1) {
                 found = true;
@@ -2430,10 +2391,10 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             }
         }
     }
-    if (!found && prev_end != NULL) {
+    if (!found && etp->prev_end != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_BACKWARD(addr, MALLOC_CHUNK_ALIGNMENT);
-             start > prev_end; start -= MALLOC_CHUNK_ALIGNMENT) {
+             start > etp->prev_end; start -= MALLOC_CHUNK_ALIGNMENT) {
             size = malloc_chunk_size_invalid_only(start);
             if (size > -1) {
                 end = start + size;
@@ -2449,24 +2410,91 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
     ASSERT(!found || addr+sz >= start - options.redzone_size,
            "bug in delay free overlap calc");
     if (found) {
+        etp->free_start = start;
+        etp->free_size = end - start;
+        /* Don't label an access to a freed redzone as a use-after-free, as
+         * it can easily be an underflow from an adjacent live malloc.
+         * We'll still list it as "N bytes beyond memory that was freed".
+         * We do want to include access to freed padding.
+         */
+        if (addr < (byte *) ALIGN_FORWARD(end, MALLOC_CHUNK_ALIGNMENT) &&
+            addr+sz >= etp->free_start)
+            etp->use_after_free = true;
+    }
+}
+
+/* PR 535568: report nearest mallocs and whether freed.
+ * XXX PR 423750: provide this info on dups not just 1st unique.
+ */
+static void
+report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *sofar,
+                 app_pc addr, size_t sz, bool invalid_heap_arg, bool for_log)
+{
+    void *drcontext = dr_get_current_drcontext();
+    ssize_t len = 0;
+
+    if (etp->next_start != NULL) {
+        if (etp->next_start - addr+sz < 8 && etp->next_start > addr+sz) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%srefers to %d byte(s) before next malloc"NL,
+                     INFO_PFX, etp->next_start - addr+sz-1);
+        }
+        if (!options.brief) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%snext higher malloc: "PFX"-"PFX""NL,
+                     INFO_PFX, etp->next_start, etp->next_start+etp->next_size);
+        }
+    }
+    if (etp->prev_end != NULL) {
+        if (addr - etp->prev_end < 8) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%srefers to %d byte(s) beyond last valid byte in prior malloc"NL,
+                     /* I used to have +1 to avoid "0 bytes" but
+                      * I think that's more confusing then it helps
+                      */
+                     INFO_PFX, addr - etp->prev_end);
+        }
+        if (!options.brief) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX,
+                     etp->prev_end-etp->prev_size, etp->prev_end);
+        }
+    }
+    if (!options.brief && etp->neighbor_pcs != NULL) {
+        symbolized_callstack_t scs;
+        BUFPRINT(buf, bufsz, *sofar, len, "%sallocated here:"NL, INFO_PFX);
+        /* to get var-align we need to convert to symbolized.
+         * if we remove var-align feature, should use direct
+         * packed_callstack_print and avoid this extra work
+         */
+        packed_callstack_to_symbolized(etp->neighbor_pcs, &scs);
+        symbolized_callstack_print(&scs, buf, bufsz, sofar,
+                                   info_cstack_pfx, for_log);
+        symbolized_callstack_free(&scs);
+    }
+
+    if (etp->free_start != NULL) {
         /* Note that due to the finite size of the delayed
          * free list (and realloc not on it: PR 493888) and
          * new malloc entries replacing invalid we can't
          * guarantee to identify use-after-free
          */
-        if (invalid_heap_arg && addr == start) {
+        app_pc end = etp->free_start + etp->free_size;
+        if (invalid_heap_arg && addr == etp->free_start) {
             BUFPRINT(buf, bufsz, *sofar, len,
                      "%smemory was previously freed", INFO_PFX);
-        } else if (addr < end && addr+sz >= start) {
+        } else if (addr < end && addr+sz >= etp->free_start) {
             if (options.brief) {
                 BUFPRINT(buf, bufsz, *sofar, len, "%srefers to ", INFO_PFX);
-                if (addr > start)
-                    BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) into ", addr - start);
+                if (addr > etp->free_start) {
+                    BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) into ",
+                             addr - etp->free_start);
+                }
                 BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
             } else {
                 BUFPRINT(buf, bufsz, *sofar, len,
                          "%s"PFX"-"PFX" overlaps memory "PFX"-"PFX" that was freed",
-                         INFO_PFX, addr, addr+sz, start, end);
+                         INFO_PFX, addr, addr+sz, etp->free_start, end);
             }
         } else {
             /* Refers to padding or redzone, so an overflow/underflow and not
@@ -2478,9 +2506,10 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                 BUFPRINT(buf, bufsz, *sofar, len, "%s"PFX"-"PFX" is ", INFO_PFX,
                          addr, addr+sz);
             }
-            if (addr < start)
-                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) before ", start - addr);
-            else {
+            if (addr < etp->free_start) {
+                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) before ",
+                         etp->free_start - addr);
+            } else {
                 ASSERT(addr >= end, "check above should have caught this");
                 /* XXX: not doing the +1: doesn't "0 bytes beyond" seem ok? */
                 BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) beyond ", addr - end);
@@ -2489,23 +2518,23 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                 BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
             else {
                 BUFPRINT(buf, bufsz, *sofar, len, "memory "PFX"-"PFX" that was freed",
-                         start, end);
+                         etp->free_start, end);
             }
         }
-        if (pcs != NULL) {
+        if (etp->free_pcs != NULL) {
             symbolized_callstack_t scs;
             BUFPRINT(buf, bufsz, *sofar, len, " here:"NL);
             /* Not ideal: see comment about using packed_callstack_print above */
-            packed_callstack_to_symbolized(pcs, &scs);
+            packed_callstack_to_symbolized(etp->free_pcs, &scs);
             symbolized_callstack_print(&scs, buf, bufsz, sofar, info_cstack_pfx,
                                        for_log);
             symbolized_callstack_free(&scs);
         } else
             BUFPRINT(buf, bufsz, *sofar, len, NL);
     }
-    /* For wrapping we pass in a clone */
-    if (pcs != NULL && !options.replace_malloc)
-        packed_callstack_free(pcs);
+    /* For wrapping, overlaps_delayed_free gives us a clone */
+    if (etp->free_pcs != NULL && !options.replace_malloc)
+        packed_callstack_free(etp->free_pcs);
     if (!invalid_heap_arg && alloc_in_heap_routine(drcontext)) {
         BUFPRINT(buf, bufsz, *sofar, len,
                  "%s<inside heap routine and may be false positive: please file a bug>"NL,
@@ -2866,9 +2895,19 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
                  err->potential ? POTENTIAL_PREFIX_CAP " " : "", err->id);
     }
 
+    if (etp->report_neighbors) {
+        /* Gather info up front so we can tweak the title line (i#1593) */
+        gather_heap_info(etp, addr, etp->sz);
+    }
+
     if (etp->errtype == ERROR_UNADDRESSABLE) {
+        /* i#1593: we now add a label for sub-categories of unaddr to the title */
+        const char *subtitle = "";
+        if (etp->use_after_free)
+            subtitle = " of freed memory";
         BUFPRINT(buf, bufsz, sofar, len,
-                 "UNADDRESSABLE ACCESS: %s", etp->write ? "writing " : "reading ");
+                 "UNADDRESSABLE ACCESS%s: %s", subtitle,
+                 etp->write ? "writing " : "reading ");
         if (!options.brief)
             BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr_end);
         BUFPRINT(buf, bufsz, sofar, len, "%d byte(s)", etp->sz);
@@ -2971,7 +3010,7 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
 
     if (etp->report_neighbors) {
         /* print auxiliary info about the target address (PR 535568) */
-        report_heap_info(buf, bufsz, &sofar, addr, etp->sz,
+        report_heap_info(etp, buf, bufsz, &sofar, addr, etp->sz,
                          etp->errtype == ERROR_INVALID_HEAP_ARG, for_log);
     }
     if (etp->aux_pcs != NULL) {

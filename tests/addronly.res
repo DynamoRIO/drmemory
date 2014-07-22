@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -19,16 +19,16 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS of freed memory: reading 1 byte(s)
 free.c:48
 # no "prev lower malloc" when enable DR's private loader
 that was freed
 
-Error #2: UNADDRESSABLE ACCESS: writing 1 byte(s)
+Error #2: UNADDRESSABLE ACCESS of freed memory: writing 1 byte(s)
 free.c:54
 # whether have "prev lower malloc" is nondet
 that was freed
 
-Error #3: UNADDRESSABLE ACCESS: writing 1 byte(s)
+Error #3: UNADDRESSABLE ACCESS of freed memory: writing 1 byte(s)
 free.c:61
 0 byte(s) beyond memory that was freed

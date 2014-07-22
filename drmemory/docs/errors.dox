@@ -126,7 +126,7 @@ Here is another example, leveraging the on-by-default \p -delay_frees_stack
 option to obtain the callstack of the freed memory:
 
 \code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS of freed memory: reading 0x001338a8-0x001338ac 4 byte(s)
 # 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
 # 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
 # 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
@@ -142,7 +142,7 @@ Note: instruction: mov    (%eax) -> %eax
 The \p -brief option provides less information but may be easier to read:
 
 \code
-Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 # 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
 # 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
 # 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
@@ -155,7 +155,7 @@ The \p callstack_style option can be used to customize how callstacks are
 printed out.  Here is another style for the same callstack (without -brief):
 
 \code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS of freed memory: reading 0x001338a8-0x001338ac 4 byte(s)
 # 0 unaddr_test1 (0x0040130b <suppress.exe+0x130b>)
     e:\derek\drmemory\git\src\tests\suppress.c:110
 # 1 test (0x0040112d <suppress.exe+0x112d>)
