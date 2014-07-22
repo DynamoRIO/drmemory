@@ -2452,7 +2452,7 @@ report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *s
     }
 
     if (etp->next_start != NULL) {
-        if (etp->next_start - addr+sz < 8 && etp->next_start > addr+sz) {
+        if (etp->next_start - addr+sz < 8 && etp->next_start >= addr+sz) {
             BUFPRINT(buf, bufsz, *sofar, len,
                      "%srefers to %d byte(s) before next malloc"NL,
                      INFO_PFX, etp->next_start - addr+sz-1);
