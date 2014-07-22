@@ -20,14 +20,14 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # This is malloc.res minus leaks and uninits with updated error number.
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 malloc.c:112
 Error #2: INVALID HEAP ARGUMENT
 malloc.c:179
 %if WINDOWS
 Error #3: WARNING: heap allocation failed
 malloc.c:191
-Error #4: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 malloc.c:199
 Error #5: INVALID HEAP ARGUMENT
 %endif

@@ -192,10 +192,13 @@ typedef struct _error_toprint_t {
 
     /* For unaddrs, warnings, and invalid heap args: */
     bool report_neighbors;      /* Whether to report neighboring heap allocs. */
-    /* Computed by gather_heap_info() */
-    bool use_after_free;
-    byte *free_start, *next_start, *prev_end;
-    size_t free_size, next_size, prev_size;
+    byte *xsp;                  /* App xsp, if we have it. */
+    /* Computed by gather_heap_info() and stored for report_heap_info(),
+     * as well as for use by print_error_to_buffer():
+     */
+    bool on_heap, on_stack, use_after_free;
+    byte *free_start, *next_start, *prev_end, *stack_base;
+    size_t free_size, next_size, prev_size, stack_size;
     packed_callstack_t *neighbor_pcs;
     packed_callstack_t *free_pcs;
 
@@ -2274,8 +2277,17 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
     ssize_t size;
     bool found = false;
 
-    if (!is_in_heap_region(addr))
+    if (!is_in_heap_region(addr)) {
+        etp->on_heap = false;
+        if (etp->xsp != NULL) {
+            etp->stack_size = allocation_size(etp->xsp, &etp->stack_base);
+            if (addr >= etp->stack_base && addr+sz < etp->stack_base+etp->stack_size)
+                etp->on_stack = true;
+        }
         return;
+    }
+    etp->on_heap = true;
+
     /* I measured replacing the malloc hashtable with an interval tree
      * and the cost is noticeable on heap-intensive benchmarks, so we
      * instead use shadow values to find malloc boundaries
@@ -2432,6 +2444,12 @@ report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *s
 {
     void *drcontext = dr_get_current_drcontext();
     ssize_t len = 0;
+
+    if (etp->on_stack) {
+        BUFPRINT(buf, bufsz, *sofar, len,
+                 "%s"PFX" refers to %d byte(s) beyond the top of the stack "PFX NL,
+                 INFO_PFX, addr, etp->xsp - addr, etp->xsp);
+    }
 
     if (etp->next_start != NULL) {
         if (etp->next_start - addr+sz < 8 && etp->next_start > addr+sz) {
@@ -2698,6 +2716,8 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
 #endif
 
     error_callstack_init(&ecs);
+    if (mc != NULL)
+        etp->xsp = (byte *) mc->xsp;
 
     /* Our report_max throttling is post-dup-checking, to make the option
      * useful (else if 1st error has 20K instances, won't see any others).
@@ -2905,6 +2925,10 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         const char *subtitle = "";
         if (etp->use_after_free)
             subtitle = " of freed memory";
+        else if (etp->on_stack)
+            subtitle = " beyond top of stack";
+        else if (etp->on_heap)
+            subtitle = " beyond heap bounds";
         BUFPRINT(buf, bufsz, sofar, len,
                  "UNADDRESSABLE ACCESS%s: %s", subtitle,
                  etp->write ? "writing " : "reading ");
@@ -3477,6 +3501,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     etp.sz = size;
     etp.indirect_size = indirect_size;
     etp.label = label;
+    etp.xsp = NULL;
 
     print_error_report(drcontext, buf, bufsz, reporting, &etp, err, &ecs);
 

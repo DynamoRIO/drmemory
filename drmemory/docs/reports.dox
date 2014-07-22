@@ -126,7 +126,7 @@ suppression can be further restricted by the actual instruction involved.
 The instruction is printed out in an error report in a \p Note: field.  For
 example:
 \code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS beyond heap bounds: reading 0x001338a8-0x001338ac 4 byte(s)
 ...
 Note: instruction: mov    (%eax) -> %eax
 \endcode

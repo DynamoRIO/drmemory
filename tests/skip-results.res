@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 malloc.c:112
 Note: prev lower malloc
 Error #2: UNINITIALIZED READ

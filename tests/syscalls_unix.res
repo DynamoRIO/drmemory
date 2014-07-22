@@ -57,7 +57,7 @@ system call process_vm_readv
 unaddr_process_vm_readv_writev
 syscalls_unix.c:211
 
-Error #8: UNADDRESSABLE ACCESS: writing 2 byte(s)
+Error #8: UNADDRESSABLE ACCESS beyond heap bounds: writing 2 byte(s)
 system call process_vm_readv
 unaddr_process_vm_readv_writev
 syscalls_unix.c:211
@@ -67,7 +67,7 @@ system call process_vm_writev
 unaddr_process_vm_readv_writev
 syscalls_unix.c:213
 
-Error #10: UNADDRESSABLE ACCESS: reading 2 byte(s)
+Error #10: UNADDRESSABLE ACCESS beyond heap bounds: reading 2 byte(s)
 system call process_vm_writev
 unaddr_process_vm_readv_writev
 syscalls_unix.c:213

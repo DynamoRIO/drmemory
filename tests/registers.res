@@ -46,13 +46,13 @@ Error #12: UNINITIALIZED READ: reading register ecx
 registers.c:179
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:209
-Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #14: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:1002
-Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #15: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:1014
-Error #16: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #16: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:1027
-Error #17: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:1028
 %endif
 %if UNIX
@@ -82,13 +82,13 @@ Error #12: UNINITIALIZED READ: reading register ecx
 registers.c:190
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:215
-Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #14: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:544
-Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #15: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:556
-Error #16: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #16: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:569
-Error #17: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 registers.c_asm.asm:570
 %endif
 Error #18: UNINITIALIZED READ: reading register eax

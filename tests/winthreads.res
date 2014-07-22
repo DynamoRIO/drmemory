@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 %OUT_OF_ORDER
-: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 winthreads.c:36
 refers to 1 byte(s) beyond last valid byte in prior malloc
 : UNINITIALIZED READ

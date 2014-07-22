@@ -75,7 +75,10 @@ The changes between \TOOL_VERSION and version 1.7.0 include:
    routines (-check_heap_mismatch) for modules that contain static libc.
  - Changed the drsymcache_lookup() interface.
  - Added extra information to unaddressable error titles to make
-   use-after-free errors easier to identify: "UNADDRESSABLE ACCESS of freed memory".
+   several common types of such errors easier to identify:
+   "UNADDRESSABLE ACCESS of freed memory",
+   "UNADDRESSABLE ACCESS beyond heap bounds", and
+   "UNADDRESSABLE ACCESS beyond top of stack".
 
 The changes between version 1.7.0 and version 1.6.1 include:
  - Added a Beta version of Dr. Memory for Mac.  Be aware that this

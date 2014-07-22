@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 malloc.c:112
 Note: prev lower malloc
 Error #2: UNINITIALIZED READ
@@ -31,7 +31,7 @@ malloc.c:179
 %if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:191
-Error #6: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #6: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 malloc.c:199
 Error #7: INVALID HEAP ARGUMENT
 %endif
@@ -42,7 +42,7 @@ malloc.c:203
 malloc.c:205
 %endif
 %if WINDOWS
-Error #8: UNADDRESSABLE ACCESS: writing 4 byte(s)
+Error #8: UNADDRESSABLE ACCESS beyond heap bounds: writing 4 byte(s)
 malloc.c:211
 %endif
 # FIXME: should we remove the auto-escaping of regex chars in

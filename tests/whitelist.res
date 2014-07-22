@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 whitelist.cpp:39
 
 # XXX i#1320: ideally we would also test that potential_errors.txt is

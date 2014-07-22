@@ -19,13 +19,13 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:42
-Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:43
-Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:44
-Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:45
-: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 wincrt.cpp:100

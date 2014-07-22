@@ -221,7 +221,7 @@ enum {
 /* Max length of error report lines prior to callstack.
  * Since disass is separate, this is title + timestamp + info
  * from PR 535568.  Here is an example of how large it can get:
- *   Error #1: UNADDRESSABLE ACCESS  reading 0x0835b39b-0x0835b39c 1 byte(s)
+ *   Error #1: UNADDRESSABLE ACCESS beyond top of stack: reading 0x0835b39b-0x0835b39c 1 byte(s)
  *   Elapsed time = 0:00:00.109 in thread 18436
  *   Note: prev lower malloc:  0x0835b358-0x0835b38b
  *   Note: next higher malloc: 0x0835b3b8-0x0835b3bb

@@ -111,7 +111,7 @@ whether the target address is inside a region that has been freed.  For
 example, here is a sample error report:
 
 \code
-Error #1: UNADDRESSABLE ACCESS: reading 0x000a720b-0x000a720c 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 0x000a720b-0x000a720c 1 byte(s)
 # 0 main                            [e:\derek\drmemory\git\src\tests\malloc.c:96]
 Note: @0:00:01.500 in thread 3808
 Note: refers to 1 byte(s) beyond last valid byte in prior malloc
@@ -175,6 +175,18 @@ Note: instruction: mov    (%eax) -> %eax
 
 In this case Dr. Memory is able to report that the target address is inside
 a malloc area that has been freed and has not been re-allocated since.
+
+An unaddressable access beyond the top of the stack is reported as such:
+
+\code
+Error #1: UNADDRESSABLE ACCESS beyond top of stack: reading 0xe6ffb250-0xe6ffb254 4 byte(s)
+# 0 process                    [/work/drmemory/git/src/tests/pthreads.c:79]
+# 1 libpthread.so.0!start_thread
+# 2 libc.so.6!__clone
+Note: @0:00:00.109 in thread 11895
+Note: 0xe6ffb250 refers to 208 byte(s) beyond the top of the stack 0xe6ffb320
+Note: instruction: mov    0xffffffe8(%ebp,%eax,4) -> %ebx
+\endcode
 
 This additional information, and the addresses accessed, only apply to the
 first error with that callstack that Dr. Memory sees.  Any subsequent

@@ -21,27 +21,27 @@
 #
 : UNINITIALIZED READ
 cs2bug.cpp:87
-: UNADDRESSABLE ACCESS: reading 4 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 cs2bug.cpp:95
-: UNADDRESSABLE ACCESS: writing 4 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 4 byte(s)
 cs2bug.cpp:95
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:97
 memory was allocated here:
 cs2bug.cpp:91
 %OPTIONAL # Not present on Linux when wrapping b/c operator new turns 0 into 1
-: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:101
 refers to 0 byte(s) beyond last valid byte in prior malloc
 %ENDOPTIONAL
-: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:105
 %ANYLINE
 # Linux wrap will say "1", else "2"
 refers to 0 byte(s) beyond last valid byte in prior malloc
 refers to 1 byte(s) beyond last valid byte in prior malloc
 %ENDANYLINE
-: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 cs2bug.cpp:109
 refers to 0 byte(s) beyond last valid byte in prior malloc
 ##################################################

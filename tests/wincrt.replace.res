@@ -19,15 +19,15 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:42
-Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:43
-Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:44
-Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
+Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 wincrt.cpp:45
-Error #5: UNADDRESSABLE ACCESS: writing 1 byte(s)
+Error #5: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
 wincrt.cpp:100
 # errors from -replace_malloc i#1197:
 Error #6: INVALID HEAP ARGUMENT: allocated with C library layer, queried with Windows API layer

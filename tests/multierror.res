@@ -18,7 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNADDRESSABLE ACCESS: writing 4 byte(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: writing 4 byte(s)
 multierror.cpp:33
-Error #2: UNADDRESSABLE ACCESS: reading 4 byte(s)
+Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 multierror.cpp:33
