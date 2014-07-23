@@ -106,6 +106,8 @@ print_usage(void)
     fprintf(stderr, "                The default value is \".\" (current dir).\n");
     fprintf(stderr, "                If set to \"-\", data for all processes are\n");
     fprintf(stderr, "                printed to stderr (warning: this can be slow).\n");
+    fprintf(stderr, "-symdir <dir>   Specify absolute path to wintypes.pdb where symbolic\n");
+    fprintf(stderr, "                data should be loaded. Path should be without filename.\n");
     fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
     fprintf(stderr, "                the default, which is to trace all children).\n");
     fprintf(stderr, "-version        Print version number.\n");
@@ -201,13 +203,14 @@ _tmain(int argc, TCHAR *targv[])
     char client_ops[MAX_DR_CMDLINE];
     size_t cliops_sofar = 0; /* for BUFPRINT to client_ops */
     char dr_ops[MAX_DR_CMDLINE];
+    char sym_path[MAXIMUM_PATH];
     size_t drops_sofar = 0; /* for BUFPRINT to dr_ops */
     ssize_t len; /* shared by all BUFPRINT */
 
     bool use_dr_debug = false;
     bool use_drstrace_debug = false;
     bool dr_logdir_specified = false;
-
+    bool drstrace_symcache_specified = false;
     char *app_name;
     char full_app_name[MAXIMUM_PATH];
     char **app_argv;
@@ -336,11 +339,21 @@ _tmain(int argc, TCHAR *targv[])
             exit0 = true;
         }
         else {
+            /* if symdir specified rewrite sym_path to user value */
+            if (strcmp(argv[i], "-symdir") == 0)
+                drstrace_symcache_specified = true;
+            string_replace_character(argv[i], '\\', '/');
             /* pass to client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "`%s` ", argv[i]);
         }
     }
+    /* FIXME i#1540: Currently user should manually download symbol files and provide
+     * absolute path to them using -symdir option. This is temporary state.
+     * We should fetch symbol file/files using symsrv from remote symbolic server.
+     */
+    if (!drstrace_symcache_specified)
+        warn("-symdir not specified.");
 
     if (i >= argc)
         usage("%s", "no app specified");

@@ -56,6 +56,7 @@ configure_DynamoRIO_client(drstracelib)
 use_DynamoRIO_extension(drstracelib drsyscall_static)
 use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
+use_DynamoRIO_extension(drstracelib drsyms_static)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib
@@ -81,6 +82,7 @@ install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
 
 add_executable(drstrace drstrace_frontend.c)
 configure_DynamoRIO_standalone(drstrace)
+target_link_libraries(drstrace dbghelp)
 target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
 set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
 set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
@@ -88,6 +90,7 @@ set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 install(TARGETS drstrace DESTINATION "${INSTALL_BIN}"
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
+
 
 ##################################################
 # drstrace test
