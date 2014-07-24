@@ -29,10 +29,9 @@ set(srcs
     drstrace.c
     drstrace_named_consts.c)
 
-# We do not need libc, and we avoid a 10x size increase in both our
-# dll and pdb (plus we avoid stressing private library isolation) by
-# not using it (i#714).
-set(DynamoRIO_USE_LIBC OFF)
+# We set DR libc option on b/c this is needed to link with drsyms_static
+# on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
+set(DynamoRIO_USE_LIBC ON)
 
 add_library(drstracelib SHARED ${srcs})
 
@@ -56,6 +55,9 @@ configure_DynamoRIO_client(drstracelib)
 use_DynamoRIO_extension(drstracelib drsyscall_static)
 use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
+# XXX: We could use a dynamic drsyms, although drmemory is using static.
+# So we'd need special deployment here.
+use_DynamoRIO_extension(drstracelib drsyms_static)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib
