@@ -573,6 +573,8 @@ void dr_init(client_id_t id)
     uint const_arrays_num;
     drsys_options_t ops = { sizeof(ops), 0, };
 
+    dr_set_client_name("Dr. STrace", "http://drmemory.org/issues");
+
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif

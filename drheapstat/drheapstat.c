@@ -2183,6 +2183,8 @@ dr_init(client_id_t client_id)
     callstack_options_t callstack_ops = { sizeof(callstack_ops), 0 };
     drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 1000};
 
+    dr_set_client_name("Dr. Heapstat", "http://drmemory.org/issues");
+
     ASSERT(opstr != NULL, "error obtaining option string");
     drheap_options_init(opstr);
 

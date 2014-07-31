@@ -1740,6 +1740,8 @@ dr_init(client_id_t id)
     module_data_t *data;
     const char *opstr;
 
+    dr_set_client_name("Dr. Memory", "http://drmemory.org/issues");
+
     utils_early_init();
 
     /* get app_path before drmem_options_init() */
