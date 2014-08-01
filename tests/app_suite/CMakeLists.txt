@@ -66,6 +66,10 @@ elseif (WIN32)
     # pre-win7, set _WIN32_WINNT to be _WIN32_WINNT_WIN7
     append_compile_flags(app_suite_tests "-D_WIN32_WINNT=0x0601")
   endif ()
+  if (NOT CMAKE_C_COMPILER_VERSION VERSION_LESS 18.0)
+    # i#1376: VS2013 requires /FS w/ multiple cl.exe in parallel.
+    append_compile_flags(app_suite_tests "/FS")
+  endif()
 endif ()
 
 if (UNIX)

@@ -348,6 +348,12 @@ else (UNIX)
   # have seen occasional problems: we'll risk it.  we could check for
   # "MSVC10 OR MSVC90".
   set(CL_CFLAGS "${CL_CFLAGS} /MP")
+  if (NOT CMAKE_C_COMPILER_VERSION VERSION_LESS 18.0)
+    # i#1376: VS2013 requires /FS w/ multiple cl.exe in parallel (which Ninja
+    # uses).  While /MP is supposed to enable it, it doesn't seem to.
+    # This is recommended after /Fd but it seems to work here.
+    set(CL_CFLAGS "${CL_CFLAGS} /FS")
+  endif()
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${WARN} ${CL_CFLAGS}")
 endif (UNIX)
 set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN}")
