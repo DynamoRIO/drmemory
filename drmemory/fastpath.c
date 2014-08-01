@@ -815,6 +815,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     } else
         mi->opsz = opnd_size_in_bytes(opnd_get_size(mi->dst[0].app));
     if (opnd_is_null(mi->src[0].app)) {
+#ifdef TOOL_DR_MEMORY
         if (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) {
             /* match dst size, shadow slot holds whole dword's worth */
             if (mi->opsz > 0) {
@@ -825,9 +826,11 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             } else
                 mi->src_opsz = 1; /* eflags */
         } else
+#endif
             mi->src_opsz = 0;
     } else
         mi->src_opsz = opnd_size_in_bytes(opnd_get_size(mi->src[0].app));
+#ifdef TOOL_DR_MEMORY
     if (mi->opsz == 0 && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
         /* match src size, shadow slot holds whole dword's worth */
         if (mi->src_opsz > 0) {
@@ -837,6 +840,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         } else
             mi->opsz = 1; /* eflags */
     }
+#endif
 
     /* adjust for precise memory operand */
     if (mi->load || mi->store) {
