@@ -70,12 +70,17 @@ else (UNIX)
     table_windows_ntusercall.c
     table_windows_ntgdi.c
     table_windows_kernel32.c
-    drsyscall_wingdi.c)
+    drsyscall_wingdi.c
+    ${PROJECT_SOURCE_DIR}/make/resources.rc)
   if (SYSCALL_DRIVER)
     set(srcs ${srcs}
       drmemory/syscall_driver.c)
   endif (SYSCALL_DRIVER)
 endif (UNIX)
+
+if (WIN32)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSYSCALL)
+endif ()
 
 macro(configure_drsyscall_target target)
   if (UNIX)

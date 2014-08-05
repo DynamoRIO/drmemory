@@ -39,6 +39,11 @@ set(srcs
   # add more here
   )
 
+if (WIN32)
+  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSYMCACHE)
+endif ()
+
 # We only need drsyms for checking whether a module has debug info,
 # but a user of this extension is almost certainly already using
 # drsyms, so it should be fine to unconditionally depend on it.
