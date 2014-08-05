@@ -61,6 +61,7 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.7.0 include:
+ - Dropped official support for Windows 2000.
  - Enabled -delay_frees_stack by default.
  - Changed details of the callstack maximum frame options.
    Added two new options: -malloc_max_frames, used for leak reports (and

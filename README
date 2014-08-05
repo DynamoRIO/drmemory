@@ -34,8 +34,8 @@ memory leaks, and access to un-reserved thread local storage slots (on
 Windows).
 
 Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
-currently targets 32-bit Windows and Linux, with early Mac OSX support
-available as a Beta release.  64-bit is coming soon.
+currently targets 32-bit Windows (XP and higher) and Linux, with early Mac
+OSX support available as a Beta release.  64-bit is coming soon.
 
 Dr. Memory also includes a system call tracing tool for Windows and a
 symbol query utility.  Those tools are available for both 32-bit and 64-bit.
