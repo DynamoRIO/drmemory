@@ -154,6 +154,9 @@ endforeach ()
 ##################################################
 
 
+# i#1099: avoid absolute path complaint on package build step
+set(base_cache "BUILDING_PACKAGE:BOOL=ON")
+
 set(tools "")
 # build drmemory last, so our package is a drmem package
 if (NOT arg_drmemory_only)
@@ -172,22 +175,26 @@ foreach (tool ${tools})
 
   if (NOT arg_vmk_only)
     testbuild_ex("${name}-dbg-32" OFF "
+      ${base_cache}
       ${tool}
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Debug
       " OFF ON "")
     testbuild_ex("${name}-rel-32" OFF "
+      ${base_cache}
       ${tool}
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
       " OFF ON "") # we do run some release tests in short suite
     if ("${tool}" MATCHES "MEMORY")
       testbuild_ex("${name}-dbg-64" ON "
+        ${base_cache}
          ${tool}
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Debug
          " OFF ON "")
       testbuild_ex("${name}-rel-64" ON "
+        ${base_cache}
          ${tool}
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Release
@@ -197,12 +204,14 @@ foreach (tool ${tools})
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
       testbuild_ex("${name}-vmk-dbg-32" OFF "
+        ${base_cache}
         ${tool}
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Debug
         VMKERNEL:BOOL=ON
         " OFF ON "")
       testbuild_ex("${name}-vmk-rel-32" OFF "
+        ${base_cache}
         ${tool}
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Release
