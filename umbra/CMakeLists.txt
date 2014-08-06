@@ -40,11 +40,6 @@ set(srcs
   # add more here
   )
 
-if (WIN32)
-  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_UMBRA)
-endif ()
-
 # add arch specific src here
 if (X64)
   set (srcs ${srcs} umbra_x64.c)

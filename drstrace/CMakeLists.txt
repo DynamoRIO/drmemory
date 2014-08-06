@@ -29,11 +29,6 @@ set(srcs
     drstrace.c
     drstrace_named_consts.c)
 
-if (WIN32)
-  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSTRACE)
-endif ()
-
 # We set DR libc option on b/c this is needed to link with drsyms_static
 # on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
 set(DynamoRIO_USE_LIBC ON)
@@ -43,12 +38,7 @@ add_library(drstracelib SHARED ${srcs})
 # We share the framework version # for now
 set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION})
 
-if (WIN32)
-  set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS
-    "${DEFINES_NO_D};RC_IS_DRSTRACELIB")
-else ()
-  set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-endif ()
+set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 set_target_properties(drstracelib PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
@@ -91,20 +81,11 @@ install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
 # waits until the end of the file to take the global values into
 # effect.  We don't seem to need them for the front-end though.
 
-set(front_srcs drstrace_frontend.c)
-if (WIN32)
-  set(front_srcs ${front_srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-endif ()
-add_executable(drstrace ${front_srcs})
+add_executable(drstrace drstrace_frontend.c)
 configure_DynamoRIO_standalone(drstrace)
 target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
 set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
-if (WIN32)
-  set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
-    "${DEFINES_NO_D};RC_IS_DRSTRACE")
-else ()
-  set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-endif ()
+set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 install(TARGETS drstrace DESTINATION "${INSTALL_BIN}"
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
