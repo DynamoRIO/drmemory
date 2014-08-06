@@ -47,6 +47,14 @@ else (X64)
   set (srcs ${srcs} umbra_x86.c)
 endif (X64)
 
+# i#1594c#3: VS generators fail if static lib has resources
+set(srcs_static ${srcs})
+
+if (WIN32)
+  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_UMBRA)
+endif ()
+
 macro(configure_umbra_target target)
   if (UNIX)
     # Avoid relocations which tend to violate security policies
@@ -95,7 +103,7 @@ install(FILES umbra.h DESTINATION ${DRMF_INSTALL_INC})
 # use this same extension.
 # But, we also provide a static version with a different name for those
 # who want it, in the style of DR's side-by-side static extensions.
-add_library(umbra_static STATIC ${srcs} ../framework/drmf_utils.c)
+add_library(umbra_static STATIC ${srcs_static} ../framework/drmf_utils.c)
 configure_DynamoRIO_client(umbra_static)
 use_DynamoRIO_extension(umbra_static drmgr_static)
 use_DynamoRIO_extension(umbra_static drcontainers)
@@ -104,7 +112,7 @@ export_umbra_target(umbra_static "drmgr_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
-add_library(umbra_int STATIC ${srcs})
+add_library(umbra_int STATIC ${srcs_static})
 configure_DynamoRIO_client(umbra_int)
 use_DynamoRIO_extension(umbra_int drmgr_static)
 use_DynamoRIO_extension(umbra_int drcontainers)

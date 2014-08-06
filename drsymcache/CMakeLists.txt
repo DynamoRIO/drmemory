@@ -39,6 +39,14 @@ set(srcs
   # add more here
   )
 
+# i#1594c#3: VS generators fail if static lib has resources
+set(srcs_static ${srcs})
+
+if (WIN32)
+  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSYMCACHE)
+endif ()
+
 # We only need drsyms for checking whether a module has debug info,
 # but a user of this extension is almost certainly already using
 # drsyms, so it should be fine to unconditionally depend on it.
@@ -89,14 +97,14 @@ install(FILES drsymcache.h DESTINATION ${DRMF_INSTALL_INC})
 # use this same extension.
 # But, we also provide a static version with a different name for those
 # who want it, in the style of DR's side-by-side static extensions.
-add_library(drsymcache_static STATIC ${srcs} ${external_srcs})
+add_library(drsymcache_static STATIC ${srcs_static} ${external_srcs})
 configure_DynamoRIO_client(drsymcache_static)
 configure_drsymcache_target(drsymcache_static "drmgr_static" "drsyms_static")
 export_drsymcache_target(drsymcache_static "drmgr_static" "drsyms_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
-add_library(drsymcache_int STATIC ${srcs})
+add_library(drsymcache_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drsymcache_int)
 configure_drsymcache_target(drsymcache_int "drmgr_static" "drsyms_static")
 

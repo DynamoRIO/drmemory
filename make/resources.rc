@@ -1,0 +1,176 @@
+/* **********************************************************
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/***************************************************************************
+ * Version information for Windows binaries.
+ * We use this same file for all our binaries.
+ */
+
+#include "winresrc.h"
+
+#define EXPANDSTR(x) #x
+#define STRINGIFY(x) EXPANDSTR(x)
+
+/* As it's a pain to pass spaces in defines from cmake we dispatch here.
+ * Each binary must set an RC_IS_* preprocessor define to
+ * select the proper strings below.
+ *
+ * XXX: it would be cleaner to have each DRMF library's description locally
+ * if we had a simple way to do that.
+ *
+ * XXX: better to add a configure.h that sets some of these, such
+ * as via the cmake var toolname_cap_spc?
+ */
+
+#ifdef TOOL_DR_HEAPSTAT
+# define TOOLNAME_CAP_SPC "Dr. Heapstat"
+# define TOOLNAME "drheapstat"
+#else
+# define TOOLNAME_CAP_SPC "Dr. Memory"
+# define TOOLNAME "drmemory"
+#endif
+
+#ifdef RC_IS_TOOLLIB
+# define FILE_NAME STRINGIFY(CLIENT_LIBNAME) ".dll"
+# define FILE_DESCRIPTION TOOLNAME_CAP_SPC " main library"
+# define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_FRONTEND)
+# define FILE_NAME TOOLNAME ".exe"
+# define FILE_DESCRIPTION TOOLNAME_CAP_SPC " front end"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_SYMQUERY)
+# define FILE_NAME "symquery.exe"
+# define FILE_DESCRIPTION "Symbol query utility"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_WINSYMS)
+# define FILE_NAME "winsyms.exe"
+# define FILE_DESCRIPTION "Symbol translation utility"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_VERINFO)
+# define FILE_NAME "verinfo.exe"
+# define FILE_DESCRIPTION "Version query utility"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_UNITTESTS)
+# define FILE_NAME "unit_tests.exe"
+# define FILE_DESCRIPTION TOOLNAME_CAP_SPC " unit tests"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRSTRACE)
+# define FILE_NAME "drstrace.exe"
+# define FILE_DESCRIPTION "System call tracer"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRSTRACELIB)
+# define FILE_NAME "drstracelib.dll"
+# define FILE_DESCRIPTION "System call tracer library"
+# define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_DRSYMCACHE)
+# define FILE_NAME "drsymcachelib.dll"
+# define FILE_DESCRIPTION "Symbol caching library"
+# define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_DRSYSCALL)
+# define FILE_NAME "drsyscall.dll"
+# define FILE_DESCRIPTION "System call monitor"
+# define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_UMBRA)
+# define FILE_NAME "umbra.dll"
+# define FILE_DESCRIPTION "Shadow memory translator"
+# define FILE_TYPE VFT_DLL
+#else
+# error must define an RC_IS_xxx define
+#endif
+
+/* Ensure we have everything defined: */
+
+#ifndef FILE_NAME
+# error FILE_NAME not defined
+#endif
+#ifndef FILE_DESCRIPTION
+# error FILE_DESCRIPTION not defined
+#endif
+#if !defined(FILE_TYPE) || (FILE_TYPE != VFT_DLL && FILE_TYPE != VFT_APP)
+# error FILE_TYPE not defined
+#endif
+#ifndef VERSION_STRING
+# error VERSION_STRING not defined
+#endif
+#ifndef VERSION_COMMAS
+# error VERSION_COMMAS not defined
+#endif
+#ifndef BUILD_NUMBER
+# error BUILD_NUMBER not defined
+#endif
+
+/* Now construct derived properties: */
+
+#define COMPANY_NAME TOOLNAME_CAP_SPC " developers"
+#define VERSION_COMMA_STRING STRINGIFY(VERSION_COMMAS)
+#define BUILD_NUMBER_STR STRINGIFY(BUILD_NUMBER)
+
+#ifdef DEBUG
+# define FILE_DEBUG_FLAG | VS_FF_DEBUG
+#else
+# define FILE_DEBUG_FLAG
+#endif
+
+/* XXX: we could also set things like VS_FF_PRERELEASE, VS_FF_PRIVATEBUILD,
+ * or have a build description, or comments built from build defines or sthg.
+ */
+#define COMMENT_STR ""
+#define PRIVATE_BUILD_DESC ""
+#define SPECIAL_BUILD_DESC ""
+
+/* The version block itself: */
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION VERSION_COMMAS,BUILD_NUMBER
+    PRODUCTVERSION VERSION_COMMAS,BUILD_NUMBER
+    FILEFLAGSMASK 0x3fL
+    FILEFLAGS 0x0L FILE_DEBUG_FLAG
+    FILEOS 0x4L
+    FILETYPE FILE_TYPE
+    FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            /* XXX: we don't seem to need to have "string \0" */
+#           define ASCIIZ /* nothing */
+            VALUE "Comments", COMMENT_STR ASCIIZ
+            VALUE "CompanyName", COMPANY_NAME ASCIIZ
+            VALUE "FileDescription", FILE_DESCRIPTION ASCIIZ
+            VALUE "InternalName", FILE_NAME ASCIIZ
+            VALUE "LegalCopyright", "Copyright (C) " COMPANY_NAME " 2007-2014" ASCIIZ
+            VALUE "LegalTrademarks", "" ASCIIZ
+            VALUE "OriginalFilename", FILE_NAME ASCIIZ
+            VALUE "PrivateBuild", PRIVATE_BUILD_DESC ASCIIZ
+            VALUE "ProductName", TOOLNAME_CAP_SPC ASCIIZ
+            VALUE "FileVersion", VERSION_STRING "," BUILD_NUMBER_STR ASCIIZ
+            VALUE "ProductVersion", VERSION_COMMA_STRING "," BUILD_NUMBER_STR ASCIIZ
+            VALUE "SpecialBuild", SPECIAL_BUILD_DESC ASCIIZ
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

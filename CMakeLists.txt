@@ -220,10 +220,13 @@ message(STATUS "Dr. Memory version number: ${TOOL_VERSION_NUMBER}")
 # Avoid "BUILD_NUMBER" name since conflics w/ DR's var
 set(TOOL_BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
 
+string(REGEX REPLACE "\\." "," TOOL_VERSION_COMMAS "${TOOL_VERSION_NUMBER}")
+
 set(DEFINES ${DEFINES}
   -DBUILD_NUMBER=${TOOL_BUILD_NUMBER}
   -DVERSION_NUMBER=${TOOL_VERSION_NUMBER}
-  -DVERSION_STRING="${TOOL_VERSION_NUMBER}")
+  -DVERSION_STRING="${TOOL_VERSION_NUMBER}"
+  -DVERSION_COMMAS=${TOOL_VERSION_COMMAS})
 
 # i#44/PR 243532: online symbol access
 option(USE_DRSYMS "use drsyms DR Extension online symbols instead of post-processing"
@@ -1045,6 +1048,10 @@ else (TOOL_DR_HEAPSTAT)
   set(scripts ${toolname}.pl)
 endif (TOOL_DR_HEAPSTAT)
 
+if (WIN32)
+  set(srcs ${srcs} make/resources.rc)
+endif ()
+
 if (NOT USE_DRSYMS)
   set(scripts ${scripts} postprocess.pl)
 endif (NOT USE_DRSYMS)
@@ -1054,7 +1061,11 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
   # we rename client lib (plus cmake best w/o same-name targets)
   set(client_target "${toolname}lib")
   # assuming only DrMem for now
-  add_executable(${toolname} drmemory/frontend.c)
+  set(frontend_srcs drmemory/frontend.c)
+  if (WIN32)
+    set(frontend_srcs ${frontend_srcs} make/resources.rc)
+  endif ()
+  add_executable(${toolname} ${frontend_srcs})
   if (WIN32)
     target_link_libraries(${toolname} dbghelp)
   endif (WIN32)
@@ -1068,7 +1079,7 @@ set_target_properties(${client_target} PROPERTIES
 set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS
   # If we end up wanting this for other DEFINES uses above we'll have to set
   # client_target earlier.  For now we only need for the C code.
-  "${DEFINES_NO_D};CLIENT_LIBNAME=${client_target}")
+  "${DEFINES_NO_D};CLIENT_LIBNAME=${client_target};RC_IS_TOOLLIB")
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # ensure race-free parallel builds
   add_dependencies(${client_target} ${asm_utils_tgt})
@@ -1080,14 +1091,23 @@ append_src_compile_flags(common/alloc_replace.c ${FLAG_DISABLE_FPO})
 
 if (WIN32)
   # our addr2line for Windows
-  add_executable(winsyms tools/winsyms.c)
+  add_executable(winsyms tools/winsyms.c make/resources.rc)
   target_link_libraries(winsyms dbghelp)
+  set_property(TARGET winsyms PROPERTY COMPILE_DEFINITIONS
+    # We need full defines to get version values for resources
+    "${DEFINES_NO_D};RC_IS_WINSYMS")
   # configure_DynamoRIO_client clears global flags so add as additional
   # request static libc to avoid manifest files and libc portability issues
   string(REGEX REPLACE "/MD" "/MT" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   set_source_files_properties(tools/winsyms.c PROPERTIES
     COMPILE_FLAGS "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+
+  # Helper tool to ensure we have version info in our binaries:
+  add_executable(verinfo tools/verinfo.c make/resources.rc)
+  target_link_libraries(verinfo version)
+  set_property(TARGET verinfo PROPERTY COMPILE_DEFINITIONS
+    "${DEFINES_NO_D};RC_IS_VERINFO")
 endif (WIN32)
 
 # we want a preferred base to avoid patching pcaches
@@ -1154,12 +1174,13 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
   target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib)
   if (WIN32)
     set_target_properties(${toolname} PROPERTIES
-      VERSION ${TOOL_VERSION_NUMBER})
+      VERSION ${TOOL_VERSION_NUMBER}
+      COMPILE_DEFINITIONS "${DEFINES_NO_D};RC_IS_FRONTEND")
   else (WIN32)
     add_rel_rpaths(${toolname} drinjectlib)
     add_rel_rpaths(${toolname} drconfiglib)
+    set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
   endif (WIN32)
-  set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif (USE_DRSYMS AND TOOL_DR_MEMORY)
 if (USE_DRSYMS)
   if (STATIC_DRSYMS)
@@ -1256,7 +1277,11 @@ if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
 endif (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
 
 # symbol query tool
-add_executable(symquery tools/symquery.c)
+set(symquery_srcs tools/symquery.c)
+if (WIN32)
+  set(symquery_srcs ${symquery_srcs} make/resources.rc)
+endif ()
+add_executable(symquery ${symquery_srcs})
 if (DEFINED DynamoRIO_RPATH)
   set(old_rpath ${DynamoRIO_RPATH})
 else ()
@@ -1269,7 +1294,10 @@ set(DynamoRIO_RPATH ${old_rpath})
 # drfrontendlib depends on drinjectlib, DR-i#1409 should be the solution
 target_link_libraries(symquery drinjectlib drfrontendlib)
 if (WIN32)
-  set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER})
+  set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER}
+    COMPILE_DEFINITIONS
+    # We need full defines to get version values for resources
+    "${DEFINES_NO_D};RC_IS_SYMQUERY")
 else (WIN32)
   add_rel_rpaths(symquery drinjectlib)
 endif (WIN32)
@@ -1545,7 +1573,7 @@ if (BUILD_TOOL_TESTS)
     # unit tests
     add_executable(unit_tests ${srcs})
     set_property(TARGET unit_tests PROPERTY COMPILE_DEFINITIONS
-      "${DEFINES_NO_D};BUILD_UNIT_TESTS")
+      "${DEFINES_NO_D};BUILD_UNIT_TESTS;RC_IS_UNITTESTS")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # ensure race-free parallel builds
       add_dependencies(unit_tests ${asm_utils_tgt})
@@ -1828,6 +1856,15 @@ install(CODE "file(APPEND \"${PROJECT_BINARY_DIR}/CMakeFiles/Export/cmake/${expo
 # internal tests.
 install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 
+# Check that we have version resources in all our binaries.
+# We do this at install time once we have all binaries built, as it's a pain
+# to individually add post-build commands.
+if (WIN32)
+  get_target_property(verinfo_path verinfo LOCATION${location_suffix})
+  install(CODE "include(\"${PROJECT_SOURCE_DIR}/make/rccheck.cmake\")")
+  install(CODE "check_version_resources(\"${PROJECT_BINARY_DIR}\" \"${verinfo_path}\")")
+endif ()
+
 ###########################################################################
 # packaging
 
@@ -1860,7 +1897,10 @@ else (UNIX)
     if (NOT EXISTS "${nsis_path}/makensis.exe")
       message(FATAL_ERROR "NSIS check needs to be updated")
     endif ()
-    find_program(strings strings)
+    # we may have already run find_program on strings up above
+    if (NOT strings)
+      find_program(strings strings)
+    endif ()
     if (strings)
       execute_process(COMMAND ${strings} "${nsis_path}/makensis.exe"
         RESULT_VARIABLE strings_result

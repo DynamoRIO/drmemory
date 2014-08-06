@@ -77,6 +77,14 @@ else (UNIX)
   endif (SYSCALL_DRIVER)
 endif (UNIX)
 
+# i#1594c#3: VS generators fail if static lib has resources
+set(srcs_static ${srcs})
+
+if (WIN32)
+  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSYSCALL)
+endif ()
+
 macro(configure_drsyscall_target target)
   if (UNIX)
     # Avoid relocations which tend to violate security policies
@@ -127,7 +135,7 @@ install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 # use this same extension.
 # But, we also provide a static version with a different name for those
 # who want it, in the style of DR's side-by-side static extensions.
-add_library(drsyscall_static STATIC ${srcs} ${external_srcs})
+add_library(drsyscall_static STATIC ${srcs_static} ${external_srcs})
 configure_DynamoRIO_client(drsyscall_static)
 use_DynamoRIO_extension(drsyscall_static drmgr_static)
 use_DynamoRIO_extension(drsyscall_static drcontainers)
@@ -136,7 +144,7 @@ export_drsyscall_target(drsyscall_static "drmgr_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
-add_library(drsyscall_int STATIC ${srcs})
+add_library(drsyscall_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drsyscall_int)
 use_DynamoRIO_extension(drsyscall_int drmgr_static)
 use_DynamoRIO_extension(drsyscall_int drcontainers)
