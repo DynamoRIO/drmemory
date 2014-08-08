@@ -717,7 +717,8 @@ _tmain(int argc, TCHAR *targv[])
 #endif
 
     drfront_status_t sc;
-    bool res;
+    IF_NOT_X64(bool res;)
+    dr_config_status_t status;
 
     if (dr_standalone_init() == NULL) {
         /* We assume this is due to a new version of Windows */
@@ -1068,11 +1069,10 @@ _tmain(int argc, TCHAR *targv[])
         if (i < argc)
             usage("%s", "-nudge does not take an app to run");
         /* could also complain about other client or app specific ops */
-        res = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, NUDGE_LEAK_SCAN, INFINITE);
-        if (res != DR_SUCCESS) {
-            fatal("error nudging %d%s", nudge_pid,
-                  (res == DR_NUDGE_PID_NOT_INJECTED) ? ": no such Dr. Memory process"
-                  : "");
+        status = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, NUDGE_LEAK_SCAN, INFINITE);
+        if (status != DR_SUCCESS) {
+            const char *err_msg = dr_config_status_code_to_string(status);
+            fatal("error nudging %d, error code %d (%s)", nudge_pid, status, err_msg);
             assert(false); /* shouldn't get here */
         }
         exit(0);
@@ -1301,17 +1301,27 @@ _tmain(int argc, TCHAR *targv[])
      * this-pid config will override
      */
     info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
-    if (dr_register_process(process, pid,
-                            false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
-                            use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
-        fatal("failed to register DynamoRIO configuration");
+    status = dr_register_process(process, pid,
+                                 false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
+                                 use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops);
+    if (status != DR_SUCCESS) {
+        const char *err_msg = dr_config_status_code_to_string(status);
+        fatal("failed to register DynamoRIO configuration for \"%s\"(%d) "
+              "dr_ops=\"%s\".\n"
+              "Error code %d (%s)",
+              process, pid, dr_ops, status, err_msg);
         goto error; /* actually won't get here */
     }
     info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
-    if (dr_register_client(process, pid,
-                           false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
-                           0, client_path, client_ops) != DR_SUCCESS) {
-        fatal("failed to register DynamoRIO client configuration");
+    status = dr_register_client(process, pid,
+                                false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
+                                0, client_path, client_ops);
+    if (status != DR_SUCCESS) {
+        const char *err_msg = dr_config_status_code_to_string(status);
+        fatal("failed to register DynamoRIO client configuration for \"%s\","
+              " ops=\"%s\"\n"
+              "Error code %d (%s)",
+              client_path, client_ops, status, err_msg);
         goto error; /* actually won't get here */
     }
 
