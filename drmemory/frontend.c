@@ -68,24 +68,6 @@
 # include <sys/utsname.h>
 #endif
 
-#ifdef WINDOWS
-# include <dbghelp.h>
-# if _MSC_VER <= 1400 /* VS2005- */
-/* These aren't present in VS2005 DbgHelp.h */
-BOOL IMAGEAPI
-SymInitializeW(__in HANDLE hProcess, __in_opt PCWSTR UserSearchPath,
-               __in BOOL fInvadeProcess);
-
-BOOL IMAGEAPI
-SymSetSearchPathW(__in HANDLE hProcess, __in_opt PCWSTR SearchPath);
-
-DWORD64 IMAGEAPI
-SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR ImageName,
-                 __in_opt PCWSTR ModuleName, __in DWORD64 BaseOfDll, __in DWORD DllSize,
-                 __in_opt PMODLOAD_DATA Data, __in_opt DWORD Flags);
-# endif
-#endif
-
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 #define MAX_APP_CMDLINE 4096
 
@@ -139,20 +121,6 @@ static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
 static bool fetch_crt_syms_only = true;
 
 static dr_os_version_info_t win_ver;
-
-enum {
-    /* _NT_SYMBOL_PATH typically has a local path and a URL. */
-    MAX_SYMSRV_PATH = 2 * MAXIMUM_PATH
-};
-
-/* Symbol search path. */
-/* XXX: it may be simpler to have this be TCHAR and avoid extra conversions
- * if we created BUFPRINT for TCHAR to simplify set_symbol_search_path().
- */
-static char symsrv_path[MAX_SYMSRV_PATH];
-
-/* URL of the MS symbol server. */
-static const char ms_symsrv[] = "http://msdl.microsoft.com/download/symbols";
 
 static bool
 on_vista_or_later(void)
@@ -341,31 +309,6 @@ char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
 }
 #endif
 
-/* Replace occurences of old_char with new_char in str.  Typically used to
- * canonicalize Windows paths into using forward slashes.
- */
-void
-string_replace_character(char *str, char old_char, char new_char)
-{
-    while (*str != '\0') {
-        if (*str == old_char) {
-            *str = new_char;
-        }
-        str++;
-    }
-}
-
-void
-string_replace_character_wide(TCHAR *str, TCHAR old_char, TCHAR new_char)
-{
-    while (*str != _T('\0')) {
-        if (*str == old_char) {
-            *str = new_char;
-        }
-        str++;
-    }
-}
-
 static bool
 ends_in_exe(const char *s)
 {
@@ -451,168 +394,6 @@ write_pid_to_file(const char *pidfile, process_id_t pid)
     }
 }
 
-/* Sets up _NT_SYMBOL_PATH for drsyms symbol lookup and saves a copy in
- * symsrv_path for downloading missing pdbs later.  If the user set
- * _NT_SYMBOL_PATH, we use that and add the Microsoft symbol server if it's
- * missing.
- *
- * DR's private loader does *not* support loading symsrv.dll, and if
- * _NT_SYMBOL_PATH has any symbol servers, dbghelp will fail to load any
- * symbols.  Therefore, we strip all servers when setting _NT_SYMBOL_PATH for
- * the app.
- */
-static void
-set_symbol_search_path(const char *symdir, bool ignore_env)
-{
-    char app_symsrv_path[MAX_SYMSRV_PATH];
-    TCHAR wapp_symsrv_path[MAX_SYMSRV_PATH];
-    char tmp_srv_path[MAX_SYMSRV_PATH];
-    char *cur;
-    char *end;
-    size_t sofar;
-    ssize_t len;
-    bool has_srv;
-    bool has_ms_symsrv;
-
-    /* If the user set a non-empty _NT_SYMBOL_PATH, then we use that.
-     * Otherwise, we set it to logs/symcache/symbols and make sure it exists.
-     */
-    if (ignore_env ||
-        drfront_get_env_var("_NT_SYMBOL_PATH", symsrv_path,
-                            BUFFER_SIZE_ELEMENTS(symsrv_path)) != DRFRONT_SUCCESS ||
-        strlen(symsrv_path) == 0) {
-        char pdb_dir[MAXIMUM_PATH];
-        _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", symdir);
-        NULL_TERMINATE_BUFFER(pdb_dir);
-        string_replace_character(pdb_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
-        dr_create_dir(pdb_dir);
-        if (!dr_directory_exists(pdb_dir)) {
-            warn("Failed to create directory for symbols: %s", pdb_dir);
-        }
-        strncpy(symsrv_path, pdb_dir, BUFFER_SIZE_ELEMENTS(symsrv_path));
-        NULL_TERMINATE_BUFFER(symsrv_path);
-    }
-
-    /* Prepend "srv*" if it isn't there, and append the MS symbol server if it
-     * isn't there.
-     */
-    has_srv = (_strnicmp("srv*", symsrv_path, 4) == 0);
-    has_ms_symsrv = (strstr(symsrv_path, ms_symsrv) != NULL);
-    _snprintf(tmp_srv_path, BUFFER_SIZE_ELEMENTS(tmp_srv_path),
-              "%s%s%s%s",
-              (has_srv ? "" : "srv*"),
-              symsrv_path,
-              (has_ms_symsrv ? "" : "*"),
-              (has_ms_symsrv ? "" : ms_symsrv));
-    NULL_TERMINATE_BUFFER(tmp_srv_path);
-    strncpy(symsrv_path, tmp_srv_path, BUFFER_SIZE_ELEMENTS(symsrv_path));
-    NULL_TERMINATE_BUFFER(symsrv_path);
-
-    /* For app_symsrv_path, split symsrv_path on '*' and filter out all the
-     * non-directory elements.
-     */
-    strncpy(tmp_srv_path, symsrv_path, BUFFER_SIZE_ELEMENTS(tmp_srv_path));
-    NULL_TERMINATE_BUFFER(tmp_srv_path);
-    cur = tmp_srv_path;
-    end = strchr(tmp_srv_path, '\0');
-    string_replace_character(tmp_srv_path, '*', '\0');
-    sofar = 0;
-    app_symsrv_path[0] = '\0';
-    while (cur < end) {
-        char *next = strchr(cur, '\0');
-        if (dr_directory_exists(cur)) {
-            BUFPRINT(app_symsrv_path, BUFFER_SIZE_ELEMENTS(app_symsrv_path),
-                     sofar, len, "%s*", cur);
-        }
-        cur = next + 1;
-    }
-    if (sofar > 0)
-        app_symsrv_path[sofar-1] = '\0';  /* Cut trailing '*'. */
-    if (app_symsrv_path[0] == '\0') {
-        if (!ignore_env) {
-            warn("_NT_SYMBOL_PATH incorrect: using local location instead");
-            /* Easiest to recurse.  Bool prevents 2nd recursion. */
-            set_symbol_search_path(symdir, true);
-            return;
-        } else {
-            warn("error parsing _NT_SYMBOL_PATH: may fail to fetch symbols");
-        }
-    }
-    info("using symbol path %s as the local store", app_symsrv_path);
-    info("using symbol path %s to fetch symbols", symsrv_path);
-
-    /* Set _NT_SYMBOL_PATH for dbghelp in the app. */
-    char_to_tchar(app_symsrv_path, wapp_symsrv_path,
-                  BUFFER_SIZE_ELEMENTS(wapp_symsrv_path));
-    if (!SetEnvironmentVariable(_T("_NT_SYMBOL_PATH"), wapp_symsrv_path)) {
-        warn("SetEnvironmentVariable failed: %d", GetLastError());
-    }
-}
-
-static BOOL
-fetch_module_symbols(HANDLE proc, const char *modpath)
-{
-    DWORD64 base;
-    IMAGEHLP_MODULEW64 mod_info;
-    BOOL got_pdbs = FALSE;
-    TCHAR wmodpath[MAXIMUM_PATH];
-    char_to_tchar(modpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath));
-
-    /* XXX: If we port the C frontend to Linux, we can make this shell out to a
-     * bash script that uses apt/yum to install debug info.
-     * XXX: We could push the fetching logic into drsyms to make the frontend
-     * portable.  We'd have to link the frontend against drmemorylib because we
-     * use DR_EXT_DRSYMS_STATIC.
-     */
-
-    /* The SymSrv* API calls are complicated.  It's easier to set the symbol
-     * path to point at a server and rely on SymLoadModuleEx to fetch symbols.
-     */
-
-    /* We must use SymLoadModuleEx as there's no wide version of SymLoadModule64 */
-    base = SymLoadModuleExW(proc, NULL, wmodpath, NULL, 0, 0, NULL, 0);
-    if (base == 0) {
-        warn("SymLoadModuleEx error: %d", GetLastError());
-        return got_pdbs;
-    }
-
-    /* Check that we actually got pdbs. */
-    memset(&mod_info, 0, sizeof(mod_info));
-    mod_info.SizeOfStruct = sizeof(mod_info);
-    if (SymGetModuleInfoW64(proc, base, &mod_info)) {
-        switch (mod_info.SymType) {
-        case SymPdb:
-        case SymDeferred:
-            if (verbose) {
-                sym_info("  pdb for %s stored at %S",
-                     modpath, mod_info.LoadedPdbName);
-            }
-            got_pdbs = TRUE;
-            break;
-        case SymExport:
-            if (verbose) {
-                sym_info("  failed to fetch pdb for %s, exports only", modpath);
-            }
-            break;
-        default:
-            if (verbose) {
-                sym_info("  failed to fetch pdb for %s, got SymType %d",
-                         modpath, mod_info.SymType);
-            }
-            break;
-        }
-    } else {
-        warn("SymGetModuleInfoEx failed: %d", GetLastError());
-    }
-
-    /* Unload it. */
-    if (!SymUnloadModule64(proc, base)) {
-        warn("SymUnloadModule64 error %d", GetLastError());
-    }
-
-    return got_pdbs;
-}
-
 /* Return true if we should fetch this symbol file.  Modifies modpath to make it
  * a long path and assumes it is MAXIMUM_PATH bytes long.
  */
@@ -621,7 +402,7 @@ should_fetch_symbols(const TCHAR *system_root, char *modpath)
 {
     TCHAR wmodpath[MAXIMUM_PATH];
     bool r;
-    string_replace_character(modpath, '\n', '\0');  /* Trailing newline. */
+    drfront_string_replace_character(modpath, '\n', '\0');  /* Trailing newline. */
     /* Convert to a long path to compare with $SystemRoot.  These paths are
      * already absolute, but some of them, like sophos-detoured.dll, are
      * 8.3 style paths.
@@ -659,7 +440,6 @@ fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
     int files_fetched;
     TCHAR system_root[MAXIMUM_PATH];
     DWORD len;
-    TCHAR wsymsrv_path[MAX_SYMSRV_PATH];
 
     /* Get %SystemRoot%. */
     len = GetWindowsDirectory(system_root, BUFFER_SIZE_ELEMENTS(system_root));
@@ -669,7 +449,7 @@ fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
     }
     _tcsncpy(missing_symbols, resfile, BUFFER_SIZE_ELEMENTS(missing_symbols));
     NULL_TERMINATE_BUFFER(missing_symbols);
-    string_replace_character_wide(missing_symbols, _T(ALT_DIRSEP), _T(DIRSEP));
+    drfront_string_replace_character_wide(missing_symbols, _T(ALT_DIRSEP), _T(DIRSEP));
     last_slash = _tcsrchr(missing_symbols, _T(DIRSEP));
     if (last_slash == NULL) {
         warn(TSTR_FMT" is not an absolute path", missing_symbols);
@@ -704,13 +484,6 @@ fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
     /* Initializing dbghelp can be slow, so print something to the user. */
     sym_info("Fetching %d symbol files...", num_files);
 
-    char_to_tchar(symsrv_path, wsymsrv_path, BUFFER_SIZE_ELEMENTS(wsymsrv_path));
-    if (!SymInitializeW(proc, wsymsrv_path, FALSE)) {
-        warn("SymInitialize error %d", GetLastError());
-        goto stream_cleanup;
-    }
-    SymSetSearchPathW(proc, wsymsrv_path);
-
     cur_file = 0;
     files_fetched = 0;
     while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
@@ -718,12 +491,13 @@ fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
             cur_file++;
             sym_info("[%d/%d] Fetching symbols for %s",
                      cur_file, num_files, line);
-            if (fetch_module_symbols(proc, line))
+            if (drfront_fetch_module_symbols(line, NULL, 0))
                 files_fetched++;
         }
     }
-    if (!SymCleanup(proc))
-        warn("SymCleanup error %d", GetLastError());
+
+    if (drfront_sym_exit() != DRFRONT_SUCCESS)
+        warn("drfront_sym_exit failed %d", GetLastError());
 
 stream_cleanup:
     fclose(stream);
@@ -860,7 +634,7 @@ process_results_file(const char *logdir, const char *symdir,
         if (sc == DRFRONT_SUCCESS && res) {
             char_to_tchar(fname, wfname, BUFFER_SIZE_ELEMENTS(wfname));
             /* Older notepad can't handle forward slashes (i#1123) */
-            string_replace_character_wide(wresfile, _T('/'), _T('\\'));
+            drfront_string_replace_character_wide(wresfile, _T('/'), _T('\\'));
             _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), wfname, wresfile);
             NULL_TERMINATE_BUFFER(cmd);
             if (!CreateProcess(wfname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
@@ -949,8 +723,10 @@ _tmain(int argc, TCHAR *targv[])
         /* We assume this is due to a new version of Windows */
         fatal("this version of Windows is not supported by Dr. Memory.");
     }
-
 #ifdef WINDOWS
+    if (drfront_sym_init(NULL, "dbghelp.dll") != DRFRONT_SUCCESS) {
+        warn("Symbols initialization error");
+    }
     /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is
      * 6.2 (Win8)!  Thus we use DR's version.
      */
@@ -1008,7 +784,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 #endif
     drmem_root = default_drmem_root;
-    string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
+    drfront_string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
@@ -1397,7 +1173,7 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
-    string_replace_character(logdir, ALT_DIRSEP, DIRSEP); /* canonicalize */
+    drfront_string_replace_character(logdir, ALT_DIRSEP, DIRSEP); /* canonicalize */
     if (!file_is_writable(logdir)) {
         fatal("invalid -logdir: cannot find/write %s", logdir);
         goto error; /* actually won't get here */
@@ -1454,7 +1230,8 @@ _tmain(int argc, TCHAR *targv[])
             if (!create_dir_if_necessary(persist_dir))
                 goto error; /* actually won't get here */
         }
-        string_replace_character(persist_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
+        drfront_string_replace_character(persist_dir, ALT_DIRSEP,
+                                         DIRSEP); /* canonicalize */
         if (!file_is_writable(persist_dir)) {
             fatal("invalid -persist_dir: cannot find/write %s", persist_dir);
             goto error; /* actually won't get here */
@@ -1479,10 +1256,10 @@ _tmain(int argc, TCHAR *targv[])
                      buf);
         }
     }
-
 #ifdef WINDOWS
     /* Set _NT_SYMBOL_PATH for the app. */
-    set_symbol_search_path(symdir, false);
+    if (drfront_set_symbol_search_path(symdir, false) != DRFRONT_SUCCESS)
+        warn("Can't set symbol search path. Symbol lookup may fail.");
 #endif
 
 #ifdef UNIX
