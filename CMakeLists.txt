@@ -1473,6 +1473,58 @@ if (BUILD_TOOL_TESTS)
 endif (BUILD_TOOL_TESTS)
 
 ###########################################################################
+# Create tool config files for running with "drrun -t"
+
+set(DRRUN_DIR "${PROJECT_BINARY_DIR}/drrun")
+file(MAKE_DIRECTORY "${DRRUN_DIR}")
+
+if (X64)
+  set(DRRUN_SFX .drrun64)
+else (X64)
+  set(DRRUN_SFX .drrun32)
+endif (X64)
+if (BUILDING_SUB_PACKAGE)
+  set(DRRUN_INSTALL "tools/")
+else ()
+  set(DRRUN_INSTALL "${DR_install_dir}/tools/")
+endif ()
+
+function (create_drrun_file frontend file_out name) # option list follows name
+  get_target_property(frontend_path ${frontend} LOCATION${location_suffix})
+  get_filename_component(frontend_name ${frontend_path} NAME)
+  if (BUILDING_SUB_PACKAGE)
+    set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}/${frontend_name}")
+  else ()
+    set(DRRUN_TOP "FRONTEND_REL=../${BUILD_BIN}/${frontend_name}")
+  endif ()
+  set(DRRUN_FILE "${DRRUN_DIR}/${name}${DRRUN_SFX}")
+  file(WRITE  ${DRRUN_FILE} "# Dr. Memory tool config file\n")
+  file(APPEND ${DRRUN_FILE} "${DRRUN_TOP}\n")
+  file(APPEND ${DRRUN_FILE} "TOOL_OP=-dr\n")
+  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_PATH\n")
+  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_BUNDLE=-dr_ops\n")
+  foreach (op ${ARGN})
+    file(APPEND ${DRRUN_FILE} "TOOL_OP=${op}\n")
+  endforeach ()
+  install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
+  set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
+endfunction (create_drrun_file)
+
+if (NOT X64)
+  create_drrun_file(${toolname} unused "drmemory")
+  create_drrun_file(${toolname} unused "drmemory_light" "-light")
+endif ()
+if (WIN32)
+  if (NOT X64) # XXX: today we aren't yet shipping 64-bit drmemory.exe
+    create_drrun_file(${toolname} leakfile "handle_leaks" "-handle_leaks_only")
+    if (X64)
+      file(APPEND ${leakfile}
+        "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues/.\n")
+    endif ()
+  endif ()
+endif ()
+
+###########################################################################
 # Dr. Memory Framework (DRMF)
 
 # We decided against putting the extension inside frameworks/, so

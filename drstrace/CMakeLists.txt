@@ -118,3 +118,8 @@ if (BUILD_TOOL_TESTS)
   get_target_property(drstrace_path drstrace LOCATION${location_suffix})
   add_test(drstrace ${drstrace_path} -dr ${DynamoRIO_DIR}/.. -- ${app_path})
 endif (BUILD_TOOL_TESTS)
+
+##################################################
+# tool config files for running with "drrun -t"
+
+create_drrun_file(drstrace unused "drstrace")
