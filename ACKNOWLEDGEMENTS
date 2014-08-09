@@ -10,6 +10,8 @@ insights, suggestions, and constructive criticism.
   * Shawn Denbow
   * Timur Iskhodzhanov
   * Reid Kleckner
+  * Maxim Shudrak
+  * Dimitrios Tatsis
   * Qin Zhao
 
 Dr. Memory was originally developed by Derek Bruening for Windows.  Derek later
@@ -18,6 +20,8 @@ ported Dr. Memory to Linux.
 Reid Kleckner and Qin Zhao contributed to many different features on both
 Windows and Linux.
 Shawn Denbow contributed to Windows system call handling.
+Maxim Shudrak contributed to Dr. Strace and the Windows system call database.
+Dimitrios Tatsis contributed to Linux system call handling.
 Timur Iskhodzhanov contributed to error suppression and testing.
 Bharath Chandramohan contributed to an ESXi port of Dr. Memory.
 
