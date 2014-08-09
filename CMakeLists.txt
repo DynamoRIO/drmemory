@@ -1773,7 +1773,12 @@ if (UNIX)
   endif (APPLE)
 endif (UNIX)
 
-if (NOT BUILDING_SUB_PACKAGE)
+if (BUILDING_SUB_PACKAGE)
+  # We're being included in another package (DR's).
+  # Our rpaths assumed we had a dynamorio/ subdir, but now that's the upper dir.
+  # Easier to add a symlink than to change rpaths.
+  install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink .. dynamorio WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX})")
+else (BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
   # We don't need docs/, include/, or 64-bit.
   # We do include 32-bit debug lib (and default DR log dir) for
@@ -1829,7 +1834,7 @@ if (NOT BUILDING_SUB_PACKAGE)
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
   endif (UNIX)
-endif (NOT BUILDING_SUB_PACKAGE)
+endif (BUILDING_SUB_PACKAGE)
 
 # DRMF install rules
 install(FILES ${framework_incdir}/drmemory_framework.h DESTINATION ${DRMF_INSTALL_INC})
