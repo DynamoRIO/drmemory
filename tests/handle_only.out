@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,8 +19,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 # The exact number varies quite a bit by platform.
 #~~Dr.M~~      12 unique,    12 total handle leak(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)

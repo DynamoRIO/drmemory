@@ -1886,13 +1886,14 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                 }
             }
         } else if (((i != ERROR_UNADDRESSABLE && i != ERROR_UNDEFINED) ||
-                    !options.leaks_only) &&
-                   (i != ERROR_INVALID_HEAP_ARG || options.check_invalid_frees) &&
+                    INSTRUMENT_MEMREFS()) &&
+                   (i != ERROR_INVALID_HEAP_ARG ||
+                    (options.check_invalid_frees && options.track_allocs)) &&
 #ifdef WINDOWS
                    (i != ERROR_GDI_USAGE || options.check_gdi) &&
                    (i != ERROR_HANDLE_LEAK || options.check_handle_leaks) &&
 #endif
-                   (i != ERROR_UNDEFINED || options.check_uninitialized)) {
+                   (i != ERROR_UNDEFINED || CHECK_UNINITS())) {
             NOTIFY_COND(notify, f, "  %5d unique, %5d total %s%s"NL,
                         num_unique[set][i], num_total[set][i],
                         potential ? POTENTIAL_PREFIX " " : "", error_name[i]);

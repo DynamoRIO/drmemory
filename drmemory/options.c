@@ -340,6 +340,9 @@ options_init(const char *opstr)
         options.track_allocs = false;
         /* disable leak scan */
         options.leaks_only = false;
+# ifndef TOOL_DR_HEAPSTAT
+        options.count_leaks = false;
+# endif
         options.check_handle_leaks = true;
         if (!option_specified.check_gdi)
             options.check_gdi = false;

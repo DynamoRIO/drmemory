@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -28,6 +28,5 @@ ERRORS FOUND:
 child has exited with status 9
 app exiting
 NO ERRORS FOUND:
-# since native there are no unaddr, uninit, or leak checks:
-      0 unique,     0 total invalid heap argument(s)
+# since native there are no unaddr, uninit, heap, or leak checks:
       0 unique,     0 total warning(s)
