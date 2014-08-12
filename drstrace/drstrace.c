@@ -46,8 +46,10 @@ extern size_t get_const_arrays_num(void);
 
 /* Where to write the trace */
 static file_t outf;
-
-static hashtable_t nconsts_table;
+#ifndef DRSTRACE_UNIT_TESTS
+static
+#endif
+hashtable_t nconsts_table;
 
 /* We buffer the output via a stack-allocated buffer.  We flush prior to
  * each system call.
@@ -608,3 +610,52 @@ void dr_init(client_id_t id)
     }
 
 }
+
+/****************************************************************************
+ * Unit tests group of functions
+ */
+
+#ifdef DRSTRACE_UNIT_TESTS
+bool
+drstrace_unit_test_syscall_exit()
+{
+    if (drsym_exit() != DRSYM_SUCCESS)
+        return false;
+    hashtable_delete(&nconsts_table);
+    return true;
+}
+
+bool
+drstrace_unit_test_syscall_init()
+{
+    uint const_arrays_num;
+    uint i = 0;
+
+    dr_standalone_init();
+
+    if (drsym_init(0) != DRSYM_SUCCESS)
+        return false;
+
+    const_arrays_num = get_const_arrays_num();
+    hashtable_init(&nconsts_table, HASHTABLE_BITSIZE, HASH_STRING, false);
+    while (i < const_arrays_num) {
+        const_values_t *named_consts = const_struct_array[i];
+        bool res = hashtable_add(&nconsts_table,
+                                 (void *) named_consts[0].const_name,
+                                 (void *) named_consts);
+        if (!res)
+            return false;
+        i++;
+    }
+    return true;
+}
+
+void
+drstrace_unit_test_syscall_arg_iteration(drsys_arg_t arg, void *user_data)
+{
+    drsys_iter_arg_cb(&arg, user_data);
+    return;
+}
+
+#endif /* DRSTRACE_UNIT_TESTS */
+/***************************************************************************/

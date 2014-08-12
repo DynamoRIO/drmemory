@@ -111,6 +111,23 @@ install(TARGETS drstrace DESTINATION "${INSTALL_BIN}"
   WORLD_READ WORLD_EXECUTE)
 
 ##################################################
+# drstrace unit tests build
+
+if (WIN32)
+  add_executable(drstrace_unit_tests ${srcs} drstrace_unit_tests.c)
+
+  set_property(TARGET drstrace_unit_tests PROPERTY COMPILE_DEFINITIONS
+               "${DEFINES_NO_D};DRSTRACE_UNIT_TESTS")
+  configure_DynamoRIO_standalone(drstrace_unit_tests)
+  use_DynamoRIO_extension(drstrace_unit_tests drsyscall_static)
+  use_DynamoRIO_extension(drstrace_unit_tests drx_static)
+  use_DynamoRIO_extension(drstrace_unit_tests drsyms_static)
+  add_dependencies(drstrace_unit_tests drsyscall)
+  add_test(drstrace_unit_tests
+           "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
+endif (WIN32)
+
+##################################################
 # drstrace test
 
 if (BUILD_TOOL_TESTS)
