@@ -140,39 +140,3 @@ endif (BUILD_TOOL_TESTS)
 # tool config files for running with "drrun -t"
 
 create_drrun_file(drstrace unused "drstrace")
-
-##################################################
-# symbol_fetch to fetch symbols from MS Symbol Server
-
-# We only need to fetch the Wintypes.pdb but the Wintypes.dll is only available
-# on Windows 8 or later. So we make a special fake dll here and then change
-# GUID & name to Wintypes.pdb in the debug section of the new dll. We use a special
-# mksymguid.pl script to do that.
-
-if (WIN32)
-  add_library(symbol_fetch SHARED symbol_fetch.c)
-  # We manually set PDBALTPATH here b/c compiler sets absolute path
-  # to pdb which we don't need here. We disable INCREMENTAL b/c we 
-  # don't want to produce additional files with dll. We statically
-  # set image base to avoid bug on x64 environment when symbols
-  # are fetched but couldn't be loaded by using SymLoadModuleExW.
-  set_target_properties(symbol_fetch PROPERTIES LINK_FLAGS
-                        "/BASE:0x10000000 /INCREMENTAL:NO /PDBALTPATH:symbol_fetch.pdb")
-
-  get_target_property(drstrace_path drstrace LOCATION${location_suffix})
-  get_filename_component(drstrace_dir ${drstrace_path} PATH)
-
-  # locate perl
-  if (PERL_PATH AND EXISTS "${PERL_PATH}/perl.exe")
-    set(PERL_EXECUTABLE "${PERL_PATH}/perl.exe")
-  else ()
-    include(FindPerl)
-    if (PERL_FOUND)
-      get_filename_component(PERL_PATH "${PERL_EXECUTABLE}" PATH)
-    endif (PERL_FOUND)
-  endif ()  
-
-  add_custom_command(TARGET symbol_fetch POST_BUILD COMMAND ${PERL_EXECUTABLE}
-                     "${CMAKE_CURRENT_SOURCE_DIR}/mksymguid.pl"
-                     "${drstrace_dir}/symbol_fetch.dll" VERBATIM)
-endif (WIN32)
