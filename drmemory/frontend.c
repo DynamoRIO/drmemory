@@ -491,7 +491,7 @@ fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
             cur_file++;
             sym_info("[%d/%d] Fetching symbols for %s",
                      cur_file, num_files, line);
-            if (drfront_fetch_module_symbols(line, NULL, 0))
+            if (drfront_fetch_module_symbols(line, NULL, 0) == DRFRONT_SUCCESS)
                 files_fetched++;
         }
     }
