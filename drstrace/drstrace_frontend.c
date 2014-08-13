@@ -67,6 +67,8 @@
 
 #define prefix ""
 
+#define SYMBOL_DLL_PATH "symbol_fetch.dll"
+
 static bool verbose;
 static bool quiet;
 static bool results_to_stderr = true;
@@ -106,8 +108,9 @@ print_usage(void)
     fprintf(stderr, "                The default value is \".\" (current dir).\n");
     fprintf(stderr, "                If set to \"-\", data for all processes are\n");
     fprintf(stderr, "                printed to stderr (warning: this can be slow).\n");
-    fprintf(stderr, "-symdir <dir>   Specify absolute path to wintypes.pdb where symbolic\n");
-    fprintf(stderr, "                data should be loaded. Path should be without filename.\n");
+    fprintf(stderr, "-symcache_path <path>   Specify absolute path where symbol data\n");
+    fprintf(stderr, "                should be searched. If not set, _NT_SYMBOL_PATH\n");
+    fprintf(stderr, "                environment variable will be used.\n");
     fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
     fprintf(stderr, "                the default, which is to trace all children).\n");
     fprintf(stderr, "-version        Print version number.\n");
@@ -204,6 +207,9 @@ _tmain(int argc, TCHAR *targv[])
     size_t cliops_sofar = 0; /* for BUFPRINT to client_ops */
     char dr_ops[MAX_DR_CMDLINE];
     char sym_path[MAXIMUM_PATH];
+    char pdb_path[MAXIMUM_PATH];
+    char dr_logdir[MAXIMUM_PATH];
+
     size_t drops_sofar = 0; /* for BUFPRINT to dr_ops */
     ssize_t len; /* shared by all BUFPRINT */
 
@@ -272,12 +278,12 @@ _tmain(int argc, TCHAR *targv[])
         if (strcmp(argv[i], "--") == 0) {
             i++;
             break;
-	}
+        }
         /* drag-and-drop does not include "--" so we try to identify the app. */
         else if (argv[i][0] != '-' && ends_in_exe(argv[i])) {
             /* leave i alone: this is the app itself */
             break;
-	}
+        }
         else if (strcmp(argv[i], "-v") == 0) {
             verbose = true;
             continue;
@@ -338,22 +344,19 @@ _tmain(int argc, TCHAR *targv[])
         else if (strcmp(argv[i], "-exit0") == 0) {
             exit0 = true;
         }
+        else if (strcmp(argv[i], "-symcache_path") == 0) {
+            _snprintf(sym_path, BUFFER_SIZE_ELEMENTS(sym_path),
+                      "%s", argv[++i]);
+            NULL_TERMINATE_BUFFER(sym_path);
+            string_replace_character(sym_path, '\\', '/');
+            drstrace_symcache_specified = true;
+        }
         else {
-            /* if symdir specified rewrite sym_path to user value */
-            if (strcmp(argv[i], "-symdir") == 0)
-                drstrace_symcache_specified = true;
-            string_replace_character(argv[i], '\\', '/');
             /* pass to client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "`%s` ", argv[i]);
         }
     }
-    /* FIXME i#1540: Currently user should manually download symbol files and provide
-     * absolute path to them using -symdir option. This is temporary state.
-     * We should fetch symbol file/files using symsrv from remote symbolic server.
-     */
-    if (!drstrace_symcache_specified)
-        warn("-symdir not specified.");
 
     if (i >= argc)
         usage("%s", "no app specified");
@@ -480,7 +483,6 @@ _tmain(int argc, TCHAR *targv[])
      * same logdir as for drstrace as the latter supports "-" (stderr).
      */
     if (!dr_logdir_specified) { /* don't override user-specified DR logdir */
-        char dr_logdir[MAXIMUM_PATH];
         bool use_root;
         /* XXX: ideally we would share DrMem's "/dynamorio/" subdir, but that would
          * require creating both subdirs separately if drstrace is run before drmem.
@@ -501,6 +503,34 @@ _tmain(int argc, TCHAR *targv[])
         }
         BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                  drops_sofar, len, "-logdir `%s` ", dr_logdir);
+    }
+
+    /* fetch wintypes.pdb (if not exists) to symcache_path */
+    if (drfront_sym_init(NULL, "dbghelp.dll") == DRFRONT_SUCCESS) {
+        info("Fetching symbol information (procedure may take some time).\n");
+        sc = drfront_set_symbol_search_path(sym_path, drstrace_symcache_specified);
+        if (sc == DRFRONT_ERROR_INVALID_PATH)
+            sc = drfront_set_symbol_search_path(dr_logdir, drstrace_symcache_specified);
+        if (sc == DRFRONT_SUCCESS) {
+            /* We use special fake dll to obtain symbolic info from MS Symbol
+             * server. PTAL i#1540 for details.
+             */
+            if (drfront_fetch_module_symbols(SYMBOL_DLL_PATH,
+                                             pdb_path,
+                                             BUFFER_SIZE_ELEMENTS(pdb_path))
+                                             == DRFRONT_SUCCESS) {
+                info("Symbol file sucessfully fetched");
+                /* pass to client */
+                BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                         cliops_sofar, len, "-symcache_path %s", pdb_path);
+            } else {
+                warn("Symbol fetching failed. Symbol lookup will be disabled.");
+            }
+        } else {
+            warn("Failed to set symbol search path. Symbol lookup will be disabled.");
+        }
+    } else {
+        warn("Symbol initialization error. Symbol lookup will be disabled.");
     }
 
 #ifdef UNIX
