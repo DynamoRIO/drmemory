@@ -297,11 +297,8 @@ drstrace_print_info_class_struct(buf_info_t *buf, drsys_arg_t *arg)
     }
 
     if (arg->valid && !arg->pre) {
-        /* Get start memory address to iterate over structure values.
-         * We're expecting an address here. So we truncate int64 to void*.
-         */
-        void *mem_value = (void *)safe_read_field(arg->start_addr, arg->size);
-        print_structure(buf, expand_type, arg, mem_value);
+        /* We're expecting an address here. So we truncate int64 to void*. */
+        print_structure(buf, expand_type, arg, (void *)arg->value64);
     } else {
         return false;
     }
@@ -553,13 +550,10 @@ options_init(client_id_t id)
                 int res = dr_sscanf(token, "%u", &verbose);
                 USAGE_CHECK(res == 1, "invalid -verbose number");
             }
-        } else if (strcmp(token, "-symdir") == 0) {
+        } else if (strcmp(token, "-symcache_path") == 0) {
             s = dr_get_token(s, options.sympath,
                              BUFFER_SIZE_ELEMENTS(options.sympath));
             USAGE_CHECK(s != NULL, "missing symcache dir path");
-            /* append pdb name to path */
-            dr_snprintf(options.sympath, BUFFER_SIZE_ELEMENTS(options.sympath),
-                        "%s/%s", options.sympath, "wintypes.pdb");
             ALERT(1, "<drstrace symbol source is %s>\n", options.sympath);
         } else {
             ALERT(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);

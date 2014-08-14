@@ -80,6 +80,10 @@
 # define FILE_NAME "drstracelib.dll"
 # define FILE_DESCRIPTION "System call tracer library"
 # define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_DRSTRACE_SYMFETCH_LIB)
+# define FILE_NAME "symfetch.dll"
+# define FILE_DESCRIPTION "Fake library to fetch symbol info"
+# define FILE_TYPE_VFT_DLL
 #elif defined(RC_IS_DRSYMCACHE)
 # define FILE_NAME "drsymcachelib.dll"
 # define FILE_DESCRIPTION "Symbol caching library"

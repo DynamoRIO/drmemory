@@ -85,6 +85,44 @@ install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
   WORLD_READ WORLD_EXECUTE)
 
 ##################################################
+# symbol_fetch to fetch symbols from MS Symbol Server
+
+# We only need to fetch the Wintypes.pdb but the Wintypes.dll is only available
+# on Windows 8 or later. So we make a special fake dll here and then change
+# GUID & name to Wintypes.pdb in the debug section of the new dll. We use a special
+# mksymguid.pl script to do that.
+# Note: Fake dll name should be the same length as Wintypes.pdb to avoid PE debug
+# section realignment.
+
+if (WIN32)
+  add_library(symfetch SHARED symfetch.c ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  get_target_property(symfetch_path symfetch LOCATION${location_suffix})
+
+  # We manually set PDBALTPATH here b/c compiler sets absolute path
+  # to pdb which we don't need here. We disable INCREMENTAL b/c we 
+  # don't want to produce additional files with dll. We statically
+  # set image base to avoid bug on x64 environment when symbols
+  # are fetched but couldn't be loaded by using SymLoadModuleExW.
+  append_property_string(TARGET symfetch LINK_FLAGS 
+                         "/BASE:0x10000000 /INCREMENTAL:NO /PDBALTPATH:symfetch.pdb")
+
+  set_property(TARGET symfetch PROPERTY COMPILE_DEFINITIONS
+               "${DEFINES_NO_D};RC_IS_DRSTRACE_SYMFETCH_LIB")
+  # locate perl
+  if (PERL_PATH AND EXISTS "${PERL_PATH}/perl.exe")
+    set(PERL_EXECUTABLE "${PERL_PATH}/perl.exe")
+  else ()
+    include(FindPerl)
+    if (PERL_FOUND)
+      get_filename_component(PERL_PATH "${PERL_EXECUTABLE}" PATH)
+    endif (PERL_FOUND)
+  endif ()
+  add_custom_command(TARGET symfetch POST_BUILD COMMAND ${PERL_EXECUTABLE}
+                     "${CMAKE_CURRENT_SOURCE_DIR}/mksymguid.pl"
+                     "${symfetch_path}" VERBATIM)
+endif (WIN32)
+
+##################################################
 # drstrace frontend
 
 # We don't restore global flags (from each ${SAVE_${var}}) b/c cmake
@@ -101,7 +139,7 @@ target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
 set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
 if (WIN32)
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
-    "${DEFINES_NO_D};RC_IS_DRSTRACE")
+    "${DEFINES_NO_D};RC_IS_DRSTRACE" SYMBOL_DLL_PATH="${symfetch_path}")
 else ()
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
