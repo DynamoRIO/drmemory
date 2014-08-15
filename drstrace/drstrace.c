@@ -687,6 +687,11 @@ drstrace_unit_test_syscall_init()
 }
 
 void
+drstrace_set_symbol_path(const char *pdb_dir) {
+    _snprintf(options.sympath, BUFFER_SIZE_ELEMENTS(options.sympath), "%s", pdb_dir);
+}
+
+void
 drstrace_unit_test_syscall_arg_iteration(drsys_arg_t arg, void *user_data)
 {
     drsys_iter_arg_cb(&arg, user_data);

@@ -139,7 +139,7 @@ target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
 set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
 if (WIN32)
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
-    "${DEFINES_NO_D};RC_IS_DRSTRACE" SYMBOL_DLL_PATH="${symfetch_path}")
+    "${DEFINES_NO_D};RC_IS_DRSTRACE";SYMBOL_DLL_PATH="${symfetch_path}")
 else ()
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
@@ -155,14 +155,17 @@ if (WIN32)
   add_executable(drstrace_unit_tests ${srcs} drstrace_unit_tests.c)
 
   set_property(TARGET drstrace_unit_tests PROPERTY COMPILE_DEFINITIONS
-               "${DEFINES_NO_D};DRSTRACE_UNIT_TESTS")
+               "${DEFINES_NO_D};DRSTRACE_UNIT_TESTS";SYMBOL_DLL_PATH="${symfetch_path}")
   configure_DynamoRIO_standalone(drstrace_unit_tests)
   use_DynamoRIO_extension(drstrace_unit_tests drsyscall_static)
   use_DynamoRIO_extension(drstrace_unit_tests drx_static)
   use_DynamoRIO_extension(drstrace_unit_tests drsyms_static)
+  use_DynamoRIO_extension(drstrace_unit_tests drfrontendlib)
   add_dependencies(drstrace_unit_tests drsyscall)
   add_test(drstrace_unit_tests
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
+  # We increase test timeout in case of slow Internet connection
+  set_tests_properties(drstrace_unit_tests PROPERTIES TIMEOUT 120)
 endif (WIN32)
 
 ##################################################

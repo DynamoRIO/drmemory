@@ -31,11 +31,14 @@
  */
 
 #include "drsyscall.h"
+#include "dr_frontend.h"
 #include "windefs.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
 #define OUTBUF_SIZE 2048
+#define DBGHELP_PATH "dbghelp.dll"
 /* took these unicode string sizes from real drstrace output */
 #define UNICODE_STR_SIZE 72
 #define UNICODE_BUF_MAX_SIZE 538
@@ -46,12 +49,25 @@ typedef struct _buf_info_t {
     ssize_t len;
 } buf_info_t;
 
+typedef struct _KEY_CACHED_INFORMATION {
+  LARGE_INTEGER LastWriteTime;
+  ULONG         TitleIndex;
+  ULONG         SubKeys;
+  ULONG         MaxNameLen;
+  ULONG         Values;
+  ULONG         MaxValueNameLen;
+  ULONG         MaxValueDataLen;
+  ULONG         NameLength;
+} KEY_CACHED_INFORMATION;
+
 extern bool
 drstrace_unit_test_syscall_arg_iteration(drsys_arg_t arg, void *user_data);
 extern bool
 drstrace_unit_test_syscall_init();
 extern bool
 drstrace_unit_test_syscall_exit();
+extern void
+drstrace_set_symbol_path(const char *pdb_dir);
 
 static void
 init_arg(drsys_arg_t *arg,
@@ -96,13 +112,64 @@ init_arg(drsys_arg_t *arg,
 }
 
 static void
+check_symbol_fetching()
+{
+    char symbol_dir[MAXIMUM_PATH];
+    bool pdb_exists;
+    if (drfront_get_absolute_path("../logs",
+                                  symbol_dir, MAXIMUM_PATH) != DRFRONT_SUCCESS) {
+        printf("drfront_get_absolute_path failed\n");
+        dr_abort();
+    }
+    /* create output dir with appended PID */
+    _snprintf(symbol_dir, MAXIMUM_PATH, "%s\\%s_%d",
+              symbol_dir, "drstrace_unit_tests",
+              dr_get_process_id());
+
+    if (drfront_create_dir(symbol_dir) != DRFRONT_SUCCESS) {
+        printf("drfront_create_dir failed\n");
+        dr_abort();
+    }
+    if (drfront_sym_init(symbol_dir, DBGHELP_PATH) != DRFRONT_SUCCESS) {
+        printf("drfront_sym_init failed\n");
+        dr_abort();
+    }
+    if (drfront_set_symbol_search_path(symbol_dir, true) != DRFRONT_SUCCESS) {
+        printf("drfront_set_symbol_search_path failed\n");
+        dr_abort();
+    }
+
+    if (drfront_fetch_module_symbols(SYMBOL_DLL_PATH, symbol_dir,
+                                     MAXIMUM_PATH) != DRFRONT_SUCCESS) {
+        printf("drfront_fetch_module_symbols failed\n");
+        dr_abort();
+    }
+    if (drfront_access(symbol_dir, DRFRONT_READ, &pdb_exists) != DRFRONT_SUCCESS ||
+        !pdb_exists) {
+        printf("drfront_access failed\n");
+        dr_abort();
+    }
+    if (drfront_sym_exit() != DRFRONT_SUCCESS) {
+        printf("drfront_sym_exit failed\n");
+        dr_abort();
+    }
+    /* XXX i#1606: We should call fetch symbols functionality
+     * inside drstrace. Now we use drfront routine which is not
+     * cover drstrace.
+     */
+    drstrace_set_symbol_path(symbol_dir);
+}
+
+
+static void
 check_output(drsys_arg_t arg, char *check_data)
 {
     void *out_data = calloc(1, sizeof(buf_info_t));
     drstrace_unit_test_syscall_arg_iteration(arg, out_data);
+    printf((char *)check_data);
+    printf((char *)out_data);
     if (strcmp((char *)out_data, check_data) != 0)
         dr_abort();
-    printf((char *)out_data);
     free(out_data);
 }
 
@@ -117,7 +184,9 @@ main(int argc, char **argv, char **envp)
     IO_STATUS_BLOCK io;
     LARGE_INTEGER li;
     HANDLE handle;
+    char pdb_dir[MAXIMUM_PATH];
     char check_str[OUTBUF_SIZE];
+    KEY_CACHED_INFORMATION ki;
 
     if (!drstrace_unit_test_syscall_init())
         dr_abort();
@@ -346,12 +415,53 @@ main(int argc, char **argv, char **envp)
              0x0, /* value */
              0x0 /* value64 */);
     check_output(arg, "\tretval: 0x0 (type=NTSTATUS, size=0x4)\n");
+
+    printf("Testing symbol library fetching features\n");
+    check_symbol_fetching();
+    printf("done\n");
+    /* create arg with structure */
+    ki.LastWriteTime.LowPart = 0x20202020;
+    ki.LastWriteTime.HighPart = 0xF0F0F0F0;
+    ki.MaxNameLen = 0xE0E0E0E0;
+    ki.MaxValueDataLen = 0xD0D0D0D0;
+    ki.MaxValueNameLen = 0x10101010;
+    ki.NameLength = 0xB0B0B0B0;
+    ki.SubKeys = 0xA0A0A0A0;
+    ki.TitleIndex = 0x90909090;
+    ki.Values = 0x80808080;
+    /* NtQueryKey.KeyCachedInformation arg 2 OUT PVOID KeyInformation */
+    init_arg(&arg,
+             NULL, /* arg name */
+             DRSYS_TYPE_INVALID, /* containing type */
+             DRSYS_PARAM_OUT, /* mode */
+             0x4, /* size */
+             0x0, /* start_addr */
+             0x2, /* ordinal */
+             0x0, /* syscall */
+             sysnum,
+             DRSYS_TYPE_STRUCT, /* type */
+             false, /* pre */
+             0x0, /* reg */
+             "PVOID", /* type_name */
+             true, /* valid */
+             "_KEY_CACHED_INFORMATION", /* enum_name */
+             (ptr_uint_t)&ki, /* value */
+             (ptr_uint_t)&ki /* value64 */);
+
+    _snprintf(check_str, OUTBUF_SIZE,
+              "\targ 2: _KEY_CACHED_INFORMATION {_LARGE_INTEGER {0x"HEX64_FORMAT_STRING"\
+}, int="PFX", int="PFX", int="PFX", int="PFX", int="PFX", int="PFX", int="PFX"} (type=\
+<struct>*, size=0x4)\n",
+              ki.LastWriteTime.QuadPart, (ptr_uint_t)ki.TitleIndex,
+              (ptr_uint_t)ki.SubKeys, (ptr_uint_t)ki.MaxNameLen, (ptr_uint_t)ki.Values,
+              (ptr_uint_t)ki.MaxValueNameLen,(ptr_uint_t)ki.MaxValueDataLen,
+              (ptr_uint_t)ki.NameLength);
+
+    check_output(arg, check_str);
+
     if (!drstrace_unit_test_syscall_exit())
         dr_abort();
 
-    /* XXX i#1601: We should cover structure printing routines but it may require
-     * a lot of time since wintypes.pdb can not be available and should be fetched
-     * from remote MS Symbol Server.
-     */
+    printf("all done\n");
     return 0;
 }
