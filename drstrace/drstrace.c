@@ -197,18 +197,92 @@ safe_read_field(void *addr_to_resolve, size_t addr_size)
     return mem_value;
 }
 
+static bool
+print_known_compound_type(buf_info_t *buf, drsys_param_type_t type, void *start_addr)
+{
+    switch (type) {
+    case DRSYS_TYPE_UNICODE_STRING: {
+        print_unicode_string(buf, (UNICODE_STRING *) start_addr);
+        break;
+    }
+    case DRSYS_TYPE_OBJECT_ATTRIBUTES: {
+        OBJECT_ATTRIBUTES *oa = (OBJECT_ATTRIBUTES *) start_addr;
+        OUTPUT(buf, "len="PIFX", root="PIFX", name=",
+                oa->Length, oa->RootDirectory);
+        print_unicode_string(buf, oa->ObjectName);
+        OUTPUT(buf, ", att="PIFX", sd="PFX", sqos="PFX,
+                oa->Attributes, oa->SecurityDescriptor,
+                oa->SecurityQualityOfService);
+        break;
+    }
+    case DRSYS_TYPE_IO_STATUS_BLOCK: {
+        IO_STATUS_BLOCK *io = (IO_STATUS_BLOCK *) start_addr;
+        OUTPUT(buf, "status="PIFX", info="PIFX"", io->StatusPointer.Status,
+                io->Information);
+        break;
+    }
+    case DRSYS_TYPE_LARGE_INTEGER: {
+        LARGE_INTEGER *li = (LARGE_INTEGER *) start_addr;
+        OUTPUT(buf, "0x"HEX64_FORMAT_STRING, li->QuadPart);
+        break;
+    }
+    default: {
+        /* FIXME i#1089: add the other types */
+        return false;
+    }
+    }
+    /* XXX: we want KEY_VALUE_PARTIAL_INFORMATION, etc. like in
+     * syscall_diagnostics.  Add drsyscall types for those, or hardcode here?
+     */
+    return true;
+}
+
+static bool
+identify_known_compound_type(buf_info_t *buf, char *name, void *start_addr)
+{
+    /* XXX i#1607 There are two reasons why we're trying to determine types
+     * by name here. Firstly, we can't simply parse types with unions in the
+     * print_structure since this routine increases memory address by field
+     * size after each field which we don't want to do with unions. We make
+     * temporarly solution here *only* for LARGE_INTEGER. So we're still need
+     * to resolve union problem.
+     * The second one is that we want extra information (e.g. field names)
+     * for already known common structures.
+     */
+    drsys_param_type_t type = DRSYS_TYPE_UNKNOWN;
+    if (strcmp(name, "_LARGE_INTEGER") == 0) {
+        type = DRSYS_TYPE_LARGE_INTEGER;
+    } else if (strcmp(name, "_UNICODE_STRING") == 0) {
+        type = DRSYS_TYPE_UNICODE_STRING;
+    } else if (strcmp(name, "_OBJECT_ATTRIBUTES") == 0) {
+        type = DRSYS_TYPE_OBJECT_ATTRIBUTES;
+    } else if (strcmp(name, "_IO_STATUS_BLOCK") == 0) {
+        type = DRSYS_TYPE_IO_STATUS_BLOCK;
+    } else {
+        return false;
+    }
+    return print_known_compound_type(buf, type, start_addr);
+}
+
 static void
 print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *addr)
 {
     int i;
     if (type->kind == DRSYM_TYPE_COMPOUND) {
+        /* FIXME i#1607: handle unions properly */
         drsym_compound_type_t *compound_type =
             (drsym_compound_type_t *)type;
         OUTPUT(buf, "%s {", compound_type->name);
+        if (identify_known_compound_type(buf, compound_type->name, addr)) {
+            OUTPUT(buf, "}");
+            return;
+        }
         for (i = 0; i < compound_type->num_fields; i++) {
             print_structure(buf, compound_type->field_types[i], arg, addr);
             addr = (char *)addr + compound_type->field_types[i]->size;
-            OUTPUT(buf, ", ");
+            /* we don't want comma after last field */
+            if (i+1 != compound_type->num_fields)
+                OUTPUT(buf, ", ");
         }
         OUTPUT(buf, "}");
     } else {
@@ -362,40 +436,8 @@ print_arg(buf_info_t *buf, drsys_arg_t *arg)
         } else if (arg->pre && !TEST(DRSYS_PARAM_IN, arg->mode)) {
             OUTPUT(buf, PFX, arg->value);
         } else {
-            switch (arg->type) {
-            case DRSYS_TYPE_UNICODE_STRING: {
-                print_unicode_string(buf, (UNICODE_STRING *) arg->value);
-                break;
-            }
-            case DRSYS_TYPE_OBJECT_ATTRIBUTES: {
-                OBJECT_ATTRIBUTES *oa = (OBJECT_ATTRIBUTES *) arg->value;
-                OUTPUT(buf, "len="PIFX", root="PIFX", name=",
-                       oa->Length, oa->RootDirectory);
-                print_unicode_string(buf, oa->ObjectName);
-                OUTPUT(buf, ", att="PIFX", sd="PFX", sqos="PFX,
-                       oa->Attributes, oa->SecurityDescriptor,
-                       oa->SecurityQualityOfService);
-                break;
-            }
-            case DRSYS_TYPE_IO_STATUS_BLOCK: {
-                IO_STATUS_BLOCK *io = (IO_STATUS_BLOCK *) arg->value;
-                OUTPUT(buf, "status="PIFX", info="PIFX"", io->StatusPointer.Status,
-                       io->Information);
-                break;
-            }
-            case DRSYS_TYPE_LARGE_INTEGER: {
-                LARGE_INTEGER *li = (LARGE_INTEGER *) arg->value;
-                OUTPUT(buf, "0x"HEX64_FORMAT_STRING, li->QuadPart);
-                break;
-            }
-            default: {
-                /* FIXME i#1089: add the other types */
+            if (!print_known_compound_type(buf, arg->type, (void *) arg->value))
                 OUTPUT(buf, "<NYI>");
-            }
-            }
-            /* XXX: we want KEY_VALUE_PARTIAL_INFORMATION, etc. like in
-             * syscall_diagnostics.  Add drsyscall types for those, or hardcode here?
-             */
         }
     }
     }
