@@ -1479,10 +1479,11 @@ set(DRRUN_DIR "${PROJECT_BINARY_DIR}/drrun")
 file(MAKE_DIRECTORY "${DRRUN_DIR}")
 
 if (X64)
-  set(DRRUN_SFX .drrun64)
-else (X64)
-  set(DRRUN_SFX .drrun32)
-endif (X64)
+  set(BIT_SFX "64")
+else ()
+  set(BIT_SFX "32")
+endif ()
+set(DRRUN_SFX ".drrun${BIT_SFX}")
 if (BUILDING_SUB_PACKAGE)
   set(DRRUN_INSTALL "tools/")
 else ()
@@ -1508,6 +1509,11 @@ function (create_drrun_file frontend file_out name) # option list follows name
   endforeach ()
   install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
   set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
+
+  # DRi#1509: generate a list of tools for drrun usage messages
+  if (NOT DEBUG_BUILD) # avoid dups
+    install(CODE "file(APPEND \"\${CMAKE_INSTALL_PREFIX}/tools/list${BIT_SFX}\" \"${name}\\n\")")
+  endif ()
 endfunction (create_drrun_file)
 
 if (NOT X64)
