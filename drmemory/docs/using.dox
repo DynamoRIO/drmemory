@@ -44,6 +44,14 @@ your computer:
 ***************************************************************************
 \page page_install_linux Installing on Linux
 
+\if PACKAGED_WITH_DYNAMORIO
+This package contains a local Dr. Memory install that can be executed
+directly from the <tt>drmemory/bin</tt> directory, or by using DynamoRIO's
+<tt>drrun</tt> with the <tt>-t drmemory</tt> or <tt>-t drmemory_light</tt>
+tool flags.  The instructions below cover installing a separate local
+install using a standalone Dr. Memory package.
+\endif
+
 ********************
 \section sec_linux_utils System Requirements
 
@@ -70,6 +78,14 @@ structure on your PATH, or invoke Dr. Memory via its full path.
 ***************************************************************************
 \page page_install_macos Installing on Mac
 
+\if PACKAGED_WITH_DYNAMORIO
+This package contains a local Dr. Memory install that can be executed
+directly from the <tt>drmemory/bin</tt> directory, or by using DynamoRIO's
+<tt>drrun</tt> with the <tt>-t drmemory</tt> or <tt>-t drmemory_light</tt>
+tool flags.  The instructions below cover installing a separate local
+install using a standalone Dr. Memory package.
+\endif
+
 ********************
 \section sec_macos_utils System Requirements
 
@@ -91,6 +107,14 @@ structure on your PATH, or invoke Dr. Memory via its full path.
 
 ***************************************************************************
 \page page_install_windows Installing on Windows
+
+\if PACKAGED_WITH_DYNAMORIO
+This package contains a local Dr. Memory install that can be executed
+directly from the <tt>drmemory\\bin</tt> directory, or by using DynamoRIO's
+<tt>drrun</tt> with the <tt>-t drmemory</tt>, <tt>-t drmemory_light</tt>,
+or <tt>-t handle_leaks</tt> tool flags.  If you prefer a system install,
+you will need to <a href="http://drmemory.org">download the installer</a>.
+\endif
 
 ********************
 \section sec_windows_system System Install
@@ -115,7 +139,8 @@ settings". Say "Yes" to the User Account Control message.  Choose the
 "Advanced" tab and click on "Environment Variables". In the top box, under
 User Variables for your username, click on "PATH", then click on
 "Edit". Assuming you unzipped Dr. Memory into "C:\INSTALL", go to the end
-and add ";C:\INSTALL\DrMemory-Windows-1.5.0-5\bin".  Note that the semicolon
+and add ";C:\INSTALL\DrMemory-Windows-X.X.X-X\bin" (with the X's replaced
+with the version you installed, of course).  Note that the semicolon
 (;) is important!  After editing your PATH, you should restart your Cygwin
 or cmd shell.
 

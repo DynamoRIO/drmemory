@@ -63,6 +63,7 @@
 # * doxygen_ver
 # * DynamoRIO_DIR
 # * TOOL_DR_MEMORY
+# * PACKAGED_WITH_DYNAMORIO
 
 set(outdir "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(optionsdir "${options_for_docs}" PATH)
@@ -197,6 +198,11 @@ if (WIN32)
     "(ENABLED_SECTIONS[ \t]*=)"
     "\\1 WINDOWS" string "${string}")
 endif (WIN32)
+if (PACKAGED_WITH_DYNAMORIO)
+  string(REGEX REPLACE
+    "(ENABLED_SECTIONS[ \t]*=)"
+    "\\1 PACKAGED_WITH_DYNAMORIO" string "${string}")
+endif()
 
 if (TOOL_DR_MEMORY)
   # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
