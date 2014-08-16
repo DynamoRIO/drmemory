@@ -29,7 +29,7 @@
 #
 #
 # Usage mkenumtable.py <header_name>
-# The script doesn't generate final code. 
+# The script doesn't generate final code.
 # The output should be parsed manually.
 #
 
@@ -106,7 +106,7 @@ def parse_file_buffer (buffer = None):
 
 def check_output(entry):
     '''
-    The routine makes comments when entry contains 
+    The routine makes comments when entry contains
     the same constant names or the same values.
     '''
     strings_list = []
@@ -171,7 +171,7 @@ def generate_table_entries (raw_table):
                 enum_value = add_leading_zeros(enum_value)
                 enum_value = enum_value.replace("|", "|\n      ")
                 output = output + "    {" + enum_value + ', "' \
-                                          + enum_name[1] + '"},\n'  
+                                          + enum_name[1] + '"},\n'
         output = output + '    {0},\n};\n'
         output_all.append(output)
     output_all.append(output_array + "};")
@@ -179,7 +179,7 @@ def generate_table_entries (raw_table):
 
 def make_structure (strings):
     '''
-    The routine tries to find basic types and groups 
+    The routine tries to find basic types and groups
     to add them in to the separate structures.
     '''
     string_list_all = []
@@ -195,7 +195,7 @@ def make_structure (strings):
         for sub_index,str in enumerate(string_list_all[index]):
             # step-by-step compare first enum name with next enum name
             try:
-                if (string_list_all[index][sub_index] == 
+                if (string_list_all[index][sub_index] ==
                     string_list_all[index+1][sub_index]):
                     basic_type_number = basic_type_number + 1
                 else:
@@ -208,7 +208,7 @@ def make_structure (strings):
             next_flag = True
             while next_flag != False:
                 try:
-                    if (string_list_all[basic_name_index][0:basic_type_number] == 
+                    if (string_list_all[basic_name_index][0:basic_type_number] ==
                        string_list_all[index+1][0:basic_type_number]):
                         next_flag = True
                         index = index + 1
@@ -236,7 +236,7 @@ def save (all_strings_list, filename):
             header.write(string)
             header.write("\n")
     except:
-        print "Couldn't open a file for write"  
+        print "Couldn't open a file for write"
 
 def parse (hfile = None):
     '''

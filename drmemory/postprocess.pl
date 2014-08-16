@@ -1506,7 +1506,7 @@ sub get_mod_path($module_name, $modpath_ref)
                     $modname .= ".debug";
                     last;
                 }
-                print "NO DBG INFO \"$path/$modname\"\n";#NOCHECKIN
+                print "NO DBG INFO \"$path/$modname\"\n" if ($verbose);
             }
         }
     }

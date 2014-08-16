@@ -98,16 +98,16 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
 ##################################################
 # pre-commit source file checks
-file(GLOB cfiles
-  ${CTEST_SOURCE_DIRECTORY}/*/*.c
-  ${CTEST_SOURCE_DIRECTORY}/*/*.cpp
-  ${CTEST_SOURCE_DIRECTORY}/*/*/*.c
-  ${CTEST_SOURCE_DIRECTORY}/*/*/*.cpp
-  ${CTEST_SOURCE_DIRECTORY}/*/*.h
-  ${CTEST_SOURCE_DIRECTORY}/*/*/*.h)
+file(GLOB_RECURSE cfiles
+  ${CTEST_SOURCE_DIRECTORY}/*)
 foreach (cfile ${cfiles})
   if (NOT "${cfile}" MATCHES "dynamorio/" AND
-      NOT "${cfile}" MATCHES "third_party/")
+      NOT "${cfile}" MATCHES "\\.git/" AND
+      NOT "${cfile}" MATCHES "\\.svn/" AND
+      NOT "${cfile}" MATCHES "third_party/" AND
+      NOT "${cfile}" MATCHES "\\.png$" AND
+      NOT "${cfile}" MATCHES "~$" AND
+      NOT "${cfile}" MATCHES "runsuite\\.cmake$")
     file(READ "${cfile}" string)
 
     # Check for NL instead of \n in NOTIFY*
@@ -119,7 +119,9 @@ foreach (cfile ${cfiles})
     # Check for NOCHECKIN
     string(REGEX MATCH "NOCHECKIN" match "${string}")
     if (NOT "${match}" STREQUAL "")
-      message(FATAL_ERROR "In ${cfile}, remove NOCHECKIN: ${match}")
+      if (NOT "${cfile}" MATCHES "codereview\\.cmake$")
+        message(FATAL_ERROR "In ${cfile}, remove NOCHECKIN: ${match}")
+      endif ()
     endif ()
 
     # Check for trailing space

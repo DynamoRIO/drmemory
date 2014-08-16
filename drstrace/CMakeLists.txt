@@ -99,11 +99,11 @@ if (WIN32)
   get_target_property(symfetch_path symfetch LOCATION${location_suffix})
 
   # We manually set PDBALTPATH here b/c compiler sets absolute path
-  # to pdb which we don't need here. We disable INCREMENTAL b/c we 
+  # to pdb which we don't need here. We disable INCREMENTAL b/c we
   # don't want to produce additional files with dll. We statically
   # set image base to avoid bug on x64 environment when symbols
   # are fetched but couldn't be loaded by using SymLoadModuleExW.
-  append_property_string(TARGET symfetch LINK_FLAGS 
+  append_property_string(TARGET symfetch LINK_FLAGS
                          "/BASE:0x10000000 /INCREMENTAL:NO /PDBALTPATH:symfetch.pdb")
 
   set_property(TARGET symfetch PROPERTY COMPILE_DEFINITIONS
