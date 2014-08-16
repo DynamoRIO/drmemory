@@ -41,7 +41,7 @@ set(DynamoRIO_USE_LIBC ON)
 add_library(drstracelib SHARED ${srcs})
 
 # We share the framework version # for now
-set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION})
+set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
 
 if (WIN32)
   set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS

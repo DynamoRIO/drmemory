@@ -1556,6 +1556,10 @@ endif()
 message(STATUS "DRMF version number: ${DRMF_VERSION}")
 string(REGEX REPLACE "^([0-9]+)\\..*" "\\1" DRMF_VERSION_MAJOR "${DRMF_VERSION}")
 string(REGEX REPLACE "^[0-9]+\\.([0-9]+)\\..*" "\\1" DRMF_VERSION_MINOR "${DRMF_VERSION}")
+# We use just major.minor for .so versioning (and no, SOVERSION is not sufficient
+# here: we have to set VERSION to control the file name and import dependence).
+string(REGEX REPLACE "^([0-9]+\\.[0-9]+)\\..*" "\\1"
+  DRMF_VERSION_MAJOR_MINOR "${DRMF_VERSION}")
 math(EXPR DRMF_VERSION_INTEGER "${DRMF_VERSION_MAJOR}*100 + ${DRMF_VERSION_MINOR}")
 set(DRMF_VERSION_COMPAT 9)                # Oldest compatible version
 set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version

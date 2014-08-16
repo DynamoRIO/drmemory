@@ -93,7 +93,7 @@ configure_DynamoRIO_client(umbra)
 use_DynamoRIO_extension(umbra drmgr)
 use_DynamoRIO_extension(umbra drcontainers)
 set_target_properties(umbra PROPERTIES
-  VERSION ${DRMF_VERSION})
+  VERSION ${DRMF_VERSION_MAJOR_MINOR})
 configure_umbra_target(umbra)
 export_umbra_target(umbra "drmgr")
 install(FILES umbra.h DESTINATION ${DRMF_INSTALL_INC})
