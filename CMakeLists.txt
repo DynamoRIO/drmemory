@@ -1830,6 +1830,10 @@ if (BUILDING_SUB_PACKAGE)
   # Our rpaths assumed we had a dynamorio/ subdir, but now that's the upper dir.
   # Easier to add a symlink than to change rpaths.
   install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink .. dynamorio WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX})")
+
+  # Add a docs link in the top-level docs/ dir
+  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/docs/DrMemory.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../drmemory/drmemory/docs/html/index.html\\\">\n</head><body></body>\")")
+
 else (BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
   # We don't need docs/, include/, or 64-bit.

@@ -100,7 +100,9 @@ add_custom_command(
           ${options_for_docs}
   COMMAND ${CMAKE_COMMAND}
   # script does not inherit any vars so we must pass them all in
-  # Be sure to put a space after -D for 1st arg at least
+  # Be sure to put a space after -D for 1st arg at least.
+  # When adding new DRMF extension docs, also add to Doxyfile.in and to
+  # DR's api/docs/ext.gendox.
   ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
        -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox\;${PROJECT_SOURCE_DIR}/umbra/umbra.dox
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
