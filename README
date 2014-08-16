@@ -30,8 +30,8 @@ Dr. Memory is a memory monitoring tool capable of identifying
 memory-related programming errors such as accesses of uninitialized memory,
 accesses to unaddressable memory (including outside of allocated heap units
 and heap underflow and overflow), accesses to freed memory, double frees,
-memory leaks, and access to un-reserved thread local storage slots (on
-Windows).
+memory leaks, and (on Windows) handle leaks, GDI API usage errors, and
+accesses to un-reserved thread local storage slots.
 
 Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
 currently targets 32-bit Windows (XP and higher) and Linux, with early Mac

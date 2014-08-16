@@ -29,8 +29,8 @@ Dr. Memory is a memory monitoring tool capable of identifying
 memory-related programming errors such as accesses of uninitialized memory,
 accesses to unaddressable memory (including outside of allocated heap units
 and heap underflow and overflow), accesses to freed memory, double frees,
-memory leaks, and (on Windows) access to un-reserved thread local storage
-slots.
+memory leaks, and (on Windows) handle leaks, GDI API usage errors, and
+accesses to un-reserved thread local storage slots.
 
 Dr. Memory operates on unmodified application binaries running on Windows,
 Mac, or Linux \if VMX86_SERVER or ESXi \endif on commodity IA-32 and AMD64
