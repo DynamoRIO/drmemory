@@ -53,10 +53,17 @@ DynamoRIO Extension libraries:
 
 \section sec_drmf_setup Using DRMF
 
-To use one or more of the components of DRMF, first locate the Dr. Memory
-Framework using the \p find_package command:
+DRMF is now distributed in a combined package with DynamoRIO for DynamoRIO
+versions 5.0 and higher.  If you are using such a combined package, DRMF
+will be automatically located and loaded for you when you execute the
+<tt>find_package(DynamoRIO)</tt> command.
+
+If you are using a standalone Dr. Memory package, to use one or more of the
+components of DRMF, locate the Dr. Memory Framework using the \p
+find_package command right after similarly locating the DynamoRIO package:
 
 \code
+find_package(DynamoRIO)
 find_package(DrMemoryFramework)
 \endcode
 
