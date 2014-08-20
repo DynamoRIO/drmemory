@@ -1731,7 +1731,8 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                    !sysarg_invalid(&sysinfo->arg[compacted]))
                 compacted++;
             ASSERT(compacted <= MAX_ARGS_IN_ENTRY, "error in table entry");
-        }
+        } else
+            arg->enum_name = NULL;
         ASSERT(arg->type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
         arg->type_name = param_type_names[arg->type];
 
