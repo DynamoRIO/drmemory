@@ -693,7 +693,7 @@ DR_EXPORT
  * by providing accurate results for all system calls, in particular
  * including Windows win32k.sys graphical (NtGdi) and user (NtUser)
  * system calls.  It also knows which system calls return 64-bit
- * results, elminating the need for the caller to specifically request
+ * results, eliminating the need for the caller to specifically request
  * the top 32 bits in such cases.
  *
  * On Windows, system calls that return an error code like
