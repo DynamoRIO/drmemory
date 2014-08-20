@@ -1177,8 +1177,8 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
       VERSION ${TOOL_VERSION_NUMBER}
       COMPILE_DEFINITIONS "${DEFINES_NO_D};RC_IS_FRONTEND")
   else (WIN32)
-    add_rel_rpaths(${toolname} drinjectlib)
-    add_rel_rpaths(${toolname} drconfiglib)
+    DynamoRIO_add_rel_rpaths(${toolname} drinjectlib)
+    DynamoRIO_add_rel_rpaths(${toolname} drconfiglib)
     set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
   endif (WIN32)
 endif (USE_DRSYMS AND TOOL_DR_MEMORY)
@@ -1299,7 +1299,7 @@ if (WIN32)
     # We need full defines to get version values for resources
     "${DEFINES_NO_D};RC_IS_SYMQUERY")
 else (WIN32)
-  add_rel_rpaths(symquery drinjectlib)
+  DynamoRIO_add_rel_rpaths(symquery drinjectlib)
 endif (WIN32)
 
 # should go into a configure.h if we get enough of these
