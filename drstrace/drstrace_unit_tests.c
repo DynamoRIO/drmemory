@@ -450,13 +450,35 @@ main(int argc, char **argv, char **envp)
 
     _snprintf(check_str, OUTBUF_SIZE,
               "\targ 2: _KEY_CACHED_INFORMATION {_LARGE_INTEGER {0x"HEX64_FORMAT_STRING"\
-}, int="PFX", int="PFX", int="PFX", int="PFX", int="PFX", int="PFX", int="PFX"} (type=\
+}, int="PIFX", int="PIFX", int="PIFX", int="PIFX", int="PIFX", int="PIFX", int="PIFX"} (type=\
 <struct>*, size=0x4)\n",
               ki.LastWriteTime.QuadPart, (ptr_uint_t)ki.TitleIndex,
               (ptr_uint_t)ki.SubKeys, (ptr_uint_t)ki.MaxNameLen, (ptr_uint_t)ki.Values,
               (ptr_uint_t)ki.MaxValueNameLen,(ptr_uint_t)ki.MaxValueDataLen,
               (ptr_uint_t)ki.NameLength);
 
+    check_output(arg, check_str);
+
+    /* check wrong data: the same input but with invalid pointer to struct data */
+    init_arg(&arg,
+             NULL, /* arg name */
+             DRSYS_TYPE_INVALID, /* containing type */
+             DRSYS_PARAM_OUT, /* mode */
+             0x4, /* size */
+             0x0, /* start_addr */
+             0x2, /* ordinal */
+             0x0, /* syscall */
+             sysnum,
+             DRSYS_TYPE_STRUCT, /* type */
+             false, /* pre */
+             0x0, /* reg */
+             "PVOID", /* type_name */
+             true, /* valid */
+             "_KEY_CACHED_INFORMATION", /* enum_name */
+             (ptr_uint_t)NULL, /* value */
+             (ptr_uint_t)NULL /* value64 */);
+    _snprintf(check_str, OUTBUF_SIZE,
+              "\targ 2: NULL (type=<struct>*, size=0x4)\n");
     check_output(arg, check_str);
 
     if (!drstrace_unit_test_syscall_exit())

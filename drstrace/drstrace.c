@@ -188,12 +188,17 @@ drstrace_print_enum_const_name(buf_info_t *buf, drsys_arg_t *arg)
 
 /* NOTE: the routine returns up to 64 bit memory values */
 static int64
-safe_read_field(void *addr_to_resolve, size_t addr_size)
+safe_read_field(buf_info_t *buf, void *addr_to_resolve, size_t addr_size,
+                bool print_value)
 {
     int64 mem_value = 0;
     ASSERT(addr_size <= sizeof(mem_value), "too-big mem value to read");
-    if (!dr_safe_read(addr_to_resolve, addr_size, &mem_value, NULL))
-        ASSERT(false, "dr_safe_read failed");
+    if (!dr_safe_read(addr_to_resolve, addr_size, &mem_value, NULL)) {
+        OUTPUT(buf, "<field unreadable>");
+        return 0;
+    }
+    if (print_value)
+        OUTPUT(buf, "0x"HEX64_FORMAT_STRING, mem_value);
     return mem_value;
 }
 
@@ -264,12 +269,22 @@ identify_known_compound_type(buf_info_t *buf, char *name, void *start_addr)
     return print_known_compound_type(buf, type, start_addr);
 }
 
+static uint
+get_total_size_of_fields(drsym_compound_type_t *compound_type)
+{
+    int i;
+    uint total_size = 0;
+    for (i = 0; i < compound_type->num_fields; i++)
+        total_size += compound_type->field_types[i]->size;
+    return total_size;
+}
+
 static void
 print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *addr)
 {
     int i;
+    bool type_union = false;
     if (type->kind == DRSYM_TYPE_COMPOUND) {
-        /* FIXME i#1607: handle unions properly */
         drsym_compound_type_t *compound_type =
             (drsym_compound_type_t *)type;
         OUTPUT(buf, "%s {", compound_type->name);
@@ -277,9 +292,15 @@ print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *add
             OUTPUT(buf, "}");
             return;
         }
+        /* i#1607: We need to print properly parent structures when they are
+         * actually unions (e.g. LARGE_INTEGER).
+         */
+        if (get_total_size_of_fields(compound_type) > compound_type->type.size)
+            type_union = true;
         for (i = 0; i < compound_type->num_fields; i++) {
             print_structure(buf, compound_type->field_types[i], arg, addr);
-            addr = (char *)addr + compound_type->field_types[i]->size;
+            if (!type_union)
+                addr = (char *)addr + compound_type->field_types[i]->size;
             /* we don't want comma after last field */
             if (i+1 != compound_type->num_fields)
                 OUTPUT(buf, ", ");
@@ -288,36 +309,37 @@ print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *add
     } else {
         /* Print type fields */
         if (type->kind == DRSYM_TYPE_VOID) {
-            int64 value = safe_read_field(addr, type->size);
-            OUTPUT(buf, "void="PFX, value);
+            OUTPUT(buf, "void=");
+            safe_read_field(buf, addr, type->size, true);
             return;
         } else if (type->kind == DRSYM_TYPE_PTR) {
             drsym_ptr_type_t *ptr_type = (drsym_ptr_type_t *)type;
             /* We're expecting an address here. So we truncate int64 to void* */
-            void *mem_value = (void *)safe_read_field(addr, ptr_type->type.size);
+            void *mem_value = (void *)safe_read_field(buf, addr, ptr_type->type.size,
+                                                      false);
             print_structure(buf, ptr_type->elt_type, arg, mem_value);
             OUTPUT(buf, "*");
             return;
         } else {
             /* Print integer base types */
-            int64 value = safe_read_field(addr, type->size);
             switch (type->size) {
                 case 1:
-                    OUTPUT(buf, "byte|bool="PFX, value);
+                    OUTPUT(buf, "byte|bool=");
                     break;
                 case 2:
-                    OUTPUT(buf,"short=" PFX, value);
+                    OUTPUT(buf,"short=");
                     break;
                 case 4:
-                    OUTPUT(buf, "int="PFX, value);
+                    OUTPUT(buf, "int=");
                     break;
                 case 8:
-                    OUTPUT(buf, "long long="PFX, value);
+                    OUTPUT(buf, "long long=");
                     break;
                 default:
-                    OUTPUT(buf, "unknown type="PFX, value);
+                    OUTPUT(buf, "unknown type=");
                     break;
             }
+            safe_read_field(buf, addr, type->size, true);
             return;
         }
     }
@@ -328,16 +350,21 @@ static bool
 type_has_unknown_components(drsym_type_t *type)
 {
     int i;
-    drsym_compound_type_t *compound_type = (drsym_compound_type_t *)type;
-    drsym_type_t **field_types = compound_type->field_types;
-    for (i = 0; i < compound_type->num_fields; i++) {
-        if (field_types[i]->size == 0) {
-            return false;
-        } else if (field_types[i]->kind == DRSYM_TYPE_PTR) {
-            drsym_ptr_type_t *ptr_type = (drsym_ptr_type_t *)field_types[0];
-            if (ptr_type->elt_type->size == 0)
+    if (type->kind == DRSYM_TYPE_COMPOUND) {
+        drsym_compound_type_t *compound_type = (drsym_compound_type_t *)type;
+        drsym_type_t **field_types = compound_type->field_types;
+        for (i = 0; i < compound_type->num_fields; i++) {
+            if (field_types[i]->kind == DRSYM_TYPE_PTR) {
+                drsym_ptr_type_t *ptr_type = (drsym_ptr_type_t *)field_types[i];
+                if (ptr_type->elt_type->size == 0)
+                    return false;
+            }
+            /* recursively check type fields */
+            if (!type_has_unknown_components(field_types[i]))
                 return false;
         }
+    } else if (type->size == 0) {
+        return false;
     }
     return true;
 }
@@ -371,6 +398,11 @@ drstrace_print_info_class_struct(buf_info_t *buf, drsys_arg_t *arg)
     }
 
     if (arg->valid && !arg->pre) {
+        if (arg->value64 == 0) {
+            OUTPUT(buf, "NULL");
+            /* We return true since we already printed for this value */
+            return true;
+        }
         /* We're expecting an address here. So we truncate int64 to void*. */
         print_structure(buf, expand_type, arg, (void *)arg->value64);
     } else {
