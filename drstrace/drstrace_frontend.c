@@ -505,7 +505,7 @@ _tmain(int argc, TCHAR *targv[])
 
     /* fetch wintypes.pdb (if not exists) to symcache_path */
     if (drfront_sym_init(NULL, "dbghelp.dll") == DRFRONT_SUCCESS) {
-        info("Fetching symbol information (procedure may take some time).\n");
+        warn("Fetching symbol information (procedure may take some time).");
         sc = drfront_set_symbol_search_path(sym_path, drstrace_symcache_specified);
         if (sc == DRFRONT_ERROR_INVALID_PATH)
             sc = drfront_set_symbol_search_path(dr_logdir, drstrace_symcache_specified);
