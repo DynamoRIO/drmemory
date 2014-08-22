@@ -120,6 +120,9 @@ if (WIN32)
   add_custom_command(TARGET symfetch POST_BUILD COMMAND ${PERL_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/mksymguid.pl"
                      "${symfetch_path}" VERBATIM)
+  install(TARGETS symfetch DESTINATION "${INSTALL_BIN}"
+    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
 endif (WIN32)
 
 ##################################################
