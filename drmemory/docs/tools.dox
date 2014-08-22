@@ -58,27 +58,31 @@ directory.  For example: \p drstrace.calc.exe.13408.0000.log.
 Here is some example output from that file:
 
 \code
-NtOpenKey
-        arg 0: 0x002defb4 (type=HANDLE*, size=0x4)
-        arg 1: 0x1 (type=unsigned int, size=0x4)
-        arg 2: len=0x18, root=0x0, name=144/146 "\Registry\Machine\Software\Microsoft\Windows\Windows Error Reporting\WMR", att=0x40, sd=0x00000000, sqos=0x00000000 (type=OBJECT_ATTRIBUTES*, size=0x4)
+NtGdiGetTextFaceW
+        arg 0: 0x740122ad (type=HANDLE, size=0x4)
+        arg 1: 0x20 (type=int, size=0x4)
+        arg 2: 0x001fcd10 (type=<struct>*, size=0x4)
+        arg 3: 0x0 (type=bool, size=0x4)
     succeeded =>
-        arg 0: 0x002defb4 => 0xe4 (type=HANDLE*, size=0x4)
+        arg 2: <NYI> (type=<struct>*, size=0x4)
+        retval: 0x9 (type=int, size=0x4)
+NtOpenKeyEx
+        arg 0: 0x001fcd0c (type=HANDLE*, size=0x4)
+        arg 1: 0x109 (type=unsigned int, size=0x4)
+        arg 2: len=0x18, root=0x3c, name=150/152 "SOFTWARE\Microsoft\Windows NT\CurrentVersion\LanguagePack\SurrogateFallback", att=0x40, sd=0x00000000, sqos=0x00000000 (type=OBJECT_ATTRIBUTES*, size=0x4)
+        arg 3: REG_OPTION_RESERVED or REG_OPTION_NON_VOLATILE (type=named constant, value=0x0, size=0x4)
+    succeeded =>
+        arg 0: 0x001fcd0c => 0x134 (type=HANDLE*, size=0x4)
         retval: 0x0 (type=NTSTATUS, size=0x4)
-NtQueryValueKey
-        arg 0: 0xe4 (type=HANDLE, size=0x4)
-        arg 1: 14/16 "Disable" (type=UNICODE_STRING*, size=0x4)
-        arg 2: 0x2 (type=int, size=0x4)
-        arg 3: 0x002dee40 (type=<struct>*, size=0x4)
-        arg 4: 0x13 (type=unsigned int, size=0x4)
-        arg 5: 0x002dee3c (type=unsigned int*, size=0x4)
+NtQueryKey.KeyCachedInformation
+        arg 0: 0x134 (type=HANDLE, size=0x4)
+        arg 1: 0x4 (type=named constant, size=0x4)
+        arg 2: 0x001fcb5c (type=<struct>*, size=0x4)
+        arg 3: 0xb0 (type=unsigned int, size=0x4)
+        arg 4: 0x001fca34 (type=unsigned int*, size=0x4)
     succeeded =>
-        arg 3: <NYI> (type=<struct>*, size=0x4)
-        arg 5: 0x002dee3c => 0x10 (type=unsigned int*, size=0x4)
-        retval: 0x0 (type=NTSTATUS, size=0x4)
-NtClose
-        arg 0: 0xe4 (type=HANDLE, size=0x4)
-    succeeded =>
+        arg 2: _KEY_CACHED_INFORMATION {_LARGE_INTEGER {0x1ca043f05a7a595}, int=0x0, int=0x4, int=0x1a, int=0x1, int=0xc, int=0x18, int=0x22} (type=<struct>*, size=0x4)
+        arg 4: 0x001fca34 => 0x28 (type=unsigned int*, size=0x4)
         retval: 0x0 (type=NTSTATUS, size=0x4)
 \endcode
 
@@ -86,6 +90,16 @@ NtClose
 
 By default, \p drstrace traces all child processes.  The runtime option \p
 -no_follow_children overrides this and only traces the parent process.
+
+\section sec_drstrace_symfetch Symbol Usage
+
+In order to report detailed system call type information on Windows, \p drstrace
+relies on debug symbol information (specifically, \p WinTypes.pdb).  The first
+time the tool is executed, it retrieves this data over the network, caching it
+locally for future use.  The location of the cache is by default a local
+directory.  If the \p _NT_SYMBOL_PATH environment variable is set, or if the \p
+-symcache_path runtime option is set, the specified directory will be used for
+caching the symbol data.
 
 \section sec_drstrace_limits Limitations
 
