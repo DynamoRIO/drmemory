@@ -162,6 +162,7 @@ void
 drsyscall_os_exit(void)
 {
     hashtable_delete(&systable);
+    hashtable_delete(&secondary_systable);
     hashtable_delete(&name2num_table);
 }
 
