@@ -1785,15 +1785,23 @@ else (TOOL_DR_HEAPSTAT)
   endif (UNIX)
 endif (TOOL_DR_HEAPSTAT)
 
+set(install_pdb_exclude
+  # We don't want unit test pdb's, or internal tool pdb's.
+  # XXX: it would be better to exclude these in the subdirs that own them,
+  # which will be much easier once cmake supports auto-installing pdb's.
+  PATTERN verinfo.pdb EXCLUDE
+  PATTERN unit_tests.pdb EXCLUDE
+  # symfetch is a fake dll so don't imply it's more by supplying a pdb.
+  PATTERN symfetch.pdb EXCLUDE
+  PATTERN drstrace_unit_tests.pdb EXCLUDE)
 if (X64)
   set(install_pdb_exclude
+    ${install_pdb_exclude}
     PATTERN "${toolname}lib.pdb" EXCLUDE
     PATTERN "${toolname}lib.debug" EXCLUDE
     PATTERN "${toolname}.pdb" EXCLUDE
     PATTERN "${toolname}.debug" EXCLUDE)
   install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_BIN}/README.txt\" \"Dr. Memory does not yet support 64-bit applications.  The drstrace tool and the Dr. Syscall and Umbra libraries are available for 64-bit.\n\")")
-else (X64)
-  set(install_pdb_exclude "")
 endif (X64)
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION "${INSTALL_LIB}"
