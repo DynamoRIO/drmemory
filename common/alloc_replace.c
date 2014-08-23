@@ -2397,7 +2397,7 @@ replace_malloc_nomatch(size_t size)
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "replace_malloc %d\n", size);
+    LOG(2, "replace_malloc (nomatch) %d\n", size);
     res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, &mc,
@@ -3990,21 +3990,25 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
 #endif
     /* nothing below here is stdcall */
     *stack = 0;
-    if (is_malloc_routine(type))
+    if (is_malloc_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_malloc : replace_malloc_nomatch);
-    else if (is_calloc_routine(type))
+    }
+    else if (is_calloc_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_calloc : replace_calloc_nomatch);
-    else if (is_realloc_routine(type))
+    }
+    else if (is_realloc_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_realloc : replace_realloc_nomatch);
+    }
     else if (is_free_routine(type))
         *routine = (void *) (check_winapi_match ? replace_free : replace_free_nomatch);
-    else if (is_size_routine(type))
+    else if (is_size_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_malloc_usable_size :
              replace_malloc_usable_size_nomatch);
+    }
     else if (type == HEAP_ROUTINE_NEW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new : replace_operator_new_nomatch);
@@ -4063,6 +4067,9 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
     void *interceptor = NULL;
     bool at_entry = true;
     uint stack_adjust = 0;
+#ifndef WINDOWS
+    check_winapi_match = true; /* always use the match versions */
+#endif
     if (!func_interceptor(type, check_mismatch, check_winapi_match,
                           &interceptor, &at_entry, &stack_adjust)) {
         /* we'll replace it ourselves elsewhere: alloc.c should ignore it */
@@ -4092,6 +4099,9 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
     void *interceptor = NULL;
     bool at_entry;
     uint stack_adjust = 0;
+#ifndef WINDOWS
+    check_winapi_match = true; /* always use the match versions */
+#endif
     if (!func_interceptor(type, check_mismatch, check_winapi_match,
                           &interceptor, &at_entry, &stack_adjust)) {
         /* we'll un-replace it ourselves elsewhere: alloc.c should ignore it */
