@@ -59,6 +59,7 @@
 #include "dr_frontend.h"
 #include "utils.h"
 #include "frontend.h"
+#include "options.h"
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
@@ -220,45 +221,12 @@ pause_if_in_cmd(void)
     } \
 } while (0)
 
-/* XXX: share w/ options.c */
-enum {
-    SCOPE_IS_PUBLIC_front    = true,
-    SCOPE_IS_PUBLIC_side     = true,
-    SCOPE_IS_PUBLIC_post     = true,
-    SCOPE_IS_PUBLIC_script   = true,
-    SCOPE_IS_PUBLIC_client   = true,
-    SCOPE_IS_PUBLIC_internal = false,
-};
-
-enum {
-    TYPE_IS_BOOL_bool       = true,
-    TYPE_IS_BOOL_opstring_t = false,
-    TYPE_IS_BOOL_multi_opstring_t = false,
-    TYPE_IS_BOOL_uint       = false,
-    TYPE_IS_BOOL_int        = false,
-    TYPE_IS_STRING_bool       = false,
-    TYPE_IS_STRING_opstring_t = true,
-    TYPE_IS_STRING_multi_opstring_t = false,
-    TYPE_IS_STRING_uint       = false,
-    TYPE_IS_STRING_int        = false,
-    TYPE_HAS_RANGE_bool       = false,
-    TYPE_HAS_RANGE_opstring_t = false,
-    TYPE_HAS_RANGE_multi_opstring_t = false,
-    TYPE_HAS_RANGE_uint       = true,
-    TYPE_HAS_RANGE_int        = true,
-};
-
-static const char * const bool_string[2] = {
-    "false",
-    "true",
-};
-
 static void
 print_usage(bool full)
 {
     fprintf(stderr, "Usage: drmemory [options] -- <app and args to run>\n");
     if (!full) {
-        fprintf(stderr, "Run with --help for full option list.\n");
+        fprintf(stderr, "Run with -help for full option list.\n");
 #ifdef WINDOWS
         fprintf(stderr, "If running from the Start Menu or desktop icon, you must drag\n"
                 "your application onto drmemory.exe.  To pass arguments you must\n"
@@ -268,20 +236,7 @@ print_usage(bool full)
         pause_if_in_cmd();
         return;
     }
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
-    if (SCOPE_IS_PUBLIC_##scope) {                                      \
-        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
-            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name,              \
-                    bool_string[(ptr_int_t)defval >= 1 ? 1 : 0], short);\
-        } else if (TYPE_HAS_RANGE_##type)                               \
-            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <int>", #defval, short); \
-        else                                                            \
-            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <string>", #defval, short); \
-    }
-#define OPTION_FRONT OPTION_CLIENT
-#include "optionsx.h"
-#undef OPTION_CLIENT
-#undef OPTION_FRONT
+    options_print_usage();
 }
 
 #define usage(msg, ...) do {                                    \
@@ -658,6 +613,16 @@ process_results_file(const char *logdir, const char *symdir,
 }
 #endif /* WINDOWS */
 
+/* check client options and abort on an option error */
+static void
+check_client_options(const char * client_ops)
+{
+    /* we share options_init with Dr. Memory to check the option setting */
+    options_init(client_ops);
+}
+
+char app_path[MAXIMUM_PATH]; /* shared in options.c */
+
 int
 _tmain(int argc, TCHAR *targv[])
 {
@@ -697,7 +662,6 @@ _tmain(int argc, TCHAR *targv[])
     size_t native_parent_pos = 0; /* holds cliops_sofar of "-native_parent" */
 
     char *app_name;
-    char full_app_name[MAXIMUM_PATH];
     char **app_argv;
 
     int errcode;
@@ -860,6 +824,7 @@ _tmain(int argc, TCHAR *targv[])
             continue;
         }
         else if (strcmp(argv[i], "-h") == 0 ||
+                 strcmp(argv[i], "-help") == 0 ||
                  strcmp(argv[i], "--help") == 0) {
             print_usage(true/*full*/);
             exit(0);
@@ -1082,9 +1047,9 @@ _tmain(int argc, TCHAR *targv[])
     if (i >= argc)
         usage("%s", "no app specified");
     app_name = argv[i];
-    get_full_path(app_name, full_app_name, BUFFER_SIZE_ELEMENTS(full_app_name));
-    if (full_app_name[0] != '\0')
-        app_name = full_app_name;
+    get_full_path(app_name, app_path, BUFFER_SIZE_ELEMENTS(app_path));
+    if (app_path[0] != '\0')
+        app_name = app_path;
     info("targeting application: \"%s\"", app_name);
 
     /* note that we want target app name as part of cmd line
@@ -1313,6 +1278,8 @@ _tmain(int argc, TCHAR *targv[])
         goto error; /* actually won't get here */
     }
     info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
+    /* check client options and abort on an option error */
+    check_client_options(client_ops);
     status = dr_register_client(process, pid,
                                 false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
                                 0, client_path, client_ops);

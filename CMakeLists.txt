@@ -1061,7 +1061,7 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
   # we rename client lib (plus cmake best w/o same-name targets)
   set(client_target "${toolname}lib")
   # assuming only DrMem for now
-  set(frontend_srcs drmemory/frontend.c)
+  set(frontend_srcs drmemory/frontend.c drmemory/options.c)
   if (WIN32)
     set(frontend_srcs ${frontend_srcs} make/resources.rc)
   endif ()

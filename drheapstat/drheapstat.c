@@ -217,7 +217,7 @@ drheap_options_init(const char *opstr)
     reset_intervals();
 
     /* set globals */
-    op_print_stderr = options.stderr;
+    op_print_stderr = options.use_stderr;
     op_verbose_level = options.verbose;
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;

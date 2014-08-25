@@ -553,31 +553,6 @@ crash_process(void)
  *
  */
 
-const char *
-get_option_word(const char *s, char buf[MAX_OPTION_LEN])
-{
-    int i = 0;
-    bool quoted = false;
-    char endquote = '\0';
-    while (*s != '\0' && isspace(*s))
-        s++;
-    if (*s == '\"' || *s == '\'' || *s == '`') {
-        quoted = true;
-        endquote = *s;
-        s++;
-    }
-    while (*s != '\0' && ((!quoted && !isspace(*s)) || (quoted && *s != endquote)) &&
-           i < MAX_OPTION_LEN-1)
-        buf[i++] = *s++;
-    if (quoted && *s == endquote)
-        s++;
-    buf[i] = '\0';
-    if (i == 0 && *s == '\0')
-        return NULL;
-    else
-        return s;
-}
-
 bool
 text_matches_pattern(const char *text, const char *pattern,
                      bool ignore_case)

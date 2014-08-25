@@ -28,6 +28,59 @@
 #include "pattern.h"
 #include "drmemory.h"
 #include <string.h>
+#include <ctype.h> /* for isspace */
+
+/* To use options.c in both the client and the frontend, we need
+ * redefine a few utility macro and routines below for frontend:
+ * - macros:
+ *   ASSERT, NOTIFY_ERROR, NOTIFY_NO_PREFIX, stri_eq
+ * - global variables:
+ *   char app_path[MAXIMUM_PATH] (declared in frontend.c)
+ * - routines:
+ *   get_windows_version
+ *
+ * XXX: we should refactor options.c into a more cleanly separated module
+ * that is not relying on global variables externally defined (app_path)
+ * or global macros.
+ */
+#ifndef CLIENT_LIBNAME
+# include <stdio.h> /* for stderr */
+# undef ASSERT
+# undef NOTIFY_ERROR
+# undef NOTIFY_NO_PREFIX
+# define NOTIFY_ERROR(...) do {   \
+    fprintf(stderr, __VA_ARGS__); \
+    fflush(stderr);               \
+} while (0)
+# define NOTIFY_NO_PREFIX(...) do { \
+    fprintf(stderr, __VA_ARGS__);   \
+    fflush(stderr);                 \
+} while (0)
+# define ASSERT(x, msg) do {                      \
+    if (!(x)) {                                   \
+       NOTIFY_ERROR("ASSERT FAILURE: %s"NL, msg); \
+       exit(1);                                   \
+    }                                             \
+} while (0)
+# define stri_eq(s1, s2) (strcmp((s1), (s2)) == 0)
+
+# ifdef WINDOWS
+/* XXX: this is a temp solution for frontend using options.c.
+ * We should use the function pointer as a parameter instead.
+ */
+static dr_os_version_t
+get_windows_version(void)
+{
+    dr_os_version_info_t info;
+    info.size = sizeof(info);
+    if (dr_get_os_version(&info))
+        return info.version;
+    ASSERT(false, "fail to get windows version");
+    /* assume latest just to make progress: good chance of working */
+    return DR_WINDOWS_VERSION_7;
+}
+# endif /* WINDOWS */
+#endif /* CLIENT_LIBNAME */
 
 /***************************************************************************
  * OPTIONS
@@ -97,6 +150,31 @@ option_specified_t option_specified = {
 /* If the user sets a value, we disable our dynamic adjustments */
 bool stack_swap_threshold_fixed;
 
+const char *
+get_option_word(const char *s, char buf[MAX_OPTION_LEN])
+{
+    int i = 0;
+    bool quoted = false;
+    char endquote = '\0';
+    while (*s != '\0' && isspace(*s))
+        s++;
+    if (*s == '\"' || *s == '\'' || *s == '`') {
+        quoted = true;
+        endquote = *s;
+        s++;
+    }
+    while (*s != '\0' && ((!quoted && !isspace(*s)) || (quoted && *s != endquote)) &&
+           i < MAX_OPTION_LEN-1)
+        buf[i++] = *s++;
+    if (quoted && *s == endquote)
+        s++;
+    buf[i] = '\0';
+    if (i == 0 && *s == '\0')
+        return NULL;
+    else
+        return s;
+}
+
 void
 usage_error(const char *msg, const char *submsg)
 {
@@ -109,24 +187,7 @@ option_error(const char *whichop, const char *msg)
 {
     NOTIFY_ERROR("Usage error on option \"%s\"%s%s: aborting"NL,
                  whichop, (msg[0] == '\0') ? "" : ": ", msg);
-    NOTIFY_NO_PREFIX("Dr. Memory options (use -no_<op> to disable bool):"NL);
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
-    if (SCOPE_IS_PUBLIC_##scope) {                                      \
-        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
-                             bool_string[(ptr_int_t)defval], short);    \
-            ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,    \
-                   "defval must be true/false");                        \
-        } else if (TYPE_HAS_RANGE_##type)                               \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <int>", #defval, short); \
-        else                                                            \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <string>", #defval, short); \
-    }
-#define OPTION_FRONT OPTION_CLIENT
-    /* we use <> so other tools can override the optionsx.h in "." */
-#include <optionsx.h>
-#undef OPTION_CLIENT
-#undef OPTION_FRONT
+    NOTIFY_NO_PREFIX("Run with -help for full option list."NL);
     /* FIXME: have an option that asks for all messages to messageboxes */
     dr_abort();
     ASSERT(false, "should not get here");
@@ -546,4 +607,27 @@ options_init(const char *opstr)
     if (options.native_until_thread > 0 || options.native_parent) {
         go_native = true;
     }
+}
+
+void
+options_print_usage()
+{
+    NOTIFY_NO_PREFIX("Dr. Memory options (use -no_<op> to disable bool):"NL);
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+    if (SCOPE_IS_PUBLIC_##scope) {                                      \
+        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
+                             bool_string[(ptr_int_t)defval], short);    \
+            ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,    \
+                   "defval must be true/false");                        \
+        } else if (TYPE_HAS_RANGE_##type)                               \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <int>", #defval, short); \
+        else                                                            \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <string>", #defval, short); \
+    }
+#define OPTION_FRONT OPTION_CLIENT
+    /* we use <> so other tools can override the optionsx.h in "." */
+#include <optionsx.h>
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
 }

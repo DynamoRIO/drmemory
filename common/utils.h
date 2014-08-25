@@ -846,9 +846,6 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
  */
 #define MAX_OPTION_LEN DR_MAX_OPTIONS_LENGTH
 
-const char *
-get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
-
 #ifndef MACOS /* available on Mac */
 const char *
 strcasestr(const char *text, const char *pattern);

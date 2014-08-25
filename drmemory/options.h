@@ -65,6 +65,9 @@ options_init(const char *opstr);
 void
 usage_error(const char *msg, const char *submsg);
 
+void
+options_print_usage();
+
 #ifdef TOOL_DR_MEMORY
 # define ZERO_STACK() (options.zero_stack && options.count_leaks &&\
                        (options.leaks_only || !options.check_uninitialized))
@@ -81,5 +84,23 @@ usage_error(const char *msg, const char *submsg);
 #define HAVE_STALE_RETADDRS() \
     ((!options.shadowing || !options.check_uninitialized) && \
      (!options.leaks_only || !options.zero_stack))
+
+static inline bool
+persistence_supported(void)
+{
+    /* We count on DR to not persist any bbs w/ clean calls in them.
+     * Both light modes and -leaks_only are all persistable so long as the drmem lib
+     * is at the same base.
+     * For -replace_malloc, the replaced-callee bbs have direct jumps to
+     * the drmem library: but we're already assuming it's at the same base.
+     * Plus, the bb will be fine-grained due to its non-exit cti.
+     * FIXME i#769: full mode is not yet persistable b/c its lean routines have
+     * absolute return targets and they need patching
+     */
+    return (options.persist_code &&
+            (!options.shadowing || !options.check_uninitialized));
+}
+
+
 
 #endif /* _OPTIONS_H_ */

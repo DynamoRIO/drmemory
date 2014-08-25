@@ -594,7 +594,7 @@ OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
 OPTION_CLIENT_SCOPE(internal, resfile, uint, 0, 0, UINT_MAX,
                    "For the given pid, write the result file path to <logdir>/resfile.<pid>",
                    "Write the result file path to <logdir>/resfile.<pid> if the process id equals the passed-in option value")
-OPTION_CLIENT_BOOL(internal, stderr, true,
+OPTION_CLIENT_BOOL(internal, use_stderr, true,
                    "Print summary messages on stderr",
                    "Print summary messages on stderr")
 OPTION_CLIENT_BOOL(internal, shadowing, true,

@@ -80,6 +80,7 @@ The changes between \TOOL_VERSION and version 1.7.0 include:
    "UNADDRESSABLE ACCESS of freed memory",
    "UNADDRESSABLE ACCESS beyond heap bounds", and
    "UNADDRESSABLE ACCESS beyond top of stack".
+ - Renamed option -stderr to -use_stderr.
 
 The changes between version 1.7.0 and version 1.6.1 include:
  - Added a Beta version of Dr. Memory for Mac.  Be aware that this

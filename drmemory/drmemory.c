@@ -126,7 +126,7 @@ drmem_options_init(const char *opstr)
 {
     options_init(opstr);
     /* set globals */
-    op_print_stderr = options.stderr && !options.quiet;
+    op_print_stderr = options.use_stderr && !options.quiet;
     op_verbose_level = options.verbose;
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;
@@ -320,22 +320,6 @@ typedef struct _persist_data_t {
     /* options that affect what we persist */
     bool shadowing;
 } persist_data_t;
-
-bool
-persistence_supported(void)
-{
-    /* We count on DR to not persist any bbs w/ clean calls in them.
-     * Both light modes and -leaks_only are all persistable so long as the drmem lib
-     * is at the same base.
-     * For -replace_malloc, the replaced-callee bbs have direct jumps to
-     * the drmem library: but we're already assuming it's at the same base.
-     * Plus, the bb will be fine-grained due to its non-exit cti.
-     * FIXME i#769: full mode is not yet persistable b/c its lean routines have
-     * absolute return targets and they need patching
-     */
-    return (options.persist_code &&
-            (!options.shadowing || !options.check_uninitialized));
-}
 
 static size_t
 event_persist_ro_size(void *drcontext, void *perscxt, size_t file_offs,
