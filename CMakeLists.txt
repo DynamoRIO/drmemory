@@ -1108,6 +1108,11 @@ if (WIN32)
   target_link_libraries(verinfo version)
   set_property(TARGET verinfo PROPERTY COMPILE_DEFINITIONS
     "${DEFINES_NO_D};RC_IS_VERINFO")
+
+  # i#1009c#4: auto-register Dr. Memory as a Visual Studio External Tool
+  add_executable(vs_external_tool tools/vs_external_tool.c make/resources.rc)
+  set_property(TARGET vs_external_tool PROPERTY COMPILE_DEFINITIONS
+    "${DEFINES_NO_D};RC_IS_VS_EXTERNAL_TOOL")
 endif (WIN32)
 
 # we want a preferred base to avoid patching pcaches
@@ -2093,7 +2098,16 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   set(CPACK_NSIS_MUI_ICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
   set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
 endif (USER_SPECIFIED_DynamoRIO_DIR)
-# FIXME: CPACK_PACKAGE_ICON: need a .bmp
+# XXX: CPACK_PACKAGE_ICON: need a .bmp
+
+# i#1009c#4: auto-register Dr. Memory as a Visual Studio External Tool
+if (WIN32)
+  install(TARGETS vs_external_tool DESTINATION "${INSTALL_BIN}"
+    PERMISSIONS ${owner_access}
+    OWNER_EXECUTE GROUP_READ GROUP_EXECUTE  WORLD_READ WORLD_EXECUTE)
+  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "ExecWait  '\\\"$INSTDIR\\\\bin\\\\vs_external_tool.exe\\\" \\\"$INSTDIR\\\\bin\\\\drmemory.exe'")
+  set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "ExecWait  '\\\"$INSTDIR\\\\bin\\\\vs_external_tool.exe\\\" -uninstall'")
+endif (WIN32)
 
 # Let external build file override all settings, but before CPack reads them
 set(AUX_MAKEFILE "" CACHE FILEPATH "Path to an auxiliary CMakeLists.txt file.")

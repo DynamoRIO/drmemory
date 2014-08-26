@@ -327,12 +327,19 @@ next step is to execute it on your workload of choice under Dr. memory.
 ********************
 \section sec_vstudio Dr. Memory as a Visual Studio Tool
 
-To run Dr. Memory within Visual Studio, add it as an External Tool, which
-creates a new menu entry for launching the tool.
+Dr. Memory has support for running within the Visual Studio IDE as an
+External Tool.  The Windows installer automatically creates a new Tools
+menu entry for launching Dr. Memory for each version of Visual Studio
+detected at install time.  If you are using a local install, or if you
+installed Visual Studio after installing Dr. Memory, or if you are using
+Visual Studio Express 2010 and it was in Basic mode at the time you
+installed Dr. Memory, you will need to follow the following instructions in
+order to add Dr. Memory as an External Tool.
 
-If using Visual Studio Express 2010 or later, first enable the full menu
+If using Visual Studio Express 2010, first enable the full menu
 system by selecting <tt>Tools | Settings | Expert Settings</tt> (this step
-is not necessary for Visual Studio Professional).
+is not necessary for Visual Studio Professional or later versions of Visual
+Studio Express).
 
 Next, for Visual Studio 2005 through 2012, select the <tt>Tools | External
 Tools...</tt> menu option to open the External Tools dialog box.  Click Add
@@ -369,7 +376,15 @@ number indicated.
 To pass arguments to your application, in the External Tools dialog box
 entry for Dr. Memory, either directly add them for all runs, or check the
 "Prompt for arguments" checkbox to be prompted for arguments on each
-invocation.
+invocation.  Add application arguments at the end, after the pre-filled-in
+string:
+
+\verbatim
+-visual_studio -- $(TargetPath) ADD ARGUMENTS HERE
+\endverbatim.
+
+For Dr. Memory as an External Tool set up by the Dr. Memory installer,
+prompting for arguments is on by default.
 
 ********************
 \section sec_invocation Invoking Dr. Memory from the Command Line
