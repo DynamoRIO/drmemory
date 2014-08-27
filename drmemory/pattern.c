@@ -658,42 +658,42 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     /* find all instr */
     instr = instrlist_first(ilist);
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             instr_get_opcode(instr) == OP_jecxz) {
             jecxz = instr;
             break;
         }
     }
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             instr_get_opcode(instr) == OP_jmp_short) {
             IF_DEBUG(jmp_iter = instr;)
             break;
         }
     }
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             instr_get_opcode(instr) == OP_mov_imm) {
             mov_1 = instr;
             break;
         }
     }
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             instr_get_opcode(instr) == OP_jmp) {
             jmp_skip = instr;
             break;
         }
     }
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             opc_is_stringop(instr_get_opcode(instr))) {
             stringop = instr;
             break;
         }
     }
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) &&
+        if (instr_is_app(instr) &&
             opc_is_loopcc(instr_get_opcode(instr))) {
             loop = instr;
             break;
@@ -719,7 +719,7 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     ASSERT(check != NULL, "check label must not be NULL");
     /* set loop target to check */
     instr_set_target(loop, opnd_create_instr(check));
-    instr_set_ok_to_mangle(loop, false);
+    instr_set_meta(loop);
     /* post_loop */
     PRE(ilist, NULL, post_loop);
     next_pc = instr_get_app_pc(stringop) +
@@ -914,7 +914,7 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
          instr != NULL;
          instr  = prev) {
         prev = instr_get_prev(instr);
-        if (instr_ok_to_mangle(instr)) {
+        if (instr_is_app(instr)) {
             eax_live = pattern_reg_liveness_update_on_reverse_scan
                 (instr, DR_REG_XAX, eax_live);
             aflags_live = pattern_aflags_liveness_update_on_reverse_scan

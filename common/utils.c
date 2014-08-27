@@ -1218,10 +1218,10 @@ instr_get_prev_app_instr(instr_t *instr)
     ASSERT(instr != NULL, "instr must not be NULL");
     instr = instr_get_prev(instr);
     /* quick check to avoid loop overhead */
-    if (instr == NULL || instr_ok_to_mangle(instr))
+    if (instr == NULL || instr_is_app(instr))
         return instr;
     for (; instr != NULL; instr = instr_get_prev(instr)) {
-        if (!instr_ok_to_mangle(instr)) {
+        if (instr_is_meta(instr)) {
             if (!instr_is_label(instr) &&
                 (drmgr_current_bb_phase(dr_get_current_drcontext()) ==
                  DRMGR_PHASE_APP2APP ||
@@ -1245,10 +1245,10 @@ instr_get_next_app_instr(instr_t *instr)
     ASSERT(instr != NULL, "instr must not be NULL");
     instr = instr_get_next(instr);
     /* quick check to avoid loop overhead */
-    if (instr == NULL || instr_ok_to_mangle(instr))
+    if (instr == NULL || instr_is_app(instr))
         return instr;
     for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (!instr_ok_to_mangle(instr)) {
+        if (instr_is_meta(instr)) {
             if (!instr_is_label(instr) &&
                 (drmgr_current_bb_phase(dr_get_current_drcontext()) ==
                  DRMGR_PHASE_APP2APP ||
@@ -1269,7 +1269,7 @@ instrlist_first_app_instr(instrlist_t *ilist)
     ASSERT(ilist != NULL, "instrlist must not be NULL");
     instr = instrlist_first(ilist);
     ASSERT(instr != NULL, "instrlist is empty");
-    if (instr == NULL || instr_ok_to_mangle(instr))
+    if (instr == NULL || instr_is_app(instr))
         return instr;
     return instr_get_next_app_instr(instr);
 }
@@ -1281,7 +1281,7 @@ instrlist_last_app_instr(instrlist_t *ilist)
     ASSERT(ilist != NULL, "instrlist must not be NULL");
     instr = instrlist_last(ilist);
     ASSERT(instr != NULL, "instrlist is empty");
-    if (instr == NULL || instr_ok_to_mangle(instr))
+    if (instr == NULL || instr_is_app(instr))
         return instr;
     return instr_get_prev_app_instr(instr);
 }

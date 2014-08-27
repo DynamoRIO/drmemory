@@ -489,7 +489,7 @@ event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
     if (translating)
         return DR_EMIT_DEFAULT;
     for (instr  = instrlist_first(bb); instr != NULL; instr  = instr_get_next(instr)) {
-        if (instr_ok_to_mangle(instr) && instr_is_call(instr)) {
+        if (instr_is_app(instr) && instr_is_call(instr)) {
             app_pc retaddr = instr_get_app_pc(instr) +  instr_length(drcontext, instr);
             /* we never remove from the table, and dups are fine */
             hashtable_add(&retaddr_table, (void *)retaddr, (void *)tag);

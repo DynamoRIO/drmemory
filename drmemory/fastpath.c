@@ -5535,7 +5535,7 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     int i, uses_least = INT_MAX, uses_second = INT_MAX;
 
     while (inst != NULL) {
-        if (instr_ok_to_mangle(inst)) {
+        if (instr_is_app(inst)) {
             for (i = 0; i < instr_num_dsts(inst); i++)
                 pick_bb_scratch_regs_helper(instr_get_dst(inst, i), uses);
             for (i = 0; i < instr_num_srcs(inst); i++)
@@ -5773,7 +5773,7 @@ mark_eflags_used(void *drcontext, instrlist_t *bb, bb_info_t *bi)
         return;
     }
     /* To use global-eax for eflags we must spill regs before flags */
-    while (!instr_ok_to_mangle(where_spill) &&
+    while (instr_is_meta(where_spill) &&
            instr_is_spill(where_spill) &&
            instr_get_next(where_spill) != NULL)
         where_spill = instr_get_next(where_spill);
@@ -5799,7 +5799,7 @@ mark_scratch_reg_used(void *drcontext, instrlist_t *bb,
         ASSERT(bi != NULL, "should only use global in bb, not gencode");
         /* To use global-eax for eflags we must spill regs before flags */
         while (instr_get_prev(where_spill) != NULL &&
-               !instr_ok_to_mangle(instr_get_prev(where_spill)) &&
+               instr_is_meta(instr_get_prev(where_spill)) &&
                /* We want to NOT walk back into clean call: clean call
                 * ends in restore, not spill
                 */

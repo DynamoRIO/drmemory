@@ -3925,7 +3925,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst, mi->slow_store_retaddr);
                 mi->slow_jmp = INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt));
                 PRE(bb, inst, mi->slow_jmp);
-                instr_set_ok_to_mangle(mi->appclone, false);
+                instr_set_meta(mi->appclone);
                 instr_set_translation(mi->appclone, NULL);
                 PRE(bb, inst, mi->appclone);
             } else {
@@ -5630,7 +5630,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (go_native)
         return DR_EMIT_GO_NATIVE;
 
-    if (!instr_ok_to_mangle(inst))
+    if (instr_is_meta(inst))
         goto instru_event_bb_insert_done;
 
     memset(&mi, 0, sizeof(mi));
@@ -5875,7 +5875,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     }
 
  instru_event_bb_insert_done:
-    if (bi->first_instr && instr_ok_to_mangle(inst))
+    if (bi->first_instr && instr_is_app(inst))
         bi->first_instr = false;
     /* We store whether bi->check_ignore_unaddr in our own data struct to avoid
      * DR having to store translations, so we can recreate deterministically
