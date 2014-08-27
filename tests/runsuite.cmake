@@ -33,6 +33,7 @@ set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
                       # ../exports_vmk/cmake will be used as a default
 
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
+message("drm: runsuit.cmake: CTEST_SCRIPT_DIRECTORY ${CTEST_SCRIPT_DIRECTORY}")
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "test_vmk")
