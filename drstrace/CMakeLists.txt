@@ -76,14 +76,6 @@ install(TARGETS drstracelib
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
 
-# XXX DRi#1078: we should add the relative dir .drpath support!
-# For now we copy drsyscall.dll.  CMake won't let us install it as a
-# target from this dir so we copy it as a file.
-get_target_property(drsys_path drsyscall LOCATION${location_suffix})
-install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
-  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-  WORLD_READ WORLD_EXECUTE)
-
 ##################################################
 # symbol_fetch to fetch symbols from MS Symbol Server
 
