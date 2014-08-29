@@ -572,7 +572,7 @@ _tmain(int argc, TCHAR *targv[])
             if (sc == DRFRONT_SUCCESS) {
                 /* pass to client */
                 BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-                         cliops_sofar, len, "-symcache_path %s", pdb_path);
+                         cliops_sofar, len, "-symcache_path `%s` ", pdb_path);
             } else if (!load_symbols) {
                 warn("symbol fetching was disabled via -no_load_symbols.");
             } else {
