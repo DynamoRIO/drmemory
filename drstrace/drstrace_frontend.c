@@ -515,21 +515,34 @@ _tmain(int argc, TCHAR *targv[])
                  drops_sofar, len, "-logdir `%s` ", dr_logdir);
     }
 
+    if (!sym_path_specified) {
+        /* Default location for local symbol cache: if our install dir is
+         * writable, we want logs/symbols/.  Else just symbols/ inside
+         * AppData Dr. Memory dir.
+         * drfront_set_client_symbol_search_path() adds symbols/ for us.
+         */
+        bool use_root;
+        sc = drfront_appdata_logdir(drstrace_root, "Dr. Memory", &use_root,
+                                    sym_path, BUFFER_SIZE_ELEMENTS(sym_path));
+        if (sc == DRFRONT_SUCCESS) {
+            if (use_root) {
+                _snprintf(sym_path, BUFFER_SIZE_ELEMENTS(sym_path),
+                          "%s%clogs", drstrace_root, DIRSEP);
+                NULL_TERMINATE_BUFFER(sym_path);
+            }
+            if (!dr_create_dir(sym_path) && !dr_directory_exists(sym_path))
+                sc = DRFRONT_ERROR;
+        }
+        if (sc != DRFRONT_SUCCESS) {
+            get_absolute_path(".", sym_path, BUFFER_SIZE_ELEMENTS(sym_path));
+        }
+    }
+
     /* fetch wintypes.pdb (if not exists) to symcache_path */
     if (drfront_sym_init(NULL, "dbghelp.dll") == DRFRONT_SUCCESS) {
-        if (!sym_path_specified)
-            sc = DRFRONT_ERROR_INVALID_PATH;
-        else {
-            sc = drfront_set_client_symbol_search_path
-                (sym_path, sym_path_specified, symsrv_path,
-                 BUFFER_SIZE_ELEMENTS(symsrv_path));
-        }
-        if (sc == DRFRONT_ERROR_INVALID_PATH) {
-            /* fall back to a local dir as a default */
-            sc = drfront_set_client_symbol_search_path
-                (dr_logdir, sym_path_specified, symsrv_path,
-                 BUFFER_SIZE_ELEMENTS(symsrv_path));
-        }
+        sc = drfront_set_client_symbol_search_path
+            (sym_path, sym_path_specified,
+             symsrv_path, BUFFER_SIZE_ELEMENTS(symsrv_path));
         if (sc == DRFRONT_SUCCESS) {
             /* symfetch.dll is in our dir */
             get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
