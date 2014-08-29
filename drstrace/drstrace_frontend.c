@@ -107,8 +107,9 @@ print_usage(void)
     fprintf(stderr, "                If set to \"-\", data for all processes are\n");
     fprintf(stderr, "                printed to stderr (warning: this can be slow).\n");
     fprintf(stderr, "-symcache_path <path>   Specify absolute path where symbol data\n");
-    fprintf(stderr, "                should be searched. If not set, _NT_SYMBOL_PATH\n");
-    fprintf(stderr, "                environment variable will be used.\n");
+    fprintf(stderr, "                should be cached. If not set, _NT_SYMBOL_PATH\n");
+    fprintf(stderr, "                environment variable will be used, if set; else\n");
+    fprintf(stderr, "                a local directory will be used.\n");
     fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
     fprintf(stderr, "                the default, which is to trace all children).\n");
     fprintf(stderr, "-version        Print version number.\n");
@@ -214,7 +215,7 @@ _tmain(int argc, TCHAR *targv[])
     bool use_dr_debug = false;
     bool use_drstrace_debug = false;
     bool dr_logdir_specified = false;
-    bool drstrace_symcache_specified = false;
+    bool sym_path_specified = false;
     char *app_name;
     char full_app_name[MAXIMUM_PATH];
     char **app_argv;
@@ -347,7 +348,7 @@ _tmain(int argc, TCHAR *targv[])
                       "%s", argv[++i]);
             NULL_TERMINATE_BUFFER(sym_path);
             string_replace_character(sym_path, '\\', '/');
-            drstrace_symcache_specified = true;
+            sym_path_specified = true;
         }
         else {
             /* pass to client */
@@ -506,9 +507,15 @@ _tmain(int argc, TCHAR *targv[])
     /* fetch wintypes.pdb (if not exists) to symcache_path */
     if (drfront_sym_init(NULL, "dbghelp.dll") == DRFRONT_SUCCESS) {
         warn("Fetching symbol information (procedure may take some time).");
-        sc = drfront_set_symbol_search_path(sym_path, drstrace_symcache_specified);
-        if (sc == DRFRONT_ERROR_INVALID_PATH)
-            sc = drfront_set_symbol_search_path(dr_logdir, drstrace_symcache_specified);
+        if (!sym_path_specified)
+            sc = DRFRONT_ERROR_INVALID_PATH;
+        else {
+            sc = drfront_set_symbol_search_path(sym_path, sym_path_specified)
+        }
+        if (sc == DRFRONT_ERROR_INVALID_PATH) {
+            /* fall back to a local dir as a default */
+            sc = drfront_set_client_symbol_search_path(dr_logdir, sym_path_specified);
+        }
         if (sc == DRFRONT_SUCCESS) {
             /* We use special fake dll to obtain symbolic info from MS Symbol
              * server. PTAL i#1540 for details.
@@ -522,13 +529,13 @@ _tmain(int argc, TCHAR *targv[])
                 BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                          cliops_sofar, len, "-symcache_path %s", pdb_path);
             } else {
-                warn("Symbol fetching failed. Symbol lookup will be disabled.");
+                warn("symbol fetching failed.  Symbol lookup will be disabled.");
             }
         } else {
-            warn("Failed to set symbol search path. Symbol lookup will be disabled.");
+            warn("failed to set symbol search path.  Symbol lookup will be disabled.");
         }
     } else {
-        warn("Symbol initialization error. Symbol lookup will be disabled.");
+        warn("symbol initialization error.  Symbol lookup will be disabled.");
     }
 
 #ifdef UNIX
@@ -585,7 +592,7 @@ _tmain(int argc, TCHAR *targv[])
         start_time = time(NULL);
     dr_inject_process_run(inject_data);
 #ifdef UNIX
-    fatal("Failed to exec application");
+    fatal("failed to exec application");
 #else
     info("waiting for app to exit...");
     errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
