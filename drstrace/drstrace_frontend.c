@@ -211,6 +211,7 @@ _tmain(int argc, TCHAR *targv[])
     char symsrv_path[MAXIMUM_PATH];
     char pdb_path[MAXIMUM_PATH];
     char dr_logdir[MAXIMUM_PATH];
+    char symdll_path[MAXIMUM_PATH];
 
     size_t drops_sofar = 0; /* for BUFPRINT to dr_ops */
     ssize_t len; /* shared by all BUFPRINT */
@@ -530,8 +531,17 @@ _tmain(int argc, TCHAR *targv[])
                  BUFFER_SIZE_ELEMENTS(symsrv_path));
         }
         if (sc == DRFRONT_SUCCESS) {
+            /* symfetch.dll is in our dir */
+            get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
+            c = buf + strlen(buf) - 1;
+            while (*c != DIRSEP && *c != ALT_DIRSEP && c > buf)
+                c--;
+            _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "%s", SYMBOL_DLL_NAME);
+            NULL_TERMINATE_BUFFER(buf);
+            get_absolute_path(buf, symdll_path, BUFFER_SIZE_ELEMENTS(symdll_path));
+            NULL_TERMINATE_BUFFER(symdll_path);
             /* before we add the MS symsrv, see whether we have local symbols */
-            sc = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, pdb_path,
+            sc = drfront_fetch_module_symbols(symdll_path, pdb_path,
                                               BUFFER_SIZE_ELEMENTS(pdb_path));
             if (sc != DRFRONT_SUCCESS && load_symbols) {
                 warn("fetching symbol information (procedure may take some time).");
@@ -540,7 +550,7 @@ _tmain(int argc, TCHAR *targv[])
                  * server. PTAL i#1540 for details.
                  */
                 if (sc == DRFRONT_SUCCESS) {
-                    sc = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, pdb_path,
+                    sc = drfront_fetch_module_symbols(symdll_path, pdb_path,
                                                       BUFFER_SIZE_ELEMENTS(pdb_path));
                     if (sc == DRFRONT_SUCCESS)
                         info("symbol file successfully fetched");
