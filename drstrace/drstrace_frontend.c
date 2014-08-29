@@ -206,6 +206,7 @@ _tmain(int argc, TCHAR *targv[])
     size_t cliops_sofar = 0; /* for BUFPRINT to client_ops */
     char dr_ops[MAX_DR_CMDLINE];
     char sym_path[MAXIMUM_PATH];
+    char symsrv_path[MAXIMUM_PATH];
     char pdb_path[MAXIMUM_PATH];
     char dr_logdir[MAXIMUM_PATH];
 
@@ -506,25 +507,37 @@ _tmain(int argc, TCHAR *targv[])
 
     /* fetch wintypes.pdb (if not exists) to symcache_path */
     if (drfront_sym_init(NULL, "dbghelp.dll") == DRFRONT_SUCCESS) {
-        warn("Fetching symbol information (procedure may take some time).");
         if (!sym_path_specified)
             sc = DRFRONT_ERROR_INVALID_PATH;
         else {
-            sc = drfront_set_symbol_search_path(sym_path, sym_path_specified)
+            sc = drfront_set_client_symbol_search_path
+                (sym_path, sym_path_specified, symsrv_path,
+                 BUFFER_SIZE_ELEMENTS(symsrv_path));
         }
         if (sc == DRFRONT_ERROR_INVALID_PATH) {
             /* fall back to a local dir as a default */
-            sc = drfront_set_client_symbol_search_path(dr_logdir, sym_path_specified);
+            sc = drfront_set_client_symbol_search_path
+                (dr_logdir, sym_path_specified, symsrv_path,
+                 BUFFER_SIZE_ELEMENTS(symsrv_path));
         }
         if (sc == DRFRONT_SUCCESS) {
-            /* We use special fake dll to obtain symbolic info from MS Symbol
-             * server. PTAL i#1540 for details.
-             */
-            if (drfront_fetch_module_symbols(SYMBOL_DLL_PATH,
-                                             pdb_path,
-                                             BUFFER_SIZE_ELEMENTS(pdb_path))
-                                             == DRFRONT_SUCCESS) {
-                info("Symbol file sucessfully fetched");
+            /* before we add the MS symsrv, see whether we have local symbols */
+            sc = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, pdb_path,
+                                              BUFFER_SIZE_ELEMENTS(pdb_path));
+            if (sc != DRFRONT_SUCCESS) {
+                warn("fetching symbol information (procedure may take some time).");
+                sc = drfront_set_symbol_search_path(symsrv_path);
+                /* We use a special fake dll to obtain symbolic info from MS Symbol
+                 * server. PTAL i#1540 for details.
+                 */
+                if (sc == DRFRONT_SUCCESS) {
+                    sc = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, pdb_path,
+                                                      BUFFER_SIZE_ELEMENTS(pdb_path));
+                    if (sc == DRFRONT_SUCCESS)
+                        info("symbol file successfully fetched");
+                }
+            }
+            if (sc == DRFRONT_SUCCESS) {
                 /* pass to client */
                 BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                          cliops_sofar, len, "-symcache_path %s", pdb_path);

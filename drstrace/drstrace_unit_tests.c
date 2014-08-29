@@ -115,6 +115,7 @@ static void
 check_symbol_fetching()
 {
     char symbol_dir[MAXIMUM_PATH];
+    char symsrv_path[MAXIMUM_PATH];
     bool pdb_exists;
     if (drfront_get_absolute_path("../logs",
                                   symbol_dir, MAXIMUM_PATH) != DRFRONT_SUCCESS) {
@@ -134,7 +135,12 @@ check_symbol_fetching()
         printf("drfront_sym_init failed\n");
         dr_abort();
     }
-    if (drfront_set_symbol_search_path(symbol_dir, true) != DRFRONT_SUCCESS) {
+    if (drfront_set_client_symbol_search_path(symbol_dir, true, symsrv_path,
+                                              MAXIMUM_PATH) != DRFRONT_SUCCESS) {
+        printf("drfront_set_client_symbol_search_path failed\n");
+        dr_abort();
+    }
+    if (drfront_set_symbol_search_path(symsrv_path) != DRFRONT_SUCCESS) {
         printf("drfront_set_symbol_search_path failed\n");
         dr_abort();
     }

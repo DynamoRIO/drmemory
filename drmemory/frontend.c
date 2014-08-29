@@ -648,6 +648,9 @@ _tmain(int argc, TCHAR *targv[])
     char scratch[MAXIMUM_PATH];
     char persist_dir[MAXIMUM_PATH];
     char symdir[MAXIMUM_PATH];
+#ifdef WINDOWS
+    char symsrv_dir[MAXIMUM_PATH];
+#endif
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
@@ -690,7 +693,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 #ifdef WINDOWS
     if (drfront_sym_init(NULL, "dbghelp.dll") != DRFRONT_SUCCESS) {
-        warn("Symbols initialization error");
+        warn("symbol initialization error");
     }
     /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is
      * 6.2 (Win8)!  Thus we use DR's version.
@@ -1223,7 +1226,10 @@ _tmain(int argc, TCHAR *targv[])
     }
 #ifdef WINDOWS
     /* Set _NT_SYMBOL_PATH for the app. */
-    if (drfront_set_symbol_search_path(symdir, false) != DRFRONT_SUCCESS)
+    if (drfront_set_client_symbol_search_path(symdir, false, symsrv_dir,
+                                              BUFFER_SIZE_ELEMENTS(symsrv_dir)) !=
+        DRFRONT_SUCCESS ||
+        drfront_set_symbol_search_path(symsrv_dir) != DRFRONT_SUCCESS)
         warn("Can't set symbol search path. Symbol lookup may fail.");
 #endif
 
