@@ -628,7 +628,7 @@ options_init(client_id_t id)
             s = dr_get_token(s, options.sympath,
                              BUFFER_SIZE_ELEMENTS(options.sympath));
             USAGE_CHECK(s != NULL, "missing symcache dir path");
-            ALERT(1, "<drstrace symbol source is %s>\n", options.sympath);
+            ALERT(2, "<drstrace symbol source is %s>\n", options.sympath);
         } else {
             ALERT(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);
             USAGE_CHECK(false, "invalid option");
