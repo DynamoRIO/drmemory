@@ -110,6 +110,8 @@ print_usage(void)
     fprintf(stderr, "                should be cached. If not set, _NT_SYMBOL_PATH\n");
     fprintf(stderr, "                environment variable will be used, if set; else\n");
     fprintf(stderr, "                a local directory will be used.\n");
+    fprintf(stderr, "-[no_]load_symbols  Enables or disables loading of symbols over\n");
+    fprintf(stderr, "                the network.  This option is enabled by default.\n");
     fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
     fprintf(stderr, "                the default, which is to trace all children).\n");
     fprintf(stderr, "-version        Print version number.\n");
@@ -233,6 +235,7 @@ _tmain(int argc, TCHAR *targv[])
 
     drfront_status_t sc;
     bool res;
+    bool load_symbols = true;
 
     dr_standalone_init();
 
@@ -350,6 +353,12 @@ _tmain(int argc, TCHAR *targv[])
             NULL_TERMINATE_BUFFER(sym_path);
             string_replace_character(sym_path, '\\', '/');
             sym_path_specified = true;
+        }
+        else if (strcmp(argv[i], "-load_symbols") == 0) {
+            load_symbols = true;
+        }
+        else if (strcmp(argv[i], "-no_load_symbols") == 0) {
+            load_symbols = false;
         }
         else {
             /* pass to client */
@@ -524,7 +533,7 @@ _tmain(int argc, TCHAR *targv[])
             /* before we add the MS symsrv, see whether we have local symbols */
             sc = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, pdb_path,
                                               BUFFER_SIZE_ELEMENTS(pdb_path));
-            if (sc != DRFRONT_SUCCESS) {
+            if (sc != DRFRONT_SUCCESS && load_symbols) {
                 warn("fetching symbol information (procedure may take some time).");
                 sc = drfront_set_symbol_search_path(symsrv_path);
                 /* We use a special fake dll to obtain symbolic info from MS Symbol
@@ -541,6 +550,8 @@ _tmain(int argc, TCHAR *targv[])
                 /* pass to client */
                 BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                          cliops_sofar, len, "-symcache_path %s", pdb_path);
+            } else if (!load_symbols) {
+                warn("symbol fetching was disabled via -no_load_symbols.");
             } else {
                 warn("symbol fetching failed.  Symbol lookup will be disabled.");
             }
