@@ -323,21 +323,21 @@ print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *add
         } else {
             /* Print integer base types */
             switch (type->size) {
-                case 1:
-                    OUTPUT(buf, "byte|bool=");
-                    break;
-                case 2:
-                    OUTPUT(buf,"short=");
-                    break;
-                case 4:
-                    OUTPUT(buf, "int=");
-                    break;
-                case 8:
-                    OUTPUT(buf, "long long=");
-                    break;
-                default:
-                    OUTPUT(buf, "unknown type=");
-                    break;
+            case 1:
+                OUTPUT(buf, "byte|bool=");
+                break;
+            case 2:
+                OUTPUT(buf,"short=");
+                break;
+            case 4:
+                OUTPUT(buf, "int=");
+                break;
+            case 8:
+                OUTPUT(buf, "long long=");
+                break;
+            default:
+                OUTPUT(buf, "unknown type=");
+                break;
             }
             safe_read_field(buf, addr, type->size, true);
             return;

@@ -2015,315 +2015,312 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
      * Here we check for srcs that do NOT simply go into the lowest slot:
      */
     switch (opc) {
-        case OP_xchg:
-        case OP_xadd:
-            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
-            accum_shadow(&comb->dst[opsz*(1 - opnum) + src_bytenum], shadow);
-            break;
-        case OP_cmpxchg8b:
-            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
-            /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
-             * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
-             * we just combine all 3 sources and write the result to both dests.
-             */
-            switch (opnum) {
-                case 0: shift = 0; break;
-                case 1: shift = 0; break;
-                case 2: shift = 1; break;
-                case 3: shift = 1; break;
-                case 4: shift = 0; break;
-                default: ASSERT(false, "invalid opnum");
-            }
-            accum_shadow(&comb->dst[opsz*shift + src_bytenum], shadow);
-            break;
-        case OP_bswap:
-            ASSERT(opsz == 4, "invalid bswap opsz");
-            accum_shadow(&comb->dst[3 - src_bytenum], shadow);
-            return;
+    case OP_xchg:
+    case OP_xadd:
+        SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+        accum_shadow(&comb->dst[opsz*(1 - opnum) + src_bytenum], shadow);
+        break;
+    case OP_cmpxchg8b:
+        SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+        /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
+         * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
+         * we just combine all 3 sources and write the result to both dests.
+         */
+        switch (opnum) {
+        case 0: shift = 0; break;
+        case 1: shift = 0; break;
+        case 2: shift = 1; break;
+        case 3: shift = 1; break;
+        case 4: shift = 0; break;
+        default: ASSERT(false, "invalid opnum");
+        }
+        accum_shadow(&comb->dst[opsz*shift + src_bytenum], shadow);
+        break;
+    case OP_bswap:
+        ASSERT(opsz == 4, "invalid bswap opsz");
+        accum_shadow(&comb->dst[3 - src_bytenum], shadow);
+        return;
 #ifndef X64
-        case OP_pusha:
-            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
-            if (opnd_is_reg(comb->opnd)) {
-                reg_id_t reg = opnd_get_reg(comb->opnd);
-                shift = opsz*(reg_to_pointer_sized(reg) - DR_REG_EAX);
-                accum_shadow(&comb->dst[shift + src_bytenum], shadow);
-            }
-            break;
+    case OP_pusha:
+        SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+        if (opnd_is_reg(comb->opnd)) {
+            reg_id_t reg = opnd_get_reg(comb->opnd);
+            shift = opsz*(reg_to_pointer_sized(reg) - DR_REG_EAX);
+            accum_shadow(&comb->dst[shift + src_bytenum], shadow);
+        }
+        break;
 #endif
-        case OP_punpcklbw:
-        case OP_vpunpcklbw:
-            /* Dst is opnum==1 and its 0-n/2 => 0, 2, 4, 6, ....
-             * Src is opnum==0 and its 0-n/2 => 1, 3, 5, 7, ...
-             */
-            if (src_bytenum < opsz/2)
-                accum_shadow(&comb->dst[src_bytenum*2 + (1 - opnum)], shadow);
-            break;
-        case OP_punpcklwd:
-        case OP_vpunpcklwd:
-            if (src_bytenum < opsz/2) {
-                accum_shadow(&comb->dst[(src_bytenum/2) *4 + (src_bytenum % 2) +
-                                        2*(1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpckldq:
-        case OP_vpunpckldq:
-        case OP_unpcklps:
-        case OP_vunpcklps:
-            if (src_bytenum < opsz/2) {
-                accum_shadow(&comb->dst[(src_bytenum/4) *8 + (src_bytenum % 4) +
-                                        4*(1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpcklqdq:
-        case OP_vpunpcklqdq:
-        case OP_unpcklpd:
-        case OP_vunpcklpd:
-            if (src_bytenum < opsz/2) {
-                accum_shadow(&comb->dst[(src_bytenum/8) *16 + (src_bytenum % 8) +
-                                        8*(1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpckhbw:
-        case OP_vpunpckhbw:
-            if (src_bytenum >= opsz/2) {
-                accum_shadow(&comb->dst[(src_bytenum-opsz/2)*2 + (1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpckhwd:
-        case OP_vpunpckhwd:
-            if (src_bytenum >= opsz/2) {
-                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/2) *4 + (src_bytenum % 2) +
-                                        2*(1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpckhdq:
-        case OP_vpunpckhdq:
-        case OP_unpckhps:
-        case OP_vunpckhps:
-            if (src_bytenum >= opsz/2) {
-                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/4) *8 + (src_bytenum % 4) +
-                                        4*(1 - opnum)], shadow);
-            }
-            break;
-        case OP_punpckhqdq:
-        case OP_vpunpckhqdq:
-        case OP_unpckhpd:
-        case OP_vunpckhpd:
-            if (src_bytenum >= opsz/2) {
-                accum_shadow(&comb->dst[((src_bytenum-opsz/2)/8) *16 + (src_bytenum % 8) +
-                                        8*(1 - opnum)], shadow);
-            }
-            break;
+    case OP_punpcklbw:
+    case OP_vpunpcklbw:
+        /* Dst is opnum==1 and its 0-n/2 => 0, 2, 4, 6, ....
+         * Src is opnum==0 and its 0-n/2 => 1, 3, 5, 7, ...
+         */
+        if (src_bytenum < opsz/2)
+            accum_shadow(&comb->dst[src_bytenum*2 + (1 - opnum)], shadow);
+        break;
+    case OP_punpcklwd:
+    case OP_vpunpcklwd:
+        if (src_bytenum < opsz/2) {
+            accum_shadow(&comb->dst[(src_bytenum/2) *4 + (src_bytenum % 2) +
+                                    2*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpckldq:
+    case OP_vpunpckldq:
+    case OP_unpcklps:
+    case OP_vunpcklps:
+        if (src_bytenum < opsz/2) {
+            accum_shadow(&comb->dst[(src_bytenum/4) *8 + (src_bytenum % 4) +
+                                    4*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpcklqdq:
+    case OP_vpunpcklqdq:
+    case OP_unpcklpd:
+    case OP_vunpcklpd:
+        if (src_bytenum < opsz/2) {
+            accum_shadow(&comb->dst[(src_bytenum/8) *16 + (src_bytenum % 8) +
+                                    8*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpckhbw:
+    case OP_vpunpckhbw:
+        if (src_bytenum >= opsz/2) {
+            accum_shadow(&comb->dst[(src_bytenum-opsz/2)*2 + (1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpckhwd:
+    case OP_vpunpckhwd:
+        if (src_bytenum >= opsz/2) {
+            accum_shadow(&comb->dst[((src_bytenum-opsz/2)/2) *4 + (src_bytenum % 2) +
+                                    2*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpckhdq:
+    case OP_vpunpckhdq:
+    case OP_unpckhps:
+    case OP_vunpckhps:
+        if (src_bytenum >= opsz/2) {
+            accum_shadow(&comb->dst[((src_bytenum-opsz/2)/4) *8 + (src_bytenum % 4) +
+                                    4*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_punpckhqdq:
+    case OP_vpunpckhqdq:
+    case OP_unpckhpd:
+    case OP_vunpckhpd:
+        if (src_bytenum >= opsz/2) {
+            accum_shadow(&comb->dst[((src_bytenum-opsz/2)/8) *16 + (src_bytenum % 8) +
+                                    8*(1 - opnum)], shadow);
+        }
+        break;
+    case OP_shufps:
+    case OP_shufpd:
+    case OP_vshufps:
+    case OP_vshufpd: {
+        ptr_uint_t immed = 0;
+        ASSERT(comb->inst != NULL, "need inst for OP_shuf*");
+        if (!get_cur_src_value(NULL, comb->inst,
+                               (opc == OP_vshufps || opc == OP_vshufpd) ? 2 : 1,
+                               &immed))
+            ASSERT(false, "failed to get immed"); /* rel build: keep going */
+        switch (opc) {
         case OP_shufps:
-        case OP_shufpd:
-        case OP_vshufps:
-        case OP_vshufpd: {
-            ptr_uint_t immed = 0;
-            ASSERT(comb->inst != NULL, "need inst for OP_shuf*");
-            if (!get_cur_src_value(NULL, comb->inst,
-                                   (opc == OP_vshufps || opc == OP_vshufpd) ? 2 : 1,
-                                   &immed))
-                ASSERT(false, "failed to get immed"); /* rel build: keep going */
-            switch (opc) {
-                case OP_shufps:
-                case OP_vshufps: {
-                    uint mod = src_bytenum % 4;
-                    uint shift = src_bytenum >= 16 ? 16 : 0;
-                    if (opnum == 0) { /* the src */
-                        uint dst2 = (immed >> 4) & 0x3;
-                        uint dst3 = (immed >> 6) & 0x3;
-                        if (dst2 == (src_bytenum % 16)/4)
-                            accum_shadow(&comb->dst[shift + 8 + mod], shadow);
-                        if (dst3 == (src_bytenum % 16)/4)
-                            accum_shadow(&comb->dst[shift + 12 + mod], shadow);
-                    } else { /* the dst, or 2nd src for vshufps */
-                        uint dst0 = immed & 0x3;
-                        uint dst1 = (immed >> 2) & 0x3;
-                        if (dst0 == (src_bytenum % 16)/4)
-                            accum_shadow(&comb->dst[shift + mod], shadow);
-                        if (dst1 == (src_bytenum % 16)/4)
-                            accum_shadow(&comb->dst[shift + 4 + mod], shadow);
-                    }
-                    break;
-                }
-                case OP_shufpd:
-                case OP_vshufpd: {
-                    uint mod = src_bytenum % 8;
-                    uint shift = src_bytenum >= 16 ? 16 : 0;
-                    if (opnum == 0) { /* the src */
-                        if (immed == (src_bytenum % 16)/8)
-                            accum_shadow(&comb->dst[shift + 8 + mod], shadow);
-                    } else { /* the dst, or 2nd src for vshufps */
-                        if (immed == (src_bytenum % 16)/8)
-                            accum_shadow(&comb->dst[shift + mod], shadow);
-                    }
-                    break;
-                }
+        case OP_vshufps: {
+            uint mod = src_bytenum % 4;
+            uint shift = src_bytenum >= 16 ? 16 : 0;
+            if (opnum == 0) { /* the src */
+                uint dst2 = (immed >> 4) & 0x3;
+                uint dst3 = (immed >> 6) & 0x3;
+                if (dst2 == (src_bytenum % 16)/4)
+                    accum_shadow(&comb->dst[shift + 8 + mod], shadow);
+                if (dst3 == (src_bytenum % 16)/4)
+                    accum_shadow(&comb->dst[shift + 12 + mod], shadow);
+            } else { /* the dst, or 2nd src for vshufps */
+                uint dst0 = immed & 0x3;
+                uint dst1 = (immed >> 2) & 0x3;
+                if (dst0 == (src_bytenum % 16)/4)
+                    accum_shadow(&comb->dst[shift + mod], shadow);
+                if (dst1 == (src_bytenum % 16)/4)
+                    accum_shadow(&comb->dst[shift + 4 + mod], shadow);
             }
             break;
         }
-        case OP_pshufw:
-        case OP_pshufd:
-        case OP_pshufhw:
-        case OP_pshuflw:
-        case OP_vpshufhw:
-        case OP_vpshufd:
-        case OP_vpshuflw:
-            /* FIXME i#243: fill in proper shuffling */
-            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        case OP_shufpd:
+        case OP_vshufpd: {
+            uint mod = src_bytenum % 8;
+            uint shift = src_bytenum >= 16 ? 16 : 0;
+            if (opnum == 0) { /* the src */
+                if (immed == (src_bytenum % 16)/8)
+                    accum_shadow(&comb->dst[shift + 8 + mod], shadow);
+            } else { /* the dst, or 2nd src for vshufps */
+                if (immed == (src_bytenum % 16)/8)
+                    accum_shadow(&comb->dst[shift + mod], shadow);
+            }
             break;
-        case OP_pshufb:
-        case OP_vpshufb:
-            /* FIXME i#243: this one is complex, bailing for now */
-            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
-            break;
+        }
+    case OP_pshufw:
+    case OP_pshufd:
+    case OP_pshufhw:
+    case OP_pshuflw:
+    case OP_vpshufhw:
+    case OP_vpshufd:
+    case OP_vpshuflw:
+        /* FIXME i#243: fill in proper shuffling */
+        accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_pshufb:
+    case OP_vpshufb:
+        /* FIXME i#243: this one is complex, bailing for now */
+        accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_pextrb:
+    case OP_pextrw:
+    case OP_pextrd:
+    case OP_vpextrb:
+    case OP_vpextrw:
+    case OP_vpextrd:
+    case OP_extractps:
+    case OP_pinsrb:
+    case OP_pinsrw:
+    case OP_pinsrd:
+    case OP_insertps: {
+        ptr_uint_t immed = 0;
+        ASSERT(comb->inst != NULL, "need inst for OP_pextr*");
+        /* zero-extended so we only write bottom */
+        /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
+        if (!get_cur_src_value(NULL, comb->inst, 1, &immed))
+            ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
+        switch (opc) {
         case OP_pextrb:
-        case OP_pextrw:
-        case OP_pextrd:
         case OP_vpextrb:
+            if (src_bytenum == immed)
+                accum_shadow(&comb->dst[0], shadow);
+            break;
+        case OP_pextrw:
         case OP_vpextrw:
+            if (src_bytenum >= immed*2 && src_bytenum < (immed+1)*2)
+                accum_shadow(&comb->dst[src_bytenum % 2], shadow);
+            break;
+        case OP_pextrd:
         case OP_vpextrd:
         case OP_extractps:
+            if (src_bytenum >= immed*4 && src_bytenum < (immed+1)*4)
+                accum_shadow(&comb->dst[src_bytenum % 4], shadow);
+            break;
         case OP_pinsrb:
+            if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
+                accum_shadow(&comb->dst[immed], shadow);
+            break;
+        case OP_vpinsrb:
+            if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
+                accum_shadow(&comb->dst[immed], shadow);
+            break;
         case OP_pinsrw:
+            if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes for reg */
+                accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
+            break;
         case OP_pinsrd:
+            accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
+            break;
         case OP_insertps: {
-            ptr_uint_t immed = 0;
-            ASSERT(comb->inst != NULL, "need inst for OP_pextr*");
-            /* zero-extended so we only write bottom */
-            /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
-            if (!get_cur_src_value(NULL, comb->inst, 1, &immed))
-                ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
-            switch (opc) {
-                case OP_pextrb:
-                case OP_vpextrb:
-                    if (src_bytenum == immed)
-                        accum_shadow(&comb->dst[0], shadow);
-                    break;
-                case OP_pextrw:
-                case OP_vpextrw:
-                    if (src_bytenum >= immed*2 && src_bytenum < (immed+1)*2)
-                        accum_shadow(&comb->dst[src_bytenum % 2], shadow);
-                    break;
-                case OP_pextrd:
-                case OP_vpextrd:
-                case OP_extractps:
-                    if (src_bytenum >= immed*4 && src_bytenum < (immed+1)*4)
-                        accum_shadow(&comb->dst[src_bytenum % 4], shadow);
-                    break;
-                case OP_pinsrb:
-                    if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
-                        accum_shadow(&comb->dst[immed], shadow);
-                    break;
-                case OP_vpinsrb:
-                    if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte for reg */
-                        accum_shadow(&comb->dst[immed], shadow);
-                    break;
-                case OP_pinsrw:
-                    if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes for reg */
-                        accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
-                    break;
-                case OP_pinsrd:
-                    accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
-                    break;
-                case OP_insertps: {
-                    uint count_s = opnd_is_reg(comb->opnd) ? (immed >> 6) : 0;
-                    uint count_d = (immed >> 4) & 0x3;
-                    uint zmask = immed & 0xf;
-                    uint i;
-                    if (src_bytenum >= count_s*4 && src_bytenum < (count_s+1)*4)
-                        accum_shadow(&comb->dst[count_d*4 + (src_bytenum % 4)], shadow);
-                    if (src_bytenum == 0) { /* arbitrary, just do it once */
-                        for (i = 0; i < 3; i++) {
-                            if (TEST(0x1, zmask))
-                                accum_shadow(&comb->dst[i], SHADOW_DEFINED);
-                            if (TEST(0x2, zmask))
-                                accum_shadow(&comb->dst[4+i], SHADOW_DEFINED);
-                            if (TEST(0x4, zmask))
-                                accum_shadow(&comb->dst[8+i], SHADOW_DEFINED);
-                            if (TEST(0x8, zmask))
-                                accum_shadow(&comb->dst[12+i], SHADOW_DEFINED);
-                        }
-                    }
+            uint count_s = opnd_is_reg(comb->opnd) ? (immed >> 6) : 0;
+            uint count_d = (immed >> 4) & 0x3;
+            uint zmask = immed & 0xf;
+            uint i;
+            if (src_bytenum >= count_s*4 && src_bytenum < (count_s+1)*4)
+                accum_shadow(&comb->dst[count_d*4 + (src_bytenum % 4)], shadow);
+            if (src_bytenum == 0) { /* arbitrary, just do it once */
+                for (i = 0; i < 3; i++) {
+                    if (TEST(0x1, zmask))
+                        accum_shadow(&comb->dst[i], SHADOW_DEFINED);
+                    if (TEST(0x2, zmask))
+                        accum_shadow(&comb->dst[4+i], SHADOW_DEFINED);
+                    if (TEST(0x4, zmask))
+                        accum_shadow(&comb->dst[8+i], SHADOW_DEFINED);
+                    if (TEST(0x8, zmask))
+                        accum_shadow(&comb->dst[12+i], SHADOW_DEFINED);
                 }
             }
-            break;
         }
+        }
+        break;
+    }
+    case OP_vpinsrb:
+    case OP_vpinsrw:
+    case OP_vpinsrd: {
+        ptr_uint_t immed = 0;
+        ASSERT(comb->inst != NULL, "need inst for OP_vpinsr*");
+        /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
+        if (!get_cur_src_value(NULL, comb->inst, 2, &immed))
+            ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
+        switch (opc) {
         case OP_vpinsrb:
+            if (opnum == 0) {
+                if (src_bytenum != immed)
+                    accum_shadow(&comb->dst[src_bytenum], shadow);
+            } else if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte */
+                accum_shadow(&comb->dst[immed], shadow);
+            break;
         case OP_vpinsrw:
-        case OP_vpinsrd: {
-            ptr_uint_t immed = 0;
-            ASSERT(comb->inst != NULL, "need inst for OP_vpinsr*");
-            /* we get passed the entire xmm reg (reg_get_size, not opnd_get_size) */
-            if (!get_cur_src_value(NULL, comb->inst, 2, &immed))
-                ASSERT(false, "failed to get shift amount"); /* rel build: keep going */
-            switch (opc) {
-                case OP_vpinsrb:
-                    if (opnum == 0) {
-                        if (src_bytenum != immed)
-                            accum_shadow(&comb->dst[src_bytenum], shadow);
-                    } else if (src_bytenum == 0) /* DRi#1388: we'll iterate >1 byte */
-                        accum_shadow(&comb->dst[immed], shadow);
-                    break;
-                case OP_vpinsrw:
-                    if (opnum == 0) {
-                        if (src_bytenum < immed*2 || src_bytenum >= (immed+1)*2)
-                            accum_shadow(&comb->dst[src_bytenum], shadow);
-                    } else if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes */
-                        accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
-                    break;
-                case OP_vpinsrd:
-                    if (opnum == 0) {
-                        if (src_bytenum < immed*4 || src_bytenum >= (immed+1)*4)
-                            accum_shadow(&comb->dst[src_bytenum], shadow);
-                    } else
-                        accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
-                    break;
-            }
+            if (opnum == 0) {
+                if (src_bytenum < immed*2 || src_bytenum >= (immed+1)*2)
+                    accum_shadow(&comb->dst[src_bytenum], shadow);
+            } else if (src_bytenum < 2) /* DRi#1388: we'll iterate >2 bytes */
+                accum_shadow(&comb->dst[immed*2 + (src_bytenum % 2)], shadow);
+            break;
+        case OP_vpinsrd:
+            if (opnum == 0) {
+                if (src_bytenum < immed*4 || src_bytenum >= (immed+1)*4)
+                    accum_shadow(&comb->dst[src_bytenum], shadow);
+            } else
+                accum_shadow(&comb->dst[immed*4 + (src_bytenum % 4)], shadow);
             break;
         }
-        case OP_movhps:
-        case OP_movhpd:
-            ASSERT(comb->inst != NULL, "need comb->inst for movhps");
-            if (opnd_is_memory_reference(comb->opnd)) {
+        break;
+    }
+    case OP_movhps:
+    case OP_movhpd:
+        ASSERT(comb->inst != NULL, "need comb->inst for movhps");
+        if (opnd_is_memory_reference(comb->opnd)) {
+            accum_shadow(&comb->dst[src_bytenum + (opsz - 8)], shadow);
+        } else if (opnd_is_reg(instr_get_dst(comb->inst, 0))) {
+            /* reg-reg is OP_movlhps */
+            if (src_bytenum < 8)
                 accum_shadow(&comb->dst[src_bytenum + (opsz - 8)], shadow);
-            } else if (opnd_is_reg(instr_get_dst(comb->inst, 0))) {
-                /* reg-reg is OP_movlhps */
-                if (src_bytenum < 8)
-                    accum_shadow(&comb->dst[src_bytenum + (opsz - 8)], shadow);
-            } else {
-                if (src_bytenum >= opsz - 8) /* high quadword */
-                    accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
-            }
-            break;
-        case OP_movlps:
-            ASSERT(comb->inst != NULL, "need comb->inst for movlps");
-            if (opnd_is_reg(comb->opnd) && opnd_is_reg(instr_get_dst(comb->inst, 0))) {
-                /* reg-reg is OP_movhlps */
-                if (src_bytenum >= opsz - 8) /* high quadword */
-                    accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
-            } else if (src_bytenum < 8)
-                accum_shadow(&comb->dst[src_bytenum], shadow);
-            break;
-
-        /* XXX i#243: add more xmm opcodes here.  Also add to either
-         * set_check_definedness_pre_regs() (if check_definedness is
-         * enough) or instr_ok_for_instrument_fastpath() if fastpath
-         * can't handle them.
-         *
-         * Opcodes that need extra handling: and + or operations with constants;
-         * shifts (OP_psr*, OP_psl*); widening/narrowing (OP_cvt*); conditional
-         * moves (OP_*blend*); shifting and selecting (OP_palignr, OP_phminposuw,
-         * OP_pcmpestr*).
-         */
-
-        /* cpuid: who cares if collapse to eax */
-        /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */
-        /* mul, imul, div, idiv: FIXME PR 408551: should split: for now we collapse */
-
-        default:
+        } else {
+            if (src_bytenum >= opsz - 8) /* high quadword */
+                accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
+        }
+        break;
+    case OP_movlps:
+        ASSERT(comb->inst != NULL, "need comb->inst for movlps");
+        if (opnd_is_reg(comb->opnd) && opnd_is_reg(instr_get_dst(comb->inst, 0))) {
+            /* reg-reg is OP_movhlps */
+            if (src_bytenum >= opsz - 8) /* high quadword */
+                accum_shadow(&comb->dst[src_bytenum - (opsz - 8)], shadow);
+        } else if (src_bytenum < 8)
             accum_shadow(&comb->dst[src_bytenum], shadow);
-           break;
+        break;
+
+    /* XXX i#243: add more xmm opcodes here.  Also add to either
+     * set_check_definedness_pre_regs() (if check_definedness is
+     * enough) or instr_ok_for_instrument_fastpath() if fastpath
+     * can't handle them.
+     *
+     * Opcodes that need extra handling: and + or operations with constants;
+     * shifts (OP_psr*, OP_psl*); widening/narrowing (OP_cvt*); conditional
+     * moves (OP_*blend*); shifting and selecting (OP_palignr, OP_phminposuw,
+     * OP_pcmpestr*).
+     */
+
+    /* cpuid: who cares if collapse to eax */
+    /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */
+    /* mul, imul, div, idiv: FIXME PR 408551: should split: for now we collapse */
+
+    default:
+        accum_shadow(&comb->dst[src_bytenum], shadow);
+       break;
     }
 
     /* By default all source bytes influence eflags.  If an opcode wants to do
@@ -2835,25 +2832,25 @@ assign_register_shadow(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
     } else {
         /* We need special handling for multi-dest opcodes */
         switch (opc) {
-            case OP_popa:
-                shift = (reg_to_pointer_sized(reg) - DR_REG_XAX);
-                break;
-            case OP_xchg:
-            case OP_xadd:
-                shift = opnum;
-                break;
-            case OP_cmpxchg8b:
-                /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
-                 * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
-                 * we just combine all 3 sources and write the result to both dests.
-                 */
-                switch (opnum) {
-                    case 0: shift = 0; break;
-                    case 1: shift = 0; break;
-                    case 2: shift = 1; break;
-                    default: ASSERT(false, "invalid opnum");
-                }
-                break;
+        case OP_popa:
+            shift = (reg_to_pointer_sized(reg) - DR_REG_XAX);
+            break;
+        case OP_xchg:
+        case OP_xadd:
+            shift = opnum;
+            break;
+        case OP_cmpxchg8b:
+            /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
+             * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
+             * we just combine all 3 sources and write the result to both dests.
+             */
+            switch (opnum) {
+            case 0: shift = 0; break;
+            case 1: shift = 0; break;
+            case 2: shift = 1; break;
+            default: ASSERT(false, "invalid opnum");
+            }
+            break;
         }
     }
 

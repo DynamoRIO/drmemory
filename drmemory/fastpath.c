@@ -1072,48 +1072,48 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
 
     /* i#243: these are tricky to implement in fastpath for partially-defined */
     switch (opc) {
-        case OP_punpcklbw:
-        case OP_punpcklwd:
-        case OP_punpckldq:
-        case OP_punpcklqdq:
-        case OP_punpckhbw:
-        case OP_punpckhwd:
-        case OP_punpckhdq:
-        case OP_punpckhqdq:
-        case OP_vpunpcklbw:
-        case OP_vpunpcklwd:
-        case OP_vpunpckldq:
-        case OP_vpunpcklqdq:
-        case OP_vpunpckhbw:
-        case OP_vpunpckhwd:
-        case OP_vpunpckhdq:
-        case OP_vpunpckhqdq:
-        case OP_unpcklps:
-        case OP_unpcklpd:
-        case OP_unpckhps:
-        case OP_unpckhpd:
-        case OP_vunpcklps:
-        case OP_vunpcklpd:
-        case OP_vunpckhps:
-        case OP_vunpckhpd:
-        case OP_shufps:
-        case OP_shufpd:
-        case OP_vshufps:
-        case OP_vshufpd:
-        case OP_pshufw:
-        case OP_pshufd:
-        case OP_pshufhw:
-        case OP_pshuflw:
-        case OP_pshufb:
-        case OP_vpshufhw:
-        case OP_vpshufd:
-        case OP_vpshuflw:
-        case OP_vpshufb:
-        case OP_vpinsrb:
-        case OP_vpinsrw:
-        case OP_vpinsrd:
-            mi->check_definedness = true;
-            break;
+    case OP_punpcklbw:
+    case OP_punpcklwd:
+    case OP_punpckldq:
+    case OP_punpcklqdq:
+    case OP_punpckhbw:
+    case OP_punpckhwd:
+    case OP_punpckhdq:
+    case OP_punpckhqdq:
+    case OP_vpunpcklbw:
+    case OP_vpunpcklwd:
+    case OP_vpunpckldq:
+    case OP_vpunpcklqdq:
+    case OP_vpunpckhbw:
+    case OP_vpunpckhwd:
+    case OP_vpunpckhdq:
+    case OP_vpunpckhqdq:
+    case OP_unpcklps:
+    case OP_unpcklpd:
+    case OP_unpckhps:
+    case OP_unpckhpd:
+    case OP_vunpcklps:
+    case OP_vunpcklpd:
+    case OP_vunpckhps:
+    case OP_vunpckhpd:
+    case OP_shufps:
+    case OP_shufpd:
+    case OP_vshufps:
+    case OP_vshufpd:
+    case OP_pshufw:
+    case OP_pshufd:
+    case OP_pshufhw:
+    case OP_pshuflw:
+    case OP_pshufb:
+    case OP_vpshufhw:
+    case OP_vpshufd:
+    case OP_vpshuflw:
+    case OP_vpshufb:
+    case OP_vpinsrb:
+    case OP_vpinsrw:
+    case OP_vpinsrd:
+        mi->check_definedness = true;
+        break;
     }
 }
 
