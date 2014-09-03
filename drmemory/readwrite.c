@@ -2481,10 +2481,48 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
      * enough) or instr_ok_for_instrument_fastpath() if fastpath
      * can't handle them.
      *
+     * See all the "FIXME i#1484" comments above as well.
+     *
      * Opcodes that need extra handling: and + or operations with constants;
      * widening/narrowing (OP_cvt*); conditional moves (OP_*blend*);
      * shifting and selecting (OP_palignr, OP_phminposuw, OP_pcmpestr*).
+     *
+     * For now we mark these as defined to avoid false negatives.
+     * OP_por, OP_pand, and OP_pand are not yet listed here b/c it should
+     * be much rarer to and or or with a constant in xmm vs gpr and we'd
+     * rather not have false negatives on common operations.
      */
+    /* conversions that shrink */
+    case OP_cvttpd2pi:
+    case OP_cvttsd2si:
+    case OP_cvtpd2pi:
+    case OP_cvtsd2si:
+    case OP_cvtpd2ps:
+    case OP_cvtsd2ss:
+    case OP_cvtdq2pd:
+    case OP_cvttpd2dq:
+    case OP_cvtpd2dq:
+    /* blend and other complex operations */
+    case OP_pblendvb:
+    case OP_blendvps:
+    case OP_blendvpd:
+    case OP_blendps:
+    case OP_blendpd:
+    case OP_pblendw:
+    case OP_vpblendvb:
+    case OP_vblendvps:
+    case OP_vblendvpd:
+    case OP_vblendps:
+    case OP_vblendpd:
+    case OP_vpblendw:
+    case OP_vpblendd:
+    case OP_palignr:
+    case OP_phminposuw:
+    case OP_pcmpestrm:
+    case OP_pcmpestri:
+        /* FIXME i#1484: implement proper handling */
+        accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
 
     /* cpuid: who cares if collapse to eax */
     /* rdtsc, rdmsr, rdpmc: no srcs, so can use bottom slot == defined */

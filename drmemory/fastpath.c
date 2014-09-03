@@ -684,7 +684,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     case OP_movhpd: /* would need to add check_definedness of dst too */
     case OP_movlps: /* would need to add check_definedness of dst too */
         /* XXX i#243: these are tricky as they access sub-dword parts of xmm.
-         * Bail for now.
+         * Bail for now to slowpath.
          */
         return false;
     case OP_idiv:
@@ -1072,71 +1072,57 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
 
     /* i#1525: these are tricky to implement in fastpath for partially-defined */
     switch (opc) {
-    case OP_punpcklbw:
-    case OP_punpcklwd:
-    case OP_punpckldq:
-    case OP_punpcklqdq:
-    case OP_punpckhbw:
-    case OP_punpckhwd:
-    case OP_punpckhdq:
-    case OP_punpckhqdq:
-    case OP_vpunpcklbw:
-    case OP_vpunpcklwd:
-    case OP_vpunpckldq:
-    case OP_vpunpcklqdq:
-    case OP_vpunpckhbw:
-    case OP_vpunpckhwd:
-    case OP_vpunpckhdq:
-    case OP_vpunpckhqdq:
-    case OP_unpcklps:
-    case OP_unpcklpd:
-    case OP_unpckhps:
-    case OP_unpckhpd:
-    case OP_vunpcklps:
-    case OP_vunpcklpd:
-    case OP_vunpckhps:
-    case OP_vunpckhpd:
-    case OP_shufps:
-    case OP_shufpd:
-    case OP_vshufps:
-    case OP_vshufpd:
-    case OP_pshufw:
-    case OP_pshufd:
-    case OP_pshufhw:
-    case OP_pshuflw:
+    case OP_punpcklbw:    case OP_punpckhbw:
+    case OP_punpcklwd:    case OP_punpckhwd:
+    case OP_punpckldq:    case OP_punpckhdq:
+    case OP_punpcklqdq:   case OP_punpckhqdq:
+    case OP_vpunpcklbw:   case OP_vpunpckhbw:
+    case OP_vpunpcklwd:   case OP_vpunpckhwd:
+    case OP_vpunpckldq:   case OP_vpunpckhdq:
+    case OP_vpunpcklqdq:  case OP_vpunpckhqdq:
+    case OP_unpcklps:     case OP_vunpcklps:
+    case OP_unpcklpd:     case OP_vunpcklpd:
+    case OP_unpckhps:     case OP_vunpckhps:
+    case OP_unpckhpd:     case OP_vunpckhpd:
+    case OP_shufps:       case OP_shufpd:
+    case OP_vshufps:      case OP_vshufpd:
+    case OP_pshufw:       case OP_pshufd:
+    case OP_pshufhw:      case OP_pshuflw:
     case OP_pshufb:
-    case OP_vpshufhw:
-    case OP_vpshufd:
-    case OP_vpshuflw:
-    case OP_vpshufb:
-    case OP_vpinsrb:
-    case OP_vpinsrw:
-    case OP_vpinsrd:
-    case OP_psrlw:
-    case OP_psrld:
-    case OP_psrlq:
-    case OP_psraw:
-    case OP_psrad:
+    case OP_vpshufhw:     case OP_vpshuflw:
+    case OP_vpshufd:      case OP_vpshufb:
+    case OP_vpinsrb:      case OP_vpinsrw:    case OP_vpinsrd:
+    case OP_psrlw:        case OP_psrld:      case OP_psrlq:
+    case OP_psraw:        case OP_psrad:
     case OP_psrldq:
-    case OP_vpsrlw:
-    case OP_vpsrld:
-    case OP_vpsrlq:
-    case OP_vpsraw:
-    case OP_vpsrad:
+    case OP_vpsrlw:       case OP_vpsrld:     case OP_vpsrlq:
+    case OP_vpsraw:       case OP_vpsrad:
     case OP_vpsrldq:
     case OP_vpsravd:
-    case OP_vpsrlvd:
-    case OP_vpsrlvq:
-    case OP_psllw:
-    case OP_pslld:
-    case OP_psllq:
+    case OP_vpsrlvd:      case OP_vpsrlvq:
+    case OP_psllw:        case OP_pslld:      case OP_psllq:
     case OP_pslldq:
-    case OP_vpsllw:
-    case OP_vpslld:
-    case OP_vpsllq:
+    case OP_vpsllw:       case OP_vpslld:     case OP_vpsllq:
     case OP_vpslldq:
-    case OP_vpsllvd:
-    case OP_vpsllvq:
+    case OP_vpsllvd:      case OP_vpsllvq:
+    /* conversions that shrink */
+    case OP_cvttpd2pi:    case OP_cvttsd2si:
+    case OP_cvtpd2pi:     case OP_cvtsd2si:
+    case OP_cvtpd2ps:     case OP_cvtsd2ss:
+    case OP_cvtdq2pd:
+    case OP_cvttpd2dq:    case OP_cvtpd2dq:
+    /* blend and other complex operations */
+    case OP_pblendvb:     case OP_blendvps:
+    case OP_blendvpd:     case OP_blendps:
+    case OP_blendpd:      case OP_pblendw:
+    case OP_vpblendvb:    case OP_vblendvps:
+    case OP_vblendvpd:    case OP_vblendps:
+    case OP_vblendpd:     case OP_vpblendw:
+    case OP_vpblendd:
+    case OP_palignr:
+    case OP_phminposuw:
+    case OP_pcmpestrm:    case OP_pcmpestri:
+    /* XXX i#1484: add OP_por, OP_pand, and OP_pand here for handling and/or w/ const */
         mi->check_definedness = true;
         break;
     }

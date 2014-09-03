@@ -241,6 +241,18 @@ GLOBAL_LABEL(FUNCNAME:)
         cmp      ecx, HEX(45)
 
         /***************************************************
+         * Test i#1484: conversions
+         */
+
+        /* an expanding conversion */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        cvtpi2pd xmm0, QWORD [REG_XDX]
+        pextrw   ecx, xmm0, 7
+        cmp      ecx, HEX(46)
+
+        /* XXX: add more conversion tests */
+
+        /***************************************************
          * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).  Do not place AVX instructions here: put them
          * into asm_test_avx().
