@@ -44,6 +44,7 @@
 #endif
 #include "pattern.h"
 #include <stddef.h>
+#include "asm_utils.h"
 
 /* State restoration: need to record which bbs have eflags-save-at-top.
  * We store the app pc of the last instr in the bb.
@@ -1010,6 +1011,50 @@ opc_is_load_seg(uint opc)
             opc == OP_lfs || opc == OP_lgs);
 }
 
+#ifdef TOOL_DR_MEMORY
+/* count is in src #0 */
+static bool
+opc_is_shift_src0(uint opc)
+{
+    switch (opc) {
+    case OP_shl:      case OP_shr:
+    case OP_sar:
+    case OP_rol:      case OP_ror:
+    case OP_rcl:      case OP_rcr:
+    case OP_psrlw:    case OP_psrld:   case OP_psrlq:
+    case OP_psraw:    case OP_psrad:
+    case OP_psrldq:
+    case OP_psllw:    case OP_pslld:   case OP_psllq:
+    case OP_pslldq:
+        return true;
+    default:
+        return false;
+    }
+}
+
+# ifdef DEBUG
+/* count is in src #1 */
+static bool
+opc_is_shift_src1(uint opc)
+{
+    switch (opc) {
+    case OP_shld:      case OP_shrd:
+    case OP_vpsrlw:   case OP_vpsrld:  case OP_vpsrlq:
+    case OP_vpsraw:   case OP_vpsrad:
+    case OP_vpsrldq:
+    case OP_vpsravd:
+    case OP_vpsrlvd:  case OP_vpsrlvq:
+    case OP_vpsllw:   case OP_vpslld:  case OP_vpsllq:
+    case OP_vpslldq:
+    case OP_vpsllvd:  case OP_vpsllvq:
+        return true;
+    default:
+        return false;
+    }
+}
+# endif
+#endif /* TOOL_DR_MEMORY */
+
 /* count is in src #0 */
 static bool
 opc_is_gpr_shift_src0(uint opc)
@@ -1117,7 +1162,13 @@ xax_is_used_subsequently(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
-/* drcontext can be NULL if the operand is an immed int */
+/* drcontext can be NULL if the operand is an immed int.
+ *
+ * For mmx, xmm, or ymm sources, returns just the lower reg_t bits.
+ * XXX: we'll need to return the full value for handling OP_pand, etc.!
+ * For now we only use this to get shift amounts for which we can ignore
+ * all high bits.
+ */
 static bool
 get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
 {
@@ -1140,7 +1191,15 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
             return false;
         return (safe_read(addr, sz, val));
     } else if (opnd_is_reg(src)) {
-        *val = reg_get_value(opnd_get_reg(src), &mc);
+        byte val32[sizeof(dr_ymm_t)];
+        reg_id_t reg = opnd_get_reg(src);
+        if (!reg_is_gpr(reg)) {
+            mc.flags |= DR_MC_MULTIMEDIA;
+            dr_get_mcontext(drcontext, &mc);
+        }
+        if (!reg_get_value_ex(reg, &mc, val32))
+            return false;
+        *val = *(reg_t*)val32;
         return true;
     }
     return false;
@@ -1914,27 +1973,35 @@ shadow_combine_set_opnd(shadow_combine_t *comb, opnd_t opnd, uint opsz)
 # define SHADOW_COMBINE_CHECK_OPND(comb, bytenum) /* nothing */
 #endif
 
-/* Same interface as map_src_to_dst() */
+/* Same base interface as map_src_to_dst(), but this one takes in an
+ * arbitrary opcode that can differ from comb->opcode, a per-element
+ * src_bytenum, an offset for the dst bytenum, and a per-element opsz,
+ * allowing for use on packed shifts as well as GPR shifts.
+ */
 static bool
-map_src_to_dst_gpr_shift(shadow_combine_t *comb INOUT, int opnum, int src_bytenum,
-                         uint shadow)
+map_src_to_dst_shift(shadow_combine_t *comb INOUT, uint opc, int opnum, int src_bytenum,
+                     uint src_offs, uint opsz, uint shadow)
 {
     reg_t shift;
-    uint opc = comb->opcode;
-    uint opsz = comb->opsz;
-    LOG(4, " src bytenum %d\n", src_bytenum);
+    /* Be sure to use opsz, the element size, NOT comb->opsz; similarly, use
+     * the passed-in opc, NOT comb->opcode, for the operation.
+     */
     ASSERT(comb->inst != NULL, "need inst for shifts");
+    ASSERT(opc_is_shift_src0(comb->opcode) || opc_is_shift_src1(comb->opcode),
+           "unknown shift");
     if (!get_cur_src_value(dr_get_current_drcontext(), comb->inst,
-                           opc_is_gpr_shift_src0(opc) ? 0 : 1, &shift)) {
+                           opc_is_shift_src0(comb->opcode) ? 0 : 1, &shift)) {
         ASSERT(false, "failed to get shift amount");
         /* graceful failure */
         return false;
     }
+    LOG(4, " src bytenum %d, offs %d, opsz %d, shift %d\n", src_bytenum, src_offs,
+        opsz, shift);
     if (shift > opsz*8)
-        shift = opsz*8;
+        shift = shift % (opsz*8);
     if (shift == 0) {
         /* no flags are changed for shift==0 */
-        accum_shadow(&comb->dst[src_bytenum], shadow);
+        accum_shadow(&comb->dst[src_offs + src_bytenum], shadow);
         return true;
     }
     if (opc == OP_shl) {
@@ -1950,11 +2017,13 @@ map_src_to_dst_gpr_shift(shadow_combine_t *comb INOUT, int opnum, int src_bytenu
             /* shifted off the end */
             return true;
         }
-        LOG(4, "  accum @%d %d + %d\n", map1, comb->dst[map1], shadow);
-        accum_shadow(&comb->dst[map1], shadow);
+        LOG(4, "  accum @%d %d + %d\n", src_offs + map1, comb->dst[src_offs + map1],
+            shadow);
+        accum_shadow(&comb->dst[src_offs + map1], shadow);
         if (map1 != map2 && map2 < opsz) {
-            LOG(4, "  accum @%d %d + %d\n", map2, comb->dst[map2], shadow);
-            accum_shadow(&comb->dst[map2], shadow);
+            LOG(4, "  accum @%d %d + %d\n", src_offs + map2, comb->dst[src_offs + map2],
+                shadow);
+            accum_shadow(&comb->dst[src_offs + map2], shadow);
         }
         accum_shadow(&comb->eflags, shadow);
         return true;
@@ -1966,17 +2035,19 @@ map_src_to_dst_gpr_shift(shadow_combine_t *comb INOUT, int opnum, int src_bytenu
             /* Top bit is what's shifted in */
             int i;
             for (i = 0; i <= shift/8 && i < opsz; i ++)
-                accum_shadow(&comb->dst[opsz - 1 - i], shadow);
+                accum_shadow(&comb->dst[src_offs + opsz - 1 - i], shadow);
             accum_shadow(&comb->eflags, shadow);
             return true;
         }
         if (map1 >= 0) { /* if not shifted off the end */
-            LOG(4, "  accum @%d %d + %d\n", map1, comb->dst[map1], shadow);
-            accum_shadow(&comb->dst[map1], shadow);
+            LOG(4, "  accum @%d %d + %d\n", src_offs + map1, comb->dst[src_offs + map1],
+                shadow);
+            accum_shadow(&comb->dst[src_offs + map1], shadow);
         }
         if (map1 != map2 && map2 >= 0) {
-            LOG(4, "  accum @%d %d + %d\n", map2, comb->dst[map2], shadow);
-            accum_shadow(&comb->dst[map2], shadow);
+            LOG(4, "  accum @%d %d + %d\n", src_offs + map2, comb->dst[src_offs + map2],
+                shadow);
+            accum_shadow(&comb->dst[src_offs + map2], shadow);
         }
         accum_shadow(&comb->eflags, shadow);
         /* We assume we don't need to proactively mark the top now-0 bits
@@ -2001,7 +2072,8 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
     uint opsz = comb->opsz;
     uint shift = 0;
     if (opc_is_gpr_shift(opc)) {
-        if (map_src_to_dst_gpr_shift(comb, opnum, src_bytenum, shadow)) {
+        if (map_src_to_dst_shift(comb, comb->opcode, opnum, src_bytenum, 0,
+                                 comb->opsz, shadow)) {
             SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
             return; /* handled */
         }
@@ -2159,6 +2231,9 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             }
             break;
         }
+        }
+        break;
+    }
     case OP_pshufw:
     case OP_pshufd:
     case OP_pshufhw:
@@ -2166,12 +2241,110 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
     case OP_vpshufhw:
     case OP_vpshufd:
     case OP_vpshuflw:
-        /* FIXME i#243: fill in proper shuffling */
+        /* FIXME i#1484: fill in proper shuffling */
         accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
     case OP_pshufb:
     case OP_vpshufb:
-        /* FIXME i#243: this one is complex, bailing for now */
+        /* FIXME i#1484: this one is complex, bailing for now */
+        accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psrlw:
+    case OP_vpsrlw:
+        if (map_src_to_dst_shift(comb, OP_shr, opnum, src_bytenum % 2,
+                                 ALIGN_BACKWARD(src_bytenum, 2), 2, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psrld:
+    case OP_vpsrld:
+        if (map_src_to_dst_shift(comb, OP_shr, opnum, src_bytenum % 4,
+                                 ALIGN_BACKWARD(src_bytenum, 4), 4, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psrlq:
+    case OP_vpsrlq:
+        if (map_src_to_dst_shift(comb, OP_shr, opnum, src_bytenum % 8,
+                                 ALIGN_BACKWARD(src_bytenum, 8), 8, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psraw:
+    case OP_vpsraw:
+        if (map_src_to_dst_shift(comb, OP_sar, opnum, src_bytenum % 2,
+                                 ALIGN_BACKWARD(src_bytenum, 2), 2, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psrad:
+    case OP_vpsrad:
+        if (map_src_to_dst_shift(comb, OP_sar, opnum, src_bytenum % 4,
+                                 ALIGN_BACKWARD(src_bytenum, 4), 4, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psrldq:
+    case OP_vpsrldq:
+        if (map_src_to_dst_shift(comb, OP_shr, opnum, src_bytenum % 16,
+                                 ALIGN_BACKWARD(src_bytenum, 16), 16, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psllw:
+    case OP_vpsllw:
+        if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 2,
+                                 ALIGN_BACKWARD(src_bytenum, 2), 2, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_pslld:
+    case OP_vpslld:
+        if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 4,
+                                 ALIGN_BACKWARD(src_bytenum, 4), 4, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_psllq:
+    case OP_vpsllq:
+        if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 8,
+                                 ALIGN_BACKWARD(src_bytenum, 8), 8, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_pslldq:
+    case OP_vpslldq:
+        if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 16,
+                                 ALIGN_BACKWARD(src_bytenum, 16), 16, shadow)) {
+            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
+            return; /* handled */
+        } else /* gracefully continue */
+            accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
+        break;
+    case OP_vpsravd:
+    case OP_vpsrlvd:
+    case OP_vpsrlvq:
+    case OP_vpsllvd:
+    case OP_vpsllvq:
+        /* FIXME i#1484: these are complex, bailing for now */
         accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
     case OP_pextrb:
@@ -2303,15 +2476,14 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             accum_shadow(&comb->dst[src_bytenum], shadow);
         break;
 
-    /* XXX i#243: add more xmm opcodes here.  Also add to either
+    /* XXX i#1484/i#243: add more xmm opcodes here.  Also add to either
      * set_check_definedness_pre_regs() (if check_definedness is
      * enough) or instr_ok_for_instrument_fastpath() if fastpath
      * can't handle them.
      *
      * Opcodes that need extra handling: and + or operations with constants;
-     * shifts (OP_psr*, OP_psl*); widening/narrowing (OP_cvt*); conditional
-     * moves (OP_*blend*); shifting and selecting (OP_palignr, OP_phminposuw,
-     * OP_pcmpestr*).
+     * widening/narrowing (OP_cvt*); conditional moves (OP_*blend*);
+     * shifting and selecting (OP_palignr, OP_phminposuw, OP_pcmpestr*).
      */
 
     /* cpuid: who cares if collapse to eax */

@@ -1070,7 +1070,7 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
          opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0))
          mi->check_definedness = true;
 
-    /* i#243: these are tricky to implement in fastpath for partially-defined */
+    /* i#1525: these are tricky to implement in fastpath for partially-defined */
     switch (opc) {
     case OP_punpcklbw:
     case OP_punpcklwd:
@@ -1112,6 +1112,31 @@ set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *
     case OP_vpinsrb:
     case OP_vpinsrw:
     case OP_vpinsrd:
+    case OP_psrlw:
+    case OP_psrld:
+    case OP_psrlq:
+    case OP_psraw:
+    case OP_psrad:
+    case OP_psrldq:
+    case OP_vpsrlw:
+    case OP_vpsrld:
+    case OP_vpsrlq:
+    case OP_vpsraw:
+    case OP_vpsrad:
+    case OP_vpsrldq:
+    case OP_vpsravd:
+    case OP_vpsrlvd:
+    case OP_vpsrlvq:
+    case OP_psllw:
+    case OP_pslld:
+    case OP_psllq:
+    case OP_pslldq:
+    case OP_vpsllw:
+    case OP_vpslld:
+    case OP_vpsllq:
+    case OP_vpslldq:
+    case OP_vpsllvd:
+    case OP_vpsllvq:
         mi->check_definedness = true;
         break;
     }

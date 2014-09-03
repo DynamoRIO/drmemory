@@ -862,6 +862,15 @@ GLOBAL_LABEL(FUNCNAME:)
         pextrw   edx, xmm0, 7 /* top word came from undef */
         mov      [REG_XCX], edx /* uninit */
 
+        /* packed word shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 7
+        pinsrd   xmm1, ecx, 0 /* shift amount: 7 */
+        psrlw    xmm0, xmm1
+        pextrb   ecx, xmm0, 15 /* top byte still undef! */
+        cmp      ecx, HEX(40) /* uninit */
+
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
         pop      REG_XBP

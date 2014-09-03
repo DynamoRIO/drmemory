@@ -35,8 +35,8 @@ void asm_test_avx(char *undef, char *def);
 static void
 asm_test_C(void)
 {
-    char undef[128];
-    char def[128] = {0,};
+    char undef[256];
+    char def[256] = {0,};
     asm_test(undef, def);
     asm_test_avx(undef, def);
 }
@@ -181,7 +181,67 @@ GLOBAL_LABEL(FUNCNAME:)
         jmp force_bb_i1595_end
     force_bb_i1595_end:
 
-        /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
+        /***************************************************
+         * Test i#1484: packed shifts
+         */
+
+        /* packed word shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 8
+        pinsrd   xmm1, ecx, 0 /* shift amount: 8 */
+        psrlw    xmm0, xmm1
+        pextrb   ecx, xmm0, 15 /* top byte was undef, now 0's shifted in */
+        cmp      ecx, HEX(40)
+
+        /* packed word shift left */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 8
+        pinsrd   xmm1, ecx, 0 /* shift amount: 8 */
+        psllw    xmm0, xmm1
+        pextrb   ecx, xmm0, 14 /* bottom of top word was undef, now 0's */
+        cmp      ecx, HEX(41)
+
+        /* packed dword shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 16
+        pinsrd   xmm1, ecx, 0 /* shift amount: 16 */
+        psrld    xmm0, xmm1
+        pextrw   ecx, xmm0, 7 /* top word was undef, now 0's shifted in */
+        cmp      ecx, HEX(42)
+
+        /* packed dword shift left */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 16
+        pinsrd   xmm1, ecx, 0 /* shift amount: 16 */
+        pslld    xmm0, xmm1
+        pextrw   ecx, xmm0, 6 /* bottom of top dword was undef, now 0's */
+        cmp      ecx, HEX(43)
+
+        /* packed qword shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, HEX(9)
+        pinsrd   xmm1, ecx, 0 /* shift amount: 0x1001 */
+        pinsrd   xmm1, ecx, 1 /* shift amount: 0x100100001001 */
+        psrlq    xmm0, xmm1
+        pextrb   ecx, xmm0, 15 /* top byte was undef, now 1 0 bit */
+        cmp      ecx, HEX(44) /* XXX: if we had per-bit this would be undef */
+
+        /* packed mmx dword shift right */
+        movq     mm0, [REG_XAX] /* undef */
+        pxor     mm1, mm1
+        mov      ecx, 16
+        movd     mm1, ecx /* shift amount: 16 */
+        psrld    mm0, mm1
+        pextrw   ecx, mm0, 3 /* top byte was undef, now 0's shifted in */
+        cmp      ecx, HEX(45)
+
+        /***************************************************
+         * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).  Do not place AVX instructions here: put them
          * into asm_test_avx().
          */
@@ -223,7 +283,53 @@ GLOBAL_LABEL(FUNCNAME:)
         vpinsrd  xmm0, xmm0, ecx, 0 /* test vpinsrd (i#1559) */
         comiss   xmm0, xmm1 /* only looks at bottom 32 bits */
 
-        /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
+        /***************************************************
+         * Test i#1484: AVX packed shifts
+         */
+
+        /* packed word shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 8
+        pinsrd   xmm1, ecx, 0 /* shift amount: 8 */
+        vpsrlw   xmm0, xmm0, xmm1
+        pextrb   ecx, xmm0, 15 /* top byte was undef, now 0's shifted in */
+        cmp      ecx, HEX(40)
+
+        /* packed word shift left */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 8
+        pinsrd   xmm1, ecx, 0 /* shift amount: 8 */
+        vpsllw   xmm0, xmm0, xmm1
+        pextrb   ecx, xmm0, 14 /* bottom of top word was undef, now 0's */
+        cmp      ecx, HEX(41)
+
+        /* VS2010 assembler has a bug where "vpsrld" is encoded as "vpslld" */
+# if MSC_VER >= 1700
+        /* packed dword shift right */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 16
+        pinsrd   xmm1, ecx, 0 /* shift amount: 16 */
+        vpsrld   xmm0, xmm0, xmm1
+        pextrw   ecx, xmm0, 7 /* top word was undef, now 0's shifted in */
+        cmp      ecx, HEX(42)
+# endif
+
+        /* packed dword shift left */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        pxor     xmm1, xmm1
+        mov      ecx, 16
+        pinsrd   xmm1, ecx, 0 /* shift amount: 16 */
+        vpslld   xmm0, xmm0, xmm1
+        pextrw   ecx, xmm0, 6 /* bottom of top dword was undef, now 0's */
+        cmp      ecx, HEX(43)
+
+        /* XXX: once we propagate ymm regs, add tests here */
+
+        /***************************************************
+         * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).
          */
 

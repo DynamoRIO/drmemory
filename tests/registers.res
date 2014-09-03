@@ -93,29 +93,37 @@ registers.c_asm.asm:570
 %endif
 Error #18: UNINITIALIZED READ: reading register eax
 registers.c:325
-Error #19: UNINITIALIZED READ: reading register
-registers.c:369
+%if UNIX
+Error #19: UNINITIALIZED READ: reading register ecx
+registers.c_asm.asm:902
+%endif
+%if WINDOWS
+Error #19: UNINITIALIZED READ: reading register ecx
+registers.c_asm.asm:133
+%endif
 Error #20: UNINITIALIZED READ: reading register
+registers.c:369
+Error #21: UNINITIALIZED READ: reading register
 registers.c:390
 %if WINDOWS
-Error #21: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1415
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1429
-Error #23: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1443
+registers.c_asm.asm:1424
+Error #23: UNINITIALIZED READ: reading 1 byte(s)
+registers.c_asm.asm:1438
 Error #24: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1457
+registers.c_asm.asm:1452
+Error #25: UNINITIALIZED READ: reading 2 byte(s)
+registers.c_asm.asm:1466
 %endif
 %if UNIX
-Error #21: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:987
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1001
-Error #23: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1015
+registers.c_asm.asm:996
+Error #23: UNINITIALIZED READ: reading 1 byte(s)
+registers.c_asm.asm:1010
 Error #24: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1029
+registers.c_asm.asm:1024
+Error #25: UNINITIALIZED READ: reading 2 byte(s)
+registers.c_asm.asm:1038
 %endif
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
