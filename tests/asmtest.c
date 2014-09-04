@@ -240,6 +240,16 @@ GLOBAL_LABEL(FUNCNAME:)
         pextrw   ecx, mm0, 3 /* top byte was undef, now 0's shifted in */
         cmp      ecx, HEX(45)
 
+        /* packed dqword shift left */
+        movdqu   xmm0, [REG_XAX] /* undef */
+        mov      ecx, HEX(0) /* def */
+        pinsrb   xmm0, ecx, 5
+        pslldq   xmm0, 1
+        pextrb   ecx, xmm0, 6
+        cmp      ecx, HEX(46)
+        pextrb   ecx, xmm0, 0 /* filled with zeroes */
+        cmp      ecx, HEX(47)
+
         /***************************************************
          * Test i#1484: conversions
          */

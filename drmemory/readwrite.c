@@ -1998,7 +1998,7 @@ map_src_to_dst_shift(shadow_combine_t *comb INOUT, uint opc, int opnum, int src_
     LOG(4, " src bytenum %d, offs %d, opsz %d, shift %d\n", src_bytenum, src_offs,
         opsz, shift);
     if (shift > opsz*8)
-        shift = shift % (opsz*8);
+        shift = opsz*8; /* XXX i#101: for a rotate we want shift % (opsz*8) */
     if (shift == 0) {
         /* no flags are changed for shift==0 */
         accum_shadow(&comb->dst[src_offs + src_bytenum], shadow);
@@ -2295,14 +2295,19 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
     case OP_psrldq:
-    case OP_vpsrldq:
-        if (map_src_to_dst_shift(comb, OP_shr, opnum, src_bytenum % 16,
-                                 ALIGN_BACKWARD(src_bytenum, 16), 16, shadow)) {
-            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
-            return; /* handled */
+    case OP_vpsrldq: {
+        /* These shift by *bytes*, not *bits*! */
+        reg_t shift;
+        if (get_cur_src_value(dr_get_current_drcontext(), comb->inst,
+                              opc_is_shift_src0(opc) ? 0 : 1, &shift)) {
+            if (shift > opsz)
+                shift = opsz;
+            if (src_bytenum >= shift)
+                accum_shadow(&comb->dst[src_bytenum - shift], shadow);
         } else /* gracefully continue */
             accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
+    }
     case OP_psllw:
     case OP_vpsllw:
         if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 2,
@@ -2331,14 +2336,19 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
             accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
     case OP_pslldq:
-    case OP_vpslldq:
-        if (map_src_to_dst_shift(comb, OP_shl, opnum, src_bytenum % 16,
-                                 ALIGN_BACKWARD(src_bytenum, 16), 16, shadow)) {
-            SHADOW_COMBINE_CHECK_OPND(comb, src_bytenum);
-            return; /* handled */
+    case OP_vpslldq: {
+        /* These shift by *bytes*, not *bits*! */
+        reg_t shift;
+        if (get_cur_src_value(dr_get_current_drcontext(), comb->inst,
+                              opc_is_shift_src0(opc) ? 0 : 1, &shift)) {
+            if (shift > opsz)
+                shift = opsz;
+            if (src_bytenum + shift < opsz)
+                accum_shadow(&comb->dst[src_bytenum + shift], shadow);
         } else /* gracefully continue */
             accum_shadow(&comb->dst[src_bytenum], SHADOW_DEFINED);
         break;
+    }
     case OP_vpsravd:
     case OP_vpsrlvd:
     case OP_vpsrlvq:
