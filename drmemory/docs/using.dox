@@ -125,6 +125,11 @@ path for current user" to simplify use of the tool.  You can also elect to
 place a Dr. Memory icon on the desktop if you would like to run your
 applications under Dr. Memory by dragging and dropping.
 
+If you already have a prior version of Dr. Memory installed, uninstall it
+before installing a new version.  The uninstaller can be run either from
+its Start Menu entry or from the "Add or Remove Programs" dialog box in
+Control Panel.
+
 ********************
 \section sec_windows_local Local Install
 
