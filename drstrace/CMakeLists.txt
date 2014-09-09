@@ -155,9 +155,12 @@ if (WIN32)
     ${DEFINES_NO_D} DRSTRACE_UNIT_TESTS SYMBOL_DLL_PATH="${symfetch_path}")
   configure_DynamoRIO_standalone(drstrace_unit_tests)
   use_DynamoRIO_extension(drstrace_unit_tests drsyscall_static)
+  use_DynamoRIO_extension(drstrace_unit_tests drmgr_static)
   use_DynamoRIO_extension(drstrace_unit_tests drx_static)
   use_DynamoRIO_extension(drstrace_unit_tests drsyms_static)
-  use_DynamoRIO_extension(drstrace_unit_tests drfrontendlib)
+  # XXX DRi#1409/DRi#1503: we get link errors about dup symbols dr_get_stderr_file()
+  # in drdecode and dynamorio libs unless we link w/ drinjectlib.
+  target_link_libraries(drstrace_unit_tests drinjectlib drfrontendlib)
   add_dependencies(drstrace_unit_tests drsyscall)
   add_test(drstrace_unit_tests
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
