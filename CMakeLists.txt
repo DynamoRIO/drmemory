@@ -206,8 +206,7 @@ if (APPLE)
   math(EXPR VERSION_NUMBER_PATCHLEVEL "(${VERSION_NUMBER_PATCHLEVEL} % 200) + 56")
 endif (APPLE)
 
-# XXX: for windows should we have a real .rc file?
-set(VERSION_NUMBER_DEFAULT "1.7.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "1.8.${VERSION_NUMBER_PATCHLEVEL}")
 # do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # avoid "VERSION_NUMBER" name since conflics w/ DR's var
@@ -753,7 +752,7 @@ else ()
 endif ()
 
 # when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "4.2.2820")
+set(DynamoRIO_VERSION_REQUIRED "5.0.0")
 
 set(DR_install_dir "dynamorio")
 
@@ -1553,7 +1552,7 @@ set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
 
 # Versioning: we use separate versioning for DRMF from the tool versioning.
 # This is major*100 + minor.
-set(DRMF_VERSION_DEFAULT "0.9.${VERSION_NUMBER_PATCHLEVEL}")
+set(DRMF_VERSION_DEFAULT "1.0.${VERSION_NUMBER_PATCHLEVEL}")
 set(DRMF_VERSION "" CACHE STRING "DRMF version number: leave empty for default")
 if ("${DRMF_VERSION}" STREQUAL "")
   set(DRMF_VERSION ${DRMF_VERSION_DEFAULT})
