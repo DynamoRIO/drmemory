@@ -797,7 +797,7 @@ if (TOOL_DR_MEMORY)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
-  newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "registers.pattern")
+  newtest_nobuild(registers.pattern registers "" "-unaddr_only" "" OFF "registers.pattern")
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
   newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
@@ -900,6 +900,7 @@ else (NOT X64)
   # pattern mode testing.
   newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly" 0)
   newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
+  newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF "registers.pattern" 0)
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
     "" OFF "track_origins" 0)
   if (WIN32)

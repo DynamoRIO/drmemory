@@ -59,6 +59,12 @@ void subdword_test2_asm(char *undef, int *val1, int *val2);
 void addronly_test_asm(char *undef);
 void subdword_test_asm(char *undef, int *val);
 void repstr_test_asm(char *a1, char *a2);
+void eflags_test_asm(char *undef);
+void mem2mem_test_asm(int *array_uninit);
+void cmpxchg8b_test_asm(int *array_init, int *array_uninit);
+void and_or_test_asm(int *array_uninit, int *zero);
+void nop_test_asm(void);
+void test_stack_asm(void);
 
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
@@ -124,96 +130,27 @@ repstr_test(void)
 void
 eflags_test(void)
 {
-    char *undef = (char *) malloc(16);
+    char *undef_array = (char *) malloc(16);
     printf("before eflags test!\n");
-    /* FIXME i#934: convert to cross-platform asm routine */
-#ifdef WINDOWS
-    __asm {
-        mov   edi, undef
-        mov   ecx, dword ptr [4 + edi]
-        add   ecx, eax
-        adc   ecx, 0
-        cmovb ecx, ebx /* error: cmovcc is a cmp for -check_cmps */
-        mov   ecx, dword ptr [8 + edi]
-        sub   ecx, 1
-        sbb   ecx, ecx
-        jb    eflags_test_label1 /* error: eflags prop through sbb (PR 425622) */
-      eflags_test_label1:
-        mov   ecx, dword ptr [12 + edi]
-        sub   ecx, 1
-        setb  cl
-        cmp   cl, 4 /* error: eflags prop through setcc (PR 408552) */
-    }
-#else
-    asm("mov   %0, %%edi" : : "g"(undef) : "edi");
-    asm("mov   4(%edi), %ecx");
-    asm("add   %eax, %ecx");
-    asm("adc   $0, %ecx");
-    asm("cmovb %ebx, %ecx"); /* error: cmovcc is a cmp for -check_cmps */
-    asm("mov   8(%edi), %ecx");
-    asm("sub   $1, %ecx");
-    asm("sbb   %ecx, %ecx");
-    asm("jb    eflags_test_label1"); /* error: eflags prop through sbb (PR 425622) */
-    asm("eflags_test_label1:");
-    asm("mov   12(%edi), %ecx");
-    asm("sub   $1, %ecx");
-    asm("setb  %cl");
-    asm("cmp   $4, %cl"); /* error: eflags prop through setcc (PR 408552) */
-#endif
+    eflags_test_asm(undef_array);
     printf("after eflags test!\n");
-    free(undef);
+    free(undef_array);
 }
 
 static void
 mem2mem_test(void)
 {
-    int *array_uninit = malloc(8);
-    /* test push-mem propagation (i#236) */
-#ifdef WINDOWS
-    __asm {
-        mov   ecx, dword ptr [array_uninit]
-        push  dword ptr [ecx]
-        push  dword ptr [ecx+4]
-        pop   dword ptr [ecx+4]
-        pop   ecx
-        cmp   ecx,0
-        je    equals
-      equals:
-        nop
-    }
-#else
-    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
-    asm("pushl  (%ecx)");
-    asm("pushl  4(%ecx)");
-    asm("popl   4(%ecx)");
-    asm("popl   %ecx");
-    asm("cmp    $0,%ecx");
-    asm("je     equals");
-    asm("equals: nop");
-#endif
+    int *array_uninit = malloc(16);
+    mem2mem_test_asm(array_uninit);
     free(array_uninit);
 }
-
 
 static void
 cmpxchg8b_test(void)
 {
     int *array_uninit = malloc(8);
     int *array_init = calloc(8, 1);
-    /* test push-mem propagation (i#236) */
-#ifdef WINDOWS
-    __asm {
-        mov   ecx, dword ptr [array_init]
-        cmpxchg8b  qword ptr [ecx]
-        mov   ecx, dword ptr [array_uninit]
-        cmpxchg8b  qword ptr [ecx]
-    }
-#else
-    asm("mov   %0, %%ecx" : : "g"(array_init) : "ecx");
-    asm("cmpxchg8b  (%ecx)");
-    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
-    asm("cmpxchg8b  (%ecx)");
-#endif
+    cmpxchg8b_test_asm(array_init, array_uninit);
     free(array_uninit);
     free(array_init);
 }
@@ -223,22 +160,7 @@ and_or_test(void)
 {
     int *array_uninit = malloc(8);
     static int zero;
-    /* test push-mem propagation (i#236) */
-#ifdef WINDOWS
-    __asm {
-        mov   ecx, dword ptr [array_uninit]
-        mov   ecx, dword ptr [ecx]
-        test  dword ptr [zero], ecx
-        mov   eax, dword ptr [zero]
-        test  ecx, eax
-    }
-#else
-    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
-    asm("mov   (%ecx), %ecx");
-    asm("test  %0, %%ecx" : : "g"(zero) : "ecx");
-    asm("mov   %0, %%ecx" : : "g"(zero) : "eax");
-    asm("test  %ecx, %eax");
-#endif
+    and_or_test_asm(array_uninit, &zero);
     free(array_uninit);
 }
 
@@ -287,31 +209,7 @@ addronly_test(void)
 static void
 nop_test(void)
 {
-#ifdef WINDOWS
-    __asm {
-        pushad;
-        xor eax, eax;
-        /* Can't figure out how to convince cl.exe to encode the long nop with a
-         * memory operand, so we just emit the raw bytes.  Should be easier with
-         * cross-os asm file support.
-         *
-         * 0f 1f 84 00 00 00 00 00  nop 0x00000000(%eax,%eax,1)
-         */
-        _emit 0x0f;
-        _emit 0x1f;
-        _emit 0x84;
-        _emit 0x00;
-        _emit 0x00;
-        _emit 0x00;
-        _emit 0x00;
-        _emit 0x00;
-        popad;
-    }
-#else
-    /* FIXME i#934: Skipping Linux for now, we'll get the coverage when cross-os asm
-     * support lands.
-     */
-#endif
+    nop_test_asm();
 }
 
 static void
@@ -405,12 +303,7 @@ sharing_test(void)
 int
 main(int argc, char *argv[])
 {
-#ifdef UNIX
-    /* test PR 408519 */
-    asm("sub $2, %esp");
-    asm("pushw $0");
-    asm("add $4, %esp");
-#endif
+    test_stack_asm();
 
     regtest();
 
@@ -452,9 +345,139 @@ main(int argc, char *argv[])
 #include "cpp2asm_defines.h"
 START_FILE
 
+#define FUNCNAME eflags_test_asm
+/* void eflags_test_asm(char *undef_array); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1 /* undef_array, assuming 16 bytes */
+        /* save callee-saved regs */
+        PUSH_SEH(REG_XDI)
+        END_PROLOG
+
+        mov      REG_XDI, REG_XCX /* undef_array */
+        mov      ecx, DWORD [REG_XDI + 4]
+        add      ecx, eax
+        adc      ecx, 0
+        cmovb    ecx, ebx /* error: cmovcc is a cmp for -check_cmps */
+        mov      ecx, DWORD [REG_XDI + 8]
+        sub      ecx, 1
+        sbb      ecx, ecx
+        jb       eflags_test_label1 /* error: eflags prop through sbb (PR 425622) */
+    eflags_test_label1:
+        mov      ecx, DWORD [REG_XDI + 12]
+        sub      ecx, 1
+        setb     cl
+        cmp      cl, 4 /* error: eflags prop through setcc (PR 408552) */
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME mem2mem_test_asm
+/* void mem2mem_test_asm(int *array_uninit); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1 /* array_uninit, assume 16 bytes */
+        END_PROLOG
+
+        push     PTRSZ [REG_XCX]
+        push     PTRSZ [REG_XCX + 8]
+        pop      PTRSZ [REG_XCX + 8]
+        pop      REG_XCX
+        cmp      REG_XCX, 0
+        je       equals
+    equals:
+        nop
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME cmpxchg8b_test_asm
+/* void cmpxchg8b_test_asm(int *array_init, int *array_uninit); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov     REG_XCX, ARG1 /* array_init */
+        mov     REG_XAX, ARG2 /* array_uninit */
+        /* save callee-saved regs */
+        PUSH_SEH(REG_XSI)
+        END_PROLOG
+
+        mov     REG_XSI, REG_XAX  /* save array_uninit */
+        cmpxchg8b QWORD [REG_XCX] /* cmpxchg8b with array_init */
+        mov     REG_XCX, REG_XSI  /* use array_uninit */
+        cmpxchg8b QWORD [REG_XCX] /* cmpxchg8b with array_uninit */
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XSI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME and_or_test_asm
+/* void and_or_test(int *array_uninit, int *zero); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1 /* array_uninit */
+        mov      REG_XDX, ARG2 /* zero */
+        END_PROLOG
+
+        mov      ecx, DWORD [REG_XCX]
+        test     DWORD [REG_XDX], ecx
+        mov      eax, DWORD [REG_XDX]
+        test     ecx, eax
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME nop_test_asm
+/* void nop_test_asm(void); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        END_PROLOG
+
+        xor      REG_XAX, REG_XAX
+        /* Can't figure out how to convince cl.exe to encode the long nop with a
+         * memory operand, so we just emit the raw bytes.
+         *
+         * 0f 1f 84 00 00 00 00 00  nop 0x00000000(%eax,%eax,1)
+         */
+        RAW(0f)
+        RAW(1f)
+        RAW(84)
+        RAW(00)
+        RAW(00)
+        RAW(00)
+        RAW(00)
+        RAW(00)
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME test_stack_asm
+/* test PR 408519: void test_stack_asm(void); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        sub      REG_XSP, 2
+        pushw    0
+        add      REG_XSP, 4
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
 #define FUNCNAME repstr_test_asm
 /* void repstr_test_asm(char *a1, char *a2); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1 /* a1, 15 bytes init buffer except a1[7] */
         mov      REG_XDX, ARG2 /* a2, 15 bytes uninit buffer */
@@ -499,24 +522,25 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME subdword_test_asm
 /* void subword_test_asm(char *undef, int *val); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1 /* undef, assuming 128 bytes */
         mov      REG_XDX, ARG2 /* val */
         END_PROLOG
 
-        mov      REG_XAX, 0
+        mov      eax, 0
         add      al, BYTE [REG_XCX + 37] /* write to flags */
         js       uninit /* uninit eflags! */
-       uninit:
+    uninit:
         sub      ah, al
-        mov      [REG_XDX], REG_XAX /* set val uninit */
+        mov      DWORD [REG_XDX], eax /* set val uninit */
         /* stores */
         mov      REG_XAX, 0
         sub      BYTE [REG_XCX + 1], ah /* write to flags */
         js       uninit2 /* uninit eflags! */
-       uninit2:
+    uninit2:
         nop
+
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         ret
         END_FUNC(FUNCNAME)
@@ -524,7 +548,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME addronly_test_asm
 /* void addronly_test_asm(char *undef); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1 /* undef, assuming 128 bytes */
         /* save callee-saved regs */
@@ -542,7 +566,7 @@ GLOBAL_LABEL(FUNCNAME:)
         inc      REG_XCX
         inc      REG_XCX
         jmp      foo /* end bb */
-      foo:
+    foo:
 
         inc      BYTE [REG_XAX + 128] /* partial aflags write so need aflags restore */
         inc      REG_XBX /* this time have eax and ecx as the drmem scratch regs */
@@ -554,7 +578,7 @@ GLOBAL_LABEL(FUNCNAME:)
         inc      REG_XDX
         inc      REG_XDX
         jmp      foo2 /* end bb */
-      foo2:
+    foo2:
 
         /* Undo modifications to avoid RtlHeap/free crash (i#924) */
         dec      BYTE [REG_XAX + 124]
@@ -570,7 +594,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME regtest_asm
 /* void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XCX, ARG2
@@ -582,7 +606,7 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XSI, REG_XCX /* gpr_pre */
         mov      REG_XDI, REG_XDX /* gpr_post */
         mov      REG_XCX, REG_XAX /* array */
-        pushfd
+        PUSHF
         pop      REG_XAX   /* note: reg_eax = 0 and eax gets zero from array[*] */
         /* values we can recognize, but stay under array[128] */
         mov      edx,     7
@@ -616,15 +640,15 @@ GLOBAL_LABEL(FUNCNAME:)
         mov       BYTE [REG_XCX + 37], ah
         mov       BYTE [REG_XCX + 37 + REG_XDX*2], ah
         /* get flags on stack before ALU tests change them */
-        pushfd
+        PUSHF
         /* test i#877: ALU sub-dword shift */
         add      BYTE [REG_XCX], 8 /* fastpath ok */
         shr      BYTE [REG_XCX], 8 /* needs slowpath */
         add      WORD [REG_XCX], 8 /* fastpath ok */
         shl      WORD [REG_XCX], 8 /* needs slowpath */
         /* pushes and pops */
-        push     DWORD [REG_XCX + 37 + REG_XDX*2]
-        pop      DWORD [REG_XCX + 37 + REG_XDX*2]
+        push     PTRSZ [REG_XCX + 37 + REG_XDX*2]
+        pop      PTRSZ [REG_XCX + 37 + REG_XDX*2]
         enter    0, 0
         leave
         /* ensure regs haven't changed by storing copy in post_reg
@@ -663,7 +687,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME data16_div_test_asm
 /* ushort data16_div_test_asm(ushort a, ushort b); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XCX, ARG2
@@ -681,7 +705,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME subdword_test2_asm
 /* void subdword_test2_asm(char *undef, int *val1, int *val2) */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -787,7 +811,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME copy_through_xmm_asm
 /* void copy_through_xmm_asm(char *dst, char *src); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -803,7 +827,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME copy_through_xmm_asm_ebp
 /* void copy_through_xmm_asm(char *dst, char *src); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -825,7 +849,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME xmm_operations
 /* void xmm_operations(char *dst, char *src); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -880,7 +904,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME copy_through_mmx
 /* void copy_through_mmx(char *dst, char *src); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -896,7 +920,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME mmx_operations
 /* void mmx_operations(char *dst, char *src); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG1
         mov      REG_XAX, ARG2
@@ -934,7 +958,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME xl8_share_subdword
 /* void xl8_share_subdword(char *undef, char *def); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XDX, ARG2
