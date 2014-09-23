@@ -585,6 +585,10 @@ _tmain(int argc, TCHAR *targv[])
         warn("symbol initialization error.  Symbol lookup will be disabled.");
     }
 
+    /* i#1638: fall back to temp dirs if there's no HOME/USERPROFILE set */
+    dr_get_config_dir(false/*local*/, true/*use temp*/, buf, BUFFER_SIZE_ELEMENTS(buf));
+    info("DynamoRIO configuration directory is %s", buf);
+
 #ifdef UNIX
     errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
 #else
