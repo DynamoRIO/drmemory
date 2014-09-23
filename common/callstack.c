@@ -551,7 +551,20 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
             frame->line = 0;
             frame->lineoffs = 0;
         } else {
-            dr_snprintf(frame->fname, MAX_FILENAME_LEN, sym.file);
+            char *fname = sym.file;
+            /* i#1634: if sym.file is longer than MAX_FILENAME_LEN,
+             * we skip some prefix.
+             */
+            /* frame->fname has the size of MAX_FILENAME_LEN+1, so we do not need
+             * extra byte for NULL.
+             */
+            if (strlen(fname) > MAX_FILENAME_LEN) {
+                fname += (strlen(fname) - MAX_FILENAME_LEN + 3 /* ... */);
+                if (strchr(fname, DIRSEP) != NULL)
+                    fname = strchr(fname, DIRSEP);
+            }
+            dr_snprintf(frame->fname, MAX_FILENAME_LEN, "%s%s",
+                        fname == sym.file ? "" : "...", fname);
             NULL_TERMINATE_BUFFER(frame->fname);
             frame->line = sym.line;
             frame->lineoffs = sym.line_offs;

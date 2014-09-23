@@ -208,7 +208,7 @@ enum {
 /* max lengths for symbols */
 #define MAX_FUNC_LEN 256 /* C++ templates get pretty long */
 #define MAX_SYMBOL_LEN (MAX_MODULE_LEN + 1/*!*/ + MAX_FUNC_LEN)
-#define MAX_FILENAME_LEN 128
+#define MAX_FILENAME_LEN MAXIMUM_PATH
 #define MAX_LINENO_DIGITS 6
 #define MAX_FILE_LINE_LEN (MAX_FILENAME_LEN + 1/*:*/ + MAX_LINENO_DIGITS)
 
