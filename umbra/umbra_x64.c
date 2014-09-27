@@ -239,7 +239,7 @@ static app_segment_t app_segments[] = {
 #ifdef WINDOWS
     /* app1: [0x00000000'00000000, 0x00000010'00000000) */
     { (app_pc)(0x0 *SEGMENT_SIZE), (app_pc)(0x1 *SEGMENT_SIZE), 0},
-    /* app2: [0x0000007F'00000000, 0x00000080'00000000) */
+    /* app2: [0x000007F0'00000000, 0x00000800'00000000) */
     { (app_pc)(0x7F*SEGMENT_SIZE), (app_pc)(0x80*SEGMENT_SIZE), 0},
 #else
     /* app1: [0x00000000'00000000, 0x00000100'00000000) */
@@ -391,7 +391,7 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
 
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         if (base >= app_segments[i].app_base &&
-            base + size < app_segments[i].app_end) {
+            base + size <= app_segments[i].app_end) {
             if (!app_segments[i].app_used) {
                 app_segments[i].app_used = true;
                 if (map != NULL &&
