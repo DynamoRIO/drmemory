@@ -87,7 +87,7 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_lea(drcontext, opnd_create_reg(dst), opnd));
         } else if (opnd_get_segment(opnd) == seg_tls
-                   IF_UNIX(||opnd_get_segment(opnd) == SEG_GS)) {
+                   IF_UNIX(|| opnd_get_segment(opnd) == IF_X64_ELSE(SEG_FS, SEG_GS))) {
             /* convert to linear address. */
 #if THREAD_PRIVATE
             /* for thread private we can statically determine the fs base */

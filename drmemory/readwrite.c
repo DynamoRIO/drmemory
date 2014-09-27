@@ -428,11 +428,12 @@ opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
     uint stored_base_offs;
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
+    ASSERT(seg_tls == EXPECTED_SEG_TLS, "init order problem");
     stored_base_offs = tls_instru_base +
         ((seg == SEG_FS) ? offsetof(tls_instru_t, app_fs_base) :
          offsetof(tls_instru_t, app_gs_base));
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
+        (seg_tls, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
@@ -468,7 +469,7 @@ instru_tls_init(void)
     ASSERT(NUM_TLS_SLOTS > 0, "NUM_TLS_SLOTS should be > 0");
     ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
     ASSERT(ok, "fatal error: unable to reserve tls slots");
-    ASSERT(seg_tls == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
+    ASSERT(seg_tls == EXPECTED_SEG_TLS, "unexpected tls segment");
 }
 
 static void

@@ -173,6 +173,10 @@ extern hashtable_t xl8_sharing_table;
 /* alloca handling in fastpath (i#91) */
 extern hashtable_t ignore_unaddr_table;
 
+#ifdef DEBUG
+/* use seg_tls for actual code */
+# define EXPECTED_SEG_TLS IF_X64_ELSE(SEG_GS, SEG_FS)
+#endif
 extern reg_id_t seg_tls;
 
 bool

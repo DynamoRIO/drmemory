@@ -1409,6 +1409,8 @@ typedef struct _shadow_registers_t {
 
 #define NUM_SHADOW_TLS_SLOTS (sizeof(shadow_registers_t)/sizeof(reg_t))
 
+static reg_id_t tls_shadow_seg;
+
 static uint tls_shadow_base;
 
 /* we store a pointer for finding shadow regs for other threads */
@@ -1432,7 +1434,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
         opsz = OPSZ_PTR;
     }
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base + offs, opsz,
+        (tls_shadow_seg, REG_NULL, REG_NULL, 1, tls_shadow_base + offs, opsz,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
@@ -1456,7 +1458,7 @@ opnd_create_shadow_eflags_slot(void)
 {
     ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
+        (tls_shadow_seg, REG_NULL, REG_NULL, 1, tls_shadow_base +
          offsetof(shadow_registers_t, eflags), OPSZ_1,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
@@ -1469,7 +1471,7 @@ opnd_create_shadow_inheap_slot(void)
 {
     ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
+        (tls_shadow_seg, REG_NULL, REG_NULL, 1, tls_shadow_base +
          offsetof(shadow_registers_t, in_heap_routine), OPSZ_1,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
@@ -1498,7 +1500,7 @@ shadow_registers_thread_init(void *drcontext)
     shadow_registers_t *sr;
 #ifdef UNIX
     sr = (shadow_registers_t *)
-        (dr_get_dr_segment_base(IF_X64_ELSE(SEG_GS, SEG_FS)) + tls_shadow_base);
+        (dr_get_dr_segment_base(tls_shadow_seg) + tls_shadow_base);
 #else
     sr = get_shadow_registers();
 #endif
@@ -1555,15 +1557,14 @@ shadow_registers_thread_exit(void *drcontext)
 static void
 shadow_registers_init(void)
 {
-    reg_id_t seg;
     /* XXX: could save space by not allocating shadow regs for -no_check_uninitialized */
     IF_DEBUG(bool ok =)
-        dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_SHADOW_TLS_SLOTS, 0);
+        dr_raw_tls_calloc(&tls_shadow_seg, &tls_shadow_base, NUM_SHADOW_TLS_SLOTS, 0);
     tls_idx_shadow = drmgr_register_tls_field();
     ASSERT(tls_idx_shadow > -1, "failed to reserve TLS slot");
     LOG(2, "TLS shadow base: "PIFX"\n", tls_shadow_base);
     ASSERT(ok, "fatal error: unable to reserve tls slots");
-    ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
+    ASSERT(tls_shadow_seg == EXPECTED_SEG_TLS, "unexpected tls segment");
 }
 
 static void
