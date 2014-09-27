@@ -37,7 +37,12 @@
  * onto 2 pages by not emitting SPILL_REG_NONE.
  * -no_single_arg_slowpath needs only 10 pages.
  */
-#define SHARED_SLOWPATH_SIZE (whole_bb_spills_enabled() ? PAGE_SIZE*11 : PAGE_SIZE*7)
+#ifdef X64
+/* linux needs 14 pages, windows needs 16 pages */
+# define SHARED_SLOWPATH_SIZE (whole_bb_spills_enabled() ? PAGE_SIZE*16 : PAGE_SIZE*7)
+#else
+# define SHARED_SLOWPATH_SIZE (whole_bb_spills_enabled() ? PAGE_SIZE*11 : PAGE_SIZE*7)
+#endif
 
 void
 instrument_init(void);
