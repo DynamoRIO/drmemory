@@ -20,14 +20,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static void *orig_esi;
-static void *stack0;
-static void *stack1;
-static void *stack2;
+void *orig_esi;
+void *stack0;
+void *stack1;
+void *stack2;
 static int *data;
 
 #ifdef WINDOWS
@@ -35,6 +37,9 @@ static int *data;
 #else
 # define IF_WINDOWS_ELSE(x,y) y
 #endif
+
+void test_cmovcc_asm(void);
+void swap_stack_and_back_asm(void);
 
 void
 foo(void)
@@ -61,23 +66,7 @@ test_swap(size_t sz1, size_t sz2)
     memset(data, 0, 1024);
     stack2 = (char *) malloc(sz2) + sz2;
 
-#ifdef WINDOWS
-    __asm {
-        mov stack0, esp /* store orig stack */
-        mov esp, stack1
-        call foo
-        /* this swap to stack2 looks like a big dealloc => will mark data as unaddr */
-        mov esp, stack2
-        call foo
-        mov esp, stack0 /* restore orig stack */
-    };
-#else
-    __asm("mov %%esp, %0" : "=m"(stack0)); /* store orig stack */
-    __asm("mov %0, %%esp; call "NAME_FOO : : "g"(stack1));
-    /* this swap to stack2 looks like a big dealloc => will mark data as unaddr */
-    __asm("mov %0, %%esp; call "NAME_FOO : : "g"(stack2));
-    __asm("mov %0, %%esp" : : "g"(stack0)); /* restore orig stack */
-#endif
+    swap_stack_and_back_asm();
 
     printf("data[10] = %d\n", data[10]);
     free(data);
@@ -110,69 +99,6 @@ right()
     printf("in right\n");
 }
 
-#ifdef MACOS
-# define NAME_WRONG "_wrong"
-# define NAME_RIGHT "_right"
-#else
-# define NAME_WRONG "wrong"
-# define NAME_RIGHT "right"
-#endif
-
-
-void
-test_cmovcc(void)
-{
-#ifdef WINDOWS
-    __asm {
-        mov stack0, esp   /* store orig stack */
-        mov orig_esi, esi /* store orig ebp */
-        mov esi, stack1
-        cmp esi, esp
-        cmovne esp, esi /* test execute cmovcc */
-        jne correct1
-        call wrong
-        jmp test2
-        correct1:
-        call right
-        test2:
-        mov esi, stack1
-        cmp esp, esi     /* they should be equal */
-        cmovne esp, esi  /* test skip cmovcc */
-        je correct2
-        call wrong
-        jmp done
-        correct2:
-        call right
-        done:
-        mov esi, orig_esi /* restore orig esi */
-        mov esp, stack0 /* restore orig stack */
-    };
-#else
-    __asm("mov %%esp, %0" : "=m"(stack0)); /* store orig stack */
-    __asm("mov %%esi, %0" : "=m"(orig_esi)); /* store orig esi */
-    __asm("mov %0, %%esi" : : "g" (stack1));
-    __asm("cmp %%esi, %%esp" :);
-    __asm("cmovne %%esi, %%esp" :);
-    __asm("jne correct1");
-    __asm("call "NAME_WRONG);
-    __asm("jmp test2");
-    __asm("correct1:");
-    __asm("call "NAME_RIGHT);
-    __asm("test2:");
-    __asm("mov %0, %%esi" : : "g" (stack1));
-    __asm("cmp %%esi, %%esp" :);
-    __asm("cmovne %%esi, %%esp" : );
-    __asm("je correct2");
-    __asm("call "NAME_WRONG);
-    __asm("jmp done");
-    __asm("correct2:");
-    __asm("call "NAME_RIGHT);
-    __asm("done:");
-    __asm("mov %0, %%esi" : : "g"(orig_esi)); /* restore orig esi */
-    __asm("mov %0, %%esp" : : "g"(stack0)); /* restore orig stack */
-#endif
-}
-
 int
 main()
 {
@@ -185,7 +111,89 @@ main()
     /* test giant alloca (will also test fault on special shadow write) */
     test_alloca();
     /* i#668 test esp adjusted by cmovcc */
-    test_cmovcc();
+    test_cmovcc_asm();
     printf("all done\n");
     return 0;
 }
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+DECL_EXTERN(foo)
+DECL_EXTERN(right)
+DECL_EXTERN(wrong)
+
+/* data, which we're ok being non-PIC for */
+DECL_EXTERN(orig_esi)
+DECL_EXTERN(stack0)
+DECL_EXTERN(stack1)
+DECL_EXTERN(stack2)
+
+#define FUNCNAME swap_stack_and_back_asm
+/* void swap_stack_and_back_asm(void); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XDX, ARG1
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        mov      PTRSZ SYMREF(stack0), REG_XSP /* store orig stack */
+        mov      REG_XSP, PTRSZ SYMREF(stack1)
+        call     foo
+        /* this swap to stack2 looks like a big dealloc => will mark data as unaddr */
+        mov      REG_XSP, PTRSZ SYMREF(stack2)
+        call     foo
+        mov      REG_XSP, PTRSZ SYMREF(stack0) /* restore orig stack */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME test_cmovcc_asm
+/* void test_cmovcc_asm(void); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XDX, ARG1
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        mov      PTRSZ SYMREF(stack0), REG_XSP   /* store orig stack */
+        mov      PTRSZ SYMREF(orig_esi), REG_XSI /* store orig esi */
+        mov      REG_XSI, PTRSZ SYMREF(stack1)
+        cmp      REG_XSI, REG_XSP
+        cmovne   REG_XSP, REG_XSI /* test execute cmovcc */
+        jne      correct1
+        call     wrong
+        jmp      test2
+    correct1:
+        call     right
+        test2:
+        mov      REG_XSI, PTRSZ SYMREF(stack1)
+        cmp      REG_XSP, REG_XSI     /* they should be equal */
+        cmovne   REG_XSP, REG_XSI  /* test skip cmovcc */
+        je       correct2
+        call     wrong
+        jmp      done
+    correct2:
+        call     right
+    done:
+        mov      REG_XSI, PTRSZ SYMREF(orig_esi) /* restore orig REG_XSI */
+        mov      REG_XSP, PTRSZ SYMREF(stack0) /* restore orig stack */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+END_FILE
+#endif

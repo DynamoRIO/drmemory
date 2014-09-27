@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -37,6 +39,8 @@ typedef void (*handler_3_t)(int, siginfo_t *, void *);
 #endif
 
 int xax_val = 0xffffffff;
+
+void test_fault_asm(int xax_val);
 
 /* XXX: share with core/ */
 #ifdef LINUX
@@ -123,34 +127,45 @@ main()
     fprintf(stderr, "starting\n");
     fprintf(stderr, "generating SIGSEGV\n");
     fflush(stderr);
-    /* i#1466: the asm code below tests Dr.Memory state restore event on fault */
-#ifdef UNIX
-    __asm("label:");
-    /* set %eax to be xax_val for the check in handler */
-    __asm("  movl %0, %%eax" : : "g"(xax_val) : "%eax");
-    __asm("  movl $0, %ecx");
-    /* no aflags stealing for instrumenting this movb because of the cmp after */
-    __asm("  movb $0, (%ecx)"); /* access violation */
-    __asm("  cmp  $0, %ecx");
-    /* aflags stealing for instrumenting this movb because of the jcc after */
-    __asm("  movb $0, (%ecx)");
-    /* jcc to end the bb, so %eax is live */
-    __asm("  jnz label");
-#else
-    __asm {
-      label:
-        /* set %eax to be xax_val for the check in handler */
-        mov eax, xax_val
-        mov ecx, 0
-        /* no aflags stealing for instrumenting this movb because of the cmp after */
-        mov [ecx], 0 /* access violation */
-        cmp ecx, 0
-        /* aflags stealing for instrumenting this movb because of the jcc after */
-        mov [ecx], 0
-        /* jcc to end the bb, so %eax is live */
-        jnz label
-    };
-#endif
+
+    test_fault_asm(xax_val);
 
     return 0;
 }
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+#define FUNCNAME test_fault_asm
+/* void test_fault_asm(int xax_val); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        /* set %eax to be xax_val for the check in handler */
+        mov      REG_XAX, ARG1
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* i#1466: the asm code below tests Dr.Memory state restore event on fault */
+        jmp      new_bb
+   new_bb:
+        mov      REG_XCX, 0
+        /* no aflags stealing for instrumenting this mov because of the cmp after */
+        mov      BYTE [REG_XCX], 0 /* access violation */
+        cmp      ecx, 0
+        /* aflags stealing for instrumenting this mov because of the jcc after */
+        mov      BYTE [REG_XCX], 0 /* access violation */
+        /* jcc to end the bb, so %eax is live */
+        jne      new_bb
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+END_FILE
+#endif

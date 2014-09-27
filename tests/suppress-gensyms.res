@@ -21,9 +21,9 @@
 
 Error #1: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!uninit_test1
-suppress.c:65
+suppress.c:69
 suppress!test
 suppress.c
 suppress!main
@@ -31,9 +31,9 @@ suppress.c
 
 Error #2: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!uninit_test2
-suppress.c:70
+suppress.c:74
 suppress!test
 suppress.c
 suppress!main
@@ -41,9 +41,9 @@ suppress.c
 
 Error #3: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!uninit_test3
-suppress.c:75
+suppress.c:79
 suppress!test
 suppress.c
 suppress!main
@@ -51,9 +51,9 @@ suppress.c
 
 Error #4: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!uninit_test4
-suppress.c:80
+suppress.c:84
 suppress!test
 suppress.c
 suppress!main
@@ -61,9 +61,9 @@ suppress.c
 
 Error #5: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!uninit_test5
-suppress.c:85
+suppress.c:89
 suppress!test
 suppress.c
 suppress!main
@@ -71,19 +71,19 @@ suppress.c
 
 Error #6: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:93
+suppress.c:97
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!uninit_test6
-suppress.c:98
+suppress.c:102
 suppress!test
 suppress.c
 suppress!main
@@ -91,19 +91,19 @@ suppress.c
 
 Error #7: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:93
+suppress.c:97
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!do_uninit_read_with_intermediate_frames
-suppress.c:91
+suppress.c:95
 suppress!uninit_test7
-suppress.c:103
+suppress.c:107
 suppress!test
 suppress.c
 suppress!main
@@ -111,7 +111,7 @@ suppress.c
 
 Error #8: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test1
-suppress.c:110
+suppress.c:114
 suppress!test
 suppress.c
 suppress!main
@@ -121,7 +121,7 @@ that was freed
 
 Error #9: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test2
-suppress.c:117
+suppress.c:121
 suppress!test
 suppress.c
 suppress!main
@@ -131,7 +131,7 @@ that was freed
 
 Error #10: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test3
-suppress.c:124
+suppress.c:128
 suppress!test
 suppress.c
 suppress!main
@@ -141,7 +141,7 @@ that was freed
 
 Error #11: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
 suppress!unaddr_test4
-suppress.c:131
+suppress.c:135
 suppress!test
 suppress.c
 suppress!main
@@ -151,7 +151,7 @@ that was freed
 
 Error #12: WARNING: heap allocation failed
 suppress!warning_test1
-suppress.c:179
+suppress.c:183
 suppress!test
 suppress.c
 suppress!main
@@ -162,12 +162,12 @@ Error #13: UNINITIALIZED READ: reading 4 byte(s)
 system call NtQueryVirtualMemory parameter value #1
 # omitting since case varies: kernel32.dll!VirtualQuery
 suppress!syscall_test
-suppress.c:220
+suppress.c:224
 %endif
 %if UNIX
 system call write parameter #1
 suppress!syscall_test
-suppress.c:215
+suppress.c:219
 %endif
 suppress!test
 suppress.c
@@ -183,9 +183,9 @@ suppress.c
 
 Error #15: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!do_uninit_cb
-suppress.c:263
+suppress.c:256
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames
@@ -211,9 +211,9 @@ suppress.c
 
 Error #16: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!do_uninit_cb
-suppress.c:263
+suppress.c:256
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames
@@ -240,7 +240,7 @@ suppress.c
 Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
-suppress.c:198
+suppress.c:202
 suppress!test
 suppress.c
 suppress!main
@@ -249,7 +249,7 @@ suppress.c
 Error #18: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
-suppress.c:200
+suppress.c:204
 suppress!test
 suppress.c
 suppress!main
@@ -258,7 +258,7 @@ suppress.c
 Error #19: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
-suppress.c:200
+suppress.c:204
 suppress!test
 suppress.c
 suppress!main
@@ -266,7 +266,7 @@ suppress.c
 
 Error #20: INVALID HEAP ARGUMENT
 suppress!invalid_free_test1
-suppress.c:206
+suppress.c:210
 suppress!test
 suppress.c
 suppress!main
@@ -277,7 +277,7 @@ suppress.c
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test1
-suppress.c:137
+suppress.c:141
 suppress!test
 suppress.c
 suppress!main
@@ -285,7 +285,7 @@ suppress.c
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test2
-suppress.c:143
+suppress.c:147
 suppress!test
 suppress.c
 suppress!main
@@ -293,7 +293,7 @@ suppress.c
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test3
-suppress.c:149
+suppress.c:153
 suppress!test
 suppress.c
 suppress!main
@@ -301,7 +301,7 @@ suppress.c
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test4
-suppress.c:155
+suppress.c:159
 suppress!test
 suppress.c
 suppress!main
@@ -309,7 +309,7 @@ suppress.c
 
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
 suppress!possible_leak_test1
-suppress.c:163
+suppress.c:167
 suppress!test
 suppress.c
 suppress!main
@@ -317,7 +317,7 @@ suppress.c
 
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
 suppress!possible_leak_test2
-suppress.c:171
+suppress.c:175
 suppress!test
 suppress.c
 suppress!main
@@ -328,7 +328,7 @@ suppress.c
 #%if DRSYMS
 #: LEAK 32 direct bytes + 0 indirect bytes
 #suppress!invalid_free_test1
-#suppress.c:188
+#suppress.c:192
 #suppress!test
 #suppress.c
 #suppress!main
@@ -338,7 +338,7 @@ suppress.c
 %if CYGWIN_PREVISTA
 : LEAK 32 direct bytes + 0 indirect bytes
 suppress!invalid_free_test1
-suppress.c:188
+suppress.c:192
 suppress!test
 suppress.c
 suppress!main
@@ -348,7 +348,7 @@ suppress.c
 %if UNIX
 : LEAK 32 direct bytes + 0 indirect bytes
 suppress!invalid_free_test1
-suppress.c:188
+suppress.c:192
 suppress!test
 suppress.c
 suppress!main

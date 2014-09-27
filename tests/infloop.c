@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -32,6 +34,8 @@
 typedef void (*handler_t)(int);
 typedef void (*handler_3_t)(int, siginfo_t *, void *);
 #endif
+
+void infloop_asm(void **p2);
 
 #ifdef UNIX
 static void
@@ -93,17 +97,6 @@ foo(void)
     }
 }
 
-/* number of times to overflow 32-bit counter before exiting, since we don't
- * really want to spin forever if somehow the test wrapper fails to kill us.
- * overflowing a 32-bit counter takes betwee 2 and 3 seconds.
- * this value of 20 ends up taking 56 seconds on my laptop.
- * we want well over any time the test may take to complete.
- */
-#define MAX_ITERS_DIV_4G 20
-
-#define EXPANDSTR(x) #x
-#define STRINGIFY(x) EXPANDSTR(x)
-
 int
 main()
 {
@@ -124,39 +117,57 @@ main()
     fprintf(stderr, "starting\n");
     fflush(stderr);
 
-#ifdef UNIX
-    /* test register as root: the only pointer to p2's malloc will be in eax: */
-    __asm("mov %0, %%eax" : : "g"(p2) : "%eax");
-    __asm("movl $0, %0" : "=g"(p2));
-    /* make sure no other registers point to p2 (I saw gcc impl 1st asm line
-     * above as "mov p2, edx; mov edx, eax"!)
-     */
-    __asm("mov $0, %ebx; mov $0, %ecx; mov $0, %edx; mov $0, %esi; mov $0, %edi");
-    __asm("infloop:");
-    __asm("  inc %ecx");
-    __asm("  cmp $0, %ecx"); /* wraparound */
-    __asm("  jne infloop");
-    __asm("  inc %edx");
-    __asm("  cmp $"STRINGIFY(MAX_ITERS_DIV_4G)", %edx");
-    __asm("  jne infloop");
-#else
-    __asm {
-        mov eax, p2
-        mov p2, 0
-        mov ebx, 0
-        mov ecx, 0
-        mov edx, 0
-        mov esi, 0
-        mov edi, 0
-      infloop:
-        inc ecx
-        cmp ecx, 0 /* wraparound */
-        jne infloop
-        inc edx
-        cmp edx, MAX_ITERS_DIV_4G
-        jne infloop
-    };
-#endif
+    infloop_asm(&p2);
 
     return 0;
 }
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+/* number of times to overflow 32-bit counter before exiting, since we don't
+ * really want to spin forever if somehow the test wrapper fails to kill us.
+ * overflowing a 32-bit counter takes betwee 2 and 3 seconds.
+ * this value of 20 ends up taking 56 seconds on my laptop.
+ * we want well over any time the test may take to complete.
+ */
+#define MAX_ITERS_DIV_4G HEX(14)
+
+#define FUNCNAME infloop_asm
+/* void infloop(void **p2); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XDX, ARG1
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* test register as root: the only pointer to p2's malloc will be in eax: */
+        mov      REG_XAX, PTRSZ [REG_XDX]
+        mov      PTRSZ [REG_XDX], 0
+        /* make sure no other registers point to p2 */
+        mov      REG_XBX, 0
+        mov      REG_XCX, 0
+        mov      REG_XDX, 0
+        mov      REG_XSI, 0
+        mov      REG_XDI, 0
+
+   infloop_repeat:
+        inc      ecx
+        cmp      ecx, 0 /* wraparound */
+        jne      infloop_repeat
+        inc      edx
+        cmp      edx, MAX_ITERS_DIV_4G
+        jne      infloop_repeat
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+END_FILE
+#endif

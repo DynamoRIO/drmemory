@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -26,6 +26,7 @@
 UNINITIALIZED READ
 name=not in a module
 <not in a module>
+suppress.exe!call_buf_asm
 suppress.exe!non_module_test
 
 UNINITIALIZED READ

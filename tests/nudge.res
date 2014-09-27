@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,6 +27,6 @@
 #crtheap.c:61
 #%endif
 LEAK 160 direct bytes + 0 indirect bytes
-infloop.c:92
+infloop.c:96
 LEAK 42 direct bytes + 17 indirect bytes
-infloop.c:81
+infloop.c:85

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -22,9 +22,9 @@
 
 UNINITIALIZED READ
 suppress!do_uninit_read
-suppress.c:59
+suppress.c:63
 suppress!do_uninit_cb
-suppress.c:263
+suppress.c:256
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames

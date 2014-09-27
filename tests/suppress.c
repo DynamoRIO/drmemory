@@ -20,6 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 /* This is a test to see if different types of error are suppressed by
  * -suppress option.
  */
@@ -51,6 +53,8 @@
 
 static int *int_p;
 static int forcond;
+
+void call_buf_asm(int uninit, void *buf);
 
 static void do_uninit_read(int *val_p)
 {
@@ -227,28 +231,17 @@ non_module_test(void)
 {
     /* We put this code in our buffer:
      *
-     *  83 f8 06             cmp    %eax $0x00000000
-     *  c2                   ret
+     *  83 f8 00             cmp    %eax $0x00000000
+     *  c3                   ret
      *
      * XXX: this won't execute natively if NX/DEP is enabled!
      * We should mark it +x.
-     * It works under DR b/c of a hole in DR where its code cache
-     * is +x (i#329).
+     * It works under DR b/c of a hole in DR where its code cache is +x (i#329).
      */
     char buf[4] = { 0x83, 0xf8, 0x00, 0xc3 };
-    int uninit;
-#ifdef UNIX
-    __asm("mov %0,%%ecx" : : "g"(&buf[0]) : "ecx");
-    __asm("mov %0,%%eax" : : "m"(uninit) : "eax");
-    __asm("call *%ecx");
-#else
-    char *bufptr = &buf[0];
-    __asm {
-        mov ecx, bufptr
-        mov eax, uninit
-        call ecx
-    }
-#endif
+    int uninit[2];
+    int x = 0; /* avoid compiler warning about uninit var use */
+    call_buf_asm(uninit[x], buf);
 }
 
 /* Function pointers to exports. */
@@ -402,3 +395,32 @@ int main(int argc, char **argv)
     int_p = NULL;   /* to make the last leak to be truly unreachable */
     return 0;
 }
+
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+#define FUNCNAME call_buf_asm
+/* void call_buf_asm(int uninit, void *buf); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XDX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* we want to call ARG2 with ARG1 in xax */
+        call     REG_XDX
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+END_FILE
+#endif

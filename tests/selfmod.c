@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -86,15 +87,7 @@ foo(int iters)
     int res;
     void *p = ecode;
     *(int *)(((char *)ecode) + 1) = iters;
-#ifdef UNIX
-    asm("mov %1,%%eax; call *%%eax; mov %%eax,%0" : "=m"(res) : "m"(p) : "%eax");
-#else
-    __asm {
-        mov eax, p
-        call eax
-        mov res, eax
-    };
-#endif
+    res = ((int (*)(void))p)();
     printf("Executed 0x%x iters\n", res);
 }
 
