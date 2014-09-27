@@ -577,27 +577,28 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->load = true;
         mi->pushpop = true;
         return true;
-    case OP_lea: {
+    case OP_lea:
         /* For lea we treat base+index as sources to be
          * propagated, instead of as addressing registers
          */
-        opnd_t memop = instr_get_src(inst, 0);
-        if (opnd_get_base(memop) != REG_NULL)
-            mi->src[0].app = opnd_create_reg(opnd_get_base(memop));
-        if (opnd_get_index(memop) != REG_NULL) {
-            if (opnd_get_base(memop) == REG_NULL)
-                mi->src[0].app = opnd_create_reg(opnd_get_index(memop));
-            else {
-                /* if 16-bit we're ok in fastpath b/c will have same offs */
-                mi->src[1].app = opnd_create_reg(opnd_get_index(memop));
+        if (options.check_uninitialized) {
+            opnd_t memop = instr_get_src(inst, 0);
+            if (opnd_get_base(memop) != REG_NULL)
+                mi->src[0].app = opnd_create_reg(opnd_get_base(memop));
+            if (opnd_get_index(memop) != REG_NULL) {
+                if (opnd_get_base(memop) == REG_NULL)
+                    mi->src[0].app = opnd_create_reg(opnd_get_index(memop));
+                else {
+                    /* if 16-bit we're ok in fastpath b/c will have same offs */
+                    mi->src[1].app = opnd_create_reg(opnd_get_index(memop));
+                }
             }
+            mi->dst[0].app = instr_get_dst(inst, 0);
+            ASSERT(reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/) &&
+                   !reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/),
+                   "lea handling error");
         }
-        mi->dst[0].app = instr_get_dst(inst, 0);
-        ASSERT(reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/) &&
-               !reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/),
-               "lea handling error");
         return true;
-    }
     case OP_cmpxchg:
         /* We keep in fastpath by treating as a 3-source 0-dest instr
          * and using check_definedness, bailing to slowpath if any operand
