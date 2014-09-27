@@ -391,7 +391,7 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
         return true; /* keep going: current use case is -check_handle_leaks */
     if (arg->pre) {
         /* DRSYS_PARAM_BOUNDS => MEMREF_CHECK_ADDRESSABLE */
-        flags = TEST(DRSYS_PARAM_IN, arg->mode) ?
+        flags = (CHECK_UNINITS() && TEST(DRSYS_PARAM_IN, arg->mode)) ?
             MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE;
         if (flags == MEMREF_CHECK_ADDRESSABLE && arg->start_addr != NULL) {
             /* Extra check for buffers allocated on the heap to help find
