@@ -1406,28 +1406,46 @@ typedef struct _shadow_aux_registers_t {
     /* XXX i#471: add floating-point registers here as well */
 } shadow_aux_registers_t;
 
+#ifdef X64
+typedef unsigned short shadow_reg_type_t;
+#else
+typedef byte shadow_reg_type_t;
+#endif
+
 /* We keep our shadow register bits in TLS */
 typedef struct _shadow_registers_t {
 #ifdef TOOL_DR_MEMORY
-    /* First 4-byte TLS slot */
-    byte eax;
-    byte ecx;
-    byte edx;
-    byte ebx;
-    /* Second 4-byte TLS slot */
-    byte esp;
-    byte ebp;
-    byte esi;
-    byte edi;
-    /* Third 4-byte TLS slot.  We go ahead and write DWORD values here
+    /* First 8-byte TLS slot */
+    shadow_reg_type_t xax;
+    shadow_reg_type_t xcx;
+    shadow_reg_type_t xdx;
+    shadow_reg_type_t xbx;
+    /* Second 8-byte TLS slot */
+    shadow_reg_type_t xsp;
+    shadow_reg_type_t xbp;
+    shadow_reg_type_t xsi;
+    shadow_reg_type_t xdi;
+# ifdef X64
+    /* Third 8-byte TLS slot */
+    shadow_reg_type_t r8;
+    shadow_reg_type_t r9;
+    shadow_reg_type_t r10;
+    shadow_reg_type_t r11;
+    /* Fourth 8-byte TLS slot */
+    shadow_reg_type_t r12;
+    shadow_reg_type_t r13;
+    shadow_reg_type_t r14;
+    shadow_reg_type_t r15;
+# endif
+    /* Third/fifth TLS slot.  We go ahead and write DWORD values here
      * for simplicity in our fastpath even though we treat this as
      * a single tracked value.
      */
     byte eflags;
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
-    byte padding[2];
-    /* Fourth 4-byte TLS slot, which provides indirection to additional
+    byte padding[IF_X64_ELSE(6,2)];
+    /* Fourth/sixth TLS slot, which provides indirection to additional
      * shadow memory.
      */
     shadow_aux_registers_t *aux;
@@ -1456,8 +1474,8 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
     ASSERT(options.shadowing, "incorrectly called");
     if (reg_is_gpr(reg)) {
         reg_id_t r = reg_to_pointer_sized(reg);
-        offs = r - DR_REG_XAX;
-        opsz = OPSZ_1;
+        offs = (r - DR_REG_XAX) * IF_X64_ELSE(2, 1);
+        opsz = IF_X64_ELSE(OPSZ_2, OPSZ_1);
     } else {
         ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "internal shadow reg error");
         offs = offsetof(shadow_registers_t, aux);
@@ -1559,11 +1577,11 @@ shadow_registers_thread_init(void *drcontext)
         sr->eflags = init_shadow;
 #ifdef LINUX
         /* PR 426162: post-clone, esp and eax are defined */
-        sr->esp = SHADOW_DWORD_DEFINED;
-        sr->eax = SHADOW_DWORD_DEFINED;
+        sr->xsp = SHADOW_PTRSZ_DEFINED;
+        sr->xax = SHADOW_PTRSZ_DEFINED;
 #elif defined(WINDOWS)
         /* new thread on Windows has esp defined */
-        sr->esp = SHADOW_DWORD_DEFINED;
+        sr->xsp = SHADOW_PTRSZ_DEFINED;
 #endif
     }
     sr->in_heap_routine = 0;
@@ -1613,10 +1631,20 @@ print_shadow_registers(void)
     uint i;
     IF_DEBUG(shadow_registers_t *sr = get_shadow_registers());
     ASSERT(options.shadowing, "shouldn't be called");
+#ifdef X64
+    LOG(0, "    rax=%04x rcx=%04x rdx=%04x rbx=%04x "
+        "rsp=%04x rbp=%04x rsi=%04x rdi=%04x\n"
+        "    r8 =%04x r9 =%04x r10=%04x r11=%04x "
+        "r12=%04x r13=%04x r14=%04x r15=%04x efl=%02x\n",
+        sr->xax, sr->xcx, sr->xdx, sr->xbx, sr->xsp, sr->xbp, sr->xsi, sr->xdi,
+        sr->r8,  sr->r9,  sr->r10, sr->r11, sr->r12, sr->r13, sr->r14, sr->r15,
+        sr->eflags);
+#else
     LOG(0, "    eax=%02x ecx=%02x edx=%02x ebx=%02x "
         "esp=%02x ebp=%02x esi=%02x edi=%02x efl=%x\n",
-        sr->eax, sr->ecx, sr->edx, sr->ebx, sr->esp, sr->ebp,
-        sr->esi, sr->edi, sr->eflags);
+        sr->xax, sr->xcx, sr->xdx, sr->xbx, sr->xsp, sr->xbp,
+        sr->xsi, sr->xdi, sr->eflags);
+#endif
     for (i = 0; i < NUM_XMM_REGS; i++) {
         if (i % 4 == 0)
             LOG(0, "    ");

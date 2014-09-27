@@ -898,11 +898,11 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 
     /* Having only the input byte defined and the rest of the dword
      * undefined is common enough (esp on linux) that we must fastpath
-     * it and thus need the offset, but only for 1-byte src (2-byte
-     * has complexities if the 2 shadows don't match).
+     * it and thus need the offset.
      */
     if (opc == OP_movzx || opc == OP_movsx) {
-        if (mi->opsz == 4 && (mi->src_opsz == 1 || mi->src_opsz == 2))
+        if ((mi->opsz == 4 IF_X64(|| mi->opsz == 8)) &&
+            (mi->src_opsz == 1 || mi->src_opsz == 2))
             mi->need_offs = true;
         else {
             ASSERT(mi->opsz <= 4, "no support for >4 movzx/movsz");
