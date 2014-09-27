@@ -1449,7 +1449,7 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
     if (instr_ok_for_instrument_fastpath(nxt, &mi, cur->bb) &&
         adjust_opnds_for_fastpath(nxt, &mi)) {
         opnd_t memop;
-        int cur_disp, nxt_disp, shadow_diff;
+        ptr_int_t cur_disp, nxt_disp, shadow_diff;
         if (!should_share_addr_helper(&mi)) {
 #ifdef STATISTICS
             if (mi.load || mi.store) {
@@ -1472,23 +1472,29 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
                              mi.store, &mi.memsz, &mi.pushpop_stackop);
         if (cur->memsz != mi.memsz)
             return false;
-        if (!opnd_is_base_disp(cur_memop) || !opnd_is_base_disp(memop)) {
-            ASSERT(false, "NYI: handle others: x64 only");
+#ifdef X64
+        if (opnd_is_rel_addr(cur_memop) && opnd_is_rel_addr(memop)) {
+            cur_disp = (ptr_int_t) opnd_get_addr(cur_memop);
+            nxt_disp = (ptr_int_t) opnd_get_addr(memop);
+        } else
+#endif
+        if (opnd_is_base_disp(cur_memop) && opnd_is_base_disp(memop)) {
+            if (opnd_get_base(cur_memop) != opnd_get_base(memop) ||
+                opnd_get_index(cur_memop) != opnd_get_index(memop) ||
+                opnd_get_scale(cur_memop) != opnd_get_scale(memop) ||
+                opnd_get_segment(cur_memop) != opnd_get_segment(memop))
+                return false;
+            if (opnd_is_null(cur->bb->shared_memop))
+                cur_disp = opnd_get_disp(cur_memop);
+            else
+                cur_disp = opnd_get_disp(cur->bb->shared_memop);
+            if (cur->pushpop_stackop)
+                cur_disp += (cur->load ? -(int)cur->memsz : cur->memsz);
+            nxt_disp = opnd_get_disp(memop);
+        } else {
             return false;
         }
-        if (opnd_get_base(cur_memop) != opnd_get_base(memop) ||
-            opnd_get_index(cur_memop) != opnd_get_index(memop) ||
-            opnd_get_scale(cur_memop) != opnd_get_scale(memop) ||
-            opnd_get_segment(cur_memop) != opnd_get_segment(memop))
-            return false;
-        if (opnd_is_null(cur->bb->shared_memop))
-            cur_disp = opnd_get_disp(cur_memop);
-        else
-            cur_disp = opnd_get_disp(cur->bb->shared_memop);
-        if (cur->pushpop_stackop)
-            cur_disp += (cur->load ? -(int)cur->memsz : cur->memsz);
         cur_disp += cur->bb->shared_disp_implicit;
-        nxt_disp = opnd_get_disp(memop);
         /* We do a static check for aligned disp, and so will only share
          * when base+index is aligned as well, but should be rare to have
          * unaligned base+index and unaligned disp that add to become aligned
@@ -1500,8 +1506,8 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
         }
         shadow_diff = (nxt_disp - cur_disp) / 4; /* 2 shadow bits per byte */
         /* The option is more intuitive to have it *4 so we /4 here */
-        if (shadow_diff > (int)cur->bb->share_xl8_max_diff/4 ||
-            shadow_diff < -(int)(cur->bb->share_xl8_max_diff/4)) {
+        if (shadow_diff > (ptr_int_t)cur->bb->share_xl8_max_diff/4 ||
+            shadow_diff < -(ptr_int_t)(cur->bb->share_xl8_max_diff/4)) {
             LOG(3, "  NOT sharing: disp diff %d too big\n", shadow_diff);
             STATS_INC(xl8_not_shared_disp_too_big);
             return false;
