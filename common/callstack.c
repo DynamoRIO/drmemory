@@ -1066,12 +1066,14 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
                      (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
                      /* indirect through mem: 0xff /2 + disp32 (mod==2) */
                      (*(pc - 6) == OP_CALL_IND &&
-                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15) &&
+                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)
                       /* i#1217: rule out WOW64 syscall from DR code invoked on app
                        * stack by -replace_malloc.  We always have a syscall
                        * in an app_loc_t so we should never need it in a frame.
                        */
-                      (*(uint*)(pc - 4) != WOW64_SYSOFFS || *(pc - 7) != OP_SEG_FS)) ||
+                      IF_NOT_X64(&& (*(uint*)(pc - 4) != WOW64_SYSOFFS ||
+                                     *(pc - 7) != OP_SEG_FS))
+                      ) ||
                      /* indirect through mem: 0xff /2 + sib (w/o sib reg=5) */
                      (*(pc - 3) == OP_CALL_IND &&
                       (*(pc - 2) == 0x14 && ((*(pc - 1) & 0x3) != 5))));
