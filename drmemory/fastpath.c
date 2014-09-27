@@ -307,7 +307,8 @@ static bool
 addr_reg_ok_for_fastpath(reg_id_t reg)
 {
     return (reg == REG_NULL ||
-            (reg_is_gpr(reg) && reg_is_32bit(reg)));
+            (reg_is_gpr(reg) &&
+             IF_X64_ELSE(reg_is_64bit(reg), reg_is_32bit(reg))));
 }
 
 static bool
@@ -323,6 +324,7 @@ reg_ok_for_fastpath(int opc, opnd_t reg, bool dst)
     reg_id_t r = opnd_get_reg(reg);
     return (reg_ignore_for_fastpath(opc, reg, dst) ||
             (reg_is_32bit(r) || reg_is_16bit(r) || reg_is_8bit(r) ||
+             IF_X64(reg_is_64bit(r) ||)
              /* i#1453: we shadow xmm regs now
               * XXX i#243: but not ymm regs
               */
@@ -5567,6 +5569,16 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     uses[DR_REG_XBP - REG_START] = INT_MAX;
     uses[DR_REG_XSI - REG_START] = INT_MAX;
     uses[DR_REG_XDI - REG_START] = INT_MAX;
+#ifdef X64
+    /* XXX i#1632: once we have byte-to-byte shadowing we shouldn't need
+     * just a/b/c/d regs and should be able to use these.  For now with
+     * 1B-to-2b we need %ah, etc.
+     */
+    for (i = DR_REG_R8; i <= DR_REG_R15; i++) {
+        ASSERT(i - REG_START < NUM_LIVENESS_REGS, "overflow");
+        uses[i - REG_START] = INT_MAX;
+    }
+#endif
     for (i = 0; i < NUM_LIVENESS_REGS; i++) {
         if (uses[i] < uses_least) {
             uses_second = uses_least;
