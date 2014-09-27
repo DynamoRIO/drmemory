@@ -973,6 +973,35 @@ replace_routine(bool add, const module_data_t *mod,
  * does the typical "call thunk to get retaddr in ebx, add immed to ebx"
  * to find the GOT, and then has "lea <offs of func>+GOT into eax"
  * for each return possibility.  Xref PR 623449.
+ * 32-bit example:
+ *    0x4efd50 <strlen>:      push   %ebx
+ *    0x4efd51 <strlen+1>:    call   0x48f9ef <__i686.get_pc_thunk.bx>
+ *    0x4efd56 <strlen+6>:    add    $0xfa29e,%ebx
+ *    0x4efd5c <strlen+12>:   cmpl   $0x0,0x354c(%ebx)
+ *    0x4efd63 <strlen+19>:   jne    0x4efd6a <strlen+26>
+ *    0x4efd65 <strlen+21>:   call   0x48ffa0 <__init_cpu_features>
+ *    0x4efd6a <strlen+26>:   lea    -0xfa1e4(%ebx),%eax
+ *    0x4efd70 <strlen+32>:   testl  $0x4000000,0x3560(%ebx)
+ *    0x4efd7a <strlen+42>:   je     0x4efd82 <strlen+50>
+ *    0x4efd7c <strlen+44>:   lea    -0xfa264(%ebx),%eax
+ *    0x4efd82 <strlen+50>:   pop    %ebx
+ *    0x4efd83 <strlen+51>:   ret
+ *
+ * For 64-bit, we simply look for "lea <rip-rel+offs> into eax".
+ * Example:
+ *    0x37a4284b90 <strcmp>:    cmpl   $0x0,0x339029(%rip)       # <__cpu_features>
+ *    0x37a4284b97 <strcmp+7>:  jne    0x37a4284b9e <strcmp+14>
+ *    0x37a4284b99 <strcmp+9>:  callq  0x37a4221fa0 <__init_cpu_features>
+ *    0x37a4284b9e <strcmp+14>: testl  $0x200,0x339020(%rip)     # <__cpu_features+8>
+ *    0x37a4284ba8 <strcmp+24>: jne    0x37a4284bbd <strcmp+45>
+ *    0x37a4284baa <strcmp+26>: lea    0xac32f(%rip),%rax        # <__strcmp_sse42>
+ *    0x37a4284bb1 <strcmp+33>: testl  $0x100000,0x339015(%rip)  # <__cpu_features+16>
+ *    0x37a4284bbb <strcmp+43>: jne    0x37a4284bd7 <strcmp+71>
+ *    0x37a4284bbd <strcmp+45>: lea    0xb763c(%rip),%rax        # <__strcmp_ssse3>
+ *    0x37a4284bc4 <strcmp+52>: testl  $0x200,0x339002(%rip)     # <__cpu_features+16>
+ *    0x37a4284bce <strcmp+62>: jne    0x37a4284bd7 <strcmp+71>
+ *    0x37a4284bd0 <strcmp+64>: lea    0x9(%rip),%rax            # <__strcmp_sse2>
+ *    0x37a4284bd7 <strcmp+71>: retq
  */
 static void
 replace_all_indirect(bool add, const module_data_t *mod,
@@ -980,13 +1009,20 @@ replace_all_indirect(bool add, const module_data_t *mod,
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t inst;
-    app_pc pc = indir, prev_pc;
+    app_pc pc = indir;
+#if !defined(X64) || defined(DEBUG)
+    app_pc prev_pc;
+#endif
+#ifndef X64
     bool last_was_call = false, first_call = false;
     app_pc addr_got = NULL;
+#endif
     instr_init(drcontext, &inst);
     do {
         instr_reset(drcontext, &inst);
+#if !defined(X64) || defined(DEBUG)
         prev_pc = pc;
+#endif
         /* look for partial map (i#730) */
         if (!dr_module_contains_addr(mod, pc + MAX_INSTR_SIZE)) {
             WARN("WARNING: decoding off end of module for %s\n",
@@ -1000,6 +1036,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
                 replace_routine_name[index], prev_pc);
             break;
         }
+#ifndef X64
         if (last_was_call) {
             /* At instr after call to thunk: should be add of immed to ebx */
             first_call = true;
@@ -1013,6 +1050,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
                 if (addr_got < mod->start || !dr_module_contains_addr(mod, addr_got))
                     addr_got = NULL;
             }
+            last_was_call = false;
         }
         if (addr_got != NULL &&
             instr_get_opcode(&inst) == OP_lea &&
@@ -1034,6 +1072,22 @@ replace_all_indirect(bool add, const module_data_t *mod,
         }
         if (!first_call && instr_is_call_direct(&inst))
             last_was_call = true;
+#else
+        if (instr_get_opcode(&inst) == OP_lea &&
+            opnd_get_reg(instr_get_dst(&inst, 0)) == REG_XAX &&
+            opnd_is_rel_addr(instr_get_src(&inst, 0))) {
+            app_pc addr = opnd_get_addr(instr_get_src(&inst, 0));
+            LOG(2, "\tfound return value "PFX" for indir func %s @"PFX"\n",
+                addr, replace_routine_name[index], prev_pc);
+            if (addr < mod->start || !dr_module_contains_addr(mod, addr)) {
+                LOG(1, "WARNING: unknown code in indir func %s @"PFX"\n",
+                    replace_routine_name[index], prev_pc);
+                break;
+            }
+            if (addr != resolved)
+                replace_routine(add, mod, addr, index _IF_DEBUG(false));
+        }
+#endif
     } while (!instr_is_return(&inst));
     instr_reset(drcontext, &inst);
 
