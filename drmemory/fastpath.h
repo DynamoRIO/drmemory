@@ -131,6 +131,8 @@ typedef struct _fastpath_info_t {
     /* for jmp-to-slowpath optimization (PR 494769) */
     instr_t *appclone;
     instr_t *slow_store_retaddr;
+    instr_t *slow_store_retaddr2; /* if takes 2 instrs */
+    opnd_t slow_store_dst;
     instr_t *slow_jmp;
     int num_to_propagate;
 } fastpath_info_t;

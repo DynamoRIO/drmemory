@@ -3975,7 +3975,8 @@ slow_path(app_pc pc, app_pc decode_pc)
  * used as an intpr opnd for decoding.
  */
 static bool
-instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi, opnd_t *decode_pc_opnd)
+instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi,
+                                opnd_t *decode_pc_opnd)
 {
     app_pc pc = instr_get_app_pc(inst);
     app_pc decode_pc = dr_app_pc_for_decoding(pc);
@@ -4038,6 +4039,25 @@ instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi)
     return instr_shared_slowpath_decode_pc(inst, mi, &ignore);
 }
 
+static void
+instru_insert_mov_pc(void *drcontext, instrlist_t *bb, instr_t *inst,
+                            opnd_t dst, opnd_t pc_opnd)
+{
+    if (opnd_is_instr(pc_opnd)) {
+        /* This does insert meta instrs */
+        instrlist_insert_mov_instr_addr(drcontext, opnd_get_instr(pc_opnd),
+                                        NULL /* in code cache */,
+                                        dst, bb, inst, NULL, NULL);
+    } else {
+        ASSERT(opnd_is_immed_int(pc_opnd), "invalid opnd");
+        /* This does insert meta instrs */
+        instrlist_insert_mov_immed_ptrsz(drcontext, opnd_get_immed_int(pc_opnd),
+                                         dst, bb, inst, NULL, NULL);
+    }
+
+
+}
+
 void
 instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi)
@@ -4059,10 +4079,9 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         instr_t *appinst = INSTR_CREATE_label(drcontext);
         if (mi == NULL) {
             ASSERT(!whole_bb_spills_enabled(), "whole-bb needs tls preserved");
-            PRE(bb, inst,
-                INSTR_CREATE_mov_imm(drcontext,
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                     decode_pc_opnd));
+            instru_insert_mov_pc(drcontext, bb, inst,
+                                 spill_slot_opnd(drcontext, SPILL_SLOT_1),
+                                 decode_pc_opnd);
             /* XXX: this hardcoded address will be wrong if this
              * fragment is shifted, but DR now disables shifting in the
              * presence of clients (i#784, DRi#696).
@@ -4071,10 +4090,9 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * And so long as we're never at a "safe spot" in the lean procedure,
              * DR won't relocate us or remove our return point out from underneath us.
              */
-            PRE(bb, inst,
-                INSTR_CREATE_mov_imm(drcontext,
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_2),
-                                     opnd_create_instr(appinst)));
+            instru_insert_mov_pc(drcontext, bb, inst,
+                                 spill_slot_opnd(drcontext, SPILL_SLOT_2),
+                                 opnd_create_instr(appinst));
             PRE(bb, inst,
                 INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_slowpath_entry)));
         } else {
@@ -4134,31 +4152,29 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                  * retaddr, and thus do not need a second parameter.
                  */
                 mi->appclone = instr_clone(drcontext, inst);
-                mi->slow_store_retaddr =
-                    INSTR_CREATE_mov_imm(drcontext,
-                                         (r2 == SPILL_REG_NONE) ?
-                                         spill_slot_opnd(drcontext, SPILL_SLOT_2) :
-                                         opnd_create_reg(s2->reg),
-                                         opnd_create_instr(mi->appclone));
-                PRE(bb, inst, mi->slow_store_retaddr);
+                mi->slow_store_dst = (r2 == SPILL_REG_NONE) ?
+                    spill_slot_opnd(drcontext, SPILL_SLOT_2) : opnd_create_reg(s2->reg);
+                instrlist_insert_mov_instr_addr(drcontext, mi->appclone,
+                                                NULL /* in code cache */,
+                                                mi->slow_store_dst,
+                                                bb, inst, &mi->slow_store_retaddr,
+                                                &mi->slow_store_retaddr2);
                 mi->slow_jmp = INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt));
                 PRE(bb, inst, mi->slow_jmp);
                 instr_set_meta(mi->appclone);
                 instr_set_translation(mi->appclone, NULL);
                 PRE(bb, inst, mi->appclone);
             } else {
-                PRE(bb, inst,
-                    INSTR_CREATE_mov_imm(drcontext,
-                                         (r1 == SPILL_REG_NONE) ?
-                                         spill_slot_opnd(drcontext, SPILL_SLOT_1) :
-                                         opnd_create_reg(s1->reg),
-                                         decode_pc_opnd));
-                PRE(bb, inst,
-                    INSTR_CREATE_mov_imm(drcontext,
-                                         (r2 == SPILL_REG_NONE) ?
-                                         spill_slot_opnd(drcontext, SPILL_SLOT_2) :
-                                         opnd_create_reg(s2->reg),
-                                         opnd_create_instr(appinst)));
+                instru_insert_mov_pc(drcontext, bb, inst,
+                                     (r1 == SPILL_REG_NONE) ?
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_1) :
+                                     opnd_create_reg(s1->reg),
+                                     decode_pc_opnd);
+                instru_insert_mov_pc(drcontext, bb, inst,
+                                     (r2 == SPILL_REG_NONE) ?
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_2) :
+                                     opnd_create_reg(s2->reg),
+                                     opnd_create_instr(appinst));
                 PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt)));
             }
         }
@@ -4303,10 +4319,9 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                          * skip this: but would need to xfer from slot2 to slot5,
                          * which would require a spill, so we don't bother.
                          */
-                        PRE(ilist, NULL,
-                            INSTR_CREATE_mov_st(drcontext,
-                                                spill_slot_opnd(drcontext, SPILL_SLOT_5),
-                                                opnd_create_instr(return_point)));
+                        instru_insert_mov_pc(drcontext, ilist, NULL,
+                                             spill_slot_opnd(drcontext, SPILL_SLOT_5),
+                                             opnd_create_instr(return_point));
                     }
                     PRE(ilist, NULL,
                         INSTR_CREATE_jmp(drcontext,
@@ -6074,11 +6089,18 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             !instr_is_syscall(nxt) &&
             !instr_is_interrupt(nxt)) {
             ASSERT(mi.slow_store_retaddr != NULL, "slowpath opt error");
-            ASSERT(opnd_is_instr(instr_get_src(mi.slow_store_retaddr, 0)) &&
-                   opnd_get_instr(instr_get_src(mi.slow_store_retaddr, 0)) ==
-                   mi.appclone, "slowpath opt error");
             /* point at the jmp so slow_path() knows to return right afterward */
-            instr_set_src(mi.slow_store_retaddr, 0, opnd_create_instr(mi.slow_jmp));
+            instru_insert_mov_pc(drcontext, bb, mi.slow_store_retaddr,
+                                 mi.slow_store_dst, opnd_create_instr(mi.slow_jmp));
+            /* we've replaced the original so remove it */
+            instrlist_remove(bb, mi.slow_store_retaddr);
+            instr_destroy(drcontext, mi.slow_store_retaddr);
+            mi.slow_store_retaddr = NULL;
+            if (mi.slow_store_retaddr2 != NULL) {
+                instrlist_remove(bb, mi.slow_store_retaddr2);
+                instr_destroy(drcontext, mi.slow_store_retaddr2);
+                mi.slow_store_retaddr2 = NULL;
+            }
             instrlist_remove(bb, mi.appclone);
             instr_destroy(drcontext, mi.appclone);
             mi.appclone = NULL;

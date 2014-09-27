@@ -732,8 +732,8 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         insert_spill_or_restore(drcontext, bb, inst, &si2, true/*save*/, false);
         /* we don't need to negate here since handle_adjust_esp() does that */
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, opnd_create_reg(DR_REG_XDX),
-                                opnd_create_instr(retaddr)));
+            INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(DR_REG_XDX),
+                                 opnd_create_instr(retaddr)));
         PRE(bb, inst, INSTR_CREATE_jmp
             (drcontext, opnd_create_pc((sp_action == SP_ADJUST_ACTION_ZERO) ?
                                        shared_esp_slowpath_zero :
@@ -1049,8 +1049,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, true/*save*/, false);
 
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, opnd_create_reg(DR_REG_XDX),
-                                opnd_create_instr(retaddr)));
+            INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(DR_REG_XDX),
+                                 opnd_create_instr(retaddr)));
         ASSERT(type >= ESP_ADJUST_FAST_FIRST &&
                type <= ESP_ADJUST_FAST_LAST, "invalid type for esp fastpath");
         ASSERT(sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX, "sp_action OOB");
