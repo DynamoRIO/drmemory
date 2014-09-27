@@ -1303,7 +1303,7 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
         } else if (TEST(SYSARG_POST_SIZE_IO_STATUS, arg->flags)) {
 #ifdef WINDOWS
             IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) pt->sysarg[-arg->size];
-            ULONG sz;
+            ULONG_PTR sz;
             ASSERT(sizeof(status->Information) == sizeof(sz), "");
             ASSERT(!pre, "post-io flag should be on dup entry only");
             ASSERT(arg->size <= 0, "io block can't be immed");
