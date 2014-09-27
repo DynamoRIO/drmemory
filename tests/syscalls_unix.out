@@ -20,7 +20,7 @@
 #
 done
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       5 unique,     9 total unaddressable access(es)
+~~Dr.M~~       6 unique,    10 total unaddressable access(es)
 ~~Dr.M~~       5 unique,     5 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)

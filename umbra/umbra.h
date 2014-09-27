@@ -145,7 +145,11 @@ typedef enum {
 typedef enum {
     /** Unknown memory type */
     UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN = 0x1,
-    /** Not a shadow memory */
+    /**
+     * Not a shadow memory: i.e., the address being translated is not from a valid
+     * application memory region.  Umbra does not support storing metadata in
+     * shadow memory for such addresses.
+     */
     UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW = 0x2,
     /** Normal writable shadow memory */
     UMBRA_SHADOW_MEMORY_TYPE_NORMAL = 0x4,
@@ -311,6 +315,10 @@ DR_EXPORT
  * @param[in] value_size  The initial value size, could be 1, 2, 4, or 8 (x64).
  *                        Only 1 is supported now.
  *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
+ *
  * \note: If the newly created shadow memory overlaps with the existing shadow
  * memory, the value of overlapped part will be clobbered with new value.
  *
@@ -334,6 +342,10 @@ DR_EXPORT
  * @param[in] map         The mapping object to use.
  * @param[in] app_addr    Application memory address.
  * @param[in] app_size    Application memory size.
+ *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  *
  * \note: part of the shadow memory might not be actually deleted,
  * which will be set to the value specified on \p map creation instead.
@@ -398,6 +410,9 @@ DR_EXPORT
  *                             Return the number of bytes actually read.
  * @param[out]    buffer       The buffer holds the read value.
  *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
 umbra_read_shadow_memory(IN    umbra_map_t *map,
@@ -417,6 +432,9 @@ DR_EXPORT
  *                             Return the number of bytes actually written.
  * @param[in]     buffer       The buffer holds the value to write.
  *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
 umbra_write_shadow_memory(IN  umbra_map_t *map,
@@ -436,6 +454,10 @@ DR_EXPORT
  * @param[in]  value         The value to be set in shadow memory.
  * @param[in]  value_size    The value size for \p value, could be 1, 2, 4,
  *                           or 8 (x64). Only 1 is supported now.
+ *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
 umbra_shadow_set_range(IN   umbra_map_t *map,
@@ -455,6 +477,10 @@ DR_EXPORT
  * @param[in]  app_dst      Destination application memory address.
  * @param[in]  app_size     Application memory size.
  * @param[out] shadow_size  The number of bytes actually copied.
+ *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  *
  * \note: Overlap is allowed.
  */
@@ -478,6 +504,10 @@ DR_EXPORT
  * @param[in]     value_size  The value size for \p value, could be 1, 2, 4,
  *                            or 8 (x64). Only 1 is supported now.
  * @param[out]    found       Return true if \p value found in the range.
+ *
+ * \return success code.  If \p app_addr is not a valid application address
+ * and the shadow mapping implementation does not support shadow memory
+ * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
 umbra_value_in_shadow_memory(IN    umbra_map_t *map,

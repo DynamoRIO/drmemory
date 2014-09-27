@@ -370,6 +370,9 @@ shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
     /* avoid a fault: if no shadow yet, it's unaddr */
     if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC)
         return SHADOW_UNADDRESSABLE;
+    /* if non-app-memory (no shadow supported there for x64), it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW)
+        return SHADOW_DWORD_UNADDRESSABLE;
     idx = addr - info->app_base;
     if (!MAP_4B_TO_1B)
         return bitmapx2_get((bitmap_t)info->shadow_base, idx);
@@ -395,6 +398,9 @@ shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
     /* avoid a fault: if no shadow yet, it's unaddr */
     if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC)
         return SHADOW_DWORD_UNADDRESSABLE;
+    /* if non-app-memory (no shadow supported there for x64), it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW)
+        return SHADOW_DWORD_UNADDRESSABLE;
     idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) - (ptr_uint_t)info->app_base;
     if (!MAP_4B_TO_1B)
         return bitmapx2_byte((bitmap_t)info->shadow_base, idx);
@@ -415,6 +421,13 @@ shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val)
                                     NULL, info) != DRMF_SUCCESS) {
             ASSERT(false, "fail to get shadow memory info");
         }
+    }
+    /* If non-app-memory (no shadow supported there for x64), we can't recover
+     * (FIXME i#1640: umbra should be more robust).
+     */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW) {
+        NOTIFY_ERROR("unhandled application memory @"PFX NL, addr);
+        dr_abort();
     }
     /* Note that we can come here for SHADOW_SPECIAL_DEFINED, for mmap
      * regions used for calloc (we mark headers as unaddressable), etc.
@@ -437,8 +450,10 @@ shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val)
                                         UMBRA_SHADOW_MEMORY_TYPE_SHARED) ?
                                        (ptr_uint_t)*(info->shadow_base) :
                                        SHADOW_DEFAULT_VALUE,
-                                       SHADOW_DEFAULT_VALUE_SIZE) != DRMF_SUCCESS)
-            ASSERT(false, "fail to create shadow memory");
+                                       SHADOW_DEFAULT_VALUE_SIZE) != DRMF_SUCCESS) {
+            NOTIFY_ERROR("unhandled application memory @"PFX NL, addr);
+            dr_abort();
+        }
         if (umbra_get_shadow_memory(umbra_map, addr,
                                     NULL, info) != DRMF_SUCCESS)
             ASSERT(false, "fail to get shadow memory info");

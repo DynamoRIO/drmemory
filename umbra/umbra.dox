@@ -97,4 +97,10 @@ Umbra may use page faults to implement lazy shadow memory allocation.  When
 generating meta instructions to read shadow values, be sure to assign
 translation values to the instructions.
 
+Some shadow mapping schemes do not support shadow memory for invalid
+application addresses (i.e., addresses for which no application memory is
+allocated).  If such application addresses are passed to shadow API
+routines, they will fail with #DRMF_ERROR_INVALID_ADDRESS, while shadow
+memory type queries will indicate #UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW.
+
 */

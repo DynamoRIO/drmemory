@@ -52,7 +52,8 @@ typedef struct _padded_str_t {
 /* Create an unaddr usage passed to the open syscall.  We try to make this work
  * when run natively by not using malloc between the free and the use.
  */
-void unaddr_open(void)
+static void
+unaddr_open(void)
 {
     const char devnull[] = "/dev/null";
     padded_str_t *dangling_ptr;
@@ -67,11 +68,26 @@ void unaddr_open(void)
     close(fd);
 }
 
+static void
+wild_open(void)
+{
+    int fd;
+    /* pick a "wild address" to test umbra on non-app addresses (i#1641) */
+#ifdef X64
+#   define WILD_ADDR 0x0000812300001234 /* non-canonical */
+#else
+#   define WILD_ADDR 0x4 /* umbra handles everything, so just ensure it's unaddr */
+#endif
+    fd = open((const char *)WILD_ADDR, O_RDONLY);
+    close(fd);
+}
+
 /* Create an uninit usage passed to the open syscall.  We try to make this work
  * when run natively by initializing it on the stack once, calling it again, and
  * praying that the previous stack frame lines up with the current one.
  */
-void uninit_open(int initialize)
+static void
+uninit_open(int initialize)
 {
     const char devnull[] = "/dev/null";
     padded_str_t stack_str;
@@ -86,7 +102,8 @@ void uninit_open(int initialize)
     close(fd);
 }
 
-void access_filesystem(void)
+static void
+access_filesystem(void)
 {
     char tmpdir[] = "syscallsXXXXXX";
     int fd;
@@ -124,7 +141,8 @@ void access_filesystem(void)
     chdir(orig_dir);
 }
 
-void uninit_finit_module(int initialize)
+static void
+uninit_finit_module(int initialize)
 {
     padded_str_t stack_str;
     int fd;
@@ -150,7 +168,8 @@ void uninit_finit_module(int initialize)
     syscall(SYS_finit_module, fd, stack_str.str, 0);
 }
 
-void unaddr_finit_module(void)
+static void
+unaddr_finit_module(void)
 {
     padded_str_t *dangling_ptr;
     dangling_ptr = malloc(sizeof(padded_str_t));
@@ -161,7 +180,8 @@ void unaddr_finit_module(void)
     syscall(SYS_finit_module, -1, dangling_ptr->str, 0);
 }
 
-void unaddr_uninit_execve(void)
+static void
+unaddr_uninit_execve(void)
 {
     char *argv[] = {
         malloc(10 * sizeof(char)),
@@ -178,7 +198,8 @@ void unaddr_uninit_execve(void)
     free(envp[0]);
 }
 
-void unaddr_process_vm_readv_writev(int readv)
+static void
+unaddr_process_vm_readv_writev(int readv)
 {
     struct iovec *local;
     struct iovec *remote;
@@ -224,6 +245,7 @@ int main(void)
 {
     access_filesystem();
     unaddr_open();
+    wild_open();
     uninit_open(1);
     uninit_open(0);
     unaddr_finit_module();

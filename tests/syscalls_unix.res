@@ -21,53 +21,58 @@
 Error #1: UNADDRESSABLE ACCESS of freed memory: reading 10 byte(s)
 system call open
 unaddr_open
-syscalls_unix.c:66
+syscalls_unix.c:67
 overlaps memory that was freed
 
-Error #2: UNINITIALIZED READ: reading 10 byte(s)
+Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+system call open
+wild_open
+syscalls_unix.c:81
+
+Error #3: UNINITIALIZED READ: reading 10 byte(s)
 system call open
 uninit_open
-syscalls_unix.c:85
+syscalls_unix.c:101
 
-Error #3: UNADDRESSABLE ACCESS of freed memory: reading 12 byte(s)
+Error #4: UNADDRESSABLE ACCESS of freed memory: reading 12 byte(s)
 system call finit_module
 unaddr_finit_module
-syscalls_unix.c:161
+syscalls_unix.c:180
 overlaps memory that was freed
 
 # Number of bytes can vary depending on where 1st null char happens to be:
-Error #4: UNINITIALIZED READ: reading
+Error #5: UNINITIALIZED READ: reading
 system call finit_module
 uninit_finit_module
-syscalls_unix.c:150
+syscalls_unix.c:168
 
-Error #5: UNADDRESSABLE ACCESS of freed memory: reading 1 byte(s)
+Error #6: UNADDRESSABLE ACCESS of freed memory: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-syscalls_unix.c:177
+syscalls_unix.c:197
 overlaps memory that was freed
 
-Error #6: UNINITIALIZED READ: reading 1 byte(s)
+Error #7: UNINITIALIZED READ: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-syscalls_unix.c:177
+syscalls_unix.c:197
 
-Error #7: UNINITIALIZED READ: reading 20 byte(s)
+Error #8: UNINITIALIZED READ: reading 20 byte(s)
 system call process_vm_readv
 unaddr_process_vm_readv_writev
-syscalls_unix.c:211
+syscalls_unix.c:232
 
-Error #8: UNADDRESSABLE ACCESS beyond heap bounds: writing 2 byte(s)
+Error #9: UNADDRESSABLE ACCESS beyond heap bounds: writing 2 byte(s)
 system call process_vm_readv
 unaddr_process_vm_readv_writev
-syscalls_unix.c:211
+syscalls_unix.c:232
 
-Error #9: UNINITIALIZED READ: reading 10 byte(s)
+Error #10: UNINITIALIZED READ: reading 10 byte(s)
 system call process_vm_writev
 unaddr_process_vm_readv_writev
-syscalls_unix.c:213
+syscalls_unix.c:234
 
-Error #10: UNADDRESSABLE ACCESS beyond heap bounds: reading 2 byte(s)
+Error #11: UNADDRESSABLE ACCESS beyond heap bounds: reading 2 byte(s)
 system call process_vm_writev
 unaddr_process_vm_readv_writev
-syscalls_unix.c:213
+syscalls_unix.c:234

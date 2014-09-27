@@ -134,6 +134,19 @@ test_CreatePrivateNamespace(void)
     return;
 }
 
+static void
+test_QueryVirtualMemory(void)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    /* pick a "wild address" to test umbra on non-app addresses (i#1641) */
+#ifdef X64
+#   define WILD_ADDR 0x0000812300001234 /* non-canonical */
+#else
+#   define WILD_ADDR 0x4 /* umbra handles everything, so just ensure it's unaddr */
+#endif
+    VirtualQuery(NULL, (MEMORY_BASIC_INFORMATION *)WILD_ADDR, sizeof(mbi));
+}
+
 int
 main()
 {
@@ -145,6 +158,9 @@ main()
     cout << "done" << endl;
     cout << "Test NtCreatePrivateNamespaces: ";
     test_CreatePrivateNamespace();
+    cout << "done" << endl;
+    cout << "Test NtQueryVirtualMemory: ";
+    test_QueryVirtualMemory();
     cout << "done" << endl;
     return 0;
 }

@@ -33,3 +33,8 @@ Error #3: UNINITIALIZED READ: reading 4 byte(s)
 system call NtCreatePrivateNamespace
 test_CreatePrivateNamespace
 syscalls_win.cpp:122
+
+Error #4: UNADDRESSABLE ACCESS: writing 28 byte(s)
+system call NtQueryVirtualMemory parameter #3
+test_QueryVirtualMemory
+syscalls_win.cpp:147

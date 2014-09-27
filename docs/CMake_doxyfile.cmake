@@ -204,16 +204,19 @@ if (PACKAGED_WITH_DYNAMORIO)
     "\\1 PACKAGED_WITH_DYNAMORIO" string "${string}")
 endif()
 
+# XXX: share w/ list of source paths in CMakeLists.txt ${headers}
+set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h")
+set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
+set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
 if (TOOL_DR_MEMORY)
-  # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
-  set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h")
-  set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
-  set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
   string(REGEX REPLACE
     "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")
   string(REGEX REPLACE
     "main.dox" "main.dox tools.dox ${headers}" string "${string}")
-endif (TOOL_DR_MEMORY)
+else ()
+  string(REGEX REPLACE
+    "main.dox" "main.dox ${headers}" string "${string}")
+endif ()
 
 file(WRITE ${outfile} "${string}")
 

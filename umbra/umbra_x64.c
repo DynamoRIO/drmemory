@@ -606,7 +606,7 @@ umbra_create_shadow_memory_arch(umbra_map_t *map,
         return DRMF_ERROR_INVALID_SIZE;
     /* check if the new app memory will violate the memory layout */
     if (!umbra_add_app_segment(app_addr, app_size, map))
-        return DRMF_ERROR_NOMEM;
+        return DRMF_ERROR_INVALID_ADDRESS;
     umbra_map_lock(map);
     APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
                    start, end, iter_size, {
@@ -675,14 +675,15 @@ umbra_read_shadow_memory_arch(IN    umbra_map_t *map,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
+            drmf_status_t res;
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
                 return DRMF_ERROR_INVALID_PARAMETER;
-            if (umbra_create_shadow_memory_arch(map, 0, app_blk_base,
-                                                map->app_block_size,
-                                                map->options.default_value,
-                                                map->options.default_value_size) !=
-                DRMF_SUCCESS)
-                return DRMF_ERROR_NOMEM;
+            res = umbra_create_shadow_memory_arch(map, 0, app_blk_base,
+                                                  map->app_block_size,
+                                                  map->options.default_value,
+                                                  map->options.default_value_size);
+            if (res != DRMF_SUCCESS)
+                return res;
         }
         size = umbra_map_scale_app_to_shadow(map, iter_size);
         memcpy(buffer, shadow_start, size);
@@ -717,14 +718,15 @@ umbra_write_shadow_memory_arch(IN    umbra_map_t *map,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
+            drmf_status_t res;
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
                 return DRMF_ERROR_INVALID_PARAMETER;
-            if (umbra_create_shadow_memory_arch(map, 0, app_blk_base,
-                                                map->app_block_size,
-                                                map->options.default_value,
-                                                map->options.default_value_size) !=
-                DRMF_SUCCESS)
-                return DRMF_ERROR_NOMEM;
+            res = umbra_create_shadow_memory_arch(map, 0, app_blk_base,
+                                                  map->app_block_size,
+                                                  map->options.default_value,
+                                                  map->options.default_value_size);
+            if (res != DRMF_SUCCESS)
+                return res;
         }
         size = umbra_map_scale_app_to_shadow(map, iter_size);
         memmove(shadow_start, buffer, size);
@@ -759,14 +761,15 @@ umbra_shadow_set_range_arch(IN   umbra_map_t *map,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
+            drmf_status_t res;
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
                 return DRMF_ERROR_INVALID_PARAMETER;
-            if (umbra_create_shadow_memory_arch(map, 0, app_blk_base,
-                                                map->app_block_size,
-                                                map->options.default_value,
-                                                map->options.default_value_size) !=
-                DRMF_SUCCESS)
-                return DRMF_ERROR_NOMEM;
+            res = umbra_create_shadow_memory_arch(map, 0, app_blk_base,
+                                                  map->app_block_size,
+                                                  map->options.default_value,
+                                                  map->options.default_value_size);
+            if (res != DRMF_SUCCESS)
+                return res;
         }
         size = umbra_map_scale_app_to_shadow(map, iter_size);
         memset(shadow_start, value, size);
@@ -811,14 +814,15 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
+            drmf_status_t res;
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
                 return DRMF_ERROR_INVALID_PARAMETER;
-            if (umbra_create_shadow_memory_arch(map, 0, app_blk_base,
-                                                map->app_block_size,
-                                                map->options.default_value,
-                                                map->options.default_value_size) !=
-                DRMF_SUCCESS)
-                return DRMF_ERROR_NOMEM;
+            res = umbra_create_shadow_memory_arch(map, 0, app_blk_base,
+                                                  map->app_block_size,
+                                                  map->options.default_value,
+                                                  map->options.default_value_size);
+            if (res != DRMF_SUCCESS)
+                return res;
         }
         shadow_sz = umbra_map_scale_app_to_shadow(map, iter_size);
         if (umbra_write_shadow_memory_arch(map,
@@ -876,14 +880,15 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
+            drmf_status_t res;
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
                 return DRMF_ERROR_INVALID_PARAMETER;
-            if (umbra_create_shadow_memory_arch(map, 0, app_blk_base,
-                                                map->app_block_size,
-                                                map->options.default_value,
-                                                map->options.default_value_size) !=
-                DRMF_SUCCESS)
-                return DRMF_ERROR_NOMEM;
+            res = umbra_create_shadow_memory_arch(map, 0, app_blk_base,
+                                                  map->app_block_size,
+                                                  map->options.default_value,
+                                                  map->options.default_value_size);
+            if (res != DRMF_SUCCESS)
+                return res;
             if (value == map->options.default_value &&
                 value_size == map->options.default_value_size) {
                 *app_addr = start;

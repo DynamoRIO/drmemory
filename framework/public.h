@@ -74,6 +74,7 @@ typedef enum {
     DRMF_ERROR_ACCESS_DENIED,      /**< Operation failed: access denied */
     DRMF_WARNING_ALREADY_INITIALIZED, /**< Operation aborted: already initialized */
     DRMF_ERROR_NOT_INITIALIZED,     /**< Operation failed: not initialized */
+    DRMF_ERROR_INVALID_ADDRESS,     /**< Operation failed: invalid address */
 } drmf_status_t;
 
 
