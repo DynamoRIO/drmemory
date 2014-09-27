@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -780,33 +780,33 @@ drmf_status_t
 umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
                              IN  app_pc  app_src,
                              IN  app_pc  app_dst,
-                             IN  size_t  app_size,
-                             OUT size_t *shadow_size)
+                             IN  size_t  app_size_in,
+                             OUT size_t *shadow_size_out)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size, app_sz, shadow_sz, shdw_size, iter_size, tail_size = 0;
+    size_t app_sz, shadow_sz, tot_shadow_sz, iter_size, tail_size = 0;
     byte *shadow_start, *overlap_tail = NULL;
     drmf_status_t res = DRMF_SUCCESS;
 
-    if (POINTER_OVERFLOW_ON_ADD(app_src, app_size-1) || /* just hitting top is ok */
-        POINTER_OVERFLOW_ON_ADD(app_dst, app_size-1))   /* just hitting top is ok */
+    app_sz = app_size_in;
+    if (POINTER_OVERFLOW_ON_ADD(app_src, app_sz-1) || /* just hitting top is ok */
+        POINTER_OVERFLOW_ON_ADD(app_dst, app_sz-1))   /* just hitting top is ok */
         return DRMF_ERROR_INVALID_SIZE;
 
-    app_sz = app_size;
-    if (app_src < app_dst && app_src + (app_size-1) >= app_dst) {
+    if (app_src < app_dst && app_src + (app_sz-1) >= app_dst) {
         /* overlap that must be handled */
         tail_size = app_src + (app_sz-1) - app_dst + 1;
         overlap_tail = global_alloc(tail_size, HEAPSTAT_SHADOW);
+        shadow_sz = umbra_map_scale_app_to_shadow(map, tail_size);
         if (umbra_read_shadow_memory_arch(map, app_dst, tail_size,
                                           &shadow_sz, overlap_tail) != DRMF_SUCCESS)
             ASSERT(false, "fail to read shadow memory");
         app_sz = app_dst - app_src;
     }
+    tot_shadow_sz = 0;
     /* the other side overlap is covered by memmove */
-    shdw_size = 0;
-    shadow_sz = 0;
     APP_RANGE_LOOP(app_src, app_sz, app_blk_base, app_blk_end, app_src_end,
                    start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
@@ -821,31 +821,34 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
                 return DRMF_ERROR_NOMEM;
         }
         shadow_sz = umbra_map_scale_app_to_shadow(map, iter_size);
-        if (umbra_write_shadow_memory(map,
-                                      app_dst,
-                                      iter_size,
-                                      &size,
-                                      shadow_start) != DRMF_SUCCESS) {
-            shdw_size += size;
+        if (umbra_write_shadow_memory_arch(map,
+                                           app_dst,
+                                           iter_size,
+                                           &shadow_sz,
+                                           shadow_start) != DRMF_SUCCESS) {
+            tot_shadow_sz += shadow_sz;
             res = DRMF_ERROR_INVALID_PARAMETER;
             break;
         } else {
-            ASSERT(size == shadow_sz, "copy size mismatch");
+            ASSERT(shadow_sz == umbra_map_scale_app_to_shadow(map, iter_size),
+                   "copy size mismatch");
         }
-        app_dst   += iter_size;
-        shdw_size += shadow_sz;
+        app_dst += iter_size;
+        tot_shadow_sz += shadow_sz;
     });
-    *shadow_size = shdw_size;
     if (overlap_tail != NULL) {
-        if (umbra_write_shadow_memory(map,
-                                      app_dst + (app_dst - app_src),
-                                      tail_size,
-                                      &shadow_sz,
-                                      overlap_tail) != DRMF_SUCCESS) {
-            res = DRMF_ERROR_INVALID_PARAMETER;
+        if (res == DRMF_SUCCESS) {
+            shadow_sz = umbra_map_scale_app_to_shadow(map, tail_size);
+            res = umbra_write_shadow_memory_arch(map,
+                                                 app_dst + (app_dst - app_src),
+                                                 tail_size,
+                                                 &shadow_sz,
+                                                 overlap_tail);
+            tot_shadow_sz += shadow_sz;
         }
         global_free(overlap_tail, tail_size, HEAPSTAT_SHADOW);
     }
+    *shadow_size_out = tot_shadow_sz;
     return res;
 }
 

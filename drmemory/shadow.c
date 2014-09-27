@@ -609,7 +609,7 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
         if (umbra_shadow_copy_range(umbra_map, old_pc, new_pc, copy_size,
                                     &shdw_size) != DRMF_SUCCESS ||
             shdw_size != shadow_scale_app_to_shadow(copy_size))
-            ASSERT(false, "fale to copy shadow memory");
+            ASSERT(false, "fail to copy shadow memory");
     }
     if (head_bit != 0) {
         for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)

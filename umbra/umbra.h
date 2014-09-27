@@ -422,7 +422,7 @@ drmf_status_t
 umbra_write_shadow_memory(IN  umbra_map_t *map,
                           IN  app_pc  app_addr,
                           IN  size_t  app_size,
-                          OUT size_t *shadow_size,
+                          INOUT size_t *shadow_size,
                           IN  byte   *buffer);
 
 DR_EXPORT
