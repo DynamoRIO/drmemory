@@ -58,6 +58,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 
 volatile double pi = 0.0;  /* Approximation to pi (shared) */
 pthread_mutex_t pi_lock;   /* Lock for above */
@@ -67,13 +68,13 @@ void *
 process(void *arg)
 {
     register double width, localsum;
-    register int i;
-    register int iproc;
+    register intptr_t i;
+    register intptr_t iproc;
 
     /* Ensure new thread stacks are marked unaddr beyond TOS, but only for
      * threads we know will get here, to avoid flakiness.
      */
-    if ((int)arg < 2) {
+    if ((intptr_t)arg < 2) {
         int buf[4];
         i = 0;
         i = buf[i - 64];
@@ -82,7 +83,7 @@ process(void *arg)
 #if VERBOSE
     fprintf(stderr, "\tthread %d starting\n", id);
 #endif
-    iproc = (int) arg;
+    iproc = (intptr_t) arg;
 
     /* Set width */
     width = 1.0 / intervals;
@@ -124,8 +125,8 @@ test_join(const char *app)
     pthread_mutex_init(&pi_lock, NULL);
 
     /* Make the two threads */
-    if (pthread_create(&thread0, NULL, process, (void *)0) ||
-	pthread_create(&thread1, NULL, process, (void *)1)) {
+    if (pthread_create(&thread0, NULL, process, (void *)(intptr_t)0) ||
+	pthread_create(&thread1, NULL, process, (void *)(intptr_t)1)) {
 	fprintf(stderr, "%s: cannot make thread\n", app);
 	exit(1);
     }
@@ -154,7 +155,7 @@ main(int argc, char **argv)
      */
     intervals = 10000000;
     for (i = 0; i < NUM_THREADS; i++) {
-        if (pthread_create(&thread[i], NULL, process, (void *)(i+2))) {
+        if (pthread_create(&thread[i], NULL, process, (void *)(intptr_t)(i+2))) {
             fprintf(stderr, "%s: cannot make thread\n", argv[0]);
             exit(1);
         }

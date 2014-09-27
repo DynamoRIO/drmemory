@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #ifdef WINDOWS
 # include <windows.h>
 #else
@@ -72,7 +73,7 @@ int main()
 #else
     pthread_t thread[NUM_THREADS];
     for (i = 0; i < NUM_THREADS; i++) {
-        if (pthread_create(&thread[i], NULL, thread_func, (void *)i) != 0) {
+        if (pthread_create(&thread[i], NULL, thread_func, (void *)(intptr_t)i) != 0) {
             fprintf(stderr, "pthread_create failed\n");
             exit(1);
         }

@@ -68,7 +68,7 @@ START_FILE
 
 #define FUNCNAME bitfield_asm_test
 /* void bitfield_asm_test(char *undef, char *def); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XDX, ARG2
@@ -85,10 +85,10 @@ GLOBAL_LABEL(FUNCNAME:)
         cmp      eax,ecx
 
         /* test i#878-ish bitfield sequence for i#1520 */
-        push     ebx /* save callee-saved reg */
+        push     REG_XBX /* save callee-saved reg */
         mov      ecx, 0
         mov      cl, BYTE [REG_XAX] /* undef */
-        push     ecx /* set up undef memory we can write to */
+        push     REG_XCX /* set up undef memory we can write to */
         xor      cl, cl
         mov      bl, BYTE [REG_XSP] /* undef */
         xor      bl, cl
@@ -96,8 +96,8 @@ GLOBAL_LABEL(FUNCNAME:)
         xor      bl, BYTE [REG_XSP]
         mov      BYTE [REG_XSP], bl
         test     bl, 1
-        pop      ebx
-        pop      ebx /* restore */
+        pop      REG_XBX
+        pop      REG_XBX /* restore */
 
         /* test i#1520 bitfield sequence A */
         mov      ecx, DWORD [REG_XAX] /* undef */
@@ -137,10 +137,10 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      REG_XCX
 
         /* test i#1523 double-xor */
-        push     ebx /* save callee-saved reg */
-        push     esi /* save callee-saved reg */
-        push     edi /* save callee-saved reg */
-        push     edx /* save def ptr */
+        push     REG_XBX /* save callee-saved reg */
+        push     REG_XSI /* save callee-saved reg */
+        push     REG_XDI /* save callee-saved reg */
+        push     REG_XDX /* save def ptr */
         mov      ebx, 0 /* used as 1st xor src for both */
         mov      dl, BYTE [REG_XAX] /* undef */
         mov      esi, DWORD [REG_XAX] /* undef */
@@ -154,32 +154,32 @@ GLOBAL_LABEL(FUNCNAME:)
         xor      esi, edi
         test     dl, 1
         test     esi, 1
-        pop      edx /* restore */
-        pop      edi /* restore */
-        pop      esi /* restore */
-        pop      ebx /* restore */
+        pop      REG_XDX /* restore */
+        pop      REG_XDI /* restore */
+        pop      REG_XSI /* restore */
+        pop      REG_XBX /* restore */
 
         /* test i#1530 interrupted xor sequence */
-        push     ebx /* save callee-saved reg */
+        push     REG_XBX /* save callee-saved reg */
         movzx    ecx, BYTE [REG_XAX] /* undef */
-        push     ecx /* set up undef memory we can write to */
+        push     REG_XCX /* set up undef memory we can write to */
         xor      cl, BYTE [REG_XSP]
         and      cl, 1
         mov      bl, BYTE [REG_XAX] /* unrelated interrupting instr */
         xor      BYTE [REG_XSP], cl
         test     BYTE [REG_XSP], 1
-        pop      ebx
-        pop      ebx /* restore */
+        pop      REG_XBX
+        pop      REG_XBX /* restore */
 
         /* test i#1542 interrupted xor sequence */
-        push     ebx /* save callee-saved reg */
+        push     REG_XBX /* save callee-saved reg */
         mov      cl, BYTE [REG_XAX] /* undef */
         xor      cl, BYTE [REG_XSP] /* assuming ebx is defined */
         and      cl, 1
         mov      BYTE [REG_XAX+2], 1 /* unrelated interrupting instr */
         xor      BYTE [REG_XAX], cl
         test     BYTE [REG_XAX], 1
-        pop      ebx /* restore */
+        pop      REG_XBX /* restore */
 
         /* XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).

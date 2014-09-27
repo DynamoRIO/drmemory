@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -27,7 +27,10 @@
 #  endif
 #endif
 
+#if !defined(WINDOWS) || !defined(X64)
+/* 64-bit Windows complains about redef */
 typedef unsigned long size_t;
+#endif
 
 #ifdef USE_CUSTOM_MALLOC
 LIB_EXPORT

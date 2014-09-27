@@ -910,4 +910,16 @@ else (NOT X64)
     newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blacklist_frames;0" "" OFF
       "procterm.addronly" 0)
   endif (WIN32)
+
+  # shadow light testing
+  # XXX i#111: we'll eliminate this duplication once we have full mode working --
+  # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
+  newtest(hello hello.c)
+  newtest(free free.c)
+  newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+  newtest(patterns patterns.c)
+  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
+  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
+  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
+    OFF "" 0)
 endif (NOT X64)

@@ -56,7 +56,7 @@ START_FILE
 
 #define FUNCNAME asm_test
 /* void asm_test(char *undef, char *def); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XDX, ARG2
@@ -278,7 +278,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
 #define FUNCNAME asm_test_avx
 /* void asm_test_avx(char *undef, char *def); */
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XDX, ARG2
