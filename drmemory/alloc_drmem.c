@@ -158,7 +158,7 @@ static void
 alloc_callstack_free(void *p);
 
 static byte *
-next_defined_dword(byte *start, byte *end);
+next_defined_ptrsz(byte *start, byte *end);
 
 static byte *
 end_of_defined_region(byte *start, byte *end);
@@ -232,7 +232,7 @@ alloc_drmem_init(void)
               options.midchunk_size_ok,
               options.show_reachable,
               IF_WINDOWS_(options.check_encoded_pointers)
-              next_defined_dword,
+              next_defined_ptrsz,
               end_of_defined_region,
               is_register_defined);
 
@@ -2512,9 +2512,10 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
 }
 
 static byte *
-next_defined_dword(byte *start, byte *end)
+next_defined_ptrsz(byte *start, byte *end)
 {
-    return shadow_next_dword((byte *)ALIGN_FORWARD(start, 4), end, SHADOW_DEFINED);
+    return shadow_next_ptrsz((byte *)ALIGN_FORWARD(start, sizeof(void*)),
+                             end, SHADOW_DEFINED);
 }
 
 static byte *

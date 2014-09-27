@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -62,7 +62,7 @@ leak_init(bool have_defined_info,
           bool midchunk_size_ok,
           bool show_reachable,
           IF_WINDOWS_(bool check_encoded_pointers)
-          byte *(*next_defined_dword)(byte *, byte *),
+          byte *(*next_defined_ptrsz)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t));
 void

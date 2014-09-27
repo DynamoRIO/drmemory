@@ -226,6 +226,12 @@ shadow_next_dword(app_pc start, app_pc end, uint expect);
 app_pc
 shadow_prev_dword(app_pc start, app_pc end, uint expect);
 
+/* Finds the next pointer-sized aligned address, starting at start and stopping at
+ * end, whose shadow equals expect expanded to a pointer.
+ */
+app_pc
+shadow_next_ptrsz(app_pc start, app_pc end, uint expect);
+
 /* Caller should place application address in addr_reg.
  * drutil_insert_get_mem_addr() can be used to obtain the address
  * from an application memory operand.

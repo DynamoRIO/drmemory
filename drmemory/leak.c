@@ -124,7 +124,7 @@ static bool op_show_reachable;
 #ifdef WINDOWS
 static bool op_check_encoded_pointers;
 #endif
-static byte *(*cb_next_defined_dword)(byte *, byte *);
+static byte *(*cb_next_defined_ptrsz)(byte *, byte *);
 static byte *(*cb_end_of_defined_region)(byte *, byte *);
 static bool (*cb_is_register_defined)(void *, reg_id_t);
 
@@ -160,7 +160,7 @@ leak_init(bool have_defined_info,
           bool midchunk_size_ok,
           bool show_reachable,
           IF_WINDOWS_(bool check_encoded_pointers)
-          byte *(*next_defined_dword)(byte *, byte *),
+          byte *(*next_defined_ptrsz)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t))
 {
@@ -179,10 +179,10 @@ leak_init(bool have_defined_info,
     op_check_encoded_pointers = check_encoded_pointers;
 #endif
     if (op_have_defined_info) {
-        ASSERT(next_defined_dword != NULL, "defined info needs cbs");
+        ASSERT(next_defined_ptrsz != NULL, "defined info needs cbs");
         ASSERT(end_of_defined_region != NULL, "defined info needs cbs");
         ASSERT(is_register_defined != NULL, "defined info needs cbs");
-        cb_next_defined_dword = next_defined_dword;
+        cb_next_defined_ptrsz = next_defined_ptrsz;
         cb_end_of_defined_region = end_of_defined_region;
         cb_is_register_defined = is_register_defined;
     }
@@ -1052,10 +1052,9 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
          */
         if (pc >= query_end) {
             if (!dr_query_memory_ex(pc, &info)) {
-                /* query on Windows expected to fail at 0x7fff000 */
-                ASSERT(IF_WINDOWS_ELSE(pc >= (app_pc)0x7fff0000, false),
+                /* query on Windows expected to fail on kernel memory */
+                ASSERT(IF_WINDOWS_ELSE(info.type == DR_MEMTYPE_ERROR_WINKERNEL, false),
                        "dr_query_memory_ex failed");
-                IF_X64(ASSERT(false, "update windows max query"));
                 return;
             }
 #ifdef WINDOWS
@@ -1125,7 +1124,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
             }
             defined_end = iter_end;
         } else {
-            pc = cb_next_defined_dword(pc, iter_end);
+            pc = cb_next_defined_ptrsz(pc, iter_end);
             if (pc == NULL) {
                 pc = iter_end;
                 continue;
@@ -1134,19 +1133,18 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
         }
         LOG(3, "defined range "PFX"-"PFX"\n", pc, defined_end);
 
-        /* For 64-bit we'll need to change _dword and this 4 */
-        for (pc = (byte *)ALIGN_FORWARD(pc, 4);
-             pc < defined_end && pc + 4 <= defined_end; pc += 4) {
+        for (pc = (byte *)ALIGN_FORWARD(pc, sizeof(void*));
+             pc < defined_end && pc + sizeof(void*) <= defined_end; pc += sizeof(void*)) {
             if (skip_heap) {
                 /* Skip heap regions */
                 if (heap_region_bounds(pc, NULL, &chunk_end, NULL) &&
                     chunk_end != NULL) {
-                    pc = chunk_end - 4; /* let loop inc bump by 4 */
-                    ASSERT(ALIGNED(pc, 4), "heap region end not aligned to 4!");
+                    pc = chunk_end - sizeof(void*); /* let loop inc bump pc */
+                    ASSERT(ALIGNED(pc, sizeof(void*)), "heap region end not aligned!");
                     continue;
                 }
             }
-            /* Now pc points to an aligned and defined (non-heap) 4 bytes */
+            /* Now pc points to an aligned and defined (non-heap) ptrsz bytes */
             /* FIXME PR 475518: improve performance of all these reads and table
              * lookups: this scan is where the noticeable pause at exit comes
              * from, not the identification of defined regions.
@@ -1167,7 +1165,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
             }
 #endif
         }
-        pc = (byte *) ALIGN_FORWARD(defined_end, 4);
+        pc = (byte *) ALIGN_FORWARD(defined_end, sizeof(void*));
     }
 }
 

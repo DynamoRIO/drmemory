@@ -202,6 +202,12 @@ uint val_to_dword[4];
 uint val_to_qword[4];
 uint val_to_dqword[4];
 
+#ifdef X64
+# define VAL_TO_PTRSZ val_to_qword
+#else
+# define VAL_TO_PTRSZ val_to_dword
+#endif
+
 const char * const shadow_name[] = {
     "defined",
     "unaddressable",
@@ -803,6 +809,27 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
                "application address underflow");
         pc = info.app_base - 1;
     }
+    return NULL;
+}
+
+/* Finds the next pointer-sized aligned address, starting at start and stopping at
+ * end, whose shadow equals expect expanded to a pointer.
+ */
+app_pc
+shadow_next_ptrsz(app_pc start, app_pc end, uint expect)
+{
+    bool found;
+    app_pc app_addr = start;
+    uint expect_val = VAL_TO_PTRSZ[expect];
+
+    if (umbra_value_in_shadow_memory(umbra_map,
+                                     (app_pc *)&app_addr,
+                                     end - app_addr,
+                                     expect_val, sizeof(void*)/SHADOW_GRANULARITY,
+                                     &found) != DRMF_SUCCESS)
+        ASSERT(false, "fail to check value in shadow mmeory");
+    if (found)
+        return app_addr;
     return NULL;
 }
 

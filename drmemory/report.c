@@ -2294,7 +2294,7 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
      * instead use shadow values to find malloc boundaries
      */
     /* We don't walk more than PAGE_SIZE: FIXME: make larger? */
-    for (end = addr+sz; end < addr+sz + PAGE_SIZE; ) {
+    for (end = addr+sz; end != NULL && end < addr+sz + PAGE_SIZE; ) {
         if (MAP_4B_TO_1B) {
             /* granularity is 4 so don't report tail of dword of bad ref (i#622) */
             end = (byte *)ALIGN_FORWARD(end, 4);
@@ -2327,6 +2327,7 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
                */
             end = shadow_next_dword((byte *)ALIGN_FORWARD(start, 4),
                                     addr+sz + PAGE_SIZE, SHADOW_UNADDRESSABLE);
+            /* end will be NULL on failure which we check in loop bounds */
         } else
             break;
     }

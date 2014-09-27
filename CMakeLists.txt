@@ -275,11 +275,7 @@ endif (WIN32)
 
 # i#889: Dr. Memory pattern mode supports 64-bit
 # FIXME i#111, i#217: 64-bit is only supported in pattern mode
-set(SUPPORT_64BIT ON)
 if (CMAKE_C_SIZEOF_DATA_PTR EQUAL 8 OR CMAKE_CXX_SIZEOF_DATA_PTR EQUAL 8)
-  if (NOT SUPPORT_64BIT)
-    message(FATAL_ERROR "64-bit not supported (on Linux, set CFLAGS=-m32 CXXFLAGS=-m32)")
-  endif (NOT SUPPORT_64BIT)
   set(X64 ON)
   set(LIB_ARCH "lib64")
   set(BIN_ARCH "bin64")

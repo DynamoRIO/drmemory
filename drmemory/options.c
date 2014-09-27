@@ -48,14 +48,13 @@
 # undef ASSERT
 # undef NOTIFY_ERROR
 # undef NOTIFY_NO_PREFIX
+# undef NOTIFY
 # define NOTIFY_ERROR(...) do {   \
     fprintf(stderr, __VA_ARGS__); \
     fflush(stderr);               \
 } while (0)
-# define NOTIFY_NO_PREFIX(...) do { \
-    fprintf(stderr, __VA_ARGS__);   \
-    fflush(stderr);                 \
-} while (0)
+# define NOTIFY NOTIFY_ERROR
+# define NOTIFY_NO_PREFIX NOTIFY_ERROR
 # define ASSERT(x, msg) do {                      \
     if (!(x)) {                                   \
        NOTIFY_ERROR("ASSERT FAILURE: %s"NL, msg); \
@@ -596,7 +595,7 @@ options_init(const char *opstr)
     }
 # ifdef X64
     if (options.pattern == 0)
-        usage_error("currently only -unaddr_only is supported for 64-bit", "");
+        NOTIFY("WARNING: 64-bit non-pattern modes are experimental"NL);
 # endif
     if (!options.callstack_use_fp)
         options.callstack_use_top_fp = false;
