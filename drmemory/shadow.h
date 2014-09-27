@@ -247,6 +247,9 @@ void
 shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
                             reg_id_t addr_reg, reg_id_t scratch_reg);
 
+bool
+shadow_memory_is_shadow(app_pc addr);
+
 /***************************************************************************
  * SHADOWING THE GPR REGISTERS
  */

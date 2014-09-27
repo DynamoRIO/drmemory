@@ -851,6 +851,9 @@ memory_walk(void)
                     !is_in_heap_region(mbi.AllocationBase) &&
                     !dr_memory_is_dr_internal(mbi.AllocationBase) &&
                     !dr_memory_is_in_client(mbi.AllocationBase) &&
+# ifdef X64 /* For 32-bit shadow memory will all be DR memory */
+                    !shadow_memory_is_shadow(mbi.AllocationBase) &&
+# endif
                     /* Avoid teb, peb, env, etc. pages where we have finer-grained
                      * information.  We assume it's sufficient to look only at
                      * the start of the region.
@@ -957,6 +960,12 @@ memory_walk(void)
                    alloc_replace_in_cur_arena(info.base_pc + info.size - 1)) {
             /* ignore replace-heap: leave unaddressable */
             LOG(2, "  => replacement heap\n");
+#ifdef X64
+        /* For 32-bit shadow memory will all be DR memory */
+        } else if (shadow_memory_is_shadow(info.base_pc)) {
+            /* skip shadow */
+            LOG(2, "  => shadow memory\n");
+#endif
         } else if (info.type == DR_MEMTYPE_DATA) {
             if (IF_LINUX_ELSE(end == cur_brk, false)) {
                 /* this is the heap */

@@ -855,6 +855,26 @@ shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
                                &scratch_reg, 1);
 }
 
+bool
+shadow_memory_is_shadow(app_pc addr)
+{
+    umbra_shadow_memory_type_t shadow_type;
+    umbra_shadow_memory_type_t match_shadow =
+        UMBRA_SHADOW_MEMORY_TYPE_NORMAL |
+        UMBRA_SHADOW_MEMORY_TYPE_SHARED |
+#ifndef X64
+        UMBRA_SHADOW_MEMORY_TYPE_REDZONE |
+#endif
+        UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC;
+    if (!options.shadowing)
+        return false;
+    if (umbra_get_shadow_memory_type(umbra_map, addr,
+                                     &shadow_type) == DRMF_SUCCESS &&
+        TESTANY(match_shadow, shadow_type))
+        return true;
+    return false;
+}
+
 /***************************************************************************
  * TABLES
  *
