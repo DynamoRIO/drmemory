@@ -486,7 +486,8 @@ OPTION_CLIENT_BOOL(drmemscope, handle_leaks_only, false,
                    "Check only for handle leak errors and no other errors",
                    "Puts "TOOLNAME" into a handle-leak-check-only mode that has lower overhead but does not detect other types of errors other than handle leaks in Windows.")
 #endif /* WINDOWS */
-OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, true,
+/* XXX i#111: re-enable once 64-bit full mode is supported */
+OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, IF_X64_ELSE(false, true),
                    "Check for uninitialized read errors",
                    "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
 OPTION_CLIENT_BOOL(drmemscope, check_stack_bounds, false,

@@ -426,16 +426,26 @@ set(cmd_tomatch "${cmd_err}")
 string(REGEX REPLACE ", *[0-9]+ default-suppressed" "" cmd_tomatch "${cmd_tomatch}")
 
 foreach (line ${lines})
+  set(remove_line ON)
   # we include the newline in the match
   if (WIN32)
     string(REGEX REPLACE "\n" "\r?\n" line "${line}")
   endif (WIN32)
   if (NOT "${cmd_tomatch}" MATCHES "${line}")
+    set(enable_check ON)
     # Ignore Dr. Memory lines for Dr. Heapstat.  Match ~~Dr.M~~ anywhere in the
     # line, since %ANYLINE can insert a paren at the beginning of the line.
     # FIXME PR 470723: add Dr. Heapstat-specific tests
-    if (NOT TOOL_DR_HEAPSTAT OR
-        NOT "${line}" MATCHES "~~")
+    if (TOOL_DR_HEAPSTAT AND "${line}" MATCHES "~~")
+      set(enable_check OFF)
+    endif ()
+    # XXX i#111: for now we don't support full mode, but we will soon.  To avoid
+    # changing a ton of .res files we instead just ignore uninit lines here.
+    if (X64 AND "${line}" MATCHES "total uninitialized")
+      set(enable_check OFF)
+      set(remove_line OFF)
+    endif ()
+    if (enable_check)
       strip_trailing_newline_regex(line "${line}")
       set(msg "stderr failed to match \"${line}\"")
       # try to find what was meant to match
@@ -449,7 +459,9 @@ foreach (line ${lines})
       message(FATAL_ERROR "${msg}")
     endif ()
   endif ()
-  remove_up_to_and_including_line(cmd_tomatch "${cmd_tomatch}" "${line}")
+  if (remove_line)
+    remove_up_to_and_including_line(cmd_tomatch "${cmd_tomatch}" "${line}")
+  endif ()
 endforeach (line)
 
 ##################################################
