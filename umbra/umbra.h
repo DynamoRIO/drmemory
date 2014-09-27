@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -360,6 +360,10 @@ DR_EXPORT
  * translate application address stored in \p reg_addr to shadow address and
  * store it into \p reg_addr.
  *
+ * Umbra may use page faults to implement lazy shadow memory allocation.  When
+ * generating meta instructions to read shadow values, be sure to assign
+ * translation values to the instructions.
+ *
  * @param[in]  drcontext         The DynamoRIO context for current thread.
  * @param[in]  map               The mapping object to use.
  * @param[in]  ilist             The instruction list to be inserted into.
@@ -591,6 +595,14 @@ DR_EXPORT
  * @param[out]    shadow_addr  The shadow memory address for \p app_addr.
  * @param[in,out] shadow_info  The information about the shadow memory for
  *                             \p app_addr.
+ *
+ * For lazily allocated shadow memory, this routine will not allocate
+ * shadow memory that is not yet allocated.  The caller must
+ * explicitly call umbra_create_shadow_memory() prior to
+ * de-referencing the returned shadow address if the type is
+ * UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC.  Use
+ * umbra_read_shadow_memory() or umbra_write_shadow_memory() if
+ * automatic allocation is desired.
  *
  * \note: \p shadow_info->struct_size must be set to
  * \p sizeof(umbra_shadow_memory_info_t) for compatiblity.

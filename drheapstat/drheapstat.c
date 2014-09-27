@@ -1351,6 +1351,9 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     uint flags;
     fastpath_info_t mi;
 
+    if (instr_is_meta(inst))
+        return DR_EMIT_DEFAULT;
+
     ii->instrs_in_bb++;
 
     if (options.time_instrs) {

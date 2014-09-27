@@ -93,6 +93,7 @@ typedef struct _fastpath_info_t {
     bool mem2mem;
     bool load2x; /* two mem sources */
     bool shadow_indir; /* involves indirected register shadow memory: xmm or mmx */
+    app_pc xl8; /* pc of app instr */
 
     /* filled in by adjust_opnds_for_fastpath() */
     reg_id_t src_reg;
@@ -251,7 +252,7 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt);
 #endif
 
 void
-initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi);
+initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi, instr_t *app_inst);
 
 void
 instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,

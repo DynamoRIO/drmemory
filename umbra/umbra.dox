@@ -93,4 +93,8 @@ without knowing the actual shadow memory address or how shadow memory is managed
 Advanced users can create "special" shadow memory (read-only memory region with
 default value) or directly access shadow memory for better performanc and memory usage.
 
+Umbra may use page faults to implement lazy shadow memory allocation.  When
+generating meta instructions to read shadow values, be sure to assign
+translation values to the instructions.
+
 */

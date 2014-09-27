@@ -321,7 +321,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
 {
     uint opc = instr_get_opcode(inst);
     int i;
-    initialize_fastpath_info(mi, bi);
+    initialize_fastpath_info(mi, bi, inst);
     if (!options.fastpath)
         return false;
     if (opc == OP_xlat) {

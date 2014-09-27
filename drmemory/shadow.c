@@ -367,6 +367,9 @@ shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
             return 0;
         }
     }
+    /* avoid a fault: if no shadow yet, it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC)
+        return SHADOW_UNADDRESSABLE;
     idx = addr - info->app_base;
     if (!MAP_4B_TO_1B)
         return bitmapx2_get((bitmap_t)info->shadow_base, idx);
@@ -389,6 +392,9 @@ shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
             return 0;
         }
     }
+    /* avoid a fault: if no shadow yet, it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC)
+        return SHADOW_DWORD_UNADDRESSABLE;
     idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) - (ptr_uint_t)info->app_base;
     if (!MAP_4B_TO_1B)
         return bitmapx2_byte((bitmap_t)info->shadow_base, idx);
@@ -413,22 +419,31 @@ shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val)
     /* Note that we can come here for SHADOW_SPECIAL_DEFINED, for mmap
      * regions used for calloc (we mark headers as unaddressable), etc.
      */
-    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED) {
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED ||
+        /* Lazily allocated */
+        info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC) {
         /* Avoid replacing special on nop write */
         if (val == shadow_get_byte(info, addr)) {
             LOG(5, "writing "PFX" => nop (already special %d)\n", addr, val);
             return;
         }
-        /* it is special shared shadow memory, recreate normal shadow memory */
+        /* If it's special shared shadow memory, recreate normal shadow memory.
+         * If it's lazily allocated, allocate the shadow (umbra_write_shadow_memory()
+         * would do that for us).
+         */
         if (umbra_create_shadow_memory(umbra_map, 0,
                                        info->app_base, info->app_size,
-                                       (ptr_uint_t)*(info->shadow_base),
-                                       1) != DRMF_SUCCESS)
+                                       (info->shadow_type ==
+                                        UMBRA_SHADOW_MEMORY_TYPE_SHARED) ?
+                                       (ptr_uint_t)*(info->shadow_base) :
+                                       SHADOW_DEFAULT_VALUE,
+                                       SHADOW_DEFAULT_VALUE_SIZE) != DRMF_SUCCESS)
             ASSERT(false, "fail to create shadow memory");
         if (umbra_get_shadow_memory(umbra_map, addr,
                                     NULL, info) != DRMF_SUCCESS)
             ASSERT(false, "fail to get shadow memory info");
     }
+    ASSERT(info->shadow_type != UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC, "will fault");
     LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, addr - info->app_base, val);
     if (!MAP_4B_TO_1B) {
         bitmapx2_set((bitmap_t)info->shadow_base,

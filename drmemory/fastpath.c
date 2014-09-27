@@ -264,7 +264,7 @@ initialize_opnd_info(opnd_info_t *info)
 }
 
 void
-initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi)
+initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi, instr_t *app_inst)
 {
     int i;
     memset(mi, 0, sizeof(*mi));
@@ -276,6 +276,7 @@ initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi)
     for (i=0; i<MAX_FASTPATH_DSTS; i++) {
         initialize_opnd_info(&mi->dst[i]);
     }
+    mi->xl8 = instr_get_app_pc(app_inst);
     /* mi->opsz and mi->memoffs are not set here */
 }
 
@@ -434,7 +435,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     uint opc = instr_get_opcode(inst);
 
     /* initialize regardless */
-    initialize_fastpath_info(mi, bi);
+    initialize_fastpath_info(mi, bi, inst);
 
     /* now bail if no real fastpath */
     if (!options.fastpath)
@@ -1980,7 +1981,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (options.pattern != 0) {
                 ASSERT(bi->first_restore_pc == NULL,
                        "first_restore_pc must be NULL if aflags_where is not set");
-                bi->first_restore_pc = instr_get_app_pc(inst);
+                bi->first_restore_pc = (mi == NULL ? instr_get_app_pc(inst) : mi->xl8);
                 ASSERT(bi->first_restore_pc != NULL, "instr app_pc must not be NULL");
             }
             /* We can avoid saving eflags to TLS and restoring app %eax if we know that
@@ -2076,15 +2077,21 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef TOOL_DR_MEMORY
 static void
 insert_cmp_for_equality(void *drcontext, instrlist_t *bb, instr_t *inst,
-                        opnd_t op, int val)
+                        fastpath_info_t *mi, opnd_t op, int val)
 {
     /* test with self is smaller instr than cmp to 0, for self=reg */
     if (val == 0 && opnd_is_reg(op)) {
         PRE(bb, inst, INSTR_CREATE_test(drcontext, op, op));
     } else if (val >= SCHAR_MIN && val <= SCHAR_MAX) {
-        PRE(bb, inst, INSTR_CREATE_cmp(drcontext, op, OPND_CREATE_INT8((char)val)));
+        /* all shadow de-refs need xl8 as Umbra uses page faults */
+        PREXL8M(bb, inst, INSTR_XL8
+                (INSTR_CREATE_cmp(drcontext, op, OPND_CREATE_INT8((char)val)),
+                 mi->xl8));
     } else {
-        PRE(bb, inst, INSTR_CREATE_cmp(drcontext, op, OPND_CREATE_INT32(val)));
+        /* all shadow de-refs need xl8 as Umbra uses page faults */
+        PREXL8M(bb, inst, INSTR_XL8
+                (INSTR_CREATE_cmp(drcontext, op, OPND_CREATE_INT32(val)),
+                 mi->xl8));
     }
 }
 
@@ -2120,7 +2127,7 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* mi->need_offs may not be set, if avoiding 3rd reg */
             if (opnd_is_null(mi->memoffs)) {
                 /* movzx 2-to-4 or 1-to-2 don't store the offs: so we bail */
-                insert_cmp_for_equality(drcontext, bb, inst, shadow_op,
+                insert_cmp_for_equality(drcontext, bb, inst, mi, shadow_op,
                                         SHADOW_DWORD_DEFINED);
                 return;
             }
@@ -2132,7 +2139,7 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
         } else {
             if (mi->mem2mem || mi->load2x) {
                 /* More complex to find or create a free register: bailing for now */
-                insert_cmp_for_equality(drcontext, bb, inst, shadow_op,
+                insert_cmp_for_equality(drcontext, bb, inst, mi, shadow_op,
                                         SHADOW_DWORD_DEFINED);
                 return;
             }
@@ -2159,8 +2166,10 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
                 base = mi->reg2.reg;
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             }
-            PRE(bb, inst,
-                INSTR_CREATE_movzx(drcontext, opnd_create_reg(base), shadow_op));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_movzx(drcontext, opnd_create_reg(base), shadow_op),
+                     mi->xl8));
         }
         mark_eflags_used(drcontext, bb, mi->bb);
         ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_defined);
@@ -2180,7 +2189,7 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             load_reg_shadow_val(drcontext, bb, inst, indir_tgt, oi);
             shadow_op = opnd_create_reg(indir_tgt);
         }
-        insert_cmp_for_equality(drcontext, bb, inst, shadow_op, SHADOW_DWORD_DEFINED);
+        insert_cmp_for_equality(drcontext, bb, inst, mi, shadow_op, SHADOW_DWORD_DEFINED);
     }
 }
 
@@ -2448,7 +2457,7 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst, INSTR_CREATE_jcc
                 (drcontext, OP_jne_short, opnd_create_instr(skip_fault)));
             PREXL8M(bb, inst, INSTR_XL8
-                    (INSTR_CREATE_ud2a(drcontext), instr_get_app_pc(inst)));
+                    (INSTR_CREATE_ud2a(drcontext), mi->xl8));
             PRE(bb, inst, skip_fault);
             mi->need_slowpath = false;
         } else {
@@ -2748,17 +2757,22 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (get_value) {
         /* load value from shadow table to reg1 */
         if (mi->memsz == 16 || mi->memsz == 10) {
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext,
-                                    opnd_create_reg(value_in_reg2 ? reg2 : reg1),
-                                    opnd_create_base_disp(reg1, REG_NULL, 0, 0, OPSZ_4)));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_mov_ld(drcontext,
+                                         opnd_create_reg(value_in_reg2 ? reg2 : reg1),
+                                         opnd_create_base_disp(reg1, REG_NULL, 0, 0,
+                                                               OPSZ_4)),
+                     mi->xl8));
         } else {
-            PRE(bb, inst,
-                INSTR_CREATE_movzx(drcontext,
-                                   opnd_create_reg(value_in_reg2 ? reg2 : reg1),
-                                   opnd_create_base_disp
-                                   (reg1, REG_NULL, 0, 0,
-                                    mi->memsz == 8 ? OPSZ_2 : OPSZ_1)));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_movzx(drcontext,
+                                        opnd_create_reg(value_in_reg2 ? reg2 : reg1),
+                                        opnd_create_base_disp
+                                        (reg1, REG_NULL, 0, 0,
+                                         mi->memsz == 8 ? OPSZ_2 : OPSZ_1)),
+                     mi->xl8));
         }
     } else {
         /* addr is already in reg1 */
@@ -2849,7 +2863,9 @@ add_check_datastore(void *drcontext, instrlist_t *bb, instr_t *inst,
          * be writing the mis-matching bits but not worth splitting out
          * in fastpath.
          */
-        PRE(bb, inst, INSTR_CREATE_cmp(drcontext, dst, src));
+        /* all shadow de-refs need xl8 as Umbra uses page faults */
+        PREXL8M(bb, inst, INSTR_XL8
+                (INSTR_CREATE_cmp(drcontext, dst, src), mi->xl8));
         mark_eflags_used(drcontext, bb, mi->bb);
         PRE(bb, inst,
             INSTR_CREATE_jcc_short(drcontext, OP_je_short,
@@ -2953,7 +2969,6 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      * as the latter will skip to the end of this instrumentation.
      */
     instr_t *skip_write_tgt = INSTR_CREATE_label(drcontext);
-    app_pc xl8 = instr_get_app_pc(inst);
     if (src_opsz > dst_opsz) {
         /* We now have DRi#1382 but we still hit this for cases like
          * OP_cvtsd2si.
@@ -3014,7 +3029,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
                                 skip_write_tgt);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
-                                                            src.shadow), xl8));
+                                                            src.shadow), mi->xl8));
         }
         PRE(bb, inst, skip_write_tgt);
     } else if (src_opsz == 10) {
@@ -3034,13 +3049,13 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                                 skip_write_tgt);
             opnd_set_size(&dst.shadow, OPSZ_8);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow, imm8),
-                                        xl8));
+                                        mi->xl8));
             PREXL8M(bb, inst,
                     INSTR_XL8(INSTR_CREATE_and
                               (drcontext, dst.shadow,
                                /* 2 = dst_opsz, 0 = ofnum */
                                opnd_create_immed_int(~(((1 << 2*2)-1) << 0*2),
-                                                     OPSZ_1)), xl8));
+                                                     OPSZ_1)), mi->xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
         PRE(bb, inst, skip_write_tgt);
@@ -3057,7 +3072,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_XL8(INSTR_CREATE_and
                               (drcontext, dst.shadow,
                                opnd_create_immed_int(~(((1 << dst_opsz*2)-1) << ofnum*2),
-                                                     OPSZ_1)), xl8));
+                                                     OPSZ_1)), mi->xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
         PRE(bb, inst, skip_write_tgt);
@@ -3155,7 +3170,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     ((char)(dst_opsz == 1 ? (ofnum == 1 ? 0xf3 : 0xfc) : 0xf0));
                 /* zero out defined bits */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_and(drcontext, dst.shadow, immed), xl8));
+                        (INSTR_CREATE_and(drcontext, dst.shadow, immed), mi->xl8));
             } else {
                 /* Store immed into memory */
                 int ofnum = opnd_get_immed_int(src.offs);
@@ -3167,7 +3182,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst, INSTR_CREATE_rol
                     (drcontext, opreg1, opnd_create_reg(REG_CL)));
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_and(drcontext, dst.shadow, opreg1), xl8));
+                        (INSTR_CREATE_and(drcontext, dst.shadow, opreg1), mi->xl8));
             }
         }
         else if (src_opsz != dst_opsz) {
@@ -3228,7 +3243,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                 wrote_shadow_eflags = true;
             }
             PREXL8M(bb, inst, INSTR_XL8
-                    (INSTR_CREATE_mov_st(drcontext, dst.shadow, opreg1), xl8));
+                    (INSTR_CREATE_mov_st(drcontext, dst.shadow, opreg1), mi->xl8));
         }
         else if (opnd_is_immed_int(dst.offs) || opnd_is_null(dst.offs)) {
             /* Load from memory into register, or register-to-register move,
@@ -3321,7 +3336,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                 /* Write result to dst subdword via or */
                 ASSERT(!mi->store, "assuming no datastore check");
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), mi->xl8));
                 /* Clear rest of bits in result for write to eflags */
                 subdword_zero_rest_of_dword(drcontext, bb, inst, opreg1,
                                             ofnum, dst_opsz);
@@ -3349,7 +3364,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                 opnd_t andbits = src.shadow;
                 /* or in undefined bits */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), mi->xl8));
                 if (preserve) {
                     /* Copy source again */
                     PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
@@ -3363,7 +3378,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                      ((char)(dst_opsz == 1 ? (ofnum == 1 ? 0xf3 : 0xfc) : 0xf0))));
                 /* zero out defined bits */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), xl8));
+                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), mi->xl8));
             }
         }
         else if (opnd_is_immed_int(src.offs)) {
@@ -3447,12 +3462,12 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else if (alu_uncombined) {
                 /* store to dest: rest of bits are zero so we can or */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), mi->xl8));
             } else {
                 opnd_t andbits = src.shadow;
                 /* or in undefined bits */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), mi->xl8));
                 if (preserve) {
                     /* Copy source again */
                     PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
@@ -3465,7 +3480,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     (drcontext, andbits, opnd_create_reg(REG_CL)));
                 /* zero out defined bits */
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), xl8));
+                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), mi->xl8));
             }
         }
         else {
@@ -4327,13 +4342,14 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif
 
 #ifdef TOOL_DR_MEMORY
-    if (hashtable_lookup(&ignore_unaddr_table, instr_get_app_pc(inst)) != NULL) {
+    if (hashtable_lookup(&ignore_unaddr_table, mi->xl8) != NULL) {
         /* i#768: Double-check that it's still OK to ignore unaddrs from this
          * instruction in case the code changed.
          */
-        app_pc pc = instr_get_app_pc(inst);
+        app_pc pc = mi->xl8;
         app_pc next_pc = pc + instr_length(drcontext, inst);
         bool now_addressable;  /* unused */
+        ASSERT(mi->xl8 == instr_get_app_pc(inst), "init error");
         if (is_alloca_pattern(drcontext, pc, next_pc, inst, &now_addressable)) {
             check_ignore_unaddr = true;
             check_ignore_tls = false; /* do not check in-heap tls slot */
@@ -4514,9 +4530,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(mi->reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
 #ifdef TOOL_DR_MEMORY
         if (!options.check_uninitialized) {
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg3_8),
-                                 OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_cmp(drcontext,  opnd_create_reg(mi->reg3_8),
+                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)),
+                     mi->xl8));
             jcc_not_unaddr = OP_jne;
             mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
         } else if (mi->mem2mem && !mi->check_definedness) {
@@ -4596,9 +4614,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (!options.stale_blind_store) {
             /* FIXME: measure perf to see which is better */
             /* cmp and avoid store can be faster than blindly storing */
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
-                                 OPND_CREATE_INT8(0)));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
+                                      OPND_CREATE_INT8(0)),
+                     mi->xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
             PRE(bb, inst,
                 INSTR_CREATE_jcc(drcontext, OP_jnz_short,
@@ -4653,7 +4673,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* The prev instr already checked for whether should share */
             int diff;
             STATS_INC(xl8_shared);
-            hashtable_add(&xl8_sharing_table, instr_get_app_pc(inst), (void *)1);
+            hashtable_add(&xl8_sharing_table, mi->xl8, (void *)1);
             /* FIXME: best to remove these entries when containing fragment
              * gets flushed: but would have to walk whole table.  Never
              * deleting for now.  If address is re-used we simply won't share
@@ -4915,9 +4935,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
         if (!options.check_uninitialized) {
             jcc_unaddr = OP_je;
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, mi->src[0].shadow,
-                                 OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+            /* all shadow de-refs need xl8 as Umbra uses page faults */
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_cmp(drcontext, mi->src[0].shadow,
+                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)),
+                     mi->xl8));
         } else if (options.loads_use_table && mi->memsz <= 4) {
             int disp;
             /* Check for unaddressability via table lookup */
@@ -5006,9 +5028,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
         } else {
             if (!options.check_uninitialized) {
-                PRE(bb, inst,
-                    INSTR_CREATE_cmp(drcontext, mi->dst[0].shadow,
-                                     OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+                /* all shadow de-refs need xl8 as Umbra uses page faults */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_cmp(drcontext, mi->dst[0].shadow,
+                                          OPND_CREATE_INT8
+                                          ((char)SHADOW_DWORD_UNADDRESSABLE)),
+                         mi->xl8));
                 mark_eflags_used(drcontext, bb, mi->bb);
                 /* we only check for 1 unaddr shadow so only check if haven't already */
                 if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
@@ -5326,9 +5351,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (!options.stale_blind_store) {
         /* FIXME: measure perf to see which is better */
         /* cmp and avoid store can be faster than blindly storing */
-        PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
-                             OPND_CREATE_INT8(0)));
+        /* all shadow de-refs need xl8 as Umbra uses page faults */
+        PREXL8M(bb, inst, INSTR_XL8
+                (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                                  OPND_CREATE_INT8(0)),
+                 mi->xl8));
         mark_eflags_used(drcontext, bb, mi->bb);
         /* too bad there's no cmovcc from immed to memory! */
         PRE(bb, inst,
@@ -5409,9 +5436,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 }
             }
             if (options.check_uninitialized) {
-                PRE(bb, inst,
-                    INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
-                                     shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)));
+                /* all shadow de-refs need xl8 as Umbra uses page faults */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
+                                          shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)),
+                         mi->xl8));
                 if (check_ignore_resume != NULL) {
                     PRE(bb, inst,
                         INSTR_CREATE_jcc(drcontext, OP_je,
