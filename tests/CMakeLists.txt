@@ -119,9 +119,15 @@ function(tobuild name source)
   add_executable(${name} ${srcs})
   set_props(${name})
 
-  if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY" AND
-      "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-    add_dependencies(${test} ${gen_asm_tgt})
+  if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
+    if (WIN32)
+      # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
+      # I believe I have the proper prologue+epilogue but I still the error, so:
+      append_property_string(TARGET ${name} LINK_FLAGS "/safeseh:no")
+    endif ()
+    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      add_dependencies(${name} ${gen_asm_tgt})
+    endif ()
   endif ()
 endfunction(tobuild)
 
@@ -431,14 +437,6 @@ if (WIN32)
   # i#489: building /GL results in a double-xor sequence
   set(bitfieldGL_disable_asm ON)
   newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
-endif (WIN32)
-
-if (WIN32)
-  # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
-  # I believe I have the proper prologue+epilogue but I still the error, so:
-  append_property_string(TARGET registers LINK_FLAGS "/safeseh:no")
-  append_property_string(TARGET asmtest LINK_FLAGS "/safeseh:no")
-  append_property_string(TARGET bitfield LINK_FLAGS "/safeseh:no")
 endif (WIN32)
 
 if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
