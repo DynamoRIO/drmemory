@@ -519,6 +519,9 @@ event_post_syscall(void *drcontext, int sysnum)
     drsys_sysnum_t sysnum_full;
     dr_mcontext_t *mc;
     drsys_syscall_t *syscall;
+    bool success = false;
+    uint errno;
+    uint64 ret_val;
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "shouldn't fail");
 
@@ -528,23 +531,24 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_mcontext failed");
 
+    LOG(SYSCALL_VERBOSE, "system call #%d==%d.%d %s ", sysnum,
+        sysnum_full.number, sysnum_full.secondary, get_syscall_name(sysnum_full));
+    if (drsys_cur_syscall_result(drcontext, &success, &ret_val, &errno)
+        != DRMF_SUCCESS || !success) {
+        LOG(SYSCALL_VERBOSE, "failed with error "PIFX"\n", errno);
+    } else {
+        LOG(SYSCALL_VERBOSE, "succeeded with return value "PIFX"\n", ret_val);
+    }
+
     handle_post_alloc_syscall(drcontext, sysnum, mc);
     os_shared_post_syscall(drcontext, pt, sysnum_full, mc, syscall);
     if (auxlib_known_syscall(sysnum))
         auxlib_shared_post_syscall(drcontext, sysnum, mc);
 
     if (options.shadowing) {
-        bool success = false;
-        uint errno;
-
         /* post-syscall, eax is defined */
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
-
-        if (drsys_cur_syscall_result(drcontext, &success, NULL, &errno)
-            != DRMF_SUCCESS || !success) {
-            LOG(SYSCALL_VERBOSE, "system call %i %s failed with error "PIFX"\n",
-                sysnum, get_syscall_name(sysnum_full), errno);
-        } else {
+        if (success) {
             /* commit the writes via MEMREF_WRITE */
             if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) !=
                 DRMF_SUCCESS)
