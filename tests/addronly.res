@@ -20,15 +20,15 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS of freed memory: reading 1 byte(s)
-free.c:48
+free.c:81
 # no "prev lower malloc" when enable DR's private loader
 that was freed
 
 Error #2: UNADDRESSABLE ACCESS of freed memory: writing 1 byte(s)
-free.c:54
+free.c:87
 # whether have "prev lower malloc" is nondet
 that was freed
 
 Error #3: UNADDRESSABLE ACCESS of freed memory: writing 1 byte(s)
-free.c:61
+free.c:94
 0 byte(s) beyond memory that was freed

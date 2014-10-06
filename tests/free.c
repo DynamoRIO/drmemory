@@ -24,8 +24,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#ifdef WINDOWS
+# include <windows.h>
+#endif /* WINDOWS */
 
 #define NUM_MALLOC 20
+
+static void
+test_free_null_ptr(void)
+{
+#ifdef WINDOWS
+    BOOLEAN res;
+    typedef BOOLEAN (WINAPI *rtl_free_heap_func_t)(PVOID, ULONG, PVOID);
+    rtl_free_heap_func_t rtl_free_heap_func = (rtl_free_heap_func_t)
+        GetProcAddress(GetModuleHandle(TEXT("ntdll.dll")), "RtlFreeHeap");
+    if (rtl_free_heap_func == NULL)
+        printf("fail to get RtlFreeHeap\n");
+    else
+        res = rtl_free_heap_func(GetProcessHeap(), 0, NULL);
+    if (!res) {
+        printf("RtlFreeHeap(,,NULL) failed\n");
+        assert(FALSE);
+    }
+    /* HeapFree is just a wrapper of RtlFreeHeap,
+     * but it is better to test at all levels.
+     */
+    if (!HeapFree(GetProcessHeap(), 0, NULL)) {
+        printf("HeapFree(,,NULL) failed\n");
+        assert(FALSE);
+    }
+#endif
+    free(NULL);
+}
 
 int
 main()
@@ -34,6 +64,9 @@ main()
     int i;
     char c;
     char *x;
+
+    /* i#1644: test free NULL ptr, called first to avoid any free-list corruption */
+    test_free_null_ptr();
 
     for (i = 0; i < NUM_MALLOC; i++) {
         /* Make allocations and free right away.  Normally the next alloc

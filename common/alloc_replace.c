@@ -1802,18 +1802,22 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
             byte *p = (byte *) ptr;
             bool identified = false;
             bool valid = false;
-            /* try 4 bytes back, in case this is an array w/ size passed to delete */
-            head = header_from_ptr(p - sizeof(int));
-            if (is_live_alloc(p - sizeof(int), arena, head)) {
-                check_type_match(p - sizeof(int), head, free_type, flags, mc, caller);
-                identified = true;
-            }
-            if (!identified) {
-                /* try 4 bytes in, in case this is a non-array passed to delete[] */
-                head = header_from_ptr(p + sizeof(int));
-                if (is_live_alloc(p + sizeof(int), arena, head)) {
-                    check_type_match(p + sizeof(int), head, free_type, flags, mc, caller);
+            if (p != NULL) {
+                /* try 4 bytes back, in case this is an array w/ size passed to delete */
+                head = header_from_ptr(p - sizeof(int));
+                if (is_live_alloc(p - sizeof(int), arena, head)) {
+                    check_type_match(p - sizeof(int), head, free_type,
+                                     flags, mc, caller);
                     identified = true;
+                }
+                if (!identified) {
+                    /* try 4 bytes in, in case this is a non-array passed to delete[] */
+                    head = header_from_ptr(p + sizeof(int));
+                    if (is_live_alloc(p + sizeof(int), arena, head)) {
+                        check_type_match(p + sizeof(int), head, free_type,
+                                         flags, mc, caller);
+                        identified = true;
+                    }
                 }
             }
 #ifdef WINDOWS
@@ -3509,7 +3513,13 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" flags=0x%x ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
-    if (arena == NULL)
+    if (ptr == NULL) {
+        /* for -warn_null_ptr */
+        client_invalid_heap_arg((app_pc)replace_RtlFreeHeap, ptr, &mc,
+                                "RtlFreeHeap", true /* is_free */);
+        /* i#1644: ntdll!RtlFreeHeap returns TRUE if ptr is NULL */
+        res = TRUE;
+    } else if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlFreeHeap);
     else {
         bool ok = (bool)(ptr_uint_t) ONDSTACK_REPLACE_FREE_COMMON
