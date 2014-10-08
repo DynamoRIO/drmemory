@@ -428,7 +428,12 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
         "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
         syslist->num.secondary, syslist->num.number, syslist->num.secondary);
-    if (syslist->num_out != NULL)
+    /* When SYSINFO_SECONDARY_TABLE flag is set, num_out
+     * is a pointer to secondary table. So we shouldn't
+     * rewrite them here.
+     */
+    if (syslist->num_out != NULL &&
+        !TEST(SYSINFO_SECONDARY_TABLE, syslist->flags))
         *syslist->num_out = syslist->num;
     if (add_name2num) {
         name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
@@ -437,7 +442,6 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     }
 }
 
-
 /* The routine adds secondary syscall entries in the separate hashtable.
  * User should provide callback routine to add user32 syscall in the hashtable.
  */
@@ -445,23 +449,23 @@ static void
 secondary_syscall_setup(void *drcontext, const module_data_t *info,
                         syscall_info_t *syslist, drsys_get_secnum_cb_t cb)
 {
-    uint entry_index = 0;
+    uint entry_index;
     uint second_entry_num = 0;
     bool is_ntoskrnl = false;
     const char *skip_primary;
     syscall_info_t *syscall_info_second = (syscall_info_t *)syslist->num_out;
-    if (syscall_info_second[entry_index].num.number == SECONDARY_TABLE_SKIP_ENTRY)
-        entry_index++;
 
-    while (syscall_info_second[entry_index].num.number !=
-           SECONDARY_TABLE_ENTRY_MAX_NUMBER) {
+    for (entry_index = 0;
+         syscall_info_second[entry_index].num.number != SECONDARY_TABLE_ENTRY_MAX_NUMBER;
+         entry_index++) {
+        if (syscall_info_second[entry_index].num.number == SECONDARY_TABLE_SKIP_ENTRY)
+            continue;
         if (cb != NULL) {
             second_entry_num =
                 cb(syscall_info_second[entry_index].name, syslist->num.number);
             if (second_entry_num == -1) {
                 LOG(SYSCALL_VERBOSE, "can't resolve secondary number for %s syscall",
                     syscall_info_second[entry_index].name);
-                entry_index++;
                 continue;
             }
         } else {
@@ -475,8 +479,6 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
         add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
                           is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
                           true/*add syscall in secondary hashtable*/);
-
-        entry_index++;
     }
 }
 

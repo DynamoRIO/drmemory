@@ -99,6 +99,10 @@ extern drsys_sysnum_t sysnum_QueryVirtualMemory;
 
 /* The secondary tables are large, so we separate them into their own file: */
 extern syscall_QueryKey_info[];
+extern syscall_EnumerateKey_info[];
+extern syscall_EnumerateValueKey_info[];
+extern syscall_QueryDirectoryFile_info[];
+extern syscall_QueryEvent_info[];
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -823,16 +827,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtEnumerateKey", OK, RNTST, 6,
+    {{0,0},"NtEnumerateKey", OK|SYSINFO_SECONDARY_TABLE, RNTST, 6,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(KEY_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {3, -4, W},
-         {3, -5, WI},
-         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {2,}
+     }, (drsys_sysnum_t *)syscall_EnumerateKey_info
     },
     {{0,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
      {
@@ -841,16 +839,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtEnumerateValueKey", OK, RNTST, 6,
+    {{0,0},"NtEnumerateValueKey", OK|SYSINFO_SECONDARY_TABLE, RNTST, 6,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(KEY_VALUE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {3, -4, W},
-         {3, -5, WI},
-         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {2,}
+     }, (drsys_sysnum_t *)syscall_EnumerateValueKey_info
     },
     {{0,0},"NtExtendSection", OK, RNTST, 2,
      {
@@ -1443,20 +1435,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(LANGID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryDirectoryFile", OK, RNTST, 11,
+    {{0,0},"NtQueryDirectoryFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 11,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
-         {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
-         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {5, -6, W},
-         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {9, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-         {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-     }
+         {7,}
+     }, (drsys_sysnum_t *)syscall_QueryDirectoryFile_info
     },
     {{0,0},"NtQueryDirectoryObject", OK, RNTST, 7,
      {
@@ -1489,15 +1471,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtQueryEvent", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryEvent", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(EVENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryEvent_info
     },
     {{0,0},"NtQueryFullAttributesFile", OK, RNTST, 2,
      {
