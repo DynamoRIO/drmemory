@@ -454,6 +454,8 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
     bool is_ntoskrnl = false;
     const char *skip_primary;
     syscall_info_t *syscall_info_second = (syscall_info_t *)syslist->num_out;
+    if (cb == NULL)
+        is_ntoskrnl = true;
 
     for (entry_index = 0;
          syscall_info_second[entry_index].num.number != SECONDARY_TABLE_ENTRY_MAX_NUMBER;
@@ -469,7 +471,6 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
                 continue;
             }
         } else {
-            is_ntoskrnl = true;
             second_entry_num = entry_index;
         }
 
@@ -480,6 +481,16 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
                           is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
                           true/*add syscall in secondary hashtable*/);
     }
+
+    entry_index++; /* base entry placed after SECONDARY_TABLE_ENTRY_MAX_NUMBER */
+
+    syscall_info_second[entry_index].num.secondary = BASE_ENTRY_INDEX;
+    /* already have primary num */
+    syscall_info_second[entry_index].num.number = syslist->num.number;
+    /* add base entry */
+    add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
+                      is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
+                      true/*add syscall in secondary hashtable*/);
 }
 
 drmf_status_t

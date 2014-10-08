@@ -47,6 +47,11 @@
  * used for this value.
  */
 #define SECONDARY_TABLE_SKIP_ENTRY -2
+/* We place base entry in the secondary table under -1 index to fall
+ * back to the base entry if the app calls syscall with unknown
+ * structure number.
+ */
+#define BASE_ENTRY_INDEX -1
 
 /* for diagnostics: eventually provide some runtime option,
  * -logmask or something: for now have to modify this constant

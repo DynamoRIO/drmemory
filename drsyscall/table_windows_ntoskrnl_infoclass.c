@@ -74,6 +74,9 @@ syscall_info_t syscall_QueryKey_info[] = {
          ENTRY_QueryKey("KeyHandleTagsInformation", "Reserved")
    },
    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+   {{0,0},"NtQueryKey.UNKNOWN", OK, RNTST, 6,
+         ENTRY_QueryKey(NULL, NULL)
+   },
 };
 
 #define ENTRY_EnumerateKey(classname, typename)\
@@ -115,6 +118,9 @@ syscall_info_t syscall_EnumerateKey_info[] = {
          ENTRY_EnumerateKey("KeyHandleTagsInformation", "_KEY_HANDLE_TAGS_INFORMATION")
     },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtEnumerateKey.UNKNOWN", OK, RNTST, 6,
+         ENTRY_EnumerateKey(NULL, NULL)
+    },
 };
 
 #define ENTRY_EnumerateValueKey(classname, typename)\
@@ -150,6 +156,9 @@ syscall_info_t syscall_EnumerateValueKey_info[] = {
                                  "_KEY_VALUE_PARTIAL_INFORMATION")
     },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtEnumerateValueKey.UNKNOWN", OK, RNTST, 6,
+         ENTRY_EnumerateValueKey(NULL, NULL)
+    },
 };
 
 #define ENTRY_QueryDirectoryFile(classname, typename)\
@@ -400,6 +409,9 @@ syscall_info_t syscall_QueryDirectoryFile_info[] = {
                                   "_FILE_MAXIMUM_INFORMATION") /* Reserved */
     },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryDirectoryFile.UNKNOWN", OK, RNTST, 6,
+         ENTRY_QueryDirectoryFile(NULL, NULL)
+    },
 };
 
 #define ENTRY_QueryEvent(classname, typename)\
@@ -417,4 +429,7 @@ syscall_info_t syscall_QueryEvent_info[] = {
          ENTRY_QueryEvent("EventBasicInformation", "_EVENT_BASIC_INFORMATION")
     },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryEvent.UNKNOWN", OK, RNTST, 6,
+         ENTRY_QueryEvent(NULL, NULL)
+    },
 };

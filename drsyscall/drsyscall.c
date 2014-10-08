@@ -1576,6 +1576,10 @@ get_sysinfo(void *drcontext, cls_syscall_t *pt, int initial_num,
             sysnum->secondary = code;
             /* get a new sysinfo */
             sysinfo = syscall_lookup(*sysnum, true/*resolve 2ndary*/);
+            if (sysinfo == NULL) {
+                sysnum->secondary = BASE_ENTRY_INDEX;
+                sysinfo = syscall_lookup(*sysnum, true/*resolve 2ndary*/);
+            }
         }
     }
     return sysinfo;
