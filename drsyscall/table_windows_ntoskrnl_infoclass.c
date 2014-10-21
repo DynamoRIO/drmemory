@@ -26,8 +26,12 @@
 
 #include "../wininc/wdm.h"
 #include "../wininc/ndk_extypes.h"
-
+#include "../wininc/ndk_iotypes.h"
+#include "../wininc/wdm.h"
+#include "../wininc/ntifs.h"
 #include "table_defines.h"
+
+extern drsys_sysnum_t sysnum_SetInformationFile;
 
 /* i#1549 We use the following approach here:
  * 1) We use macros below to describe secondary syscall entries.
@@ -431,5 +435,293 @@ syscall_info_t syscall_QueryEvent_info[] = {
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtQueryEvent.UNKNOWN", OK, RNTST, 6,
          ENTRY_QueryEvent(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryVolumeInformationFile(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},\
+         {2, -3, W, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+     }
+
+syscall_info_t syscall_QueryVolumeInformationFile_info[] = {
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtQueryVolumeInformationFile.FileFsVolumeInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsVolumeInformation", "_FILE_FS_VOLUME_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsLabelInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsLabelInformation", "_FILE_FS_LABEL_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsSizeInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsSizeInformation", "_FILE_FS_SIZE_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsDeviceInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsDeviceInformation", "_FILE_FS_DEVICE_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsAttributeInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsAttributeInformation", "_FILE_FS_ATTRIBUTE_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsControlInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsControlInformation", "_FILE_FS_CONTROL_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsFullSizeInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsFullSizeInformation", "_FILE_FS_FULL_SIZE_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsObjectIdInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsObjectIdInformation", "_FILE_FS_OBJECTID_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsDriverPathInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsDriverPathInformation", "_FILE_FS_DRIVER_PATH_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsVolumeFlagsInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsVolumeFlagsInformation", "_FILE_FS_VOLUME_FLAGS_INFORMATION")
+    },
+    {{0,0},"NtQueryVolumeInformationFile.FileFsSectorSizeInformation", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile("FileFsSectorSizeInformation", "_FILE_FS_SECTOR_SIZE_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryVolumeInformationFile.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryVolumeInformationFile(NULL, NULL)
+    },
+};
+#define ENTRY_SetInformationFile(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},\
+         {2, -3, SYSARG_NON_MEMARG, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+     }
+
+syscall_info_t syscall_SetInformationFile_info[] = {
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtSetInformationFile.FileDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileDirectoryInformation", "_FILE_DIRECTORY_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileFullDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileFullDirectoryInformation", "_FILE_FULL_DIR_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileBothDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileBothDirectoryInformation", "_FILE_BOTH_DIR_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileBasicInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileBasicInformation", "_FILE_BASIC_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileStandardInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileStandardInformation", "_FILE_STANDARD_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileInternalInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileInternalInformation", "_FILE_INTERNAL_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileEaInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileEaInformation", "_FILE_EA_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAccessInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAccessInformation", "_FILE_ACCESS_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileRenameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileRenameInformation", "_FILE_RENAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileLinkInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileLinkInformation", "_FILE_LINK_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNamesInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNamesInformation", "_FILE_NAMES_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileDispositionInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileDispositionInformation", "_FILE_DISPOSITION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FilePositionInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FilePositionInformation", "_FILE_POSITION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileFullEaInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileFullEaInformation", "_FILE_FULL_EA_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileModeInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileModeInformation", "_FILE_MODE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAlignmentInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAlignmentInformation", "_FILE_ALIGNMENT_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAllInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAllInformation", "_FILE_ALL_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAllocationInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAllocationInformation", "_FILE_ALLOCATION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileEndOfFileInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileEndOfFileInformation", "_FILE_END_OF_FILE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAlternateNameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAlternateNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileStreamInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileStreamInformation", "_FILE_STREAM_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FilePipeInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FilePipeInformation", "_FILE_PIPE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FilePipeLocalInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FilePipeLocalInformation", "_FILE_PIPE_LOCAL_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FilePipeRemoteInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FilePipeRemoteInformation", "_FILE_PIPE_REMOTE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileMailslotQueryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileMailslotQueryInformation", "_FILE_MAILSLOT_QUERY_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileMailslotSetInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileMailslotSetInformation", "_FILE_MAILSLOT_SET_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileCompressionInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileCompressionInformation", "_FILE_COMPRESSION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileObjectIdInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileObjectIdInformation", "_FILE_OBJECTID_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileCompletionInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileCompletionInformation", "_FILE_COMPLETION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileMoveClusterInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileMoveClusterInformation", "_FILE_MOVE_CLUSTER_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileQuotaInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileQuotaInformation", "_FILE_QUOTA_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileReparsePointInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileReparsePointInformation", "_FILE_REPARSE_POINT_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNetworkOpenInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNetworkOpenInformation", "_FILE_NETWORK_OPEN_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAttributeTagInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAttributeTagInformation", "_FILE_ATTRIBUTE_TAG_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileTrackingInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileTrackingInformation", "_FILE_TRACKING_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIdBothDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIdBothDirectoryInformation", "_FILE_ID_BOTH_DIR_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIdFullDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIdFullDirectoryInformation", "_FILE_ID_FULL_DIR_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileValidDataLengthInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileValidDataLengthInformation", "_FILE_VALID_DATA_LENGTH_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileShortNameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileShortNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIoCompletionNotificationInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIoCompletionNotificationInformation", "_FILE_IO_COMPLETION_NOTIFICATION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIoStatusBlockRangeInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIoStatusBlockRangeInformation", "_FILE_IO_STATUS_BLOCK_RANGE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIoPriorityHintInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIoPriorityHintInformation", "_FILE_IO_PRIORITY_HINT_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileSfioReserveInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileSfioReserveInformation", "_FILE_SFIO_RESERVE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileSfioVolumeInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileSfioVolumeInformation", "_FILE_SFIO_VOLUME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileHardLinkInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileHardLinkInformation", "_FILE_LINKS_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileProcessIdsUsingFileInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileProcessIdsUsingFileInformation", "_FILE_PROCESS_IDS_USING_FILE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNormalizedNameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNormalizedNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNetworkPhysicalNameInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNetworkPhysicalNameInformation", "_FILE_NETWORK_PHYSICAL_NAME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIdGlobalTxDirectoryInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIdGlobalTxDirectoryInformation", "_FILE_ID_GLOBAL_TX_DIR_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileIsRemoteDeviceInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileIsRemoteDeviceInformation", "_FILE_IS_REMOTE_DEVICE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileAttributeCacheInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileAttributeCacheInformation", "_FILE_ATTRIBUTE_CACHE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileNumaNodeInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileNumaNodeInformation", "_FILE_NUMA_NODE_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileStandardLinkInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileStandardLinkInformation", "_FILE_STANDARD_LINK_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileRemoteProtocolInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileRemoteProtocolInformation", "_FILE_REMOTE_PROTOCOL_INFORMATION")
+    },
+    {{0,0},"NtSetInformationFile.FileReplaceCompletionInformation", OK, RNTST, 5,
+         ENTRY_SetInformationFile("FileReplaceCompletionInformation", "_FILE_COMPLETION_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationFile.UNKNOWN", OK, RNTST, 5,
+         ENTRY_SetInformationFile(NULL, NULL), &sysnum_SetInformationFile
+    },
+};
+#define ENTRY_SetInformationKey(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(KEY_SET_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationKey_info[] = {
+    {{0,0},"NtSetInformationKey.KeyWriteTimeInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeyWriteTimeInformation", "_KEY_WRITE_TIME_INFORMATION")
+    },
+    {{0,0},"NtSetInformationKey.KeyWow64FlagsInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeyWow64FlagsInformation", "_KEY_WOW64_FLAGS_INFORMATION")
+    },
+    {{0,0},"NtSetInformationKey.KeyControlFlagsInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeyControlFlagsInformation", "KEY_CONTROL_FLAGS_INFORMATION")
+    },
+    {{0,0},"NtSetInformationKey.KeySetVirtualizationInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeySetVirtualizationInformation", "_KEY_SET_VIRTUALIZATION_INFORMATION")
+    },
+    {{0,0},"NtSetInformationKey.KeySetDebugInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeySetDebugInformation", NULL)
+    },
+    {{0,0},"NtSetInformationKey.KeySetHandleTagsInformation", OK, RNTST, 4,
+         ENTRY_SetInformationKey("KeySetHandleTagsInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationKey.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationKey(NULL, NULL)
+    },
+};
+
+#define ENTRY_SetInformationObject(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(OBJECT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationObject_info[] = {
+    {{0,0},"NtSetInformationObject.ObjectBasicInformation", OK, RNTST, 4,
+         ENTRY_SetInformationObject("ObjectBasicInformation", "_PUBLIC_OBJECT_BASIC_INFORMATION")
+    },
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtSetInformationObject.ObjectTypeInformation", OK, RNTST, 4,
+         ENTRY_SetInformationObject("ObjectTypeInformation", "_PUBLIC_OBJECT_TYPE_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationObject.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationObject(NULL, NULL)
     },
 };

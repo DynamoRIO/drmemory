@@ -2793,7 +2793,10 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_pre_CreateUserProcess(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_DeviceIoControlFile))
         handle_DeviceIoControlFile(drcontext, pt, ii);
-    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
+    /* We compare only primary number here b/c we use secondary number to
+     * find correct NtSetSystemInformation in the secondary table.
+     */
+    else if (&ii->arg->sysnum.number == &sysnum_SetSystemInformation.number)
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
         handle_SetInformationProcess(drcontext, pt, ii);

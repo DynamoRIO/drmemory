@@ -92,7 +92,6 @@ extern drsys_sysnum_t sysnum_QuerySystemInformationWow64;
 extern drsys_sysnum_t sysnum_QuerySystemInformationEx;
 extern drsys_sysnum_t sysnum_SetSystemInformation;
 extern drsys_sysnum_t sysnum_SetInformationProcess;
-extern drsys_sysnum_t sysnum_SetInformationFile;
 extern drsys_sysnum_t sysnum_PowerInformation;
 extern drsys_sysnum_t sysnum_QueryVirtualMemory;
 
@@ -103,6 +102,10 @@ extern syscall_EnumerateKey_info[];
 extern syscall_EnumerateValueKey_info[];
 extern syscall_QueryDirectoryFile_info[];
 extern syscall_QueryEvent_info[];
+extern syscall_QueryVolumeInformationFile_info[];
+extern syscall_SetInformationFile_info[];
+extern syscall_SetInformationKey_info[];
+extern syscall_SetInformationObject_info[];
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -1768,14 +1771,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_QueryVirtualMemory
     },
-    {{0,0},"NtQueryVolumeInformationFile", OK, RNTST, 5,
+    {{0,0},"NtQueryVolumeInformationFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {2, -3, W},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-     }
+       {4,}
+     }, (drsys_sysnum_t *)syscall_QueryVolumeInformationFile_info
     },
     {{0,0},"NtQueueApcThread", OK, RNTST, 5,
      {
@@ -2129,14 +2128,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetInformationFile", OK, RNTST, 5,
+    {{0,0},"NtSetInformationFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {2, -3, SYSARG_NON_MEMARG, },
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-     }, &sysnum_SetInformationFile
+       {4,}
+     }, (drsys_sysnum_t *)syscall_SetInformationFile_info
     },
     {{0,0},"NtSetInformationJobObject", OK, RNTST, 4,
      {
@@ -2146,21 +2141,15 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetInformationKey", OK, RNTST, 4,
+    {{0,0},"NtSetInformationKey", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(KEY_SET_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+       {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationKey_info
     },
-    {{0,0},"NtSetInformationObject", OK, RNTST, 4,
+    {{0,0},"NtSetInformationObject", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(OBJECT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+       {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationObject_info
     },
     {{0,0},"NtSetInformationProcess", OK, RNTST, 4,
      {
