@@ -1362,7 +1362,7 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
          * instr as having live flags or recover somehow: ignoring for now
          * as pathological.
          */
-        flags = instr_get_arith_flags(inst);
+        flags = instr_get_arith_flags(inst, DR_QUERY_DEFAULT);
         /* We insert after the prev instr to avoid messing up
          * -check_leaks instrumentation (PR 560871)
          */

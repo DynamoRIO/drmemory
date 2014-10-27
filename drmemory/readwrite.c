@@ -1338,7 +1338,7 @@ instr_check_definedness(instr_t *inst)
           * for cmpxchg* only some operands are compared: see always_check_definedness.
           */
          ((instr_num_dsts(inst) == 0 &&
-           TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) ||
+           TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) ||
           opc_is_loop(opc) || opc_is_cmovcc(opc) || opc_is_fcmovcc(opc) ||
           opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps)) ||
         /* if eip is a destination we have to check the corresponding
@@ -1350,7 +1350,7 @@ instr_check_definedness(instr_t *inst)
          * Note that we don't shadow the floating-point status word, so
          * most float ops should hit this. */
         (!instr_propagatable_dsts(inst) &&
-         !TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
+         !TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
          /* though prefetch has nowhere to propagate uninit shadow vals to, we
           * do not want to raise errors.  so we ignore, under the assumption
           * that a real move will happen soon enough to propagate: if not,
@@ -1767,10 +1767,11 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
         instr_reset(drcontext, &inst);
         if (!safe_decode(drcontext, pc, &inst, &pc))
             return false;
-        if (!writes_ebp && instr_writes_to_reg(&inst, DR_REG_XBP))
+        if (!writes_ebp && instr_writes_to_reg(&inst, DR_REG_XBP, DR_QUERY_INCLUDE_ALL))
             writes_ebp = true;
         for (i = 0; i < num_regs; i++) {
-            if (instr_writes_to_reg(&inst, opnd_get_reg_used(fstp_mem, i))) {
+            if (instr_writes_to_reg(&inst, opnd_get_reg_used(fstp_mem, i),
+                                    DR_QUERY_INCLUDE_ALL)) {
                 /* We do support a write to a reg if that's the sole addressing
                  * reg and if the write comes from an ebp-based slot where
                  * ebp does not change.  This is to handle cases like this
@@ -2547,7 +2548,8 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
     /* By default all source bytes influence eflags.  If an opcode wants to do
      * otherwise it needs to return prior to here.
      */
-    if (comb->inst != NULL && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(comb->inst)))
+    if (comb->inst != NULL &&
+        TESTANY(EFLAGS_WRITE_6, instr_get_eflags(comb->inst, DR_QUERY_INCLUDE_ALL)))
         accum_shadow(&comb->eflags, shadow);
     return;
 }
@@ -2753,10 +2755,10 @@ check_and_not_test(void *drcontext, dr_mcontext_t *mc, instr_t *and, app_pc next
         /* for case like: and %ecx 0x80; jecxz */
         if (instr_is_cbr(&inst))
             break;
-        if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst)))
+        if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst, DR_QUERY_DEFAULT)))
             break;
         if (/* report match on aflags written by other following instr */
-            TESTALL(EFLAGS_WRITE_6, instr_get_eflags(&inst)) ||
+            TESTALL(EFLAGS_WRITE_6, instr_get_eflags(&inst, DR_QUERY_DEFAULT)) ||
             /* i#1576, i#1586: report match on non-cbr-cti */
             instr_is_cti(&inst)) {
             count = AND_NOT_TEST_INSTRS_TO_CHECK;
@@ -3142,6 +3144,7 @@ register_shadow_mark_defined(reg_id_t reg, size_t sz)
  * but perhaps we shouldn't be: we'll wait for a false positive to
  * take any action though, seems pretty unlikely, unlike cmovcc.
  */
+/* XXX i#1649: handle other predication: OP_bsf, OP_bsr, OP_*maskmov*, etc. */
 int
 num_true_srcs(instr_t *inst, dr_mcontext_t *mc /*optional*/)
 {
@@ -3778,7 +3781,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     }
 
     /* eflags source */
-    if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst))) {
+    if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst, DR_QUERY_DEFAULT))) {
         uint shadow = get_shadow_eflags();
         /* for check_srcs_after we leave comb.dst where it last was */
         if (always_defined) {
@@ -3806,7 +3809,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         /* turn back on for dsts */
         check_definedness = instr_check_definedness(&inst);
         if (check_andor_sources(drcontext, mc, &inst, &comb, decode_pc + instr_sz)) {
-            if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst))) {
+            if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst, DR_QUERY_INCLUDE_ALL))) {
                 /* We have to redo the eflags propagation.  map_src_to_dst() combined
                  * all the laid-out sources, some of which we made defined in
                  * check_andor_sources.
@@ -3890,7 +3893,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         } else
             ASSERT(opnd_is_immed_int(opnd) || opnd_is_pc(opnd), "unexpected opnd");
     }
-    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst))) {
+    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(&inst, DR_QUERY_INCLUDE_ALL))) {
         set_shadow_eflags(comb.eflags);
     }
 
@@ -5566,8 +5569,8 @@ bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
         return;
     if (instr_get_opcode(instr) == OP_xchg) {
         /* xchg eax,esp */
-        if (!(instr_writes_to_exact_reg(instr, DR_REG_XSP) &&
-              instr_writes_to_exact_reg(instr, DR_REG_XAX))) {
+        if (!(instr_writes_to_exact_reg(instr, DR_REG_XSP, DR_QUERY_DEFAULT) &&
+              instr_writes_to_exact_reg(instr, DR_REG_XAX, DR_QUERY_DEFAULT))) {
             WARN("Wrong xchg instr\n");
         }
         return;
@@ -5576,9 +5579,9 @@ bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
         for (instr  = instr_get_prev_app_instr(instr);
              instr != NULL;
              instr  = instr_get_prev_app_instr(instr)) {
-            ASSERT(!instr_reads_from_reg(instr, DR_REG_XSP),
+            ASSERT(!instr_reads_from_reg(instr, DR_REG_XSP, DR_QUERY_DEFAULT),
                    "see wrong pattern");
-            if (instr_writes_to_exact_reg(instr, DR_REG_XSP))
+            if (instr_writes_to_exact_reg(instr, DR_REG_XSP, DR_QUERY_DEFAULT))
                 return;
         }
     }
@@ -5983,7 +5986,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
     if (!has_shadowed_reg && !has_mem &&
-        !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6, instr_get_eflags(inst)))
+        !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6,
+                 instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))
         goto instru_event_bb_insert_done;
 
     /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */

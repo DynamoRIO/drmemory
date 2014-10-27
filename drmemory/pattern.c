@@ -367,7 +367,7 @@ pattern_opt_elide_overlap_update_regs(instr_t *app, bb_info_t *bi)
     elide_reg_cover_info_t *reg_cover = bi->reg_cover;
     for (i = 0; i < NUM_LIVENESS_REGS; i++) {
         if (reg_cover[i].status != ELIDE_REG_COVER_STATUS_NONE &&
-            instr_writes_to_reg(app, REG_START + i)) {
+            instr_writes_to_reg(app, REG_START + i, DR_QUERY_INCLUDE_ALL)) {
             /* the base reg is overwritten, invalidate it */
             reg_cover[i].status = ELIDE_REG_COVER_STATUS_NONE;
         }
@@ -741,7 +741,7 @@ pattern_aflags_liveness_update_on_reverse_scan(instr_t *instr, int liveness)
         return LIVE_LIVE;
     if (instr_is_interrupt(instr) || instr_is_syscall(instr))
         return LIVE_LIVE;
-    flags = instr_get_arith_flags(instr);
+    flags = instr_get_arith_flags(instr, DR_QUERY_DEFAULT);
     if (TESTANY(EFLAGS_READ_6, flags))
         return LIVE_LIVE;
     if (TESTALL(EFLAGS_WRITE_6, flags))
@@ -762,9 +762,9 @@ pattern_reg_liveness_update_on_reverse_scan(instr_t *instr, reg_id_t reg,
         return LIVE_LIVE;
     if (instr_is_interrupt(instr) || instr_is_syscall(instr))
         return LIVE_LIVE;
-    if (instr_reads_from_reg(instr, reg))
+    if (instr_reads_from_reg(instr, reg, DR_QUERY_DEFAULT))
         return LIVE_LIVE;
-    if (instr_writes_to_exact_reg(instr, reg))
+    if (instr_writes_to_exact_reg(instr, reg, DR_QUERY_DEFAULT))
         return LIVE_DEAD;
     return liveness;
 }

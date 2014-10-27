@@ -216,7 +216,7 @@ get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
     while (inst != NULL) {
         /* aflags */
         if (!aflags_known) {
-            merge = instr_get_arith_flags(inst);
+            merge = instr_get_arith_flags(inst, DR_QUERY_DEFAULT);
             if (TESTANY(EFLAGS_READ_6, merge)) {
                 uint w2r = EFLAGS_WRITE_TO_READ(res);
                 if (!TESTALL((merge & EFLAGS_READ_6), w2r)) {
@@ -238,11 +238,11 @@ get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
         for (r = r_start; r < r_end; r++) {
             reg_id_t reg = r + REG_START;
             if (live[r] == LIVE_UNKNOWN) {
-                if (instr_reads_from_reg(inst, reg)) {
+                if (instr_reads_from_reg(inst, reg, DR_QUERY_DEFAULT)) {
                     live[r] = LIVE_LIVE;
                 }
                 /* make sure we don't consider writes to sub-regs */
-                else if (instr_writes_to_exact_reg(inst, reg)) {
+                else if (instr_writes_to_exact_reg(inst, reg, DR_QUERY_DEFAULT)) {
                     live[r] = LIVE_DEAD;
                 }
             }
@@ -285,6 +285,11 @@ static bool
 instr_needs_slowpath(instr_t *inst)
 {
     int opc = instr_get_opcode(inst);
+    if (instr_is_predicated(inst) &&
+        !opc_is_cmovcc(opc) && !opc_is_fcmovcc(opc)) {
+        /* XXX i#1649: fastpath handles only cmovcc predication */
+        return true;
+    }
     /* Note that for and/test/or (instr_needs_all_srcs_and_vals(inst)) and
      * for shift routines we have the fastpath check for definedness and bail
      * out to the slowpath on any undefined operands, avoiding the need for
@@ -768,13 +773,13 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (mi->load && (opnd_get_size(mi->src[0].app) == OPSZ_8 ||
                          opnd_get_size(mi->src[0].app) == OPSZ_10) &&
             (!opnd_is_null(mi->src[1].app) || !opnd_is_null(mi->dst[0].app) ||
-             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
+             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))) {
             mi->check_definedness = true;
         }
         if (mi->store && (opnd_get_size(mi->dst[0].app) == OPSZ_8 ||
                           opnd_get_size(mi->dst[0].app) == OPSZ_10) &&
             (!opnd_is_null(mi->dst[1].app) || !opnd_is_null(mi->src[0].app) ||
-             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
+             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))) {
             mi->check_definedness = true;
         }
 
@@ -820,7 +825,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         mi->opsz = opnd_size_in_bytes(opnd_get_size(mi->dst[0].app));
     if (opnd_is_null(mi->src[0].app)) {
 #ifdef TOOL_DR_MEMORY
-        if (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) {
+        if (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT))) {
             /* match dst size, shadow slot holds whole dword's worth */
             if (mi->opsz > 0) {
                 ASSERT(mi->opsz <= 4 || mi->check_definedness ||
@@ -835,7 +840,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     } else
         mi->src_opsz = opnd_size_in_bytes(opnd_get_size(mi->src[0].app));
 #ifdef TOOL_DR_MEMORY
-    if (mi->opsz == 0 && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
+    if (mi->opsz == 0 &&
+        TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) {
         /* match src size, shadow slot holds whole dword's worth */
         if (mi->src_opsz > 0) {
             ASSERT(mi->src_opsz <= 4 || mi->check_definedness ||
@@ -918,7 +924,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         mi->need_offs =
             ( (mi->store || mi->dst_reg != REG_NULL) ||
               /* need offs if propagating eflags (esp for -no_check_uninit_cmps) */
-              (mi->load && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
+              (mi->load &&
+               TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
                !instr_check_definedness(inst)) ) &&
             (mi->memsz < 4 && !opnd_is_immed_int(mi->memoffs));
     }
@@ -1204,7 +1211,8 @@ set_check_definedness_post_regs(void *drcontext, instr_t *inst, fastpath_info_t 
 
     /* Propagate eflags if we have room: else check definedness (PR 425622) */
     mi->check_eflags_defined = true;
-    if (!mi->check_definedness && TESTANY(EFLAGS_READ_6, instr_get_eflags(inst)) &&
+    if (!mi->check_definedness &&
+        TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
         /* XXX i#402: since eflags shadow can have undef bits at any part of it,
          * to propagate to sub-dword we'd need to map it down
          */
@@ -1430,7 +1438,7 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
      */
     opc = instr_get_opcode(inst);
     /* Do not share cmovcc since it nondet skips its mem access operand (PR 530902) */
-    if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc))
+    if (instr_is_predicated(inst))
         return false;
     if (opnd_is_reg(cur->dst[0].app) && !opc_is_push(opc) &&
         opnd_uses_reg(cur_memop, opnd_get_reg(cur->dst[0].app)))
@@ -1443,9 +1451,8 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
      */
     if (opc_is_stringop(opc))
         return false;
-    opc = instr_get_opcode(nxt);
     /* Do not share w/ cmovcc since it nondet skips its mem access operand (PR 530902) */
-    if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc))
+    if (instr_is_predicated(nxt))
         return false;
     if (instr_ok_for_instrument_fastpath(nxt, &mi, cur->bb) &&
         adjust_opnds_for_fastpath(nxt, &mi)) {
@@ -2343,7 +2350,14 @@ static bool
 write_shadow_eflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                     reg_id_t load_through, opnd_t val)
 {
-    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
+    /* XXX: conditional eflags writes don't exist on x86.
+     * On ARM we expect to mark the instru w/ the same predicate
+     * where possible; IT blocks may need extra work (xref DR i#1555).
+     */
+    ASSERT(instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL) ==
+           instr_get_eflags(inst, DR_QUERY_DEFAULT),
+           "conditionally written eflags not supported");
+    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) {
         if (opnd_get_size(val) != OPSZ_1) {
             ASSERT(opnd_is_immed_int(val), "unsupported arg");
             /* truncate: meant for shadow constant */
@@ -3236,8 +3250,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 
             /* Write result */
             if (!wrote_shadow_eflags) {
-                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
-                                              instr_get_eflags(inst))) {
+                if (process_eflags &&
+                    TESTANY(EFLAGS_WRITE_6,
+                            instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) {
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
@@ -3351,8 +3366,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 
             /* Shadow src is now in ok state to write to eflags */
             if (!wrote_shadow_eflags) {
-                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
-                                              instr_get_eflags(inst))) {
+                if (process_eflags &&
+                    TESTANY(EFLAGS_WRITE_6,
+                            instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) {
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
@@ -3450,8 +3466,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 
             /* Shadow src is now in ok state to write to eflags */
             if (!wrote_shadow_eflags) {
-                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
-                                              instr_get_eflags(inst))) {
+                if (process_eflags &&
+                    TESTANY(EFLAGS_WRITE_6,
+                            instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL))) {
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
@@ -3522,7 +3539,8 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 {
     /* even if dst1 is empty we need to write to eflags */
     if (!opnd_is_null(mi->dst[0].shadow) ||
-        (process_eflags && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
+        (process_eflags &&
+         TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
                              src, src_opsz, dst_opsz, scratch8, si8,
                              process_eflags, alu_uncombined,
@@ -3541,11 +3559,11 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 static bool
 instr_needs_eflags_restore(instr_t *inst, uint aflags_liveness)
 {
-    return (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst)) ||
+    return (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT)) ||
             /* If the app instr writes some subset of eflags we need to restore
              * rest so they're combined properly
              */
-            (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
+            (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
              aflags_liveness != EFLAGS_WRITE_6));
 }
 
@@ -3617,7 +3635,7 @@ restore_mcontext_on_shadow_fault(void *drcontext,
                                    /* not worth storing liveness for bb or decoding
                                     * whole bb here, so we may have false pos
                                     */
-                                   instr_get_eflags(app_inst)) ||
+                                   instr_get_eflags(app_inst, DR_QUERY_INCLUDE_ALL)) ||
         mc->pc == save->last_instr /* bottom of bb restores */) {
         /* Skip what's added by restore_aflags_if_live() prior to GPR restores */
         bool has_eflags_restore = false;
@@ -4223,7 +4241,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (!mi->need_offs && mi->opsz < 4 && options.check_uninitialized &&
         (mi->store || reg_is_gpr(mi->dst_reg) ||
          /* if writes eflags we'll need a 3rd reg for write_shadow_eflags */
-         (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
+         (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
+          !mi->check_definedness)))
         mi->need_nonoffs_reg3 = true;
 
 #ifdef TOOL_DR_MEMORY
@@ -4311,7 +4330,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         result_is_always_defined(inst, false/*us*/) ||
         /* no sources (e.g., rdtsc) */
         (opnd_is_null(mi->src[0].app) &&
-         !TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) ||
+         !TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT))) ||
         /* move immed into reg or memory */
         (!mi->load && mi->num_to_propagate == 0 &&
          (mi->store || mi->dst_reg != REG_NULL));
@@ -4439,7 +4458,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef STATISTICS
                     options.statistics ||
 #endif
-                    TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))));
+                    TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT))));
     /* we don't use dr_save_arith_flags so we can use seto only when necessary */
     if (save_aflags && mi->aflags != EFLAGS_WRITE_6) {
         insert_save_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
@@ -4451,6 +4470,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
      * aflags definedness won't disturb reg2 and the leas above do not use reg2.
      * We update scratch_reg*_is_avail() so aflags save won't touch reg1
      * (holds lea result) or reg2 (holds setcc result) (PR 558319).
+     *
+     * XXX i#1649: generalize this to handle other types of predication on fastpath.
      */
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc)) {
         int setcc_opc = instr_cmovcc_to_jcc(opc) - OP_jo + OP_seto;
@@ -4472,7 +4493,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 #ifdef TOOL_DR_MEMORY
     /* Check definedness of eflags if we don't have room to propagate (PR 425622) */
-    if (mi->check_eflags_defined && TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) {
+    if (mi->check_eflags_defined &&
+        TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT))) {
         /* we always write the full byte to make this cmp easy */
         PRE(bb, inst,
             INSTR_CREATE_cmp(drcontext, opnd_create_shadow_eflags_slot(),
@@ -4926,9 +4948,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
      * we can't use mi->check_definedness b/c in fastpath it's used for "go
      * to slowpath" as well as "report error"
      */
-    if (instr_check_definedness(inst) && TESTALL(EFLAGS_WRITE_6, instr_get_eflags(inst)))
+    if (instr_check_definedness(inst) &&
+        TESTALL(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_DEFAULT)))
         mi->bb->eflags_defined = true;
-    else if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))
+    else if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))
         mi->bb->eflags_defined = false;
 
     /* Check memory operand(s) for addressability.
@@ -5409,7 +5432,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         else
             in = instr_get_next(instru_start);
         for (; in != inst; in = instr_get_next(in)) {
-            if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(in)) &&
+            if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(in, DR_QUERY_INCLUDE_ALL)) &&
                 (!whole_bb_spills_enabled() || !mi->bb->eflags_used)) {
                 ELOGPT(0, pt, "ERROR: not saving flags when should for: ");
                 instr_disassemble(drcontext, inst, pt->f);
@@ -5909,19 +5932,24 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
          /* if sub-dword then we have to restore for rest of bits */
          opnd_get_size(instr_get_src(inst, 0)) != OPSZ_4)) {
         /* we don't mark as used: if unused so far, no reason to restore */
-        if (instr_reads_from_reg(inst, bi->reg1.reg) ||
+        if (instr_reads_from_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) ||
             /* if sub-reg is written we need to restore rest */
-            (instr_writes_to_reg(inst, bi->reg1.reg) &&
-             !instr_writes_to_exact_reg(inst, bi->reg1.reg))) {
+            (instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) &&
+             !instr_writes_to_exact_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL)) ||
+            /* for conditional write, simplest to restore before and save after, b/c
+             * if cond fails we have to avoid saving bogus value
+             */
+            (instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) &&
+             !instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_DEFAULT))) {
             restored_for_read = true;
             /* If reg1 holds a shared shadow addr, better to preserve it than
              * to have to re-translate
              */
             if (!opnd_is_null(bi->shared_memop)) {
-                if (instr_writes_to_reg(inst, bi->reg1.reg) ||
-                    instr_writes_to_reg(inst, bi->reg2.reg) ||
+                if (instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) ||
+                    instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) ||
                     /* must consider reading the other reg (PR 494169) */
-                    instr_reads_from_reg(inst, bi->reg2.reg)) {
+                    instr_reads_from_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL)) {
                     /* give up: not worth complexity (i#165 covers handling) */
                     STATS_INC(xl8_not_shared_reg_conflict);
                     bi->shared_memop = opnd_create_null();
@@ -5936,10 +5964,15 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
             insert_spill_global(drcontext, bb, inst, &bi->reg1, false/*restore*/);
         }
-        if (instr_reads_from_reg(inst, bi->reg2.reg) ||
+        if (instr_reads_from_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) ||
             /* if sub-reg is written we need to restore rest */
-            (instr_writes_to_reg(inst, bi->reg2.reg) &&
-             !instr_writes_to_exact_reg(inst, bi->reg2.reg))) {
+            (instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) &&
+             !instr_writes_to_exact_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL)) ||
+            /* for conditional write, simplest to restore before and save after, b/c
+             * if cond fails we have to avoid saving bogus value
+             */
+            (instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) &&
+             !instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_DEFAULT))) {
             restored_for_read = true;
             insert_spill_global(drcontext, bb, inst, &bi->reg2, false/*restore*/);
         }
@@ -5962,7 +5995,8 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
         bi->reg2.dead = (live[bi->reg2.reg - REG_START] == LIVE_DEAD);
     bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
 
-    if (bi->reg1.reg != DR_REG_NULL && instr_writes_to_reg(inst, bi->reg1.reg)) {
+    if (bi->reg1.reg != DR_REG_NULL &&
+        instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL)) {
         if (!bi->reg1.dead) {
             bi->reg1.used = true;
             insert_spill_global(drcontext, bb, next, &bi->reg1, true/*save*/);
@@ -5972,7 +6006,8 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         if (!opnd_is_null(bi->shared_memop)) {
             if (restored_for_read ||
-                (instr_writes_to_reg(inst, bi->reg2.reg) && !bi->reg2.dead)) {
+                (instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) &&
+                 !bi->reg2.dead)) {
                 /* give up: not worth complexity for now (i#165 covers handling) */
                 STATS_INC(xl8_not_shared_reg_conflict);
                 bi->shared_memop = opnd_create_null();
@@ -5988,11 +6023,13 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
     }
     if (bi->reg2.reg != DR_REG_NULL &&
-        instr_writes_to_reg(inst, bi->reg2.reg) && !bi->reg2.dead) {
+        instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) &&
+        !bi->reg2.dead) {
         bi->reg2.used = true;
         insert_spill_global(drcontext, bb, next, &bi->reg2, true/*save*/);
     }
-    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && bi->aflags != EFLAGS_WRITE_6) {
+    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
+        bi->aflags != EFLAGS_WRITE_6) {
         /* Optimization: no need if next is jcc and we just checked definedness */
         if (IF_DRMEM(bi->eflags_defined && ) opc_is_jcc(instr_get_opcode(next))) {
             /* We just wrote to real eflags register, so don't restore at end */

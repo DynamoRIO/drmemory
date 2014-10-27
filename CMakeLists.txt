@@ -749,7 +749,7 @@ else ()
 endif ()
 
 # when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "5.0.0")
+set(DynamoRIO_VERSION_REQUIRED "5.0.2915")
 
 set(DR_install_dir "dynamorio")
 
