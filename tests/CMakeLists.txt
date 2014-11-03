@@ -800,7 +800,7 @@ if (TOOL_DR_MEMORY)
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
   newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
 else (TOOL_DR_MEMORY)
-  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "" 0)
+  newtest_ex(stale stale.c "" "-staleness;-stale_granularity;100" "" OFF "" 0)
 
   newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF "")
   newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF "")
