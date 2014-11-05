@@ -26,6 +26,7 @@
 
 #include "../wininc/wdm.h"
 #include "../wininc/ndk_extypes.h"
+#include "../wininc/ndk_lpctypes.h"
 #include "../wininc/ndk_iotypes.h"
 #include "../wininc/wdm.h"
 #include "../wininc/ntifs.h"
@@ -75,10 +76,10 @@ syscall_info_t syscall_QueryKey_info[] = {
                         "_KEY_VIRTUALIZATION_INFORMATION")
    },
    {{0,0},"NtQueryKey.KeyHandleTagsInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
-         ENTRY_QueryKey("KeyHandleTagsInformation", "Reserved")
+         ENTRY_QueryKey("KeyHandleTagsInformation", "_KEY_HANDLE_TAGS_INFORMATION")
    },
    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
-   {{0,0},"NtQueryKey.UNKNOWN", OK, RNTST, 6,
+   {{0,0},"NtQueryKey.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
          ENTRY_QueryKey(NULL, NULL)
    },
 };
@@ -408,12 +409,8 @@ syscall_info_t syscall_QueryDirectoryFile_info[] = {
          ENTRY_QueryDirectoryFile("FileReplaceCompletionInformation",
                                   "_FILE_COMPLETION_INFORMATION")
     },
-    {{0,0},"NtQueryDirectoryFile.FileMaximumInformation", OK, RNTST, 11,
-         ENTRY_QueryDirectoryFile("FileMaximumInformation",
-                                  "_FILE_MAXIMUM_INFORMATION") /* Reserved */
-    },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
-    {{0,0},"NtQueryDirectoryFile.UNKNOWN", OK, RNTST, 6,
+    {{0,0},"NtQueryDirectoryFile.UNKNOWN", OK, RNTST, 11,
          ENTRY_QueryDirectoryFile(NULL, NULL)
     },
 };
@@ -433,8 +430,281 @@ syscall_info_t syscall_QueryEvent_info[] = {
          ENTRY_QueryEvent("EventBasicInformation", "_EVENT_BASIC_INFORMATION")
     },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
-    {{0,0},"NtQueryEvent.UNKNOWN", OK, RNTST, 6,
+    {{0,0},"NtQueryEvent.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
          ENTRY_QueryEvent(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationAtom(classname, typename)\
+     {\
+         {0, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},\
+         {1, sizeof(ATOM_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W, 0, typename},\
+         {2, -4, WI},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationAtom_info[] = {
+    {{0,0},"NtQueryInformationAtom.AtomBasicInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationAtom("AtomBasicInformation", "_ATOM_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationAtom.AtomTableInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationAtom("AtomTableInformation", "_ATOM_TABLE_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationAtom.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationAtom(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationFile(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},\
+         {2, -3, W, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+     }
+
+syscall_info_t syscall_QueryInformationFile_info[] = {
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtQueryInformationFile.FileDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileDirectoryInformation", "_FILE_DIRECTORY_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileFullDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileFullDirectoryInformation", "_FILE_FULL_DIR_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileBothDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileBothDirectoryInformation", "_FILE_BOTH_DIR_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileBasicInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileBasicInformation", "_FILE_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileStandardInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileStandardInformation", "_FILE_STANDARD_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileInternalInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileInternalInformation", "_FILE_INTERNAL_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileEaInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileEaInformation", "_FILE_EA_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAccessInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAccessInformation", "_FILE_ACCESS_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileRenameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileRenameInformation", "_FILE_RENAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileLinkInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileLinkInformation", "_FILE_LINK_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNamesInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNamesInformation", "_FILE_NAMES_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileDispositionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileDispositionInformation", "_FILE_DISPOSITION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FilePositionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FilePositionInformation", "_FILE_POSITION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileFullEaInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileFullEaInformation", "_FILE_FULL_EA_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileModeInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileModeInformation", "_FILE_MODE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAlignmentInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAlignmentInformation", "_FILE_ALIGNMENT_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAllInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAllInformation", "_FILE_ALL_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAllocationInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAllocationInformation", "_FILE_ALLOCATION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileEndOfFileInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileEndOfFileInformation", "_FILE_END_OF_FILE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAlternateNameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAlternateNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileStreamInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileStreamInformation", "_FILE_STREAM_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FilePipeInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FilePipeInformation", "_FILE_PIPE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FilePipeLocalInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FilePipeLocalInformation", "_FILE_PIPE_LOCAL_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FilePipeRemoteInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FilePipeRemoteInformation", "_FILE_PIPE_REMOTE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileMailslotQueryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileMailslotQueryInformation", "_FILE_MAILSLOT_QUERY_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileMailslotSetInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileMailslotSetInformation", "_FILE_MAILSLOT_SET_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileCompressionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileCompressionInformation", "_FILE_COMPRESSION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileObjectIdInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileObjectIdInformation", "_FILE_OBJECTID_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileCompletionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileCompletionInformation", "_FILE_COMPLETION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileMoveClusterInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileMoveClusterInformation", "_FILE_MOVE_CLUSTER_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileQuotaInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileQuotaInformation", "_FILE_QUOTA_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileReparsePointInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileReparsePointInformation", "_FILE_REPARSE_POINT_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNetworkOpenInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNetworkOpenInformation", "_FILE_NETWORK_OPEN_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAttributeTagInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAttributeTagInformation", "_FILE_ATTRIBUTE_TAG_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileTrackingInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileTrackingInformation", "_FILE_TRACKING_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIdBothDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIdBothDirectoryInformation", "_FILE_ID_BOTH_DIR_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIdFullDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIdFullDirectoryInformation", "_FILE_ID_FULL_DIR_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileValidDataLengthInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileValidDataLengthInformation", "_FILE_VALID_DATA_LENGTH_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileShortNameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileShortNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIoCompletionNotificationInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIoCompletionNotificationInformation", "_FILE_IO_COMPLETION_NOTIFICATION_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIoStatusBlockRangeInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIoStatusBlockRangeInformation", "_FILE_IO_STATUS_BLOCK_RANGE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIoPriorityHintInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIoPriorityHintInformation", "_FILE_IO_PRIORITY_HINT_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileSfioReserveInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileSfioReserveInformation", "_FILE_SFIO_RESERVE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileSfioVolumeInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileSfioVolumeInformation", "_FILE_SFIO_VOLUME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileHardLinkInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileHardLinkInformation", "_FILE_LINKS_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileProcessIdsUsingFileInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileProcessIdsUsingFileInformation", "_FILE_PROCESS_IDS_USING_FILE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNormalizedNameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNormalizedNameInformation", "_FILE_NAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNetworkPhysicalNameInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNetworkPhysicalNameInformation", "_FILE_NETWORK_PHYSICAL_NAME_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIdGlobalTxDirectoryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIdGlobalTxDirectoryInformation", "_FILE_ID_GLOBAL_TX_DIR_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileIsRemoteDeviceInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileIsRemoteDeviceInformation", "_FILE_IS_REMOTE_DEVICE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileAttributeCacheInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileAttributeCacheInformation", "_FILE_ATTRIBUTE_CACHE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileNumaNodeInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileNumaNodeInformation", "_FILE_NUMA_NODE_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileStandardLinkInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileStandardLinkInformation", "_FILE_STANDARD_LINK_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileRemoteProtocolInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileRemoteProtocolInformation", "_FILE_REMOTE_PROTOCOL_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationFile.FileReplaceCompletionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationFile("FileReplaceCompletionInformation", "_FILE_COMPLETION_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationFile.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryInformationFile(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationPort(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W, 0, typename},\
+         {2, -4, WI},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationPort_info[] = {
+    {{0,0},"NtQueryInformationPort.PortBasicInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationPort("PortBasicInformation", "_PORT_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationPort.PortDumpInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationPort("PortDumpInformation", "_PORT_DUMP_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationPort.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryInformationPort(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryIoCompletion(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(IO_COMPLETION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W, 0, typename},\
+         {2, -4, WI},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryIoCompletion_info[] = {
+    {{0,0},"NtQueryIoCompletion.IoCompletionBasicInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryIoCompletion("IoCompletionBasicInformation", "_IO_COMPLETION_BASIC_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryIoCompletion.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryIoCompletion(NULL, NULL)
+    },
+};
+#define ENTRY_QueryMutant(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(MUTANT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W, 0, typename},\
+         {2, -4, WI},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryMutant_info[] = {
+    {{0,0},"NtQueryMutant.MutantBasicInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryMutant("MutantBasicInformation", "_MUTANT_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryMutant.MutantOwnerInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryMutant("MutantOwnerInformation", "_MUTANT_OWNER_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryMutant.UNKNOWN", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+         ENTRY_QueryMutant(NULL, NULL)
     },
 };
 

@@ -106,6 +106,11 @@ extern syscall_QueryVolumeInformationFile_info[];
 extern syscall_SetInformationFile_info[];
 extern syscall_SetInformationKey_info[];
 extern syscall_SetInformationObject_info[];
+extern syscall_QueryInformationAtom_info[];
+extern syscall_QueryInformationFile_info[];
+extern syscall_QueryInformationPort_info[];
+extern syscall_QueryIoCompletion_info[];
+extern syscall_QueryMutant_info[];
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -1485,24 +1490,15 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(FILE_NETWORK_OPEN_INFORMATION), W},
      }
     },
-    {{0,0},"NtQueryInformationAtom", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryInformationAtom", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
-         {1, sizeof(ATOM_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationAtom_info
     },
-    {{0,0},"NtQueryInformationFile", OK, RNTST, 5,
+    {{0,0},"NtQueryInformationFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {2, -3, W},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-     }
+         {4,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationFile_info
     },
     {{0,0},"NtQueryInformationJobObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
@@ -1514,15 +1510,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryInformationPort", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryInformationPort", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationPort_info
     },
     {{0,0},"NtQueryInformationProcess", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
@@ -1565,15 +1556,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryIoCompletion", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryIoCompletion", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_COMPLETION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryIoCompletion_info
     },
     {{0,0},"NtQueryKey", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
@@ -1590,15 +1576,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryMutant", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{0,0},"NtQueryMutant", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(MUTANT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W},
-         {2, -4, WI},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryMutant_info
     },
     {{0,0},"NtQueryObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {

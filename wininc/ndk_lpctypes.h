@@ -18,9 +18,11 @@
 //
 // Information Classes for NtQueryInformationPort
 //
-typedef enum _PORT_INFORMATION_CLASS
-{
-    PortNoInformation
+typedef enum _PORT_INFORMATION_CLASS {
+    PortBasicInformation
+#if DEVL
+,   PortDumpInformation
+#endif
 } PORT_INFORMATION_CLASS;
 
 
