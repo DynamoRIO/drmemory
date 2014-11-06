@@ -188,9 +188,21 @@ function (get_relative_location target outvar)
 endfunction (get_relative_location)
 
 if (UNIX)
-  set(cmd_shell ${bin_relative}/${toolname})
+  if (TOOL_DR_MEMORY)
+    set(cmd_shell ${bin_relative}/${toolname})
+  else ()
+    set(cmd_shell ${bin_relative}/${toolname}.pl)
+  endif ()
 else (UNIX)
-  set(cmd_shell ${bin_relative}/${toolname}.exe)
+  if (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
+    set(cmd_shell ${bin_relative}/${toolname}.exe)
+  else (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
+    find_program(PERL perl)
+    if (NOT PERL)
+      message(FATAL_ERROR "cannot find perl.exe")
+    endif (NOT PERL)
+    set(cmd_shell ${PERL} ${bin_relative}/${toolname}.pl)
+  endif (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
 
   # XXX i#143: we now support /MDd but need symbols for full support.
   # Also, /MTd results in the debug heap code throwing an exception
