@@ -30,6 +30,7 @@
 #include "../wininc/ndk_iotypes.h"
 #include "../wininc/wdm.h"
 #include "../wininc/ntifs.h"
+#include "../wininc/ntalpctyp.h"
 #include "table_defines.h"
 
 extern drsys_sysnum_t sysnum_SetInformationFile;
@@ -995,3 +996,410 @@ syscall_info_t syscall_SetInformationObject_info[] = {
          ENTRY_SetInformationObject(NULL, NULL)
     },
 };
+
+#define ENTRY_SetVolumeInformationFile(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},\
+         {2, -3, R, 0, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+     }
+
+syscall_info_t syscall_SetVolumeInformationFile_info[] = {
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtSetVolumeInformationFile.FileFsVolumeInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsVolumeInformation", "_FILE_FS_VOLUME_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsLabelInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsLabelInformation", "_FILE_FS_LABEL_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsSizeInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsSizeInformation", "_FILE_FS_SIZE_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsDeviceInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsDeviceInformation", "_FILE_FS_DEVICE_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsAttributeInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsAttributeInformation", "_FILE_FS_ATTRIBUTE_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsControlInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsControlInformation", "_FILE_FS_CONTROL_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsFullSizeInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsFullSizeInformation", "_FILE_FS_FULL_SIZE_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsObjectIdInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsObjectIdInformation", "_FILE_FS_OBJECTID_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsDriverPathInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsDriverPathInformation", "_FILE_FS_DRIVER_PATH_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsVolumeFlagsInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsVolumeFlagsInformation", "_FILE_FS_VOLUME_FLAGS_INFORMATION")
+    },
+    {{0,0},"NtSetVolumeInformationFile.FileFsSectorSizeInformation", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile("FileFsSectorSizeInformation", "_FILE_FS_SECTOR_SIZE_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetVolumeInformationFile.UNKNOWN", OK, RNTST, 5,
+         ENTRY_SetVolumeInformationFile(NULL, NULL)
+    },
+};
+
+#define ENTRY_AlpcQueryInformation(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_AlpcQueryInformation_info[] = {
+    {{0,0},"NtAlpcQueryInformation.AlpcBasicInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcBasicInformation", "_ALPC_BASIC_INFORMATION")
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcPortInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcPortInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcAssociateCompletionPortInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcAssociateCompletionPortInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcConnectedSIDInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcConnectedSIDInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcServerInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcServerInformation", "_ALPC_SERVER_INFORMATION")
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcMessageZoneInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcMessageZoneInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcRegisterCompletionListInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcRegisterCompletionListInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcUnregisterCompletionListInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcUnregisterCompletionListInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcAdjustCompletionListConcurrencyCountInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcAdjustCompletionListConcurrencyCountInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcRegisterCallbackInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcRegisterCallbackInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformation.AlpcCompletionListRundownInformation", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation("AlpcCompletionListRundownInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtAlpcQueryInformation.UNKNOWN", OK, RNTST, 5,
+         ENTRY_AlpcQueryInformation(NULL, NULL)
+    },
+};
+
+#define ENTRY_AlpcSetInformation(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_AlpcSetInformation_info[] = {
+    {{0,0},"NtAlpcSetInformation.AlpcBasicInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcBasicInformation", "_ALPC_BASIC_INFORMATION")
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcPortInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcPortInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcAssociateCompletionPortInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcAssociateCompletionPortInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcConnectedSIDInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcConnectedSIDInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcServerInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcServerInformation", "_ALPC_SERVER_INFORMATION")
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcMessageZoneInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcMessageZoneInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcRegisterCompletionListInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcRegisterCompletionListInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcUnregisterCompletionListInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcUnregisterCompletionListInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcAdjustCompletionListConcurrencyCountInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcAdjustCompletionListConcurrencyCountInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcRegisterCallbackInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcRegisterCallbackInformation", NULL)
+    },
+    {{0,0},"NtAlpcSetInformation.AlpcCompletionListRundownInformation", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation("AlpcCompletionListRundownInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtAlpcSetInformation.UNKNOWN", OK, RNTST, 4,
+         ENTRY_AlpcSetInformation(NULL, NULL)
+    },
+};
+
+#define ENTRY_AlpcQueryInformationMessage(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},\
+         {2, sizeof(ALPC_MESSAGE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {3, -4, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_AlpcQueryInformationMessage_info[] = {
+    {{0,0},"NtAlpcQueryInformationMessage.AlpcMessageSidInformation", OK, RNTST, 6,
+         ENTRY_AlpcQueryInformationMessage("AlpcMessageSidInformation", NULL)
+    },
+    {{0,0},"NtAlpcQueryInformationMessage.AlpcMessageTokenModifiedIdInformation", OK, RNTST, 6,
+         ENTRY_AlpcQueryInformationMessage("AlpcMessageTokenModifiedIdInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtAlpcQueryInformationMessage.UNKNOWN", OK, RNTST, 6,
+         ENTRY_AlpcQueryInformationMessage(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationEnlistment(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationEnlistment_info[] = {
+    {{0,0},"NtQueryInformationEnlistment.EnlistmentBasicInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationEnlistment("EnlistmentBasicInformation", "_ENLISTMENT_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationEnlistment.EnlistmentRecoveryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationEnlistment("EnlistmentRecoveryInformation", NULL)
+    },
+    {{0,0},"NtQueryInformationEnlistment.EnlistmentCrmInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationEnlistment("EnlistmentCrmInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationEnlistment.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryInformationEnlistment(NULL, NULL)
+    },
+};
+
+#define ENTRY_SetInformationEnlistment(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationEnlistment_info[] = {
+    {{0,0},"NtSetInformationEnlistment.EnlistmentBasicInformation", OK, RNTST, 4,
+         ENTRY_SetInformationEnlistment("EnlistmentBasicInformation", "_ENLISTMENT_BASIC_INFORMATION")
+    },
+    {{0,0},"NtSetInformationEnlistment.EnlistmentRecoveryInformation", OK, RNTST, 4,
+         ENTRY_SetInformationEnlistment("EnlistmentRecoveryInformation", NULL)
+    },
+    {{0,0},"NtSetInformationEnlistment.EnlistmentCrmInformation", OK, RNTST, 4,
+         ENTRY_SetInformationEnlistment("EnlistmentCrmInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationEnlistment.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationEnlistment(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationResourceManager(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationResourceManager_info[] = {
+    {{0,0},"NtQueryInformationResourceManager.ResourceManagerBasicInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationResourceManager("ResourceManagerBasicInformation",
+                                               "_RESOURCEMANAGER_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationResourceManager.ResourceManagerCompletionInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationResourceManager("ResourceManagerCompletionInformation",
+                                               "_RESOURCEMANAGER_COMPLETION_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationResourceManager.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryInformationResourceManager(NULL, NULL)
+    },
+};
+
+#define ENTRY_SetInformationResourceManager(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationResourceManager_info[] = {
+    {{0,0},"NtSetInformationResourceManager.ResourceManagerBasicInformation", OK, RNTST, 4,
+         ENTRY_SetInformationResourceManager("ResourceManagerBasicInformation",
+                                             "_RESOURCEMANAGER_BASIC_INFORMATION")
+    },
+    {{0,0},"NtSetInformationResourceManager.ResourceManagerCompletionInformation", OK, RNTST, 4,
+         ENTRY_SetInformationResourceManager("ResourceManagerCompletionInformation",
+                                             "_RESOURCEMANAGER_COMPLETION_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationResourceManager.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationResourceManager(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationTransaction(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationTransaction_info[] = {
+    {{0,0},"NtQueryInformationTransaction.TransactionBasicInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionBasicInformation", "_TRANSACTION_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransaction.TransactionPropertiesInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionPropertiesInformation",
+                                           "_TRANSACTION_PROPERTIES_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransaction.TransactionEnlistmentInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionEnlistmentInformation", NULL)
+    },
+    {{0,0},"NtQueryInformationTransaction.TransactionSuperiorEnlistmentInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionSuperiorEnlistmentInformation",
+                                           "_TRANSACTION_SUPERIOR_ENLISTMENT_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransaction.TransactionBindInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionBindInformation", "_TRANSACTION_BIND_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransaction.TransactionDTCPrivateInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction("TransactionDTCPrivateInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationTransaction.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryInformationTransaction(NULL, NULL)
+    },
+};
+
+#define ENTRY_SetInformationTransaction(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationTransaction_info[] = {
+    {{0,0},"NtSetInformationTransaction.TransactionBasicInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionBasicInformation", "_TRANSACTION_BASIC_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransaction.TransactionPropertiesInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionPropertiesInformation",
+                                         "_TRANSACTION_PROPERTIES_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransaction.TransactionEnlistmentInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionEnlistmentInformation", NULL)
+    },
+    {{0,0},"NtSetInformationTransaction.TransactionSuperiorEnlistmentInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionSuperiorEnlistmentInformation",
+                                         "_TRANSACTION_SUPERIOR_ENLISTMENT_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransaction.TransactionBindInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionBindInformation", "_TRANSACTION_BIND_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransaction.TransactionDTCPrivateInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction("TransactionDTCPrivateInformation", NULL)
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationTransaction.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationTransaction(NULL, NULL)
+    },
+};
+
+#define ENTRY_QueryInformationTransactionManager(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},\
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT, typename},\
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_QueryInformationTransactionManager_info[] = {
+    {{0,0},"NtQueryInformationTransactionManager.TransactionManagerBasicInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransactionManager("TransactionManagerBasicInformation",
+                                                  "_TRANSACTIONMANAGER_BASIC_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransactionManager.TransactionManagerLogInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransactionManager("TransactionManagerLogInformation",
+                                                  "_TRANSACTIONMANAGER_LOG_INFORMATION")
+    },
+    {{0,0},"NtQueryInformationTransactionManager.TransactionManagerLogPathInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransactionManager("TransactionManagerLogPathInformation",
+                                                  "_TRANSACTIONMANAGER_LOGPATH_INFORMATION")
+    },
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtQueryInformationTransactionManager.TransactionManagerRecoveryInformation", OK, RNTST, 5,
+         ENTRY_QueryInformationTransactionManager("TransactionManagerRecoveryInformation",
+                                                  "_TRANSACTIONMANAGER_RECOVERY_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtQueryInformationTransactionManager.UNKNOWN", OK, RNTST, 5,
+         ENTRY_QueryInformationTransactionManager(NULL, NULL)
+    },
+};
+
+#define ENTRY_SetInformationTransactionManager(classname, typename)\
+     {\
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT, classname},\
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT, typename},\
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},\
+     }
+
+syscall_info_t syscall_SetInformationTransactionManager_info[] = {
+    {{0,0},"NtSetInformationTransactionManager.TransactionManagerBasicInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransactionManager("TransactionManagerBasicInformation",
+                                                "_TRANSACTIONMANAGER_BASIC_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransactionManager.TransactionManagerLogInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransactionManager("TransactionManagerLogInformation",
+                                                "_TRANSACTIONMANAGER_LOG_INFORMATION")
+    },
+    {{0,0},"NtSetInformationTransactionManager.TransactionManagerLogPathInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransactionManager("TransactionManagerLogPathInformation",
+                                                "_TRANSACTIONMANAGER_LOGPATH_INFORMATION")
+    },
+    {SECONDARY_TABLE_SKIP_ENTRY},
+    {{0,0},"NtSetInformationTransactionManager.TransactionManagerRecoveryInformation", OK, RNTST, 4,
+         ENTRY_SetInformationTransactionManager("TransactionManagerRecoveryInformation",
+                                                "_TRANSACTIONMANAGER_RECOVERY_INFORMATION")
+    },
+    {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
+    {{0,0},"NtSetInformationTransactionManager.UNKNOWN", OK, RNTST, 4,
+         ENTRY_SetInformationTransactionManager(NULL, NULL)
+    },
+};
+
