@@ -50,6 +50,11 @@ set(arg_use_nmake OFF) # use nmake even if gnu make is present
 set(arg_cpackappend "")# string to append to CPackConfig.cmake before packaging
 set(arg_32_only OFF)   # do not include 64-bit
 
+if (APPLE)
+  # DRi#58: core DR does not yet support 64-bit Mac
+  set(arg_32_only ON)
+endif ()
+
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
     string(REGEX REPLACE "^build=" "" arg_build "${arg}")
