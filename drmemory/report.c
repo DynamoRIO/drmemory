@@ -139,20 +139,20 @@ static const char *const suppress_name[] = {
     "REACHABLE LEAK",
 };
 
+#ifdef WINDOWS
 /* When updating, change the -dump_at_error_mask docs as well */
 static const uint error_mask[] = {
     0x0001, /* unaddressable access */
     0x0002, /* uninitialized access */
     0x0004, /* invalid heap argument */
-#ifdef WINDOWS
     0x0008, /* GDI usage error */
     0x0010, /* handle leak */
-#endif
     0x0020, /* warning */
     0x0040, /* leak */
     0x0080, /* possible leak */
     0x0100, /* still-reachable allocation */
 };
+#endif
 
 #define DRMEM_VALGRIND_TOOLNAME "Dr.Memory"
 

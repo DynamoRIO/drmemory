@@ -503,7 +503,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
         }
         if (current_version != modcache->current_version ||
             compatibility_version != modcache->compatibility_version ||
-            memcmp(uuid, modcache->uuid, sizeof(uuid) != 0)) {
+            memcmp(uuid, modcache->uuid, sizeof(uuid)) != 0) {
             LOG(1, "module version mismatch: %s symbol cache file is stale\n", modname);
             goto symcache_read_symfile_done;
         }

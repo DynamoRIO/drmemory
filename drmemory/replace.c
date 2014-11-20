@@ -107,11 +107,13 @@ static const char *replace_routine_name[] = {
 };
 #define REPLACE_NUM (sizeof(replace_routine_name)/sizeof(replace_routine_name[0]))
 
+#ifdef WINDOWS
 static const char * const replace_routine_wide_alt[] = {
-#define REPLACE_DEF(nm, wide) wide,
+# define REPLACE_DEF(nm, wide) wide,
     REPLACE_DEFS()
-#undef REPLACE_DEF
+# undef REPLACE_DEF
 };
+#endif
 
 
 static app_pc replace_routine_start;

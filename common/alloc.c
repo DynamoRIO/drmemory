@@ -4963,18 +4963,6 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
     client_post_syscall(drcontext, sysnum);
 }
 
-static inline app_pc
-get_retaddr_at_entry(dr_mcontext_t *mc)
-{
-    app_pc retaddr = NULL;
-    if (alloc_ops.conservative) {
-        if (!safe_read((void *)mc->xsp, sizeof(retaddr), &retaddr))
-            ASSERT(false, "error reading retaddr at func entry");
-    } else
-        retaddr = *(app_pc*)(mc->xsp);
-    return retaddr;
-}
-
 static inline void
 record_mc_for_client(cls_alloc_t *pt, void *wrapcxt)
 {

@@ -51,25 +51,6 @@ typedef uint* bitmap_t;
 /* if a shadow memory type is special shared block, but not redzone */
 #define SHADOW_IS_SHARED_ONLY(type)  (UMBRA_SHADOW_MEMORY_TYPE_SHARED == type)
 
-/* returns non-zero value if bit is set */
-static inline bool
-bitmap_test(bitmap_t bm, uint i)
-{
-    return bm[BITMAP_IDX(i)] & BITMAP_MASK(i);
-}
-
-static inline void
-bitmap_set(bitmap_t bm, uint i)
-{
-    bm[BITMAP_IDX(i)] |= BITMAP_MASK(i);
-}
-
-static inline void
-bitmap_clear(bitmap_t bm, uint i)
-{
-    bm[BITMAP_IDX(i)] &= ~BITMAP_MASK(i);
-}
-
 /* 2 bits of shadow per real byte: or 4 real bytes shadowed by one shadow byte */
 #define BITMAPx2_UNIT     16 /* one uint shadows 16 real bytes */
 #define BITMAPx2_SHIFT(i) (((i) % BITMAPx2_UNIT) * 2)
@@ -156,14 +137,6 @@ bytemap_4to1_byte(bitmap_t bm, uint i)
 {
     char *bytes = (char *) bm;
     return bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)];
-}
-
-/* returns the uint corresponding to offset i */
-static inline uint
-bytemap_4to1_dword(bitmap_t bm, uint i)
-{
-    ASSERT(BITMAPx2_SHIFT(i) == 0, "bytemap_4to1_dword: index not aligned");
-    return bm[BITMAPx2_IDX(i)];
 }
 
 /***************************************************************************

@@ -45,6 +45,7 @@ enum {
     SYNCH_PROCESS,
 };
 
+#if defined(DEBUG) || defined(STATISTICS)
 static const char * const synch_type[] = {
     "instr",
     "syscall",
@@ -52,7 +53,8 @@ static const char * const synch_type[] = {
     "thread",
     "process",
 };
-#define NUM_TYPES (sizeof(synch_type)/sizeof(synch_type[0]))
+# define NUM_TYPES (sizeof(synch_type)/sizeof(synch_type[0]))
+#endif
 
 #ifdef STATISTICS
 static uint count[NUM_TYPES];

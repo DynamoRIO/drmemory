@@ -49,12 +49,6 @@ foo(void)
     memset(buf, 0, sizeof(buf));
 }
 
-#ifdef MACOS
-# define NAME_FOO "_foo"
-#else
-# define NAME_FOO "foo"
-#endif
-
 void
 test_swap(size_t sz1, size_t sz2)
 {
@@ -141,10 +135,10 @@ GLOBAL_LABEL(FUNCNAME:)
 
         mov      PTRSZ SYMREF(stack0), REG_XSP /* store orig stack */
         mov      REG_XSP, PTRSZ SYMREF(stack1)
-        call     foo
+        call     GLOBAL_REF(foo)
         /* this swap to stack2 looks like a big dealloc => will mark data as unaddr */
         mov      REG_XSP, PTRSZ SYMREF(stack2)
-        call     foo
+        call     GLOBAL_REF(foo)
         mov      REG_XSP, PTRSZ SYMREF(stack0) /* restore orig stack */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
@@ -170,19 +164,19 @@ GLOBAL_LABEL(FUNCNAME:)
         cmp      REG_XSI, REG_XSP
         cmovne   REG_XSP, REG_XSI /* test execute cmovcc */
         jne      correct1
-        call     wrong
+        call     GLOBAL_REF(wrong)
         jmp      test2
     correct1:
-        call     right
+        call     GLOBAL_REF(right)
         test2:
         mov      REG_XSI, PTRSZ SYMREF(stack1)
         cmp      REG_XSP, REG_XSI     /* they should be equal */
         cmovne   REG_XSP, REG_XSI  /* test skip cmovcc */
         je       correct2
-        call     wrong
+        call     GLOBAL_REF(wrong)
         jmp      done
     correct2:
-        call     right
+        call     GLOBAL_REF(right)
     done:
         mov      REG_XSI, PTRSZ SYMREF(orig_esi) /* restore orig REG_XSI */
         mov      REG_XSP, PTRSZ SYMREF(stack0) /* restore orig stack */

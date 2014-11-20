@@ -24,19 +24,19 @@
 # while pattern mode reports "writing 1 byte(s)" error.
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1165
+registers.c_asm.asm:1180
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1177
+registers.c_asm.asm:1192
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1190
+registers.c_asm.asm:1205
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:594
+registers.c_asm.asm:609
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:606
+registers.c_asm.asm:621
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:619
+registers.c_asm.asm:634
 %endif
 Error #4: LEAK 15 direct bytes + 0 indirect bytes
 Error #5: LEAK 15 direct bytes + 0 indirect bytes

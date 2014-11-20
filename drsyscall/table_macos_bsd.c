@@ -105,6 +105,24 @@
 # define SYS_pid_shutdown_sockets 436
 #endif
 
+/* Syscalls changed in Yosemite */
+#ifndef SYS___sysctl
+# define SYS___sysctl SYS_sysctl
+#endif
+#ifndef SYS_sem_getvalue
+/* XXX i#1659: Yosemite changed 274 from SYS_sem_getvalue to SYS_sysctlbyname
+ * rather than simply deprecating the number.
+ * We need to have a dynamic handler that swaps based on the underlying OS ver.
+ */
+# define SYS_sem_getvalue   274
+#endif
+#ifndef SYS_sem_init
+# define SYS_sem_init       275
+#endif
+#ifndef SYS_sem_destroy
+# define SYS_sem_destroy    276
+#endif
+
 #include "table_defines.h"
 
 syscall_info_t syscall_info_bsd[] = {

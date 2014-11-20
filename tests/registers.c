@@ -408,9 +408,17 @@ GLOBAL_LABEL(FUNCNAME:)
         END_PROLOG
 
         mov     REG_XSI, REG_XAX  /* save array_uninit */
+#ifdef ASSEMBLE_WITH_NASM
+        cmpxchg8b [REG_XCX] /* cmpxchg8b with array_init */
+#else
         cmpxchg8b QWORD [REG_XCX] /* cmpxchg8b with array_init */
+#endif
         mov     REG_XCX, REG_XSI  /* use array_uninit */
+#ifdef ASSEMBLE_WITH_NASM
+        cmpxchg8b [REG_XCX] /* cmpxchg8b with array_uninit */
+#else
         cmpxchg8b QWORD [REG_XCX] /* cmpxchg8b with array_uninit */
+#endif
 
         /* restore callee-saved regs */
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
@@ -469,7 +477,12 @@ GLOBAL_LABEL(FUNCNAME:)
         DECLARE_FUNC(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         sub      REG_XSP, 2
+#ifdef ASSEMBLE_WITH_NASM
+        /* XXX: I can't get "o16 push 0" to assemble */
+        RAW(66) RAW(6a) RAW(00)
+#else
         pushw    0
+#endif
         add      REG_XSP, 4
         ret
         END_FUNC(FUNCNAME)
@@ -478,7 +491,9 @@ GLOBAL_LABEL(FUNCNAME:)
 #define FUNCNAME repstr_test_asm
 /* void repstr_test_asm(char *a1, char *a2); */
         DECLARE_FUNC_SEH(FUNCNAME)
+
 GLOBAL_LABEL(FUNCNAME:)
+
         mov      REG_XAX, ARG1 /* a1, 15 bytes init buffer except a1[7] */
         mov      REG_XDX, ARG2 /* a2, 15 bytes uninit buffer */
         /* save callee-saved regs */
