@@ -930,6 +930,6 @@ if (APPLE)
   # all the code above.
   # XXX: can we get this to automatically happen for a local "ctest" w/o
   # the user having to pass "-L OSX"?
-  set_tests_properties(hello free unit_tests malloc asmtest bitfield addronly
+  set_tests_properties(hello free malloc asmtest bitfield addronly
     float annotations free.pattern PROPERTIES LABELS OSX)
 endif ()

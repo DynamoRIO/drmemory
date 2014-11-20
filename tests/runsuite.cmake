@@ -193,7 +193,8 @@ foreach (tool ${tools})
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
       " OFF ON "") # we do run some release tests in short suite
-    if ("${tool}" MATCHES "MEMORY")
+    # DRi#58: core DR does not yet support 64-bit Mac
+    if ("${tool}" MATCHES "MEMORY" AND NOT APPLE)
       testbuild_ex("${name}-dbg-64" ON "
         ${base_cache}
          ${tool}
@@ -206,7 +207,7 @@ foreach (tool ${tools})
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Release
          " OFF ON "")
-    endif ("${tool}" MATCHES "MEMORY")
+    endif ()
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
