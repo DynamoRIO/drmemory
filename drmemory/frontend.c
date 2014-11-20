@@ -149,7 +149,7 @@ on_supported_version(void)
     if (uname(&uinfo) != 0)
         return false;
 #   define MIN_DARWIN_VERSION_SUPPORTED 11  /* OSX 10.7.x */
-#   define MAX_DARWIN_VERSION_SUPPORTED 13  /* OSX 10.9.x */
+#   define MAX_DARWIN_VERSION_SUPPORTED 14  /* OSX 10.9.x */
     return (dr_sscanf(uinfo.release, "%d", &kernel_major) == 1 &&
             kernel_major <= MAX_DARWIN_VERSION_SUPPORTED &&
             kernel_major >= MIN_DARWIN_VERSION_SUPPORTED);
@@ -707,8 +707,9 @@ _tmain(int argc, TCHAR *targv[])
     if (!on_supported_version())
         fatal("this version of Windows is not supported by Dr. Memory.");
 #elif defined(MACOS)
+    /* For Mac we just warn, as there's a decent chance it will work */
     if (!on_supported_version())
-        fatal("this version of Mac OSX is not supported by Dr. Memory.");
+        warn("this version of Mac OSX is not officially supported by Dr. Memory.");
 #endif
 
 #if defined(WINDOWS) && !defined(_UNICODE)
