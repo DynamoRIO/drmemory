@@ -924,3 +924,12 @@ else (NOT X64)
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
 endif (NOT X64)
+
+if (APPLE)
+  # Enable a few tests for the test suite without perturbing
+  # all the code above.
+  # XXX: can we get this to automatically happen for a local "ctest" w/o
+  # the user having to pass "-L OSX"?
+  set_tests_properties(hello free unit_tests malloc asmtest bitfield addronly
+    float annotations free.pattern PROPERTIES LABELS OSX)
+endif ()

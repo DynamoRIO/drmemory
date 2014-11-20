@@ -93,6 +93,11 @@ set(CTEST_PROJECT_NAME "DrMemory")
 set(cpack_project_name "DrMemory")
 set(run_tests ON)
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}/..")
+if (APPLE)
+  # For now we just run a few tests with labels.
+  # XXX i#58: get all the tests working.
+  set(extra_ctest_args INCLUDE_LABEL OSX)
+endif ()
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
 
