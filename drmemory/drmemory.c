@@ -1785,7 +1785,7 @@ dr_init(client_id_t id)
         NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
 #ifdef MACOS
         NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
-        NOTIFY("problems encountered to https://code.google.com/p/drmemory/issues/list."NL);
+        NOTIFY("problems encountered to http://drmemory.org/issues."NL);
 #endif
     }
 # ifdef WINDOWS

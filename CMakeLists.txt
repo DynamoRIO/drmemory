@@ -1530,7 +1530,7 @@ if (WIN32)
     create_drrun_file(${toolname} leakfile "handle_leaks" "-handle_leaks_only")
     if (X64)
       file(APPEND ${leakfile}
-        "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues/.\n")
+        "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues.\n")
     endif ()
   endif ()
 endif ()

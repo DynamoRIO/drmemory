@@ -27,7 +27,7 @@
 #pragma comment(lib, "IPHLPAPI.lib")
 
 TEST(IPHlpApiTests, GetAdaptersInfo) {
-    // http://code.google.com/p/drmemory/issues/detail?id=719
+    // http://https://github.com/DynamoRIO/drmemory/issues/719
     IP_ADAPTER_INFO dummy;
     ULONG size = 0;  // force overflow
     ULONG res = GetAdaptersInfo(&dummy, &size);

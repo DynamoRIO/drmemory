@@ -37,7 +37,7 @@ int global_for_side_effects;
 
 // FIXME i#735: Re-enable once doesn't hang and passes on xp32.
 TEST(NtUserTests, DISABLED_SystemParametersInfo) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=10
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/10
     NONCLIENTMETRICS metrics;
     ZeroMemory(&metrics, sizeof(NONCLIENTMETRICS));
     metrics.cbSize = sizeof(NONCLIENTMETRICS);
@@ -89,7 +89,7 @@ TEST(NtUserTests, ClipboardPutGet) {
         return;
     }
 
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=45
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/45
     std::string tmp, str = "ASCII";
     WriteStringToClipboard(str);
     ReadAsciiStringFromClipboard(&tmp);
@@ -99,13 +99,13 @@ TEST(NtUserTests, ClipboardPutGet) {
 } /* Clipboard_Tests */
 
 TEST(NtUserTests, CoInitializeUninitialize) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=65
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/65
     CoInitialize(NULL);
     CoUninitialize();
 }
 
 TEST(NtUserTests, InitCommonControlsEx) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=362
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/362
     INITCOMMONCONTROLSEX InitCtrlEx;
 
     InitCtrlEx.dwSize = sizeof(INITCOMMONCONTROLSEX);

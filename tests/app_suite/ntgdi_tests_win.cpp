@@ -31,7 +31,7 @@
 #pragma comment(lib, "user32.lib")
 
 TEST(NtGdiTests, GetTextMetricsW) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=395
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/395
     HDC screen_dc = GetDC(NULL);
     TEXTMETRICW font_metrics;
     SetMapMode(screen_dc, MM_TEXT);
@@ -41,7 +41,7 @@ TEST(NtGdiTests, GetTextMetricsW) {
 }
 
 TEST(NtGdiTests, CreateTextServices) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=455
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/455
     /* i#1152: VS2012 doesn't have riched20.lib so we have to do this dynamically */
     HMODULE lib = LoadLibrary("riched20.dll");
     EXPECT_NE(lib, (HMODULE)NULL);

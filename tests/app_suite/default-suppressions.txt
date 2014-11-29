@@ -30,35 +30,35 @@
 # Third-party software introducing extra reports
 
 # Sophos AV software may introduce extra uninits and leaks
-# http://code.google.com/p/drmemory/issues/detail?id=415
+# http://https://github.com/DynamoRIO/drmemory/issues/415
 LEAK
 ...
 sophos*.dll!*
 
 # Sophos AV software may introduce extra uninits and leaks
-# http://code.google.com/p/drmemory/issues/detail?id=415
+# http://https://github.com/DynamoRIO/drmemory/issues/415
 UNINITIALIZED READ
 ...
 sophos*.dll!*
 
-# http://code.google.com/p/drmemory/issues/detail?id=275
+# http://https://github.com/DynamoRIO/drmemory/issues/275
 LEAK
 *!_getptd_noexit
 *!_getptd
 
-# http://code.google.com/p/drmemory/issues/detail?id=369
+# http://https://github.com/DynamoRIO/drmemory/issues/369
 LEAK
 ...
 ntdll.dll!RtlAllocateActivationContextStack
 
-# http://code.google.com/p/drmemory/issues/detail?id=382
+# http://https://github.com/DynamoRIO/drmemory/issues/382
 LEAK
 ...
 ntdll.dll!CsrNewThread
 ntdll.dll!RtlUnicodeStringToInteger
 ntdll.dll!KiUserApcDispatcher
 
-# http://code.google.com/p/drmemory/issues/detail?id=383
+# http://https://github.com/DynamoRIO/drmemory/issues/383
 UNADDRESSABLE ACCESS
 ...
 msvcrt.dll!memcpy_s
@@ -66,11 +66,11 @@ msvcrt.dll!memcpy_s
 msvcrt.dll!lock
 msvcrt.dll!lock
 
-# http://code.google.com/p/drmemory/issues/detail?id=383
+# http://https://github.com/DynamoRIO/drmemory/issues/383
 INVALID HEAP ARGUMENT
 msvcrt.dll!memcpy_s
 
-# http://code.google.com/p/drmemory/issues/detail?id=385
+# http://https://github.com/DynamoRIO/drmemory/issues/385
 LEAK
 ntdll.dll!RtlInitOutOfProcessMemoryStream
 ntdll.dll!RtlInitializeCriticalSection

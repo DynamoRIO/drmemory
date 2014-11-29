@@ -23,7 +23,7 @@
 #include "gtest/gtest.h"
 
 TEST(StabilityTests, FormatMessage) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=532
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/532
     OutputDebugStringA("Hello!");
     char buff[256];
     FormatMessageA(0x00001200, NULL, 0, 0, buff, 256, NULL);

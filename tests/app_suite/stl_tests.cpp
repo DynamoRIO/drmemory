@@ -25,22 +25,22 @@
 
 TEST(StlTests, ostringstreamTest) {
     // This is a known leak in xlocale internals, see
-    // http://code.google.com/p/drmemory/issues/detail?id=257
+    // http://https://github.com/DynamoRIO/drmemory/issues/257
     std::ostringstream os;
     os << "BOO\n" << 1 << "\n";
 }
 
 TEST(StlTests, wostringstreamTest) {
     // This is a known leak in xlocale internals, see
-    // http://code.google.com/p/drmemory/issues/detail?id=257
+    // http://https://github.com/DynamoRIO/drmemory/issues/257
     std::wostringstream wos;
     wos << L"BOO\n" << 1 << L"\n";
 }
 
 TEST(StlTests, istringstreamTest) {
     // There are two uninit errors from msvc:
-    // - https://code.google.com/p/drmemory/issues/detail?id=1155
-    // - https://code.google.com/p/drmemory/issues/detail?id=1474
+    // - https://https://github.com/DynamoRIO/drmemory/issues/1155
+    // - https://https://github.com/DynamoRIO/drmemory/issues/1474
     std::istringstream stream("0.25");
     float value;
     stream >> value;

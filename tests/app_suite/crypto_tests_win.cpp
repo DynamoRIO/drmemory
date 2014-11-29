@@ -27,7 +27,7 @@
 #include "gtest/gtest.h"
 
 TEST(CryptoTests, Rand) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=15
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/15
     unsigned int value = 1;
     ASSERT_EQ(0, rand_s(&value));
 }
@@ -40,7 +40,7 @@ typedef struct _plaintext_blob_t {
     BYTE rgbKeyData[1];
 } plaintext_blob_t;
 
-// http://code.google.com/p/drmemory/issues/detail?id=412
+// http://https://github.com/DynamoRIO/drmemory/issues/412
 TEST(CryptoTests, CryptoBasic) {
     BOOL success;
     HCRYPTPROV provider;

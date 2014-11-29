@@ -28,7 +28,7 @@
 #include "gtest/gtest.h"
 
 TEST(RegistryTests, CreateGetKey) {
-    // Was: http://code.google.com/p/drmemory/issues/detail?id=408
+    // Was: http://https://github.com/DynamoRIO/drmemory/issues/408
     HKEY hklm_key;
     DWORD disposition;
     LONG result;
