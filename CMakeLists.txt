@@ -752,8 +752,8 @@ else ()
   set(USER_SPECIFIED_DynamoRIO_DIR OFF)
 endif ()
 
-# when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "5.0.2915")
+# when updating this, also update the git submodule
+set(DynamoRIO_VERSION_REQUIRED "5.0.16403")
 
 set(DR_install_dir "dynamorio")
 
@@ -786,7 +786,7 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
   set(DynamoRIO_DIR "${DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
   message(STATUS "DynamoRIO that matches: ${DynamoRIO_VERSION} in ${DynamoRIO_DIR}")
 else (USER_SPECIFIED_DynamoRIO_DIR)
-  # Build from our local copy of the sources, coming from an svn external: i#74.
+  # Build from our local copy of the sources, coming from a git submodule: i#74.
   set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
   message(STATUS "Building DynamoRIO from local sources ${DynamoRIO_DIR}")
 
