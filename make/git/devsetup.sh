@@ -39,6 +39,7 @@ git config branch.autosetuprebase always
 git config alias.newbranch "!sh -c \"git checkout --track -b \$1 origin/master\""
 git config alias.pullall "!sh -c \"git pull --rebase && git submodule update --init\""
 git config alias.dcommit "push origin HEAD:master"
+git config alias.split "!sh -c \"git checkout -b \$1 \$2 && git branch --set-upstream-to=origin/master \$1\""
 
 # Commit template
 git config commit.template make/git/commit-template.txt
