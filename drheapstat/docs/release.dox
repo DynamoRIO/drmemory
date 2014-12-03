@@ -42,7 +42,7 @@ This section is divided into the following subsections:
 
 The Dr. Heapstat distribution contains the following:
 
- - The front-end script to launch Dr. Heapstat: \p drheapstat.pl on Linux,
+ - The front-end script to launch Dr. Heapstat: \p drheapstat on Linux,
    \p drheapstat.exe on Windows.
  - FIXME: vis tool: invoked via same front-end?
  - The back-end of Dr. Heapstat, contained in the \p bin and \p dynamorio

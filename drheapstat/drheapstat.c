@@ -2283,7 +2283,8 @@ dr_init(client_id_t client_id)
      * if user turns off stack zeroing from -leaks_only
      */
     callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
-    callstack_ops.tool_lib_ignore = IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*");
+    callstack_ops.tool_lib_ignore = IF_WINDOWS_ELSE("drheapstatlib.dll",
+                                                    "libdrheapstatlib.so*");
     callstack_ops.bad_fp_list = options.callstack_bad_fp_list;
     callstack_init(&callstack_ops);
 

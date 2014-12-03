@@ -1061,12 +1061,15 @@ if (NOT USE_DRSYMS)
   set(scripts ${scripts} postprocess.pl)
 endif (NOT USE_DRSYMS)
 
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
-  # front-end needs to be named drmemory.exe and thus has drmemory.pdb, so
+if (USE_DRSYMS)
+  # front-end needs to be named ${toolname}.exe and thus has ${toolsname}.pdb, so
   # we rename client lib (plus cmake best w/o same-name targets)
   set(client_target "${toolname}lib")
-  # assuming only DrMem for now
-  set(frontend_srcs drmemory/frontend.c drmemory/options.c)
+  if (TOOL_DR_MEMORY)
+    set(frontend_srcs drmemory/frontend.c drmemory/options.c)
+  else (TOOL_DR_MEMORY)
+    set(frontend_srcs drheapstat/drheapstat_frontend.c)
+  endif (TOOL_DR_MEMORY)
   if (WIN32)
     set(frontend_srcs ${frontend_srcs} make/resources.rc)
   endif ()
@@ -1074,9 +1077,9 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
   if (WIN32)
     target_link_libraries(${toolname} dbghelp)
   endif (WIN32)
-else (USE_DRSYMS AND TOOL_DR_MEMORY)
+else (USE_DRSYMS)
   set(client_target ${toolname})
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (USE_DRSYMS)
 
 add_library(${client_target} SHARED ${srcs})
 set_target_properties(${client_target} PROPERTIES
@@ -1172,7 +1175,7 @@ if (WIN32)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} ${new_flags}")
 endif (WIN32)
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+if (USE_DRSYMS)
   if (DEFINED DynamoRIO_RPATH)
     set(old_rpath ${DynamoRIO_RPATH})
   else ()
@@ -1191,8 +1194,6 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
     DynamoRIO_add_rel_rpaths(${toolname} drconfiglib)
     set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
   endif (WIN32)
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
-if (USE_DRSYMS)
   if (STATIC_DRSYMS)
     use_DynamoRIO_extension(${client_target} drsyms_static)
   else ()
@@ -1225,10 +1226,8 @@ if (WIN32)
     endif ()
   endif ()
 
-  if (TOOL_DR_MEMORY)
-    # Front-end uses dbghelp routines not in VS2005 so we link w/ DR's import lib.
-    target_link_libraries(${toolname} ${dbghelp_lib})
-  endif ()
+  # Front-end uses dbghelp routines not in VS2005 so we link w/ DR's import lib.
+  target_link_libraries(${toolname} ${dbghelp_lib})
 
   # we have to link with ntdll AFTER any libcmt.lib from configure_DynamoRIO_client
   # or use_DynamoRIO_extension (w/ static libs)
@@ -1343,10 +1342,10 @@ endif (PERL_TO_EXE)
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
-if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl" @ONLY)
-  if (NOT USE_DRSYMS OR TOOL_DR_HEAPSTAT)
+  if (NOT USE_DRSYMS)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
     set(script_aux "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl")
@@ -1369,18 +1368,19 @@ if (WIN32)
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
     configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
-    if (USE_DRSYMS AND TOOL_DR_MEMORY)
+    if (USE_DRSYMS)
       configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
-      if (NOT STATIC_DRSYMS)
+      if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
         # symquery needs drsyms.dll in same dir
         configure_file("${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
           "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
-      endif (NOT STATIC_DRSYMS)
+      endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
       # symquery needs dynamorio.dll in same dir
+      # frontend now imports from DR (i#885)
       configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
-    endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+    endif (USE_DRSYMS)
   else (USER_SPECIFIED_DynamoRIO_DIR)
     # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
     # the target is in a subdir?
@@ -1396,14 +1396,14 @@ if (WIN32)
       COMMAND ${CMAKE_COMMAND}
       ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${drinjectlib_copy}" VERBATIM)
-    if (USE_DRSYMS AND TOOL_DR_MEMORY)
+    if (USE_DRSYMS)
       set(drconfigexe_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe")
       add_custom_target(drconfigexe_copy_tgt ALL DEPENDS "${drconfigexe_copy}")
       add_custom_command(OUTPUT "${drconfigexe_copy}" DEPENDS drconfig
         COMMAND ${CMAKE_COMMAND}
         ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
         "${drconfigexe_copy}" VERBATIM)
-      if (NOT STATIC_DRSYMS)
+      if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
         # symquery needs drsyms.dll in same dir
         set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
         add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
@@ -1411,15 +1411,16 @@ if (WIN32)
           COMMAND ${CMAKE_COMMAND}
           ARGS -E copy "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
         "${drsymsdll_copy}" VERBATIM)
-      endif (NOT STATIC_DRSYMS)
+      endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
       # symquery needs dynamorio.dll in same dir
+      # frontend now imports from DR (i#885)
       set(drdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll")
       add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
       add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
         COMMAND ${CMAKE_COMMAND}
         ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
         "${drdll_copy}" VERBATIM)
-    endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+    endif (USE_DRSYMS)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (USE_DRSYMS)
     # above copy is for winsyms and symquery, this is for drmemorylib
@@ -1733,7 +1734,7 @@ if (WIN32)
       PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
   endif (USE_DRSYMS)
-  if (USE_DRSYMS AND TOOL_DR_MEMORY)
+  if (USE_DRSYMS)
     install(FILES
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll
@@ -1743,7 +1744,7 @@ if (WIN32)
       DESTINATION "${INSTALL_BIN}"
       PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
-  endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+  endif (USE_DRSYMS)
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/README
     DESTINATION "${INSTALL_PREFIX}."
@@ -1756,17 +1757,17 @@ endif (WIN32)
 install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
   DESTINATION "${INSTALL_PREFIX}.")
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+if (USE_DRSYMS)
   install_if_32bit(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-else (USE_DRSYMS AND TOOL_DR_MEMORY)
+else (USE_DRSYMS)
   install_if_32bit(FILES
     ${script_main}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (USE_DRSYMS)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install_if_32bit(FILES

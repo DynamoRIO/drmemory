@@ -131,9 +131,8 @@ if ("${cmd}" MATCHES "run_in_bg")
 
   if (WIN32)
     # can't get pid from run_in_bg for 2 reasons: not printed to stdout,
-    # and drmemory.pl doesn't exec.  so we pass in pidfile to drmemory.pl.
-    string(REGEX REPLACE "(dr[a-z]*.pl);" "\\1;-pid_file;${out}pid;" cmd "${cmd}")
-    string(REGEX REPLACE "(drmemory.exe);" "\\1;-pid_file;${out}pid;" cmd "${cmd}")
+    # and drmemory.exe doesn't exec.  so we pass in pidfile to drmemory.exe.
+    string(REGEX REPLACE "(dr[a-z]*.exe);" "\\1;-pid_file;${out}pid;" cmd "${cmd}")
     file(REMOVE "${out}pid")
   endif (WIN32)
 
@@ -466,21 +465,18 @@ endforeach (line)
 
 ##################################################
 # check results.txt
-
-if (resmatch)
+# XXX i#1688: Disable leak tests for Dr. Heapstat until the offline
+# processor is refactored.
+if (resmatch AND TOOL_DR_MEMORY)
   if (NOT "${postcmd}" STREQUAL "")
     string(REGEX REPLACE "@@" " " postcmd "${postcmd}")
     string(REGEX REPLACE "@" ";" postcmd "${postcmd}")
   endif (NOT "${postcmd}" STREQUAL "")
-  if (TOOL_DR_HEAPSTAT)
-    set(data_prefix "Data is in ")
-  else (TOOL_DR_HEAPSTAT)
-    if ("${postcmd}" STREQUAL "")
-      set(data_prefix "Details: ")
-    else ()
-      set(data_prefix "To obtain results, run with: -results ")
-    endif ()
-  endif (TOOL_DR_HEAPSTAT)
+  if ("${postcmd}" STREQUAL "")
+    set(data_prefix "Details: ")
+  else ()
+    set(data_prefix "To obtain results, run with: -results ")
+  endif ()
   # it may not be created yet
   set(iters 0)
   while (NOT "${cmd_err}" MATCHES "${data_prefix}")
@@ -645,4 +641,4 @@ if (resmatch)
     endif (cmd2_result)
   endif ("${cmd}" MATCHES "suppress" AND NOT "${cmd}" MATCHES "-suppress")
 
-endif (resmatch)
+endif (resmatch AND TOOL_DR_MEMORY)
