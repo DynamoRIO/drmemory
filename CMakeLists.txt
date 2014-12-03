@@ -31,6 +31,11 @@ if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
   cmake_policy(SET CMP0020 OLD)
 endif ()
 
+# XXX i#1663: Dr. Memory does not yet support CMake 3
+if ("${CMAKE_MAJOR_VERSION}" VERSION_EQUAL "3")
+  message(FATAL_ERROR "Dr. Memory does not yet support CMake 3")
+endif ()
+
 # like DR, we collapse VS generator into one config since
 # we don't have enough control over output dirs
 # in build rules (until cmake 2.8.4).
