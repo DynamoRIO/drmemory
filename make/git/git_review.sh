@@ -145,7 +145,7 @@ elif [ "$mode" = "commit" ]; then
         hash=$(git log -n 1 --format=%H)
         msg=$(echo -e "Committed as ${hashurl}${hash}\n\nFinal commit log:" \
             "\n---------------\n${log}\n---------------")
-        output=$(python ${root}${script} -y -e "${user}" -i ${issue} \
+        output=$(python ${root}/${script} -y -e "${user}" -i ${issue} \
             -t "${subject}" -m "${msg}" ${email} HEAD^)
         echo "${output}"
     else
