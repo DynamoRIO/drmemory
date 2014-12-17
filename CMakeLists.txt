@@ -2004,8 +2004,20 @@ else (UNIX)
       endif ()
     endif (strings)
   else (NSIS)
-    message(STATUS "NSIS not found: will not build installer")
-    set(CPACK_GENERATOR "ZIP")
+    # XXX i#1620: To switch entirely from NSIS to WIX
+    # will need to generate GUID's to install over previous NSIS installs and
+    # to make sure registry values are written to that were originally done
+    # with tools/vs_external_tool.c
+    message(STATUS "NSIS not found: will try building with WIX")
+    find_program(WIX candle HINT "$ENV{PROGRAMFILES}/bin" DOC "WIX for creating installer")
+    if (WIX)
+      # Make sure to specify BUILDING_PACKAGE. See i#1099 about absolute path.
+      message(STATUS "WIX found. Using WIX to install")
+      set(CPACK_GENERATOR "ZIP;WIX")
+    else (WIX)
+      message(STATUS "WIX compiler candle.exe not found. Please add it to path or install the WIX tooset. Installing as a Zip")
+      set(CPACK_GENERATOR "ZIP")
+    endif (WIX)
   endif (NSIS)
   set(CPACK_SOURCE_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "Windows")
