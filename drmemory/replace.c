@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -50,14 +50,17 @@
 # include "drsyms.h"
 #endif
 
+#undef strcasecmp /* undo def from utils.h */
+
 /* On Windows, keep this updated with drmemory.pl which queries these pre-run.
  *
  * When adding, make sure the regexs passed to find_syms_regex() cover
  * the new name!
  *
- * Template: REPLACE_DEF(name, corresponding-wide-char-version)
+ * Template: REPLACE_NAME_DEF(app-name, replace_ func name, corresponding-wide-char)
  *
  */
+#define REPLACE_DEF(name, wide) REPLACE_NAME_DEF(name, name, wide)
 #define REPLACE_DEFS()             \
     REPLACE_DEF(memset, NULL)      \
     REPLACE_DEF(memcpy, NULL)      \
@@ -94,24 +97,32 @@
     REPLACE_DEF(strcspn, NULL)     \
     REPLACE_DEF(stpcpy, NULL)      \
     REPLACE_DEF(strstr, "wcsstr")  \
-    REPLACE_DEF(wcsstr, NULL)
+    REPLACE_DEF(wcsstr, NULL)      \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_memchr, memchr, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_memcmp, memcmp, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_memmove, memmove, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_memset, memset, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_strchr, strchr, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_strcmp, strcmp, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_strncmp, strncmp, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_strlen, strlen, NULL))
 
 /* XXX i#350: add wrappers for wcsncpy, wcscat,
  * wcsncat, wmemmove.
  */
 
 static const char *replace_routine_name[] = {
-#define REPLACE_DEF(nm, wide) STRINGIFY(nm),
+#define REPLACE_NAME_DEF(nm, func, wide) STRINGIFY(nm),
     REPLACE_DEFS()
-#undef REPLACE_DEF
+#undef REPLACE_NAME_DEF
 };
 #define REPLACE_NUM (sizeof(replace_routine_name)/sizeof(replace_routine_name[0]))
 
 #ifdef WINDOWS
 static const char * const replace_routine_wide_alt[] = {
-# define REPLACE_DEF(nm, wide) wide,
+# define REPLACE_NAME_DEF(nm, func, wide) wide,
     REPLACE_DEFS()
-# undef REPLACE_DEF
+# undef REPLACE_NAME_DEF
 };
 #endif
 
@@ -819,9 +830,9 @@ ACTUAL_PRAGMA( code_seg() )
  ***************************************************************************/
 
 static const void *replace_routine_addr[] = {
-#define REPLACE_DEF(nm, wide) replace_##nm,
+#define REPLACE_NAME_DEF(nm, func, wide) replace_##func,
     REPLACE_DEFS()
-#undef REPLACE_DEF
+#undef REPLACE_NAME_DEF
 };
 
 static app_pc

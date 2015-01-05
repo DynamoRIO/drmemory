@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -64,15 +64,16 @@
 #  define IF_LINUX_ELSE(x,y) y
 #  define IF_LINUX_(x) x,
 # endif
-# ifdef MACOS
-#  define IF_MACOS(x) x
-#  define IF_MACOS_ELSE(x,y) x
-#  define IF_MACOS_(x) x,
-# else
-#  define IF_MACOS(x)
-#  define IF_MACOS_ELSE(x,y) y
-#  define IF_MACOS_(x) x,
-# endif
+#endif
+
+#ifdef MACOS
+# define IF_MACOS(x) x
+# define IF_MACOS_ELSE(x,y) x
+# define IF_MACOS_(x) x,
+#else
+# define IF_MACOS(x)
+# define IF_MACOS_ELSE(x,y) y
+# define IF_MACOS_(x) x,
 #endif
 
 #ifdef X64
