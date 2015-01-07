@@ -99,6 +99,8 @@ private slots:
 
     void choose_file(void);
 
+    void slot_table_clicked(int column);
+
 signals:
     void code_editor_requested(QFile &file, int line_num);
 
@@ -183,6 +185,9 @@ private:
     QLabel *right_title;
 
     QTableWidget *callstacks_table;
+    Qt::SortOrder sort_order;
+    int sorted_column;
+
     QHBoxLayout *callstacks_page_buttons;
     QPushButton *prev_page_button;
     QLabel *page_display_label;

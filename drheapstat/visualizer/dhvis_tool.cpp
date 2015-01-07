@@ -72,6 +72,8 @@ dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
     current_snapshot_num = -1;
     current_snapshot_index= -1;
     show_occur = false;
+    sorted_column = 0;
+    sort_order = Qt::DescendingOrder;
     create_layout();
 }
 
@@ -244,6 +246,8 @@ dhvis_tool_t::create_layout(void)
     callstacks_table = new QTableWidget(this);
     connect(callstacks_table, SIGNAL(currentCellChanged(int, int, int, int)),
             this, SLOT(refresh_frames_text_edit(int, int, int, int)));
+    connect(callstacks_table->horizontalHeader(), SIGNAL(sectionClicked(int)),
+            this, SLOT(slot_table_clicked(int)));
 
     /* Mid-layout buttons */
     callstacks_page_buttons = new QHBoxLayout;
@@ -851,6 +855,65 @@ dhvis_tool_t::highlight_changed(quint64 snapshot, quint64 index)
     }
 }
 
+/* Static
+ * Private sorting functions for use only by std::sort.
+ * Note the reversed comparisons, as we want the default sort to be by Descending Order.
+ */
+static bool
+sort_by_callstack(const dhvis_callstack_listing_t * v1,
+                  const dhvis_callstack_listing_t * v2)
+{
+    return v1->callstack_num > v2->callstack_num;
+}
+
+static bool
+sort_by_symbol(const dhvis_callstack_listing_t * v1, const dhvis_callstack_listing_t * v2)
+{
+
+    QString symbol_display1;
+    const QList<dhvis_frame_data_t *> *frames1 = &(v1->frame_data);
+    /* Only show first 3 (skip 0) frames' func_name.
+     * We skip 0 because it is always Dr. Heapstat's replace_* function.
+     */
+    static const unsigned int LAST_FUNC = 3;
+    for (unsigned int i = 1; i <= LAST_FUNC && i < frames1->count(); i++) {
+        dhvis_frame_data_t *frame = frames1->at(i);
+        symbol_display1.append(frame->func_name);
+        if (i != LAST_FUNC)
+            symbol_display1.append(" <-- ");
+    }
+
+    QString symbol_display2;
+    const QList<dhvis_frame_data_t *> *frames2 = &(v2->frame_data);
+    for (unsigned int i = 1; i <= LAST_FUNC && i < frames2->count(); i++) {
+        dhvis_frame_data_t *frame = frames2->at(i);
+        symbol_display2.append(frame->func_name);
+        if (i != LAST_FUNC)
+            symbol_display2.append(" <-- ");
+    }
+
+    return symbol_display1 > symbol_display2;
+}
+
+static bool
+sort_by_alloc(const dhvis_callstack_listing_t * v1, const dhvis_callstack_listing_t * v2)
+{
+    return v1->bytes_asked_for > v2->bytes_asked_for;
+}
+
+static bool
+sort_by_pad(const dhvis_callstack_listing_t * v1, const dhvis_callstack_listing_t * v2)
+{
+    return v1->extra_usable > v2->extra_usable;
+}
+
+static bool
+sort_by_head(const dhvis_callstack_listing_t * v1, const dhvis_callstack_listing_t * v2)
+{
+    return v1->extra_occupied > v2->extra_occupied;
+}
+
+
 /* Private Slot
  * Fills callstacks_table with gathered data
  */
@@ -887,6 +950,39 @@ dhvis_tool_t::fill_callstacks_table(void)
         vec = &visible_assoc_callstacks;
     else
         vec = &snapshots[current_snapshot_index]->assoc_callstacks;
+
+    /* Presorting vec before we refill callstacks table based on column */
+    bool (*sorting_function)(const dhvis_callstack_listing_t *,
+                             const dhvis_callstack_listing_t *);
+
+    switch (sorted_column) {
+    default:
+    case 0:
+        sorting_function = &sort_by_callstack;
+        break;
+    case 1:
+        sorting_function = &sort_by_symbol;
+        break;
+    case 2:
+        sorting_function = &sort_by_alloc;
+        break;
+    case 3:
+        sorting_function = &sort_by_pad;
+        break;
+    case 4:
+        sorting_function = &sort_by_head;
+        break;
+    }
+
+    if (sort_order == Qt::DescendingOrder)
+        std::sort(vec->begin(), vec->end(), *sorting_function);
+    else {
+        /* We are guaranteed that if we have to sort by ascending order
+         * then the vector is already sorted in descending order, so a simple
+         * reverse is all we need.
+         */
+        std::reverse(vec->begin(), vec->end());
+    }
 
     total_requested_usage = 0;
     total_pad_usage = 0;
@@ -943,9 +1039,6 @@ dhvis_tool_t::fill_callstacks_table(void)
     }
     /* Insert a row at the top with the total usage information */
     insert_total_row();
-    /* Re-sort added data (descending bytes alloc'd)*/
-    callstacks_table->setSortingEnabled(true);
-    callstacks_table->sortItems(2, Qt::DescendingOrder);
     /* Current page info */
     qreal display_num = callstacks_display_page *
                         options->num_callstacks_per_page;
@@ -1412,6 +1505,8 @@ dhvis_tool_t::reset_callstacks_view(void)
     show_occur = false;
     callstacks_display_page = 0;
     fill_callstacks_table();
+    sort_order = Qt::DescendingOrder;
+    sorted_column = 0;
 }
 
 /* Private
@@ -1581,6 +1676,21 @@ dhvis_tool_t::choose_file(void)
 
     /* Reset file_text_changed */
     *file_text_changed = false;
+}
+
+/* Private Slot
+ * Sorts the callstack table by appropriate column and resets to first page
+ */
+void
+dhvis_tool_t::slot_table_clicked(int column)
+{
+    callstacks_display_page = 0;
+    if (sort_order == Qt::DescendingOrder && column == sorted_column)
+        sort_order = Qt::AscendingOrder;
+    else
+        sort_order = Qt::DescendingOrder;
+    sorted_column = column;
+    fill_callstacks_table();
 }
 
 /* Public
