@@ -2014,6 +2014,10 @@ else (UNIX)
       # Make sure to specify BUILDING_PACKAGE. See i#1099 about absolute path.
       message(STATUS "WIX found. Using WIX to install")
       set(CPACK_GENERATOR "ZIP;WIX")
+      # Variables below are set to allow for upgrade but prevent
+      # reinstalling the same version. See i#1620.
+      set(CPACK_WIX_UPGRADE_GUID 1A8D7CEE-2ABA-4462-B0D6-86F26715128E)
+      set(CPACK_WIX_PRODUCT_GUID 67675AD6-1FB0-4DE1-9ECF-84997515025E)
     else (WIX)
       message(STATUS "WIX compiler candle.exe not found. Please add it to path or install the WIX tooset. Installing as a Zip")
       set(CPACK_GENERATOR "ZIP")
