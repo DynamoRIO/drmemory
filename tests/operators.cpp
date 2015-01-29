@@ -35,6 +35,7 @@
 #else
 # define SIZE_OOM 0x7fffffff
 #endif
+#define SIZE_OOM_ARR 1024
 #ifdef UNIX
 # define IF_UNIX_ELSE(x,y) x
 #else
@@ -52,9 +53,11 @@ public:
 
 class enormous {
 public:
-    // i#972: char[SIZE_OOM] is the static limit but won't run OOM in Linux
+    /*
+     * i#972: char[SIZE_OOM] is the static limit but won't run OOM in Linux,
+     * so we alloc in a loop until OOM is triggered.
+     */
     char buf[SIZE_OOM];
-    char buf2[SIZE_OOM];
 };
 
 static void
@@ -82,18 +85,32 @@ test_placement()
 static void
 test_nothrow()
 {
-    enormous *e = new (std::nothrow) enormous;
-    if (e == NULL)
-        std::cout << "new returned NULL" << std::endl;
-    else
-        delete e;
+    unsigned int i = 0;
+    enormous **e = new (std::nothrow) enormous*[SIZE_OOM_ARR];
+    for (i = 0; i < SIZE_OOM_ARR; i++) {
+        e[i] = new (std::nothrow) enormous;
+        std::cout << "i: " << i << std::endl;
+        if (e[i] == NULL) {
+            std::cout << "new returned NULL" << std::endl;
+            break;
+        }
+    }
+    for (unsigned int j = 0; j <= i && j < SIZE_OOM_ARR; j++)
+        delete e[j];
+    delete[] e;
 
-    IF_UNIX_ELSE(int, char) *p =
-        new (std::nothrow) IF_UNIX_ELSE(int, char)[SIZE_OOM];
-    if (p == NULL)
-        std::cout << "new[] returned NULL" << std::endl;
-    else
-        delete[] p;
+    IF_UNIX_ELSE(int *, char *) *p =
+        new (std::nothrow) IF_UNIX_ELSE(int *, char *)[SIZE_OOM_ARR];
+    for (i = 0; i < SIZE_OOM_ARR; i++) {
+        p[i] = new (std::nothrow) IF_UNIX_ELSE(int, char)[SIZE_OOM];
+        if (p[i] == NULL) {
+            std::cout << "new[] returned NULL" << std::endl;
+            break;
+        }
+    }
+    for (unsigned int j = 0; j <= i && j < SIZE_OOM_ARR; j++)
+        delete p[j];
+    delete[] p;
 }
 
 // Actually Dr. Memory is unable to throw an exception (i#957): it just aborts,
