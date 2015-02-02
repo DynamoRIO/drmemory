@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -211,6 +211,9 @@ typedef struct _cls_alloc_t {
     app_pc alloc_being_freed; /* handles post-pre-free actions */
     /* record which outer layer was used to allocate (i#123) */
     uint allocator;
+    /* i#1675: for recording missed reservations */
+    byte *missed_base;
+    size_t missed_size;
     /* present the outer layer as the top of the allocation call stack,
      * regardless of how many inner layers we went through (i#913)
      */
@@ -4454,19 +4457,12 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                              */
                             pt->valloc_commit = false;
                         } else if (pt->in_heap_routine > 0 && !pt->valloc_commit) {
-                            /* this is a heap reservation that we missed: perhaps
-                             * from cygwin (xref i#197, i#480)
+                            /* This is a heap reservation that we missed: perhaps
+                             * from cygwin (xref i#197, i#480).  We want to add
+                             * the reserved size, but only if the syscall succeeds
+                             * (i#1675), so we store the size here and add in post.
                              */
-                            /* [mbi.AllocationBase, mbi.BaseAddress + mbi.RegionSize)
-                             * would work for single large reservations: but best
-                             * to be safe
-                             */
-                            byte *alloc_base;
-                            size_t alloc_size = allocation_size(base, &alloc_base);
-                            LOG(2, "Adding unknown heap region "PFX"-"PFX"\n",
-                                alloc_base, alloc_base + alloc_size);
-                            heap_region_add(alloc_base, alloc_base + alloc_size,
-                                            HEAP_ARENA, mc);
+                            pt->missed_size = allocation_size(base, &pt->missed_base);
                         }
                     } else {
                         WARN("WARNING: NtAllocateVirtualMemory: error reading param\n");
@@ -4511,6 +4507,11 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                 client_handle_munmap(pt->munmap_base,
                                      allocation_size(pt->munmap_base, NULL),
                                      false/*file-backed*/);
+                /* if part of heap remove it from list */
+                if (alloc_ops.track_heap) {
+                    heap_region_remove(pt->munmap_base, pt->munmap_base +
+                                       allocation_size(pt->munmap_base, NULL), mc);
+                }
             }
         } else if (sysnum == sysnum_cbret) {
             handle_cbret(true/*syscall*/);
@@ -4637,6 +4638,13 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
                 /* set Heap if from RtlAllocateHeap */
                 if (pt->in_heap_adjusted > 0 && pt->heap_handle != 0)
                     heap_region_set_heap(base, (HANDLE) pt->heap_handle);
+            } else if (TEST(MEM_COMMIT, pt->valloc_type) && pt->in_heap_routine > 0 &&
+                       !is_in_heap_region(base) && !pt->valloc_commit) {
+                /* We recorded the size prior to the syscall */
+                LOG(2, "Adding unknown heap region "PFX"-"PFX"\n",
+                    pt->missed_base, pt->missed_base + pt->missed_size);
+                heap_region_add(pt->missed_base, pt->missed_base + pt->missed_size,
+                                HEAP_ARENA, mc);
             }
         } else {
             if (TEST(MEM_COMMIT, pt->valloc_type)) {
