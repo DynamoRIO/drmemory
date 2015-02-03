@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -758,7 +758,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "5.0.16403")
+set(DynamoRIO_VERSION_REQUIRED "5.0.16468")
 
 set(DR_install_dir "dynamorio")
 
@@ -1211,9 +1211,10 @@ if (WIN32)
     set(ntimp_lib "${libpath}/ntdll_imports.lib")
     set(dbghelp_lib "${libpath}/dbghelp_imports.lib")
   else ()
+    # DR now has ntdll_imports as a normal lib target
+    set(ntimp_lib ntdll_imports)
     # XXX: This relies on knowing where DR puts it.
     # One option is ExternalProject to install the local DR first: xref i#1061.
-    set(ntimp_lib "${PROJECT_BINARY_DIR}/dynamorio/core/ntdll_imports.lib")
     set(dbghelp_lib "${PROJECT_BINARY_DIR}/dynamorio/ext/drsyms/dbghelp_imports.lib")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # for parallel build correctness we need a target dependence
