@@ -114,38 +114,6 @@ if (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Heapstat")
   set(DEFINES ${DEFINES} -DTOOL_DR_HEAPSTAT)
 
-  option(BUILD_VISUALIZER "build Dr. Heapstat visualizer (requires Flex SDK and Java)")
-  if (BUILD_VISUALIZER)
-    # Flex building is done only for Dr. HeapStat visualization tool.  So Java
-    # is needed only for that too.
-    if (NOT DEFINED JAVA)     # Not using toolchain then
-      set(Java_FIND_QUIETLY ON) # avoid errors about missing javac
-      include(FindJava)
-      if (JAVA_RUNTIME)
-        set(JAVA "${JAVA_RUNTIME}")
-        message(STATUS "Found Java interpreter ${JAVA}")
-      else (JAVA_RUNTIME)
-        message(FATAL_ERROR "Can't find Java interpreter: please set JAVA var")
-      endif (JAVA_RUNTIME)
-    endif (NOT DEFINED JAVA)
-
-    # There is no standard install path so the user must tell us where they
-    # installed the Flex SDK, either via env var FLEXROOT or FLEX_SDK CMake var.
-    set(FLEX_SDK "$ENV{FLEXROOT}" CACHE PATH "Path to Flex SDK.")
-    set(FLEX_MXMLC "${FLEX_SDK}/lib/mxmlc.jar"
-      CACHE FILEPATH "Path to Flex MXML compiler.")
-    if (NOT EXISTS "${FLEX_MXMLC}")
-      message(FATAL_ERROR "Flex compiler ${FLEX_MXMLC} not found: set FLEX_SDK var or FLEXROOT env var")
-    endif ()
-    message(STATUS "Found Flex MXML compiler ${FLEX_MXMLC}")
-
-    set(FLEX_FRAMEWORKS "${FLEX_SDK}/frameworks"
-      CACHE PATH "Path to Flex frameworks, i.e., standard libraries.")
-    if (NOT EXISTS "${FLEX_FRAMEWORKS}")
-      message(FATAL_ERROR "Flex frameworks path ${FLEX_FRAMEWORKS} not found.")
-    endif ()
-  endif (BUILD_VISUALIZER)
-
   # Dr. Heapstat uses drsyms only to avoid false neg on leaks (i#762, i#292).
   # XXX: use drsyms for leak reports (i#926) and usage (i#282).
   set(DRSYMS_DEFAULT ON)
@@ -1272,20 +1240,6 @@ endif (NOT cur_flags)
 set_property(SOURCE common/alloc_unopt.c
   PROPERTY COMPILE_FLAGS "${cur_flags} ${DISABLE_OPTS}")
 
-# Though the swf file isn't an executable it is in ${BIN_ARCH} because it isn't
-# exposed to the users; it isn't in lib because, well, it isn't a lib.
-if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
-  add_custom_target(vistool ALL DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf")
-  add_custom_command(
-    OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
-    DEPENDS ${PROJECT_SOURCE_DIR}/${tooldir}/${toolname}.mxml
-    COMMAND ${JAVA}
-    ARGS -jar ${FLEX_MXMLC} "+flexlib=${FLEX_FRAMEWORKS}"
-      ${PROJECT_SOURCE_DIR}/${tooldir}/${toolname}.mxml
-      -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
-    VERBATIM)
-endif (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
-
 # symbol query tool
 set(symquery_srcs tools/symquery.c)
 if (WIN32)
@@ -1776,14 +1730,8 @@ if (NOT "${script_aux}" STREQUAL "")
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 endif ()
-if (TOOL_DR_HEAPSTAT)
-  if (BUILD_VISUALIZER)
-    install_if_32bit(FILES
-      ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
-      DESTINATION "${INSTALL_BIN}"
-      PERMISSIONS ${owner_access} GROUP_READ WORLD_READ)
-  endif (BUILD_VISUALIZER)
-else (TOOL_DR_HEAPSTAT)
+
+if (TOOL_DR_MEMORY)
   install(FILES
     ${PROJECT_BINARY_DIR}/${BUILD_BIN}/suppress-default.txt
     DESTINATION "${INSTALL_BIN}"
@@ -1795,7 +1743,7 @@ else (TOOL_DR_HEAPSTAT)
       PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
   endif (UNIX)
-endif (TOOL_DR_HEAPSTAT)
+endif (TOOL_DR_MEMORY)
 
 set(install_pdb_exclude
   # We don't want unit test pdb's, or internal tool pdb's.
