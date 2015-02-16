@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -96,6 +96,7 @@ main(int argc, char** argv)
             GetExitCodeProcess(pi.hProcess, (LPDWORD) &status);
             fprintf(stderr, "child has exited with status %d\n", status);
             CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
         }
     }
     else {
