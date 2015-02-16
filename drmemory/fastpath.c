@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -5492,15 +5492,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     PRE(bb, inst,
                         INSTR_CREATE_jcc(drcontext, OP_jne_short,
                                          opnd_create_instr(not_inheap)));
-                    PRE(bb, inst,
-                        INSTR_CREATE_mov_imm(drcontext, mi->dst[0].shadow,
-                                             shadow_immed(mi->memsz, SHADOW_DEFINED)));
-                    if (!opnd_is_null(mi->dst[1].shadow)) {
-                        ASSERT(opnd_is_reg(mi->dst[1].app), "2nd dst must be reg");
-                        PRE(bb, inst,
-                            INSTR_CREATE_mov_imm(drcontext, mi->dst[1].shadow,
-                                                 shadow_immed(mi->memsz, SHADOW_DEFINED)));
-                    }
+                    mi->src[0].shadow = shadow_immed(mi->opsz, SHADOW_DEFINED);
+                    mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
+                    add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
+                                           mi->opsz/*not src*/, mi->opsz,
+                                           scratch8, si8, false/*no eflags*/, false);
                     PRE(bb, inst,
                         INSTR_CREATE_jmp_short(drcontext,
                                                opnd_create_instr(fastpath_restore)));

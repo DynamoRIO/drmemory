@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -31,6 +31,7 @@
 
 void asm_test(char *undef, char *def);
 void asm_test_avx(char *undef, char *def);
+void asm_test_i1680(char *buf);
 
 static void
 asm_test_C(void)
@@ -39,6 +40,7 @@ asm_test_C(void)
     char def[256] = {0,};
     asm_test(undef, def);
     asm_test_avx(undef, def);
+    asm_test_i1680(def);
 }
 
 int
@@ -359,6 +361,26 @@ GLOBAL_LABEL(FUNCNAME:)
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
         pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME asm_test_i1680
+/* XXX: we want to test i#1680 but it's not yet clear how to make this trigger
+ * the in-heap checks.  Naming as LdrShutdownProcess does not do it: may need
+ * to be in a dll?  I'm waiting for more info on exactly why i#1680 is in-heap.
+ */
+/* void asm_test_i1680(char *buf); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      ecx, ARG1
+        mov      eax, [ecx]
+        movd     xmm0, eax
+        movsldup xmm0, xmm0
+        aeskeygenassist xmm0, xmm0, 0
+        movd     eax, xmm0
+        mov      eax, [ecx]
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
