@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1639,7 +1639,7 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
     if (reg == REG_NULL)
         return ((byte *)sr) + offsetof(shadow_registers_t, eflags);
     else if (reg_is_gpr(reg))
-        return ((byte *)sr) + (reg_to_pointer_sized(reg) - REG_EAX);
+        return ((byte *)sr) + (reg_to_pointer_sized(reg) - DR_REG_XAX);
     else {
         /* Caller must ask for xmm to get low bits (won't all fit in uint) */
         if (reg_is_ymm(reg))
