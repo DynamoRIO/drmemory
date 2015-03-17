@@ -254,8 +254,11 @@ test_static_queries(void)
     ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_syscall should have failed");
 #endif
 
-    /* test number to name */
-    num.number = 0;
+    /* Test number to name.
+     * i#1692: We choose syscall 1 because on WOW64 syscall 0 has some upper bits
+     * set. As a result num.number = 0 assert fails.
+     */
+    num.number = 1;
     num.secondary = 0;
     if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_number_to_syscall failed");
