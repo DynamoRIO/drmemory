@@ -646,8 +646,8 @@ account_for_bytes_pre(per_callstack_t *per, int asked_for,
     } else {
         ASSERT(asked_for+extra_usable < 0, "cannot have 0-sized usable space");
         ASSERT(per->used != NULL, "alloc must exist");
-        ASSERT(per->used->instances > 0, "alloc count must be >= 0");
-        ASSERT(snaps[snap_idx].tot_mallocs > 0, "alloc count must be >= 0");
+        ASSERT(per->used->instances >= 0, "alloc count must be >= 0");
+        ASSERT(snaps[snap_idx].tot_mallocs >= 0, "alloc count must be >= 0");
         if (!realloc)
             per->used->instances--;
         snaps[snap_idx].tot_mallocs--;
