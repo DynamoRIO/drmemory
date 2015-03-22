@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -85,6 +85,18 @@ typedef enum {
     HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
 #ifdef UNIX
     HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
+# ifdef MACOS
+    ZONE_ROUTINE_CREATE,
+    ZONE_ROUTINE_DESTROY,
+    ZONE_ROUTINE_DEFAULT,
+    ZONE_ROUTINE_QUERY,
+    ZONE_ROUTINE_MALLOC,
+    ZONE_ROUTINE_CALLOC,
+    ZONE_ROUTINE_VALLOC,
+    ZONE_ROUTINE_REALLOC,
+    ZONE_ROUTINE_MEMALIGN,
+    ZONE_ROUTINE_FREE,
+# endif
 #else
     /* Debug CRT routines, which take in extra params */
     HEAP_ROUTINE_SIZE_REQUESTED_DBG,

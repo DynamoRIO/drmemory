@@ -20,7 +20,7 @@
  */
 
 /***************************************************************************
- * malloc.c: application allocator replacement routines for both
+ * alloc_replace.c: application allocator replacement routines for both
  * Dr. Memory and Dr. Heapstat
  */
 
@@ -91,6 +91,7 @@
 #ifdef MACOS
 # include <sys/syscall.h>
 # include <sys/mman.h>
+# include <malloc/malloc.h>
 #elif defined(LINUX)
 # include "sysnum_linux.h"
 # define __USE_GNU /* for mremap */
@@ -272,6 +273,15 @@ static void *global_lock;
  * piece of memory parceled out into individual malloc "chunks")
  */
 typedef struct _arena_header_t {
+#ifdef MACOS
+    /* Placed at the start for easy conversion back and forth.
+     * We ignore the function pointers inside here.
+     * Xref i#1699.
+     */
+    malloc_zone_t zone_inlined;
+    /* For child arenas to point at the parent */
+    malloc_zone_t *zone;
+#endif
     byte *start_chunk;
     byte *next_chunk;
     byte *commit_end;
@@ -387,6 +397,11 @@ static app_pc executable_base;
 
 static arena_header_t *
 check_libc_vs_process_heap(alloc_routine_entry_t *e, arena_header_t *arena);
+#endif
+
+#ifdef MACOS
+static void
+malloc_zone_init(arena_header_t *arena);
 #endif
 
 /* Flags controlling allocation behavior */
@@ -748,7 +763,7 @@ notify_client_alloc(void *drcontext, byte *ptr, chunk_header_t *head,
  */
 
 static inline chunk_header_t *
-header_from_ptr(void *ptr)
+header_from_ptr(const void *ptr)
 {
     if (alloc_ops.external_headers) {
         /* XXX i#879: hashtable lookup */
@@ -808,7 +823,7 @@ inter_chunk_space(void)
  * Returns true for both live mallocs and chunks in delay free lists
  */
 static inline bool
-is_valid_chunk(void *ptr, chunk_header_t *head)
+is_valid_chunk(const void *ptr, chunk_header_t *head)
 {
     /* Note that we can't be sure w/o using a hashtable, but for performance
      * it's worth it to risk not identifying an invalid free so we use
@@ -932,6 +947,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
         arena->modbase = parent->modbase;
         arena->handle = parent->handle;
 #endif
+#ifdef MACOS
+        arena->zone = parent->zone;
+#endif
     } else {
         arena->flags = ARENA_MAIN;
         arena->lock = dr_recurlock_create();
@@ -955,6 +973,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
         arena->alloc_set_member = NULL;
         arena->modbase = NULL;
         arena->handle = NULL;
+#endif
+#ifdef MACOS
+        malloc_zone_init(arena);
 #endif
     }
     /* need to start with a redzone */
@@ -1005,19 +1026,20 @@ arena_free(arena_header_t *arena)
 }
 
 static arena_header_t *
-arena_create(arena_header_t *parent)
+arena_create(arena_header_t *parent, size_t initial_size)
 {
+    size_t init_size = (initial_size == 0) ? ARENA_INITIAL_SIZE : initial_size;
     arena_header_t *new_arena = (arena_header_t *)
-        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE
+        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) init_size
                        _IF_WINDOWS(arena_page_prot(parent->flags)));
     if (new_arena == NULL)
         return NULL;
 #ifdef UNIX
-    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+    new_arena->commit_end = (byte *)new_arena + init_size;
 #else
     new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_COMMIT;
 #endif
-    new_arena->reserve_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+    new_arena->reserve_end = (byte *)new_arena + init_size;
     heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(new_arena, parent);
     return new_arena;
@@ -1073,7 +1095,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         return NULL;
 #endif
     /* XXX: add stranded space at end of arena to free list */
-    new_arena = arena_create(arena);
+    new_arena = arena_create(arena, 0/*default*/);
     LOG(1, "cur arena "PFX"-"PFX" out of space: created new one @"PFX"\n",
         (byte *)arena, arena->reserve_end, new_arena);
     return new_arena;
@@ -2085,6 +2107,45 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
     return res;
 }
 
+#if defined(WINDOWS) || defined(MACOS)
+/* Caller should hold any required locks, though we are probably assuming
+ * no synch is needed here.
+ */
+static void
+destroy_arena_family(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks,
+                     app_pc caller)
+{
+    arena_header_t *a, *next_a;
+    chunk_header_t *head;
+    malloc_info_t info;
+    for (a = arena; a != NULL; a = next_a) {
+        next_a = a->next_arena;
+        if (free_chunks) {
+            byte *cur = a->start_chunk;
+            while (cur < a->next_chunk) {
+                head = header_from_ptr(cur);
+                if (!TEST(CHUNK_FREED, head->flags)) {
+                    /* XXX: like mmaps for large allocs, we assume the OS
+                     * re-using the memory won't be immediate, so we go w/
+                     * a simple no-delay policy on the frees
+                     */
+                    header_to_info(head, &info, NULL, 0);
+                    client_remove_malloc_pre(&info);
+                    client_remove_malloc_post(&info);
+                    if (head->user_data != NULL)
+                        client_malloc_data_free(head->user_data);
+                    client_handle_free(&info, info.base, mc, caller, NULL,
+                                       true/*not delayed*/ _IF_WINDOWS((HANDLE)arena));
+                }
+                cur += head->alloc_size + inter_chunk_space();
+            }
+        }
+        heap_region_remove((byte *)a, a->reserve_end, mc);
+        arena_free(a);
+    }
+}
+#endif
+
 /***************************************************************************
  * iterator
  */
@@ -2860,9 +2921,6 @@ create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
 static void
 destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
 {
-    arena_header_t *a, *next_a;
-    chunk_header_t *head;
-    malloc_info_t info;
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, arena);
     if (arena->modbase != NULL) {
         IF_DEBUG(bool found =)
@@ -2882,32 +2940,7 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
             alloc_routine_set_update_user_data(arena->alloc_set_member, NULL);
         ASSERT(success, "failed to invalidate default Heap on its destruction");
     }
-    for (a = arena; a != NULL; a = next_a) {
-        next_a = a->next_arena;
-        if (free_chunks) {
-            byte *cur = a->start_chunk;
-            while (cur < a->next_chunk) {
-                head = header_from_ptr(cur);
-                if (!TEST(CHUNK_FREED, head->flags)) {
-                    /* XXX: like mmaps for large allocs, we assume the OS
-                     * re-using the memory won't be immediate, so we go w/
-                     * a simple no-delay policy on the frees
-                     */
-                    header_to_info(head, &info, NULL, 0);
-                    client_remove_malloc_pre(&info);
-                    client_remove_malloc_post(&info);
-                    if (head->user_data != NULL)
-                        client_malloc_data_free(head->user_data);
-                    client_handle_free(&info, info.base, mc,
-                                       (app_pc)replace_RtlDestroyHeap, NULL,
-                                       true/*not delayed*/ _IF_WINDOWS((HANDLE)arena));
-                }
-                cur += head->alloc_size + inter_chunk_space();
-            }
-        }
-        heap_region_remove((byte *)a, a->reserve_end, mc);
-        arena_free(a);
-    }
+    destroy_arena_family(arena, mc, free_chunks, (app_pc)replace_RtlDestroyHeap);
 }
 
 /* Returns NULL if not a valid Heap handle.  Caller may want to call
@@ -4040,6 +4073,277 @@ replace_RtlWalkHeap(HANDLE heap, PVOID entry)
 
 #endif /* WINDOWS */
 
+#ifdef MACOS
+/***************************************************************************
+ * Malloc zone API (i#1699)
+ *
+ * We ignore the indirection through the function pointers in the
+ * malloc_zone_t struct.  Natively, applications can replace individual
+ * routines with their own versions, but for DrMem we want everything here.
+ */
+
+typedef struct _zone_iter_data_t {
+    const void *ptr;
+    malloc_zone_t *zone;
+} zone_iter_data_t;
+
+static arena_header_t *
+zone_to_arena(malloc_zone_t *zone)
+{
+    arena_header_t *arena = (arena_header_t *) zone;
+    uint magic;
+    if (arena != NULL &&
+        safe_read(&arena->magic, sizeof(magic), &magic) &&
+        magic == HEADER_MAGIC &&
+        TEST(ARENA_MAIN, arena->flags))
+        return arena;
+    return NULL;
+}
+
+static inline void
+report_invalid_zone(malloc_zone_t *zone, dr_mcontext_t *mc, app_pc caller)
+{
+    client_invalid_heap_arg(caller, (byte *)zone, mc,
+                            "malloc zone API: invalid zone", false/*!free*/);
+}
+
+static malloc_zone_t *
+replace_malloc_create_zone(vm_size_t start_size, unsigned flags)
+{
+    arena_header_t *arena = NULL;
+    void *drcontext = enter_client_code();
+    LOG(2, "%s %d %d\n", __FUNCTION__, start_size, flags);
+    /* Only 0 is supported for flags but we ignore it to match native behavior */
+    arena = arena_create(NULL, ALIGN_FORWARD(start_size, PAGE_SIZE));
+    LOG(2, "\t%s %d %d => "PFX"\n", __FUNCTION__, start_size, flags, arena);
+    exit_client_code(drcontext, false/*need swap*/);
+    return (malloc_zone_t *) arena;
+}
+
+static void
+replace_malloc_destroy_zone(malloc_zone_t *zone)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s "PFX"\n", __FUNCTION__, arena);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_destroy_zone);
+    else {
+        destroy_arena_family(arena, &mc, true/*free chunks*/,
+                             (app_pc)replace_malloc_destroy_zone);
+    }
+    exit_client_code(drcontext, false/*need swap*/);
+}
+
+static malloc_zone_t *
+replace_malloc_default_zone(void)
+{
+    void *drcontext = enter_client_code();
+    malloc_zone_t *res = cur_arena->zone;
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static bool
+zone_from_ptr_iter(byte *start, byte *end, uint flags
+                   _IF_WINDOWS(HANDLE heap), void *iter_data)
+{
+    zone_iter_data_t *data = (zone_iter_data_t *) iter_data;
+    LOG(3, "%s: "PFX"-"PFX" 0x%x\n", __FUNCTION__, start, end, flags);
+    if (TEST(HEAP_ARENA, flags) &&
+        (byte *)data->ptr >= start && (byte *)data->ptr < end) {
+        data->zone = (malloc_zone_t *) start;
+        return false; /* stop iterating */
+    }
+    return true;
+}
+
+static malloc_zone_t *
+replace_malloc_zone_from_ptr(const void *ptr)
+{
+    void *drcontext = enter_client_code();
+    zone_iter_data_t data = {ptr, NULL};
+    chunk_header_t *head = header_from_ptr(ptr);
+    if (is_valid_chunk(ptr, head)) {
+        /* XXX: do we have any better way to go from a chunk to containing arena? */
+        heap_region_iterate(zone_from_ptr_iter, &data);
+    }
+    LOG(2, "\t%s "PFX" => "PIFX"\n", __FUNCTION__, ptr, data.zone);
+    exit_client_code(drcontext, false/*need swap*/);
+    return data.zone;
+}
+
+static size_t
+replace_malloc_zone_size(malloc_zone_t *zone, const void *ptr)
+{
+    void *drcontext = enter_client_code();
+    size_t res = 0;
+    arena_header_t *arena = zone_to_arena(zone);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s: "PFX"\n", __FUNCTION__, ptr);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_size);
+    else {
+        /* The API promises to return 0 if ptr is not in zone */
+        arena_header_t *a;
+        arena_lock(drcontext, arena, true);
+        for (a = arena; a != NULL; a = a->next_arena) {
+            if ((byte *)ptr >= a->start_chunk && (byte *)ptr < a->reserve_end)
+                break;
+        }
+        arena_unlock(drcontext, arena, true);
+        if (a == NULL)
+            res = 0;
+        else {
+            res = replace_size_common(arena, (byte *)ptr, ALLOC_SYNCHRONIZE, drcontext,
+                                      &mc, (app_pc)replace_malloc_zone_size,
+                                      MALLOC_ALLOCATOR_MALLOC);
+            if (res == (size_t)-1)
+                res = 0; /* 0 on failure */
+        }
+    }
+    LOG(2, "\t%s "PFX" => "PIFX"\n", __FUNCTION__, ptr, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_malloc_zone_malloc(malloc_zone_t *zone, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s zone="PFX" (=> "PFX") size="PIFX"\n",
+        __FUNCTION__, zone, arena, size);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_malloc);
+    else {
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
+             &mc, (app_pc)replace_malloc_zone_malloc, MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s "PFX" %d => "PIFX"\n", __FUNCTION__, zone, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_malloc_zone_calloc(malloc_zone_t *zone, size_t num_items, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s zone="PFX" (=> "PFX") %d X %d\n",
+        __FUNCTION__, zone, arena, num_items, size);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_calloc);
+    else if (unsigned_multiply_will_overflow(num_items, size)) {
+        LOG(2, "calloc size will overflow => returning NULL\n");
+        client_handle_alloc_failure(UINT_MAX, (app_pc)replace_malloc_zone_calloc, &mc);
+        res = NULL;
+    } else {
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, num_items * size,
+             ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT, drcontext,
+             &mc, (app_pc)replace_malloc_zone_calloc, MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s "PFX" %d X %d => "PIFX"\n", __FUNCTION__, zone, num_items, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_malloc_zone_realloc(malloc_zone_t *zone, void *ptr, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s "PFX" %d\n", __FUNCTION__, ptr, size);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_realloc);
+    else {
+        res = ONDSTACK_REPLACE_REALLOC_COMMON(arena, ptr, size,
+                                              ALLOC_SYNCHRONIZE | ALLOC_ALLOW_NULL,
+                                              drcontext, &mc,
+                                              (app_pc)replace_malloc_zone_realloc,
+                                              MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s %d => "PFX"\n", __FUNCTION__, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void
+replace_malloc_zone_free(malloc_zone_t *zone, void *ptr)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_realloc);
+    else {
+        ONDSTACK_REPLACE_FREE_COMMON(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                                     drcontext, &mc, (app_pc)replace_malloc_zone_free,
+                                     MALLOC_ALLOCATOR_MALLOC);
+    }
+    exit_client_code(drcontext, false/*need swap*/);
+}
+
+static void *
+replace_malloc_zone_valloc(malloc_zone_t *zone, size_t size)
+{
+    /* FIXME i#94: implement aligned malloc requests */
+    ASSERT_NOT_IMPLEMENTED();
+    return NULL;
+}
+
+static void *
+replace_malloc_zone_memalign(malloc_zone_t *zone, size_t alignment, size_t size)
+{
+    /* FIXME i#94: implement aligned malloc requests */
+    ASSERT_NOT_IMPLEMENTED();
+    return NULL;
+}
+
+static void
+malloc_zone_init(arena_header_t *arena)
+{
+    /* i#1699: we do not support apps replacing the func ptrs but we do
+     * fill in the fields with initial values.
+     */
+    arena->zone = &arena->zone_inlined;
+    arena->zone_inlined.size = replace_malloc_zone_size;
+    arena->zone_inlined.malloc = replace_malloc_zone_malloc;
+    arena->zone_inlined.calloc = replace_malloc_zone_calloc;
+    arena->zone_inlined.valloc = replace_malloc_zone_valloc;
+    arena->zone_inlined.free = replace_malloc_zone_free;
+    arena->zone_inlined.realloc = replace_malloc_zone_realloc;
+    arena->zone_inlined.destroy = replace_malloc_destroy_zone;
+    arena->zone_inlined.batch_malloc = NULL;
+    arena->zone_inlined.batch_free = NULL;
+    arena->zone_inlined.introspect = NULL;
+    /* I'm making the version 5 to avoid having to fill in free_definite_size
+     * or pressure_relief.
+     */
+    arena->zone_inlined.version = 5;
+    arena->zone_inlined.memalign = replace_malloc_zone_memalign;
+    arena->zone_inlined.free_definite_size = NULL;
+    arena->zone_inlined.pressure_relief = NULL;
+}
+
+#endif /* MACOS */
+
 /***************************************************************************
  * drmem-facing interface
  */
@@ -4171,6 +4475,41 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
 #endif
     /* nothing below here is stdcall */
     *stack = 0;
+#ifdef MACOS
+    switch (type) {
+    case ZONE_ROUTINE_CREATE:
+        *routine = (void *) replace_malloc_create_zone;
+        return true;
+    case ZONE_ROUTINE_DESTROY:
+        *routine = (void *) replace_malloc_destroy_zone;
+        return true;
+    case ZONE_ROUTINE_DEFAULT:
+        *routine = (void *) replace_malloc_default_zone;
+        return true;
+    case ZONE_ROUTINE_QUERY:
+        *routine = (void *) replace_malloc_zone_from_ptr;
+        return true;
+    case ZONE_ROUTINE_MALLOC:
+        *routine = (void *) replace_malloc_zone_malloc;
+        return true;
+    case ZONE_ROUTINE_CALLOC:
+        *routine = (void *) replace_malloc_zone_calloc;
+        return true;
+    case ZONE_ROUTINE_VALLOC:
+        *routine = (void *) replace_malloc_zone_valloc;
+        return true;
+    case ZONE_ROUTINE_REALLOC:
+        *routine = (void *) replace_malloc_zone_realloc;
+        return true;
+    case ZONE_ROUTINE_MEMALIGN:
+        *routine = (void *) replace_malloc_zone_memalign;
+        return true;
+    case ZONE_ROUTINE_FREE:
+        *routine = (void *) replace_malloc_zone_free;
+        return true;
+    default: break; /* continue below */
+    }
+#endif
     if (is_malloc_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_malloc : replace_malloc_nomatch);
@@ -4633,7 +4972,7 @@ alloc_replace_init(void)
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);
 #elif defined(MACOS)
-    cur_arena = arena_create(NULL);
+    cur_arena = arena_create(NULL, 0/*default*/);
     ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
     LOG(2, "initial arena="PFX"\n", cur_arena);
 #else /* WINDOWS */

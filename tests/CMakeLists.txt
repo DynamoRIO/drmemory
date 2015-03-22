@@ -857,6 +857,10 @@ if (TOOL_DR_MEMORY)
     "" OFF "whitelist")
 endif (TOOL_DR_MEMORY)
 
+if (APPLE)
+  newtest(mac_zones mac_zones.c)
+endif (APPLE)
+
 # XXX i#1660: gtest is not building with clang 6.0
 if (NOT APPLE)
   add_subdirectory(app_suite)
@@ -996,5 +1000,5 @@ if (APPLE)
   # XXX: can we get this to automatically happen for a local "ctest" w/o
   # the user having to pass "-L OSX"?
   set_tests_properties(hello free malloc asmtest bitfield addronly
-    float annotations free.pattern PROPERTIES LABELS OSX)
+    float annotations free.pattern mac_zones PROPERTIES LABELS OSX)
 endif ()

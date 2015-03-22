@@ -356,6 +356,18 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "independent_calloc",   HEAP_ROUTINE_NOT_HANDLED },
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
     /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
+#ifdef MACOS
+    { "malloc_create_zone",   ZONE_ROUTINE_CREATE },
+    { "malloc_destroy_zone",  ZONE_ROUTINE_DESTROY },
+    { "malloc_default_zone",  ZONE_ROUTINE_DEFAULT },
+    { "malloc_zone_from_ptr", ZONE_ROUTINE_QUERY },
+    { "malloc_zone_malloc",   ZONE_ROUTINE_MALLOC },
+    { "malloc_zone_calloc",   ZONE_ROUTINE_CALLOC },
+    { "malloc_zone_valloc",   ZONE_ROUTINE_VALLOC },
+    { "malloc_zone_realloc",  ZONE_ROUTINE_REALLOC },
+    { "malloc_zone_memalign", ZONE_ROUTINE_MEMALIGN },
+    { "malloc_zone_free",     ZONE_ROUTINE_FREE },
+#endif
 #ifdef WINDOWS
     /* the _impl versions are sometimes called directly (i#31)
      * XXX: there are also _base versions but they always call _impl?
