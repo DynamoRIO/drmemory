@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,13 +26,22 @@
 #else
 # include <malloc.h>
 #endif
+#include <stdint.h>
+#include <stdlib.h>
+#include <assert.h>
+#ifdef UNIX
+# include <errno.h>
+#endif
 
-/* PR 406323: handle auxiliary alloc routines: memalign(), valloc(), etc. */
+/* i#94: handle auxiliary alloc routines: memalign(), valloc(), etc. */
+
+#define ALIGNED(x, alignment) ((((uintptr_t)x) & ((alignment)-1)) == 0)
 
 int main()
 {
-#ifdef LINUX
     void *p;
+    int i, res;
+#ifdef LINUX
     struct mallinfo info;
 
     p = malloc(37);
@@ -49,10 +58,39 @@ int main()
     p = malloc_get_state();
     free(p);
 #elif defined(MACOS)
-    /* FIXME i#1438: add tests of Mac-specific malloc API */
+    /* Tests for malloc zones (i#1699) are in mac_zones.c */
 #endif
 
-    /* XXX PR 406323: add aligned-malloc tests once we have support */
+    p = NULL;
+    res = posix_memalign(&p, 256, 42);
+    assert(res == 0 && p != NULL);
+    assert(ALIGNED(p, 256));
+    free(p);
+
+    /* Test with pulling from free list (has to be run "-delay_frees 0").
+     * First, prime the free list.
+     */
+    for (i = 0; i < 10; i++) {
+        p = malloc(1U << i);
+        free(p);
+    }
+
+    p = NULL;
+    res = posix_memalign(&p, 128, 99);
+    assert(res == 0 && p != NULL);
+    assert(ALIGNED(p, 128));
+    free(p);
+
+    /* Test non-power-of-2 */
+    res = posix_memalign(&p, 127, 99);
+    assert(res == EINVAL);
+
+    /* Test mmap */
+    p = NULL;
+    res = posix_memalign(&p, 512, 256*1024); /* 128K is our mmap min */
+    assert(res == 0 && p != NULL);
+    assert(ALIGNED(p, 512));
+    free(p);
 
     printf("success\n");
     return 0;

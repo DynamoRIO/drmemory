@@ -100,6 +100,10 @@
 # include "../wininc/crtdbg.h"
 #endif
 
+#ifdef UNIX
+# include <errno.h>
+#endif
+
 /***************************************************************************
  * header and free list data structures
  */
@@ -195,6 +199,10 @@ typedef struct _chunk_header_t {
              * in our init routine.  After coalescing we can reach a larger size than
              * 512KB, in which case we place 0 here and store the size immediately
              * prior to the redzone.
+             *
+             * If CHUNK_MMAP is set in flags, this holds the padding at the start
+             * of the mmap base put in place for alignment of the returned alloc,
+             * / CHUNK_ALIGNMENT (i.e., >> 3).
              */
             ushort prev_size_shr;
 #ifdef X64
@@ -210,6 +218,14 @@ typedef struct _chunk_header_t {
         struct _free_header_t *prev;
     } u;
 } chunk_header_t;
+
+/* Header at the top of an mmap used for large allocs.  If we didn't need to
+ * support memalign() & co, we could get away without this.
+ */
+typedef struct _mmap_header_t {
+    chunk_header_t *head;
+    size_t map_size;
+} mmap_header_t;
 
 /* To support pattern mode, which wants to fill the redzone with its pattern,
  * we don't want the next pointer in the redzone.  For now we pay the cost
@@ -802,9 +818,8 @@ header_from_mmap_base(void *map)
         if ((ptr_uint_t)map < header_size)
             return NULL;
         else {
-            return (chunk_header_t *) ((byte *)map + alloc_ops.redzone_size +
-                                       header_beyond_redzone - redzone_beyond_header -
-                                       header_size);
+            mmap_header_t *mhead = (mmap_header_t *) map;
+            return mhead->head;
         }
     }
 }
@@ -1466,6 +1481,50 @@ search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucke
     return head;
 }
 
+/* Caller needs only to point free_hdr at the right point: this routine will fill it in.
+ */
+static void
+split_piece_for_free_list(arena_header_t *arena, chunk_header_t *head,
+                          free_header_t *free_hdr, size_t free_sz,
+                          size_t head_new_sz)
+{
+    free_header_t *coalesced;
+    byte *free_ptr;
+    /* Synchronize with iterators (i#949) */
+    iterator_lock(arena, true/*in alloc*/);
+
+    head->alloc_size = head_new_sz;
+
+    free_hdr->head.user_data = client_malloc_data_free_split(head->user_data);
+    free_hdr->head.u.unfree.request_diff = 0;
+    free_hdr->head.alloc_size = free_sz;
+    free_hdr->head.magic = HEADER_MAGIC;
+    free_hdr->head.flags = head->flags | CHUNK_FREED;
+
+    free_ptr = ptr_from_header(&free_hdr->head);
+    LOG(3, "splitting off "PFX"-"PFX" (hdr "PFX") from "PFX"-"PFX" (hdr "PFX")\n",
+        free_ptr, free_ptr+free_sz, free_hdr, ptr_from_header(head),
+        ptr_from_header(head) + head->alloc_size, head);
+    /* Let client fill/mark new redzones, if desired.
+     * We currently have our next free ptr in the redzone:
+     */
+    client_new_redzone(free_ptr - alloc_ops.redzone_size, alloc_ops.redzone_size);
+    if (!alloc_ops.shared_redzones) {
+        client_new_redzone(free_ptr + free_sz, alloc_ops.redzone_size);
+    }
+
+    coalesced = coalesce_adjacent_frees(arena, free_hdr);
+    if (coalesced != NULL) {
+        set_prev_size_field(arena, (chunk_header_t *)coalesced);
+        /* XXX: this adds it to the end, even though maybe it
+         * should stay at the front for FIFO for the case where we split
+         * it off a free list entry in the first place.
+         */
+        add_to_free_list(arena, (chunk_header_t *)coalesced);
+    }
+    iterator_unlock(arena, true/*in alloc*/);
+}
+
 static chunk_header_t *
 find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t aligned_size)
 {
@@ -1541,35 +1600,8 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             free_header_t *rest = (free_header_t *) header_from_ptr(chunk2_start);
             ASSERT(!TEST(CHUNK_MMAP, head->flags), "mmap not expected on free list");
             STATS_INC(num_splits);
-
-            /* Synchronize with iterators (i#949) */
-            iterator_lock(arena, true/*in alloc*/);
-            LOG(3, "splitting off "PFX"-"PFX" from "PFX"\n",
-                split, chunk2_start + rest_size, head);
-            rest->head.user_data = client_malloc_data_free_split(head->user_data);
-            rest->head.u.unfree.request_diff = 0;
-            rest->head.alloc_size = rest_size;
-            rest->head.magic = HEADER_MAGIC;
-            rest->head.flags = head->flags;
+            split_piece_for_free_list(arena, head, rest, rest_size, aligned_size);
             ASSERT(is_valid_chunk(chunk2_start, &rest->head), "rest chunk inconsistent");
-            /* XXX: this adds it to the end, even though maybe it
-             * should stay at the front for FIFO.
-             */
-            add_to_free_list(arena, (chunk_header_t *)rest);
-            /* we need to update this */
-            set_prev_size_field(arena, (chunk_header_t *)rest);
-            /* Let client fill/mark new redzones, if desired.
-             * We currently have our next free ptr in the redzone:
-             */
-            client_new_redzone(chunk2_start - alloc_ops.redzone_size,
-                               alloc_ops.redzone_size);
-            if (!alloc_ops.shared_redzones) {
-                client_new_redzone(split - alloc_ops.redzone_size,
-                                   alloc_ops.redzone_size);
-            }
-
-            head->alloc_size = aligned_size;
-            iterator_unlock(arena, true/*in alloc*/);
         }
 
         if (head->user_data != NULL) {
@@ -1591,10 +1623,12 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
  * callstacks, we invoke the 2nd layer on a clean dstack (this lets us keep
  * just the outer layer as stdcall, and avoids complicating drwrap further).
  */
-#define ONDSTACK_REPLACE_ALLOC_COMMON(arena, sz, flags, dc, mc, caller, alloc_type) \
-    dr_call_on_clean_stack(dc, (void* (*)(void)) replace_alloc_common, arena,       \
-                           (void *)(ptr_uint_t)(sz), (void *)(ptr_uint_t)(flags), \
-                           dc, mc, caller, (void *)(ptr_uint_t)(alloc_type), NULL)
+#define ONDSTACK_REPLACE_ALLOC_COMMON(arena, sz, align, flags, dc, mc, \
+                                      caller, alloc_type) \
+    dr_call_on_clean_stack(dc, (void* (*)(void)) replace_alloc_common, arena, \
+                           (void *)(ptr_uint_t)(sz), (void *)(ptr_uint_t)(align), \
+                           (void *)(ptr_uint_t)(flags), \
+                           dc, mc, caller, (void *)(ptr_uint_t)(alloc_type))
 
 /* As noted in the flag definitions, ALLOC_INVOKE_CLIENT_* in flags
  * only applies to successful allocation: client is still notified on failure
@@ -1602,11 +1636,13 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
  *
  * If invoked from an outer drwrap_replace_native() layer, this should be invoked
  * via ONDSTACK_REPLACE_ALLOC_COMMON().
+ *
+ * Pass 0 if no special alignment is needed.
  */
 static byte *
-replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t flags,
-                     void *drcontext, dr_mcontext_t *mc, app_pc caller,
-                     uint alloc_type)
+replace_alloc_common(arena_header_t *arena, size_t request_size, size_t alignment,
+                     alloc_flags_t flags, void *drcontext, dr_mcontext_t *mc,
+                     app_pc caller, uint alloc_type)
 {
     heapsz_t aligned_size;
     byte *res = NULL;
@@ -1625,7 +1661,22 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
         return NULL;
     }
 
+    /* alignment must be power of 2, or 0 (== default) */
+    if (alignment != 0 && !IS_POWER_OF_2(alignment)) {
+        client_handle_alloc_failure(request_size, caller, mc);
+        return NULL;
+    }
+    if (alignment < CHUNK_ALIGNMENT)
+        alignment = CHUNK_ALIGNMENT;
+
     aligned_size = ALIGN_FORWARD(request_size, CHUNK_ALIGNMENT);
+    if (alignment > CHUNK_ALIGNMENT) {
+        /* We brute-force and alloc enough space to ensure we can back the
+         * pre-aligned-padding as a free slot, to avoid any complexity of
+         * having pre-header padding.
+         */
+        aligned_size += alignment + CHUNK_MIN_SIZE + inter_chunk_space();
+    }
     ASSERT(aligned_size >= request_size, "overflow should have been caught");
     if (aligned_size < CHUNK_MIN_SIZE)
         aligned_size = CHUNK_MIN_SIZE;
@@ -1637,11 +1688,13 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
      * XXX: for simplicity, not delay-freeing these for now
      */
     if (aligned_size + header_size >= CHUNK_MIN_MMAP) {
+        mmap_header_t *mhead;
         size_t map_size = (size_t)
-            ALIGN_FORWARD(aligned_size + alloc_ops.redzone_size*2 +
-                          header_beyond_redzone, PAGE_SIZE);
+            ALIGN_FORWARD(aligned_size + sizeof(mmap_header_t) +
+                          alloc_ops.redzone_size*2 + header_beyond_redzone, PAGE_SIZE);
         byte *map = os_large_alloc(map_size _IF_WINDOWS(map_size)
                                    _IF_WINDOWS(arena_page_prot(arena->flags)));
+        size_t dist_to_map;
         ASSERT(map_size >= aligned_size, "overflow should have been caught");
         LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
         if (map == NULL) {
@@ -1649,10 +1702,27 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
             goto replace_alloc_common_done;
         }
         ASSERT(!alloc_ops.external_headers, "NYI");
-        head = header_from_mmap_base(map);
+        mhead = (mmap_header_t *) map;
+        mhead->map_size = map_size;
+        head = (chunk_header_t *)
+            ((byte *)map + sizeof(mmap_header_t) + alloc_ops.redzone_size +
+             header_beyond_redzone - redzone_beyond_header - header_size);
+        res = ptr_from_header(head);
+        if (!ALIGNED(res, alignment)) {
+            res = (byte *) ALIGN_FORWARD(res, alignment);
+            head = header_from_ptr(res);
+        }
+        dist_to_map = (byte *)head - map;
+        if (dist_to_map > USHRT_MAX) {
+            os_large_free(map, map_size);
+            client_handle_alloc_failure(request_size, caller, mc);
+            goto replace_alloc_common_done;
+        }
+        head->u.unfree.prev_size_shr = dist_to_map;
+        mhead->head = head;
         head->flags |= CHUNK_MMAP;
         head->magic = HEADER_MAGIC;
-        head->alloc_size = map_size - alloc_ops.redzone_size*2 - header_beyond_redzone;
+        head->alloc_size = (map + map_size - alloc_ops.redzone_size - res);
         heap_region_add(map, map + map_size, HEAP_MMAP, mc);
     } else {
         /* look for free list entry */
@@ -1720,9 +1790,27 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
     head->u.unfree.request_diff = head->alloc_size - request_size;
     head->flags |= alloc_type;
     res = ptr_from_header(head);
-    LOG(2, "\treplace_alloc_common arena="PFX" flags=0x%x request=%d, alloc=%d "
+    if (!ALIGNED(res, alignment)) {
+        /* Place the pre-aligned padding onto the free list */
+        chunk_header_t *orig = head;
+        byte *orig_res = res;
+        free_header_t *pre = (free_header_t *) head;
+        size_t pre_sz;
+        res += CHUNK_MIN_SIZE + inter_chunk_space();
+        res = (byte *) ALIGN_FORWARD(res, alignment);
+        head = header_from_ptr(res);
+        *head = *orig;
+        pre_sz = (byte *)head - (byte *)orig - inter_chunk_space();
+        LOG(2, "\torig alloc %d bytes, shrinking by %d to align\n",
+            head->alloc_size, res - orig_res);
+        split_piece_for_free_list(arena, head, pre, pre_sz,
+                                  head->alloc_size - (res - orig_res));
+        ASSERT(head->alloc_size > request_size, "pre-align miscalculation");
+        head->u.unfree.request_diff = head->alloc_size - request_size;
+    }
+    LOG(2, "\treplace_alloc_common arena="PFX" flags=0x%x request=%d, align=%d alloc=%d "
         "=> "PFX"\n", arena, head->flags,
-        chunk_request_size(head), head->alloc_size, res);
+        chunk_request_size(head), alignment, head->alloc_size, res);
     if (TEST(ALLOC_ZERO, flags))
         memset(res, 0, request_size);
 
@@ -1934,9 +2022,10 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
          */
     } else if (TEST(CHUNK_MMAP, head->flags)) {
         /* see comments in alloc routine about not delaying the free */
-        byte *map = (byte *)ptr - alloc_ops.redzone_size - header_beyond_redzone;
-        size_t map_size = head->alloc_size + alloc_ops.redzone_size*2 +
-            header_beyond_redzone;
+        byte *map = (byte *)head - head->u.unfree.prev_size_shr;
+        mmap_header_t *mhead = (mmap_header_t *) map;
+        size_t map_size = mhead->map_size;
+        ASSERT(mhead->head == head, "mmap header corrupted");
         LOG(2, "\tlarge alloc %d freed => munmap @"PFX"\n", chunk_request_size(head), map);
         heap_region_remove(map, map + map_size, mc);
         if (!os_large_free(map, map_size))
@@ -1972,7 +2061,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     if (ptr == NULL) {
         if (TEST(ALLOC_ALLOW_NULL, flags)) {
             client_handle_realloc_null(caller, mc);
-            res = (void *) replace_alloc_common(arena, size, flags | ALLOC_IS_REALLOC |
+            res = (void *) replace_alloc_common(arena, size, 0,
+                                                flags | ALLOC_IS_REALLOC |
                                                 ALLOC_INVOKE_CLIENT,
                                                 drcontext, mc, caller, alloc_type);
         } else {
@@ -2031,7 +2121,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             old_request_size, size);
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
-        res = (void *) replace_alloc_common(arena, size,
+        res = (void *) replace_alloc_common(arena, size, 0,
                                             sub_flags | ALLOC_IS_REALLOC /*no client*/,
                                             drcontext, mc, caller, alloc_type);
         if (res != NULL) {
@@ -2449,7 +2539,7 @@ replace_malloc(size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
-    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size, 0,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, &mc, (app_pc)replace_malloc,
                                         MALLOC_ALLOCATOR_MALLOC);
@@ -2470,7 +2560,7 @@ replace_malloc_nomatch(size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc (nomatch) %d\n", size);
-    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size, 0,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, &mc,
                                         (app_pc)replace_malloc/*avoid confusion*/,
@@ -2495,7 +2585,7 @@ replace_calloc(size_t nmemb, size_t size)
         res = NULL;
     } else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
-            (arena, nmemb * size,
+            (arena, nmemb * size, 0,
              ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
              drcontext, &mc, (app_pc)replace_calloc,
              MALLOC_ALLOCATOR_MALLOC);
@@ -2521,7 +2611,7 @@ replace_calloc_nomatch(size_t nmemb, size_t size)
         res = NULL;
     } else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
-            (arena, nmemb * size,
+            (arena, nmemb * size, 0,
              ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
              drcontext, &mc,
              (app_pc)replace_calloc/*avoid confusion*/,
@@ -2639,6 +2729,36 @@ replace_malloc_usable_size_nomatch(void *ptr)
     return res;
 }
 
+#ifdef UNIX
+static int
+replace_posix_memalign(void **out, size_t align, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    int res = 0;
+    byte *alloc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_posix_memalign align=%d size=%d\n", align, size);
+    /* alignment must be power of 2 */
+    if (!IS_POWER_OF_2(align) || out == NULL) {
+        client_handle_alloc_failure(size, (app_pc)replace_posix_memalign, &mc);
+        res = EINVAL;
+    } else {
+        alloc = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size, align, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_posix_memalign, MALLOC_ALLOCATOR_MALLOC);
+        if (!dr_safe_write(out, sizeof(alloc), &alloc, NULL)) {
+            client_handle_alloc_failure(size, (app_pc)replace_posix_memalign, &mc);
+            res = EINVAL;
+        }
+    }
+    LOG(2, "\treplace_posix_memalign %d %d => "PFX"\n", align, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+#endif
+
 /* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
 
 /***************************************************************************
@@ -2662,7 +2782,7 @@ replace_operator_new_common(void *drcontext, dr_mcontext_t *mc, size_t size,
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     LOG(2, "replace_operator_new size=%d abort_on_oom=%d type=%d\n",
         size, abort_on_oom, alloc_type);
-    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size,
+    res = ONDSTACK_REPLACE_ALLOC_COMMON(arena, size, 0,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
                                         drcontext, mc, caller, alloc_type);
     LOG(2, "\treplace_operator_new %d => "PFX"\n", size, res);
@@ -3513,7 +3633,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
 # endif
     else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
-            (arena, size,
+            (arena, size, 0,
              ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                !TEST(HEAP_NO_SERIALIZE, flags)) ?
               ALLOC_SYNCHRONIZE : 0) |
@@ -4224,8 +4344,8 @@ replace_malloc_zone_malloc(malloc_zone_t *zone, size_t size)
         report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_malloc);
     else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
-            (arena, size, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
-             &mc, (app_pc)replace_malloc_zone_malloc, MALLOC_ALLOCATOR_MALLOC);
+            (arena, size, 0, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_malloc_zone_malloc, MALLOC_ALLOCATOR_MALLOC);
     }
     LOG(2, "\t%s "PFX" %d => "PIFX"\n", __FUNCTION__, zone, size, res);
     exit_client_code(drcontext, false/*need swap*/);
@@ -4250,7 +4370,7 @@ replace_malloc_zone_calloc(malloc_zone_t *zone, size_t num_items, size_t size)
         res = NULL;
     } else {
         res = ONDSTACK_REPLACE_ALLOC_COMMON
-            (arena, num_items * size,
+            (arena, num_items * size, 0,
              ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT, drcontext,
              &mc, (app_pc)replace_malloc_zone_calloc, MALLOC_ALLOCATOR_MALLOC);
     }
@@ -4312,6 +4432,7 @@ static void *
 replace_malloc_zone_memalign(malloc_zone_t *zone, size_t alignment, size_t size)
 {
     /* FIXME i#94: implement aligned malloc requests */
+    LOG(2, "%s: align=%d, size=%d\n", __FUNCTION__, alignment, size);
     ASSERT_NOT_IMPLEMENTED();
     return NULL;
 }
@@ -4510,6 +4631,14 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
     default: break; /* continue below */
     }
 #endif
+    switch (type) {
+#ifdef  UNIX
+    case HEAP_ROUTINE_POSIX_MEMALIGN:
+        *routine = (void *) replace_posix_memalign;
+        return true;
+#endif
+    default: break; /* continue below */
+    }
     if (is_malloc_routine(type)) {
         *routine = (void *)
             (check_winapi_match ? replace_malloc : replace_malloc_nomatch);

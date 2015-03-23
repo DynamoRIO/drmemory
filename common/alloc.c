@@ -337,8 +337,10 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "calloc", HEAP_ROUTINE_CALLOC },
     /* for cfree we ignore 2 extra args if there are any, as glibc itself does */
     { "cfree", HEAP_ROUTINE_FREE },
-    /* XXX PR 406323: not supported yet */
-    { "posix_memalign", HEAP_ROUTINE_NOT_HANDLED },
+    /* XXX i#94: not supported yet */
+#ifdef  UNIX
+    { "posix_memalign", HEAP_ROUTINE_POSIX_MEMALIGN },
+#endif
     { "memalign", HEAP_ROUTINE_NOT_HANDLED },
     { "valloc", HEAP_ROUTINE_NOT_HANDLED },
     { "pvalloc", HEAP_ROUTINE_NOT_HANDLED },
@@ -351,11 +353,11 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "malloc_stats",         HEAP_ROUTINE_STATS },
     { "malloc_trim",          HEAP_ROUTINE_STATS },
     { "malloc_get_state",     HEAP_ROUTINE_STATS },
-    /* XXX PR 406323: not supported yet */
+    /* XXX i#94: not supported yet */
     { "malloc_set_state",     HEAP_ROUTINE_NOT_HANDLED },
     { "independent_calloc",   HEAP_ROUTINE_NOT_HANDLED },
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
-    /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
+    /* FIXME i#94: memalign, valloc, pvalloc, etc. */
 #ifdef MACOS
     { "malloc_create_zone",   ZONE_ROUTINE_CREATE },
     { "malloc_destroy_zone",  ZONE_ROUTINE_DESTROY },
@@ -2531,15 +2533,20 @@ malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
         /* see above */
         if (!drwrap_replace(pc, (app_pc)replaced_nop_true_routine, false))
             ASSERT(false, "failed to replace dbg-nop");
-    } else {
+    } else
+#else
+    /* i#94: no memalign support for wrapping */
+    if (e->type != HEAP_ROUTINE_POSIX_MEMALIGN &&
+        e->type != HEAP_ROUTINE_MEMALIGN &&
+        e->type != HEAP_ROUTINE_VALLOC &&
+        e->type != HEAP_ROUTINE_PVALLOC)
 #endif
-        if (!drwrap_wrap_ex(pc, alloc_hook,
-                            e->intercept_post ? handle_alloc_post : NULL,
-                            (void *)e, DRWRAP_UNWIND_ON_EXCEPTION))
-            ASSERT(false, "failed to wrap alloc routine");
-#ifdef WINDOWS
-    }
-#endif
+        {
+            if (!drwrap_wrap_ex(pc, alloc_hook,
+                                e->intercept_post ? handle_alloc_post : NULL,
+                                (void *)e, DRWRAP_UNWIND_ON_EXCEPTION))
+                ASSERT(false, "failed to wrap alloc routine");
+        }
 }
 
 /* XXX i#882: make this static once malloc replacement replaces operators */

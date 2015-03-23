@@ -169,6 +169,8 @@
 #define TESTALL(mask, var) (((mask) & (var)) == (mask))
 #define TESTONE(mask, var) test_one_bit_set((mask) & (var))
 
+#define IS_POWER_OF_2(x) ((x) != 0 && ((x) & ((x)-1)) == 0)
+
 #define EXPANDSTR(x) #x
 #define STRINGIFY(x) EXPANDSTR(x)
 

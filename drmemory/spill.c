@@ -147,7 +147,7 @@ instru_tls_thread_init(void *drcontext)
 # endif
     tls->dr_fs_base  = dr_fs_base;
     tls->dr_gs_base  = dr_gs_base;
-    LOG(1, "dr: fs base"PFX", gs base="PFX"\n", dr_fs_base, dr_gs_base);
+    LOG(1, "dr: fs base="PFX", gs base="PFX"\n", dr_fs_base, dr_gs_base);
     /* store in per-thread data struct so we can access from another thread */
     drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
 #else
