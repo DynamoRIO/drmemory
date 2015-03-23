@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2319,9 +2319,13 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
         module_data_t *data = dr_lookup_module(pc);
         if (data != NULL) {
             const char *modname = dr_module_preferred_name(data);
-            if (strncmp(modname, IF_MACOS_ELSE("dyld", "ld-linux.so."),
-                        IF_MACOS_ELSE(4, 12)) == 0 ||
-                is_in_client_or_DR_lib(pc)) {
+            if (modname != NULL &&
+                (strncmp(modname, IF_MACOS_ELSE("dyld", "ld-linux.so."),
+                         IF_MACOS_ELSE(4, 12)) == 0 ||
+                 /* i#1703: dyld also accesses DR through these two libs */
+                 IF_MACOS(strcmp(modname, "libmacho.dylib") == 0 ||
+                          strcmp(modname, "libobjc.A.dylib") == 0 ||)
+                 is_in_client_or_DR_lib(pc))) {
                 /* If this happens too many times we may want to go back to
                  * marking our libs as defined and give up on catching wild
                  * app writes to those regions
@@ -2330,7 +2334,8 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
                 res = true;
                 LOG(2, "ignoring unaddr for loader accessing DR/DrMem lib\n");
             }
-            else if (strncmp(modname, "libgcc_s.so", 11) == 0) {
+            else if (modname != NULL &&
+                     strncmp(modname, "libgcc_s.so", 11) == 0) {
                 /* C++ exception unwind using dl_iterate_phdr examines our libs
                  * (PR 623701).  Will go away once we have our own private loader.
                  */
