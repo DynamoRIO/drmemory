@@ -1256,6 +1256,10 @@ replace_in_module(const module_data_t *mod, bool add)
     sym_enum_data_t edata = {add, {0,} _IF_DEBUG({0}), mod};
     bool missing_entry = false;
 #endif
+#ifdef DEBUG
+    const char *print_name = (dr_module_preferred_name(mod) == NULL) ?
+        "<NULL>" : dr_module_preferred_name(mod);
+#endif
 #ifdef WINDOWS
     const char *modname = dr_module_preferred_name(mod);
     /* i#511: Wrap UuidCreate in rpcrt4.dll. */
@@ -1355,7 +1359,7 @@ replace_in_module(const module_data_t *mod, bool add)
         uint count;
         uint idx;
         bool res;
-        LOG(3, "Search %s in symcache\n", replace_routine_name[i]);
+        LOG(3, "Search %s in %s symcache\n", replace_routine_name[i], print_name);
         if (options.use_symcache &&
             drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res &&
             drsymcache_lookup(mod, replace_routine_name[i],
@@ -1372,7 +1376,8 @@ replace_in_module(const module_data_t *mod, bool add)
             drsymcache_free_lookup(modoffs, count);
         }
         if (!edata.processed[i]) {
-            LOG(2, "did not find %s in symcache\n", replace_routine_name[i]);
+            LOG(2, "%s: did not find %s in symcache\n", print_name,
+                replace_routine_name[i]);
             missing_entry = true;
         }
     }
@@ -1408,6 +1413,7 @@ replace_in_module(const module_data_t *mod, bool add)
 # endif
         } else {
             /* better to do just one walk */
+            LOG(2, "looking up all symbols for %s\n", print_name);
             if (!lookup_all_symbols(edata.mod, "", false/*!full*/,
                                     enumerate_syms_cb, (void *)&edata))
                 LOG(2, "WARNING: failed to look up symbols to replace\n");

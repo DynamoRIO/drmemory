@@ -225,9 +225,10 @@ search_syms_regex_cb(drsym_info_t *info, drsym_error_t status, void *data)
     const char *sym = strchr(sr->regex, '!');
     const char *name = info->name;
 
-    LOG(3, "%s: comparing %s to pattern %s\n", __FUNCTION__,
-        name, sym == NULL ? sr->regex : sym + 1);
+    LOG(3, "%s: comparing %s to pattern |%s| (regex=|%s|)\n", __FUNCTION__,
+        name, sym == NULL ? sr->regex : sym + 1, sr->regex);
     if (sr->regex[0] == '\0' ||
+        (sym != NULL && *(sym+1) == '\0') ||
         text_matches_pattern(name, sym == NULL ? sr->regex : sym + 1, false)) {
         return sr->orig_cb(info, status, sr->orig_data);
     }
@@ -246,7 +247,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     size_t modoffs;
     IF_DEBUG(int len;)
     drsym_error_t symres;
-    char *fname = NULL, *c;
+    char *fname = NULL, *c, *fend;
 
     if (mod->full_path == NULL || mod->full_path[0] == '\0')
         return NULL;
@@ -280,17 +281,20 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         if (*c == DIRSEP IF_WINDOWS(|| *c == ALT_DIRSEP))
             fname = c + 1;
     }
+    fend = c;
     ASSERT(fname != NULL, "unable to get fname for module");
     if (fname == NULL)
         return NULL;
     /* now get rid of extension */
     for (; c > fname && *c != '.'; c--)
         ; /* nothing */
+    if (c == fname) /* no extension: e.g., "/usr/lib/dyld" on MacOS */
+        c = fend;
     if (c > fname) {
         ASSERT(c - fname < BUFFER_SIZE_ELEMENTS(sym_with_mod), "sizes way off");
         IF_DEBUG(len = )
             dr_snprintf(sym_with_mod, c - fname, "%s", fname);
-        ASSERT(len == -1, "error printing modname!symname");
+        ASSERT(len == -1 || c == fend, "error printing modname!symname");
     }
     IF_DEBUG(len = )
         dr_snprintf(sym_with_mod + (c - fname),
