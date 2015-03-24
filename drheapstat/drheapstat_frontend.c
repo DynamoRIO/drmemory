@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************
 
@@ -316,6 +316,9 @@ _tmain(int argc, TCHAR *targv[])
 
     drfront_status_t sc;
     bool res;
+#ifndef X64
+    bool is64, is32;
+#endif
 
     dr_standalone_init();
 
@@ -510,7 +513,8 @@ _tmain(int argc, TCHAR *targv[])
 
 #ifndef X64
     /* XXX: See drmemory/frontend.c for notes about 64-bit support. */
-    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS && res) {
+    if (drfront_is_64bit_app(app_name, &is64, &is32) == DRFRONT_SUCCESS &&
+        is64 && !is32) {
         fatal("This Dr. Heapstat release does not support 64-bit applications.");
         goto error; /* actually won't get here */
     }

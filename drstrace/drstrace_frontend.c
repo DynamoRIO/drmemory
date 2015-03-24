@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -236,6 +236,7 @@ _tmain(int argc, TCHAR *targv[])
 
     drfront_status_t sc;
     bool res;
+    bool is64, is32;
     bool load_symbols = true;
 
     dr_standalone_init();
@@ -377,8 +378,8 @@ _tmain(int argc, TCHAR *targv[])
     info("targeting application: \"%s\"", app_name);
 
     /* Cross-arch injection (i#1506) */
-    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS &&
-        IF_X64_ELSE(!res, res)) {
+    if (drfront_is_64bit_app(app_name, &is64, &is32) == DRFRONT_SUCCESS &&
+        IF_X64_ELSE(!is64, is64 && !is32)) {
         /* While I'd love to just set bin_arch and lib_arch differently,
          * drinjectlib doesn't support cross-arch injection (DRi#803).
          * Thus, to provide single-front-end support, we launch the other

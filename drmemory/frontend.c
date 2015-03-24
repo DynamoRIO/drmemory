@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -684,7 +684,8 @@ _tmain(int argc, TCHAR *targv[])
 #endif
 
     drfront_status_t sc;
-    IF_NOT_X64(bool res;)
+    IF_NOT_X64(bool is64;)
+    IF_NOT_X64(bool is32;)
     dr_config_status_t status;
 
     if (dr_standalone_init() == NULL) {
@@ -1081,7 +1082,8 @@ _tmain(int argc, TCHAR *targv[])
      * we supply this useful message up front.  Once we do add 64-bit we'll
      * want to solve i#1037 and then get rid of or modify this message.
      */
-    if (drfront_is_64bit_app(app_name, &res) == DRFRONT_SUCCESS && res) {
+    if (drfront_is_64bit_app(app_name, &is64, &is32) == DRFRONT_SUCCESS &&
+        is64 && !is32) {
         fatal("This Dr. Memory release does not support 64-bit applications.");
         goto error; /* actually won't get here */
     }
@@ -1248,7 +1250,8 @@ _tmain(int argc, TCHAR *targv[])
         int sofar =
 #endif
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                      "failed to create process for \"%s\": ", app_name);
+                      "failed to create process (err=%d) for \"%s\": ",
+                      errcode, app_name);
 #ifdef WINDOWS
         if (sofar > 0) {
             FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,

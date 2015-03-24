@@ -252,13 +252,13 @@ _tmain(int argc, TCHAR *targv[])
 static bool
 check_architecture(const char *dll, char **argv)
 {
-    bool is_64bit;
-    if (drfront_is_64bit_app(dll, &is_64bit) != DRFRONT_SUCCESS) {
+    bool is_64bit, also_32bit;
+    if (drfront_is_64bit_app(dll, &is_64bit, &also_32bit) != DRFRONT_SUCCESS) {
         printf("ERROR: unable to get the architecture infomation of"
                " the target module %s\n", dll);
         return false;
     }
-    if (IF_X64_ELSE(!is_64bit, is_64bit)) {
+    if (IF_X64_ELSE(!is_64bit, is_64bit && !also_32bit)) {
         char *orig_argv0 = argv[0];
         char root[MAXIMUM_PATH];
         char buf[MAXIMUM_PATH];
