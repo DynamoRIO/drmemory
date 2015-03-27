@@ -43,7 +43,10 @@
  * The usual application memory layout as below:
  * Windows:
  * app1: [0x00000000'00000000, 0x00000010'00000000): exec, heap, data
- * app2: [0x000007F0'00000000, 0x00000800'00000000): lib ...
+ * On Win7
+ *   app2: [0x000007F0'00000000, 0x00000800'00000000): lib ...
+ * or on Win8.1
+ *   app2: [0x00007FF0'00000000, 0x00008000'00000000): lib ...
  * 1B-2-1B mapping:
  *   SHDW(app) = (app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000)
  * and the result:
@@ -239,8 +242,10 @@ static app_segment_t app_segments[] = {
 #ifdef WINDOWS
     /* app1: [0x00000000'00000000, 0x00000010'00000000) */
     { (app_pc)(0x0 *SEGMENT_SIZE), (app_pc)(0x1 *SEGMENT_SIZE), 0},
-    /* app2: [0x000007F0'00000000, 0x00000800'00000000) */
-    { (app_pc)(0x7F*SEGMENT_SIZE), (app_pc)(0x80*SEGMENT_SIZE), 0},
+    /* we support up to 3 additional segments on Windows */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
 #else
     /* app1: [0x00000000'00000000, 0x00000100'00000000) */
     { (app_pc)(0x0 *SEGMENT_SIZE), (app_pc)(0x1 *SEGMENT_SIZE), 0},
@@ -248,12 +253,13 @@ static app_segment_t app_segments[] = {
     { (app_pc)0x00007F0000000000,  (app_pc)0x00007FFFFF000000, 0},
     /* app3: [0xFFFFFFFF'F0000000, 0xFFFFFFFF'FFF00000) */
     { (app_pc)0xFFFFFFFFFF000000,  (app_pc)0xFFFFFFFFFFF00000, 0},
-    /* newer kernels load pie binaries at 0x555555550000, still work for
-     * scale down or 1B-2-1B mapping.
+    /* newer kernels may load pie binaries at 0x555555550000, still work for
+     * scale down or 1B-2-1B mapping with:
+     * app4: [0x5500'00000000, 0x5600'00000000)
      */
-    /* app4: [0x5500'00000000, 0x5600'00000000) */
-    { (app_pc)(0x55 * SEGMENT_SIZE), (app_pc)(0x56 *SEGMENT_SIZE), 0},
-    /* XXX: we should remove the hardcode range to make it more flexible. */
+    /* support up to 2 extra segments: e.g., one for app4 */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
 #endif
 };
 #define MAX_NUM_APP_SEGMENTS sizeof(app_segments)/sizeof(app_segments[0])
@@ -390,17 +396,35 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     uint i;
 
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
-        if (base >= app_segments[i].app_base &&
-            base + size <= app_segments[i].app_end) {
-            if (!app_segments[i].app_used) {
-                app_segments[i].app_used = true;
-                if (map != NULL &&
-                    !umbra_add_shadow_segment(map, &app_segments[i])) {
-                    app_segments[i].app_used = false;
+        if (app_segments[i].app_used) {
+            if (base >= app_segments[i].app_base &&
+                base + size <= app_segments[i].app_end)
+                return true;
+        } else {
+            if (app_segments[i].app_end != NULL) {
+                /* a pre-defined app segment */
+                if (base >= app_segments[i].app_base &&
+                    base + size <= app_segments[i].app_end) {
+                    app_segments[i].app_used = true;
+                    return true;
+                }
+            } else {
+                /* we do not support a memory range span multiple segments */
+                if ((SEGMENT_BASE(base) != SEGMENT_BASE(base + size)) &&
+                    (SEGMENT_BASE(base) + SEGMENT_SIZE != (ptr_uint_t)base + size))
+                    return false;
+                app_segments[i].app_base = (app_pc)SEGMENT_BASE(base);
+                app_segments[i].app_end = (app_pc)app_segments[i].app_base + SEGMENT_SIZE;
+                /* Adding a not pre-defined segment.
+                 * We call umbra_add_shadow_segment to check if it is valid.
+                 */
+                if (map != NULL && !umbra_add_shadow_segment(map, &app_segments[i])) {
+                    app_segments[i].app_end = NULL;
                     return false;
                 }
+                app_segments[i].app_used = true;
+                return true;
             }
-            return true;
         }
     }
     return false;
