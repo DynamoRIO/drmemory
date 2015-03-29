@@ -758,11 +758,13 @@ _tmain(int argc, TCHAR *targv[])
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
+#ifdef WINDOWS
     /* FIXME i#699: early injection crashes the child on 32-bit or on wow64 vista+.
      * We work around it here.  Should remove this once the real bug is fixed.
      */
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "-no_early_inject ");
+#endif
 
     /* default logdir */
     if (drfront_appdata_logdir(drmem_root, "Dr. Memory", &use_root_for_logdir,

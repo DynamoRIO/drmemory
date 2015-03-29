@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -174,12 +174,15 @@ event_post_syscall(void *drcontext, int sysnum)
     drsys_syscall_t *syscall;
     drsys_sysnum_t sysnum_full;
     bool success = false;
+    const char *name;
 
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
     if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "primary should match DR's num");
+    if (drsys_syscall_name(syscall, &name) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_syscall_name failed");
 
     check_mcontext(drcontext);
 
@@ -188,7 +191,10 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) !=
         DRMF_SUCCESS || !success) {
+        /* With the new early injector on Linux, we see access, open, + stat64 fail */
+#ifdef WINDOWS
         ASSERT(false, "no syscalls in this app should fail");
+#endif
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)
             ASSERT(false, "drsys_iterate_memargs failed");

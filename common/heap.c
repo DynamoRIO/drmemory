@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -119,7 +119,8 @@ get_heap_start(void)
             ASSERT(false, "cannot find heap region");
             return NULL;
         }
-        if (info.type == DR_MEMTYPE_FREE) {
+        if (info.type == DR_MEMTYPE_FREE || info.type == DR_MEMTYPE_IMAGE ||
+            !TEST(DR_MEMPROT_WRITE, info.prot)) {
             /* Heap is empty */
             heap_start = cur_brk;
         } else {
@@ -622,6 +623,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     LOG(1, "\nwalking heap from "PFX" to "PFX"\n", heap_start, cur_brk);
     if (cb_region != NULL && cur_brk > heap_start)
         cb_region(heap_start, cur_brk);
+    ASSERT(ALIGNED(cur_brk, MALLOC_CHUNK_ALIGNMENT) &&
+           ALIGNED(pc, MALLOC_CHUNK_ALIGNMENT), "initial brk alignment is off");
     while (pc < cur_brk) {
         app_pc user_start = pc + sizeof(sz)*2;
         sz = *(size_t *)(pc + sizeof(sz));

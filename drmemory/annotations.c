@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -64,6 +64,7 @@ handle_make_mem_defined_if_addressable(vg_client_request_t *request)
 #ifdef TOOL_DR_MEMORY
     app_pc start = (app_pc)request->args[0];
     ptr_uint_t len = request->args[1];
+    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + len);
 
     /* No-op if we're not tracking definedness. */
     if (!options.shadowing || !options.check_uninitialized)
@@ -88,6 +89,8 @@ handle_vg_annotation(app_pc request_args)
     void *dc;
     dr_mcontext_t mcontext;
     ptr_uint_t result;
+
+    LOG(2, "%s: args @"PFX"\n", __FUNCTION__, request_args);
 
     if (!safe_read(request_args, sizeof(request), &request))
         return;

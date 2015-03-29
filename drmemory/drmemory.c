@@ -971,6 +971,13 @@ memory_walk(void)
                 /* this is the heap */
                 LOG(2, "  => heap\n");
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
+                if (info.prot == DR_MEMPROT_NONE) {
+                    /* DR's -emulate_brk mmaps a page that we do not want to mark
+                     * defined, so skip it:
+                     */
+                    LOG(2, "  initial heap is empty: skipping -emulate_brk page\n");
+                    info.size += PAGE_SIZE;
+                }
             } else if (hashtable_lookup(&known_table, (void*)PAGE_START(pc)) != NULL) {
                 /* we assume there's only one entry in the known_table:
                  * the initial stack

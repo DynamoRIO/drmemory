@@ -812,6 +812,8 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
     set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
   endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+  # XXX i#1705: we should switch DrMem to use the DR annotation infrastructure
+  set(ANNOTATIONS OFF CACHE BOOL "DynamoRIO option: annotations")
   # We do not want DR install, except for the targets we need for our
   # multi-export-set install of the DRMF.  We need those targets
   # even for BUILDING_SUB_PACKAGE.
