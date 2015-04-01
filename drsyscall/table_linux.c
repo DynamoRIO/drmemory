@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1160,8 +1160,13 @@ syscall_info_t syscall_info[] = {
      }
     },
     {{PACKNUM(71,-1),0},"msgctl", OK, RLONG, 3, /*special-cased*/},
+    {{PACKNUM(158,-1),0},"arch_prctl", OK, RLONG, 2,
+     {
+         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         /* 2nd arg is special-cased */
+     }
+    },
     /* FIXME i#1019: fill these in (merge w/ 32-bit parallel entries above if nec) */
-    {{PACKNUM(158,-1),0},"arch_prctl", UNKNOWN, RLONG, 0, },
     {{PACKNUM(166,-1),0},"umount2", UNKNOWN, RLONG, 0, },
     {{PACKNUM(174,-1),0},"create_module", UNKNOWN, RLONG, 0, },
     {{PACKNUM(177,-1),0},"get_kernel_syms", UNKNOWN, RLONG, 0, },

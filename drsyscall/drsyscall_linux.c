@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -29,6 +29,8 @@
 #include <string.h> /* for strcmp */
 #include <stddef.h> /* for offsetof */
 #include "linux_defines.h"
+#include <asm/prctl.h>
+#include <sys/prctl.h>
 
 /* used to read entire ioctl arg at once */
 union ioctl_data {
@@ -1740,6 +1742,18 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
     case SYS_process_vm_writev:
         handle_pre_process_vm_readv_writev(drcontext, ii);
         break;
+#ifdef X64
+    case SYS_arch_prctl: {
+        int code = (int) pt->sysarg[0];
+        unsigned long addr = (unsigned long) pt->sysarg[1];
+        if (code == ARCH_GET_FS || code == ARCH_SET_FS) {
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) addr,
+                                    sizeof(addr), NULL, DRSYS_TYPE_UNSIGNED_INT, NULL))
+                return;
+        } /* else, inlined */
+        break;
+    }
+#endif
     }
     /* If you add any handling here: need to check ii->abort first */
 }
@@ -1812,6 +1826,18 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
     case SYS_process_vm_writev:
         handle_post_process_vm_writev(drcontext, ii);
         break;
+#ifdef X64
+    case SYS_arch_prctl: {
+        int code = (int) pt->sysarg[0];
+        unsigned long addr = (unsigned long) pt->sysarg[1];
+        if (code == ARCH_GET_FS || code == ARCH_SET_FS) {
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) addr,
+                                    sizeof(addr), NULL, DRSYS_TYPE_UNSIGNED_INT, NULL))
+                return;
+        } /* else, inlined */
+        break;
+    }
+#endif
     }
     /* If you add any handling here: need to check ii->abort first */
 }
