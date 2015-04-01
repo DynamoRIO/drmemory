@@ -24,8 +24,6 @@
  *
  * FIXME: This is a quick implementation of Valgrind client requests.  There are
  * many more things we should do:
- * - i#283: Make cross-tool compatible annotations.
- * - i#572: Design our own low-impact annotations.
  * - i#573: Provide additional annotations, ie support for JITs flushing the
  *   code cache.
  * - i#61: Implement AmIRunningUnderDrMemory() or RunningUnderValgrind().
@@ -41,25 +39,8 @@
 #include "shadow.h"
 #include "options.h"
 
-/* For VG_USERREQ__* enums. */
-#include "valgrind.h"
-#include "memcheck.h"
-
-static ptr_uint_t note_annotate_here;
-
-enum {
-    VG_PATTERN_LENGTH = 5,
-    VG_NUM_ARGS = 5,
-};
-
-typedef struct {
-    ptr_uint_t request;
-    ptr_uint_t args[VG_NUM_ARGS];
-    ptr_uint_t default_result;
-} vg_client_request_t;
-
 static ptr_uint_t
-handle_make_mem_defined_if_addressable(vg_client_request_t *request)
+handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
 {
 #ifdef TOOL_DR_MEMORY
     app_pc start = (app_pc)request->args[0];
@@ -80,221 +61,14 @@ handle_make_mem_defined_if_addressable(vg_client_request_t *request)
     return 1;
 }
 
-/* Handles a valgrind client request, if we understand it.
- */
-static void
-handle_vg_annotation(app_pc request_args)
-{
-    vg_client_request_t request;
-    void *dc;
-    dr_mcontext_t mcontext;
-    ptr_uint_t result;
-
-    LOG(2, "%s: args @"PFX"\n", __FUNCTION__, request_args);
-
-    if (!safe_read(request_args, sizeof(request), &request))
-        return;
-
-    /* FIXME: Add support for more requests, such as discard_translations and
-     * running_on_valgrind.
-     */
-    switch (request.request) {
-    case VG_USERREQ__MAKE_MEM_DEFINED_IF_ADDRESSABLE:
-        result = handle_make_mem_defined_if_addressable(&request);
-        break;
-    default:
-        WARN("Unknown Valgrind client request: %x\n", request.request);
-        result = request.default_result;
-    }
-
-    /* The result code goes in xbx. */
-    mcontext.size = sizeof(mcontext);
-    mcontext.flags = DR_MC_INTEGER;
-    dc = dr_get_current_drcontext();
-    dr_get_mcontext(dc, &mcontext);
-    mcontext.xbx = result;
-    dr_set_mcontext(dc, &mcontext);
-}
-
-/* Special pattern opcodes.
- * See __SPECIAL_INSTRUCTION_PREAMBLE in valgrind.h.
- */
-static const int expected_opcodes[VG_PATTERN_LENGTH] = {
-    OP_rol,
-    OP_rol,
-    OP_rol,
-    OP_rol,
-    OP_xchg
-};
-
-/* Immediate operands to the special rol instructions. */
-static const int
-expected_rol_immeds[VG_PATTERN_LENGTH] = {
-    3,
-    13,
-    29,
-    19,
-    0
-};
-
-/*   Return true if
- * the replacement occurred, and set next_instr to the first instruction after
- * the annotation sequence.
- *
- * Example Valgrind annotation sequence from annotations test:
- * <C code to fill _zzq_args>
- *             lea    0xffffffe4(%ebp) -> %eax      ; lea _zzq_args -> %eax
- *             mov    0x08(%ebp) -> %edx            ; mov _zzq_default -> %edx
- * instrs[0] = rol    $0x00000003 %edi -> %edi      ; Special sequence to replace
- * instrs[1] = rol    $0x0000000d %edi -> %edi
- * instrs[2] = rol    $0x0000001d %edi -> %edi
- * instrs[3] = rol    $0x00000013 %edi -> %edi
- * instrs[4] = xchg   %ebx %ebx -> %ebx %ebx
- *
- * FIXME: If the pattern gets split up by -max_bb_instrs, we will not be able to
- * match it.  If the application is built without optimizations, the client
- * request will not be inlined, so it is unlikely that it will be in a bb bigger
- * than 256 instrs.
- */
-static bool
-match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
-                       instr_t **next_instr)
-{
-    instr_t *instrs[VG_PATTERN_LENGTH];
-    uint i;
-    instr_t *label;
-    app_pc xchg_xl8;
-
-    instrs[0] = instr;
-    for (i = 0; i < BUFFER_SIZE_ELEMENTS(instrs); i++) {
-        if (i > 0) {
-            instrs[i] = instr_get_next(instrs[i - 1]);
-        }
-        if (instrs[i] == NULL) {
-            return false;
-        }
-        /* Perf: Check each instruction before iterating further. */
-        if (instr_get_opcode(instrs[i]) != expected_opcodes[i]) {
-            return false;
-        }
-
-        if (i < 4) {
-            /* Check the rol instr operands. */
-            opnd_t src = instr_get_src(instrs[i], 0);
-            opnd_t dst = instr_get_dst(instrs[i], 0);
-            if (!opnd_is_immed(src) ||
-                opnd_get_immed_int(src) != expected_rol_immeds[i]) {
-                return false;
-            }
-            if (!opnd_same(dst, opnd_create_reg(DR_REG_EDI))) {
-                return false;
-            }
-        } else if (i == 4) {
-            /* Check xchg operangs. */
-            opnd_t src = instr_get_src(instrs[i], 0);
-            opnd_t dst = instr_get_dst(instrs[i], 0);
-            opnd_t xbx = opnd_create_reg(DR_REG_XBX);
-            if (!opnd_same(src, xbx) || !opnd_same(dst, xbx))
-                return false;
-        }
-    }
-
-    /* We have matched the pattern. */
-    DOLOG(2, {
-        LOG(2, "Matched valgrind client request pattern at "PFX":\n",
-            instr_get_app_pc(instrs[0]));
-        for (i = 0; i < BUFFER_SIZE_ELEMENTS(instrs); i++) {
-            instr_disassemble(dc, instrs[i], LOGFILE_LOOKUP());
-            LOG(2, "\n");
-        }
-        LOG(2, "\n");
-    });
-
-    /* We leave the argument gathering code (typically "lea _zzq_args -> %xax"
-     * and "mov _zzq_default -> %xdx") as app instructions, as it writes to app
-     * registers (xref i#1423).
-     */
-    xchg_xl8 = instr_get_app_pc(instrs[4]);
-
-    /* Delete rol and xchg instructions. */
-    *next_instr = instr_get_next(instrs[VG_PATTERN_LENGTH - 1]);
-    for (i = 0; i < BUFFER_SIZE_ELEMENTS(instrs); i++) {
-        instrlist_remove(bb, instrs[i]);
-        instr_destroy(dc, instrs[i]);
-    }
-
-    /* Insert a write to %xbx, both to ensure it's marked defined by DrMem
-     * and to avoid confusion with register analysis code (%xbx is written
-     * by the clean callee).
-     */
-    instrlist_preinsert(bb, *next_instr,
-                        INSTR_XL8(INSTR_CREATE_xor(dc, opnd_create_reg(DR_REG_XBX),
-                                                   opnd_create_reg(DR_REG_XBX)),
-                                  xchg_xl8));
-
-    /* Leave label so insert phase knows where to insert clean call */
-    label = INSTR_CREATE_label(dc);
-    instr_set_note(label, (void *)note_annotate_here);
-    instrlist_meta_preinsert(bb, *next_instr, label);
-
-    return true;
-}
-
-/* Replace Valgrind annotations with an appropriate clean call.
- *
- * XXX: match_valgrind_pattern was designed to be used inside of another bb pass
- * to minimize linked list iteration, but it has to run before
- * fastpath_top_of_bb picks scratch registers.  If we ever get a chance, we
- * should try to combine this pass over the bb with another.
- */
-static dr_emit_flags_t
-annotate_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                          bool for_trace, bool translating)
-{
-    instr_t *instr;
-    instr_t *next_instr;
-    for (instr = instrlist_first(bb); instr != NULL; instr = next_instr) {
-        next_instr = instr_get_next(instr);
-        (void)match_valgrind_pattern(drcontext, bb, instr, &next_instr);
-    }
-    return DR_EMIT_DEFAULT;
-}
-
-static dr_emit_flags_t
-annotate_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                           bool for_trace, bool translating, void **user_data)
-{
-    return DR_EMIT_DEFAULT;
-}
-
-static dr_emit_flags_t
-annotate_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
-                         bool for_trace, bool translating, void *user_data)
-{
-    /* app2app left a label where clean call should go */
-    if (instr_is_label(inst) && instr_get_note(inst) == (void *)note_annotate_here) {
-        /* Insert clean call and pass &_zzq_args. */
-        dr_insert_clean_call(drcontext, bb, inst, (void*)handle_vg_annotation,
-                             /*fpstate=*/false, 1, opnd_create_reg(DR_REG_EAX));
-    }
-    return DR_EMIT_DEFAULT;
-}
-
 void
 annotate_init(void)
 {
-    drmgr_priority_t pri_app2app = {sizeof(pri_app2app), "drmemory.annotate", NULL, NULL,
-                                    DRMGR_PRIORITY_APP2APP_ANNOTATE};
-    drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.annotate", NULL, NULL,
-                                   DRMGR_PRIORITY_INSERT_ANNOTATE};
-    if (!drmgr_register_bb_app2app_event(annotate_event_bb_app2app, &pri_app2app))
-        ASSERT(false, "drmgr registration failed");
-    if (!drmgr_register_bb_instrumentation_event(annotate_event_bb_analysis,
-                                                 annotate_event_bb_insert,
-                                                 &pri_insert))
-        ASSERT(false, "drmgr registration failed");
-    note_annotate_here = drmgr_reserve_note_range(1);
-    ASSERT(note_annotate_here != DRMGR_NOTE_NONE, "failed to reserve note value");
+    /* Valgrind annotations are not available for 64-bit Windows */
+#if !(defined(WINDOWS) && defined(X64))
+    dr_annotation_register_valgrind(DR_VG_ID__MAKE_MEM_DEFINED_IF_ADDRESSABLE,
+                                    handle_make_mem_defined_if_addressable);
+#endif
 }
 
 void
