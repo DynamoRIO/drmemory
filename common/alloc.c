@@ -4880,7 +4880,9 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
             LOG(2, "SYS_mmap: "PFX"-"PFX" %d\n", base, base+size, flags);
             client_handle_mmap(drcontext, base, size, TEST(MAP_ANONYMOUS, flags));
             if (TEST(MAP_ANONYMOUS, flags)) {
-                if (pt->in_heap_routine > 0) {
+                if (pt->in_heap_routine > 0 ||
+                    /* i#1707: ld.so mmaps its own heap region */
+                    (!alloc_ops.replace_malloc && pc_is_in_ld_so(mc->pc))) {
                     /* We don't know whether a new arena or a one-off large
                      * malloc: doesn't matter too much since we don't
                      * really distinguish inside our heap list anyway.

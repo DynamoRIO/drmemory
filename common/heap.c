@@ -283,6 +283,14 @@ get_libcpp_base(void)
  * locate and using cygwin's malloc_usable_size during the walk
  */
 
+#ifdef LINUX
+/* i#1707: ld.so has a heap in its data segment and also does its own mmaps */
+static app_pc ld_so_base;
+static app_pc ld_so_end;
+static app_pc ld_so_data_base;
+static app_pc ld_so_data_end;
+#endif
+
 #ifdef WINDOWS
 # ifdef X64
 /* The actual convert from rtl_process_heap_entry_t to PROCESS_HEAP_ENTRY
@@ -659,6 +667,10 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         }
         pc += sz;
     }
+    if (cb_region != NULL && ld_so_data_base != NULL) {
+        /* i#1707: ld.so uses its own data segment for initial heap calls */
+        cb_region(ld_so_data_base, ld_so_data_end);
+    }
 #else /* MACOS */
     /* XXX: switch to methods that don't invoke library routines */
     vm_address_t *zones;
@@ -701,6 +713,38 @@ heap_allocated_end(HANDLE heap)
     byte *end = NULL;
     walk_individual_heap((byte *)heap, NULL, NULL, &end);
     return end;
+}
+#endif
+
+#ifdef LINUX
+bool
+pc_is_in_ld_so(app_pc pc)
+{
+    if (ld_so_base == NULL) {
+        module_data_t *data;
+        dr_module_iterator_t *iter;
+        iter = dr_module_iterator_start();
+        while (dr_module_iterator_hasnext(iter)) {
+            data = dr_module_iterator_next(iter);
+            const char *modname = dr_module_preferred_name(data);
+            if (modname != NULL && strncmp(modname, "ld-linux.so.", 12) == 0) {
+                int i;
+                ld_so_base = data->start;
+                ld_so_end = data->end;
+                for (i = 0; i < data->num_segments; i++) {
+                    if (TEST(DR_MEMPROT_WRITE, data->segments[i].prot)) {
+                        LOG(2, "adding ld.so data segment heap "PFX"-"PFX"\n",
+                            data->segments[i].start, data->segments[i].end);
+                        ld_so_data_base = data->segments[i].start;
+                        ld_so_data_end =  data->segments[i].end;
+                    }
+                }
+            }
+            dr_free_module_data(data);
+        }
+        dr_module_iterator_stop(iter);
+    }
+    return pc >= ld_so_base && pc < ld_so_end;
 }
 #endif
 
@@ -763,6 +807,9 @@ heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
     heap_tree = rb_tree_create(heap_info_delete);
 #ifdef WINDOWS
     heap_walk_init();
+#endif
+#ifdef LINUX
+    pc_is_in_ld_so(NULL);
 #endif
 }
 

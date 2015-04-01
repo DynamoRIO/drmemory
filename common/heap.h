@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -48,6 +48,11 @@ pc_is_in_libc(app_pc pc);
 
 app_pc
 get_libcpp_base(void);
+
+#ifdef LINUX
+bool
+pc_is_in_ld_so(app_pc pc);
+#endif
 
 /***************************************************************************
  * HEAP WALK

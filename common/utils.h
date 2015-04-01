@@ -46,6 +46,7 @@
 # define IF_WINDOWS_ELSE(x,y) x
 # define IF_UNIX(x)
 # define IF_UNIX_ELSE(x,y) y
+# define IF_LINUX_ELSE(x,y) y
 # define IF_UNIX_(x)
 #else
 # define IF_WINDOWS(x)

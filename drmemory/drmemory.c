@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1300,8 +1300,11 @@ static void
 heap_iter_region(app_pc start, app_pc end _IF_WINDOWS(HANDLE heap))
 {
     if (options.track_heap) {
-        heap_region_add(start, end, HEAP_PRE_US | HEAP_ARENA, 0);
-        IF_WINDOWS(heap_region_set_heap(start, heap);)
+        /* i#1707: we do not want ld.so data seg for -replace_malloc */
+        if (IF_LINUX_ELSE(!options.replace_malloc || !pc_is_in_ld_so(start), true)) {
+            heap_region_add(start, end, HEAP_PRE_US | HEAP_ARENA, 0);
+            IF_WINDOWS(heap_region_set_heap(start, heap);)
+        }
     } else if (options.shadowing)
         shadow_set_range(start, end, SHADOW_UNDEFINED);
 }
