@@ -117,8 +117,9 @@ libc.so.*!_Unwind_IteratePhdrCallback
 # This is in ld-linux*!allocate_dtv, but w/o symbols
 # we have several variants and we end up suppressing
 # any ld-linux allocation.
+# i#1711: listing as LEAK instead of just POSSIBLE LEAK.
 
-POSSIBLE LEAK
+LEAK
 name=default (ld-linux stores index+1)
 ld-linux*!*
 
