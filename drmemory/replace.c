@@ -135,6 +135,7 @@ static size_t replace_routine_size;
 typedef struct _sym_enum_data_t {
     bool add;
     bool processed[REPLACE_NUM];
+    app_pc indirect[REPLACE_NUM];
 # ifdef DEBUG
     bool processed_some[REPLACE_NUM];
 # endif
@@ -1180,7 +1181,9 @@ enumerate_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
         /* i#617: some modules have multiple addresses for one symbol:
          * e.g., unit_tests.exe strlen, strchr, and strrchr
          */
-        if (i != 0 && !edata->processed[i-1]) {
+        if (i != 0 && !edata->processed[i-1] &&
+            /* i#1710: do not replace indirected top-level object */
+            edata->mod->start + modoffs != edata->indirect[i-1]) {
             i--;
             replace_routine(edata->add, edata->mod, edata->mod->start + modoffs, i
                             _IF_DEBUG(edata->processed_some[i]));
@@ -1253,7 +1256,7 @@ replace_in_module(const module_data_t *mod, bool add)
     app_pc libc = get_libc_base(NULL);
     void *drcontext = dr_get_current_drcontext();
 #ifdef USE_DRSYMS
-    sym_enum_data_t edata = {add, {0,} _IF_DEBUG({0}), mod};
+    sym_enum_data_t edata = {add, {0,}, {0} _IF_DEBUG({0}), mod};
     bool missing_entry = false;
 #endif
 #ifdef DEBUG
@@ -1333,6 +1336,11 @@ replace_in_module(const module_data_t *mod, bool add)
                     replace_routine_name[i], info.address, addr);
                 if (mod->start == libc)
                     replace_all_indirect(add, mod, i, orig_addr, addr);
+                /* i#1710: while we do want to find other instances, we can't
+                 * let the symbol enumerator replace the top-level indirected
+                 * object, so we store its address.
+                 */
+                edata.indirect[i] = (app_pc) info.address;
             }
         }
         if (addr != NULL) {
