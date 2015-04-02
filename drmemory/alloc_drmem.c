@@ -2320,8 +2320,8 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
         if (data != NULL) {
             const char *modname = dr_module_preferred_name(data);
             if (modname != NULL &&
-                (strncmp(modname, IF_MACOS_ELSE("dyld", "ld-linux.so."),
-                         IF_MACOS_ELSE(4, 12)) == 0 ||
+                (strncmp(modname, IF_MACOS_ELSE("dyld", "ld-linux"),
+                         IF_MACOS_ELSE(4, 8)) == 0 ||
                  /* i#1703: dyld also accesses DR through these two libs */
                  IF_MACOS(strcmp(modname, "libmacho.dylib") == 0 ||
                           strcmp(modname, "libobjc.A.dylib") == 0 ||)

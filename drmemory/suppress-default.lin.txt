@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -52,25 +52,25 @@ name=default i#1241 python malloc
 # If have debuginfo shows up as elf_dynamic_do_rel{,a}
 # Else shows up as _dl_relocate_object
 # Or on FC12 I see ".L259" and ".L202"!
-# ld-linux.so.2!...
-# ld-linux.so.2!dl_open_worker
-# ld-linux.so.2!_dl_catch_error
+# ld-linux*!...
+# ld-linux*!dl_open_worker
+# ld-linux*!_dl_catch_error
 
 UNINITIALIZED READ
 name=default (ld-linux_3_libc_0)
-ld-linux.so.2!*
-ld-linux.so.2!*
-ld-linux.so.2!*
+ld-linux*!*
+ld-linux*!*
+ld-linux*!*
 
 UNINITIALIZED READ
 name=default (ld-linux_2_libc_1)
-ld-linux.so.2!*
-ld-linux.so.2!*
+ld-linux*!*
+ld-linux*!*
 libc.so.*!*
 
 UNINITIALIZED READ
 name=default (ld-linux_1_libc_2)
-ld-linux.so.2!*
+ld-linux*!*
 libc.so.*!*
 libc.so.*!*
 
@@ -82,9 +82,9 @@ libc.so.*!*
 
 UNADDRESSABLE ACCESS
 name=default (ld-linux strlen)
-ld-linux.so.2!*
-ld-linux.so.2!*
-ld-linux.so.2!*
+ld-linux*!*
+ld-linux*!*
+ld-linux*!*
 
 # uninits in strlen and strchr are covered by the general callstacks above
 
@@ -96,12 +96,12 @@ ld-linux.so.2!*
 UNADDRESSABLE ACCESS
 name=default i#79 (ld-linux)
 ...
-ld-linux.so.2!_dl_rtld_di_serinfo
-ld-linux.so.2!*
+ld-linux*!_dl_rtld_di_serinfo
+ld-linux*!*
 
 UNADDRESSABLE ACCESS
 name=default i#79 (ld-linux)
-ld-linux.so.2!*
+ld-linux*!*
 
 ##################################################
 # glibc out-of-bounds memory access (PR 532762):
@@ -114,13 +114,13 @@ libc.so.*!_Unwind_IteratePhdrCallback
 ##################################################
 # loader deliberately stores index+1 (PR 535646):
 
-# This is in ld-linux.so.2!allocate_dtv, but w/o symbols
+# This is in ld-linux*!allocate_dtv, but w/o symbols
 # we have several variants and we end up suppressing
 # any ld-linux allocation.
 
 POSSIBLE LEAK
 name=default (ld-linux stores index+1)
-ld-linux.so.2!*
+ld-linux*!*
 
 ##################################################
 # i#717: eglibc loader seems to have a one time leak
@@ -128,8 +128,8 @@ ld-linux.so.2!*
 # suppress one report.
 LEAK
 name=default (one-time eglibc ld-linux leak)
-ld-linux.so.2!_dl_map_object_deps
-ld-linux.so.2!dl_open_worker
+ld-linux*!_dl_map_object_deps
+ld-linux*!dl_open_worker
 ...
 libdl.so.2!*dlopen*
 

@@ -727,7 +727,7 @@ pc_is_in_ld_so(app_pc pc)
         while (dr_module_iterator_hasnext(iter)) {
             data = dr_module_iterator_next(iter);
             const char *modname = dr_module_preferred_name(data);
-            if (modname != NULL && strncmp(modname, "ld-linux.so.", 12) == 0) {
+            if (modname != NULL && strncmp(modname, "ld-linux", 8) == 0) {
                 int i;
                 ld_so_base = data->start;
                 ld_so_end = data->end;
