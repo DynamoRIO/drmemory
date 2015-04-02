@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -281,11 +281,6 @@ opnd_create_shadow_eflags_slot(void);
 
 opnd_t
 opnd_create_shadow_inheap_slot(void);
-
-#ifdef UNIX
-opnd_t
-opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz);
-#endif
 
 /* Note that any SHADOW_UNADDRESSABLE bit pairs simply mean it's
  * a sub-register.

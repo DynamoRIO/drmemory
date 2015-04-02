@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -389,9 +389,10 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
 #ifdef UNIX
 /* Data for which we need direct addressability access from instrumentation */
 typedef struct _tls_instru_t {
-    /* We store segment bases here for dynamic access from thread-shared code */
-    byte *app_fs_base;
-    byte *app_gs_base;
+    /* We store segment bases here for dynamic access from thread-shared code.
+     * We no longer need to store the app's bases as DR does it for us
+     * and we can just use dr_insert_get_seg_base() (xref i#93).
+     */
     byte *dr_fs_base;
     byte *dr_gs_base;
 } tls_instru_t;
@@ -417,26 +418,6 @@ tls_base_offs(void)
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     return tls_instru_base +
         offsetof(tls_instru_t, IF_X64_ELSE(dr_gs_base, dr_fs_base));
-}
-
-/* Create a far memory reference opnd to access DR's TLS memory slot
- * for getting app's TLS base address.
- */
-opnd_t
-opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
-{
-    uint stored_base_offs;
-    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
-    ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
-    ASSERT(seg_tls == EXPECTED_SEG_TLS, "init order problem");
-    stored_base_offs = tls_instru_base +
-        ((seg == SEG_FS) ? offsetof(tls_instru_t, app_fs_base) :
-         offsetof(tls_instru_t, app_gs_base));
-    return opnd_create_far_base_disp_ex
-        (seg_tls, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
-         /* we do NOT want an addr16 prefix since most likely going to run on
-          * Core or Core2, and P4 doesn't care that much */
-         false, true, false);
 }
 #endif
 
@@ -491,27 +472,21 @@ instru_tls_thread_init(void *drcontext)
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 
     /* bootstrap: can't call get_own_seg_base() until set up seg base fields */
-    byte *app_fs_base =
-        opnd_compute_address(opnd_create_far_base_disp(SEG_FS, REG_NULL, REG_NULL,
-                                                       0, 0, OPSZ_lea), &mc);
-    byte *app_gs_base =
-        opnd_compute_address(opnd_create_far_base_disp(SEG_GS, REG_NULL, REG_NULL,
-                                                       0, 0, OPSZ_lea), &mc);
     byte *dr_fs_base = dr_get_dr_segment_base(SEG_FS);
     byte *dr_gs_base = dr_get_dr_segment_base(SEG_GS);
+    /* We used to acquire the app's fs and gs bases (via opnd_compute address on
+     * a synthetic far-base-disp opnd) but with early injection they aren't set
+     * up yet, and we'd need to do work to handle changes: instead, now that
+     * DR supplies dr_insert_get_seg_base(), we just use that.
+     */
 # ifdef X64
     tls = (tls_instru_t *) (dr_gs_base + tls_instru_base);
 # else
     tls = (tls_instru_t *) (dr_fs_base + tls_instru_base);
 # endif
-    /* FIXME PR 406315: look for dynamic changes to fs and gs */
-    tls->app_fs_base = app_fs_base;
-    tls->app_gs_base = app_gs_base;
     tls->dr_fs_base  = dr_fs_base;
     tls->dr_gs_base  = dr_gs_base;
-    LOG(1, "app: fs base="PFX", gs base="PFX"\n"
-        "dr: fs base"PFX", gs base="PFX"\n",
-        app_fs_base, app_gs_base, dr_fs_base, dr_gs_base);
+    LOG(1, "dr: fs base"PFX", gs base="PFX"\n", dr_fs_base, dr_gs_base);
     /* store in per-thread data struct so we can access from another thread */
     drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
 #else

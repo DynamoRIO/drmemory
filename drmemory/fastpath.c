@@ -139,11 +139,7 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  opnd_create_base_disp(tmp_reg, other_reg, scale,
                                                        opnd_get_disp(opnd), OPSZ_lea)));
 # else
-            /* read the base we stored in a tls slot */
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(tmp_reg),
-                                    opnd_create_seg_base_slot(opnd_get_segment(opnd),
-                                                              OPSZ_PTR)));
+            dr_insert_get_seg_base(drcontext, bb, inst, opnd_get_segment(opnd), tmp_reg);
             PRE(bb, inst,
                 INSTR_CREATE_lea(drcontext, opnd_create_reg(dst),
                                  opnd_create_base_disp(tmp_reg, other_reg, scale,
