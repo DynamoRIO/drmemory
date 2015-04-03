@@ -1601,11 +1601,6 @@ distinguish_operator_by_decoding(routine_type_t generic_type,
     bool known = false;
     app_pc pc = mod->start + modoffs, next_pc;
     instr_init(drcontext, &inst);
-    /* XXX: in general when decoding we want to wait for the module to be relocated
-     * and thus we want DRi#884 or to delay our symbol searches via our
-     * mod_pending_tree.  But in this case, we only care about the opcodes, which
-     * shouldn't be affected by relocations.
-     */
     LOG(3, "decoding %s @"PFX" looking for placement operator\n", name, pc);
     ASSERT(drcontext != NULL, "must have DC");
     do {
@@ -2793,15 +2788,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 #endif
 
 #ifdef USE_DRSYMS
-/* We can't use post-call symcache entries at DR's module load event b/c
- * it's prior to rebasing.  Our solution is to wait for the first execution
- * from that module.  To find it we store the bounds in an interval tree.
- * Protected by post_call_lock.
- */
-static rb_tree_t *mod_pending_tree;
 static void *post_call_lock;
-/* Used for quick check w/o need for lock.  Written while holding post_call_lock. */
-static uint mod_pending_entries;
 #endif
 
 #ifdef USE_DRSYMS
@@ -2998,10 +2985,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     if (alloc_ops.track_allocs) {
         large_malloc_tree = rb_tree_create(NULL);
         large_malloc_lock = dr_mutex_create();
-#ifdef USE_DRSYMS
-        if (alloc_ops.cache_postcall)
-            mod_pending_tree = rb_tree_create(NULL);
-#endif
     }
 
 #ifdef USE_DRSYMS
@@ -3042,7 +3025,6 @@ alloc_exit(void)
 #ifdef USE_DRSYMS
         if (alloc_ops.cache_postcall) {
             dr_mutex_destroy(post_call_lock);
-            rb_tree_destroy(mod_pending_tree);
         }
 #endif
     }
@@ -3494,55 +3476,15 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall &&
         drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res) {
         dr_mutex_lock(post_call_lock);
-        if (loaded) {
-            alloc_load_symcache_postcall(info);
-        } else {
-            /* i#690: we can't add post-call entries now b/c the module has
-             * not been rebased and we need to store actual code so we
-             * use a pending entry.
-             */
-            IF_DEBUG(rb_node_t *existing =)
-                rb_insert(mod_pending_tree, info->start, info->end - info->start, NULL);
-            mod_pending_entries++;
-            ASSERT(existing == NULL, "new module overlaps w/ existing");
-        }
+        /* DRi#884 moved module load event so we no longer need mod_pending_tree
+         * from i#690.
+         */
+        ASSERT(loaded, "was DRi#884 reverted?");
+        alloc_load_symcache_postcall(info);
         dr_mutex_unlock(post_call_lock);
     }
 #endif
 }
-
-#ifdef USE_DRSYMS
-static void
-alloc_check_pending_module(app_pc pc)
-{
-    if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
-        rb_node_t *node;
-        IF_DEBUG(bool res;)
-
-        /* avoid lookup on every single bb */
-        static app_pc last_page;
-        if (mod_pending_entries == 0 || (app_pc)PAGE_START(pc) == last_page)
-            return;
-        last_page = (app_pc)PAGE_START(pc);
-
-        /* checks above make it ok to use write lock here */
-        dr_mutex_lock(post_call_lock);
-        node = rb_in_node(mod_pending_tree, pc);
-        if (node != NULL) {
-            module_data_t *info;
-            rb_delete(mod_pending_tree, node);
-            mod_pending_entries--;
-            info = dr_lookup_module(pc);
-            ASSERT(info != NULL, "module can't disappear");
-            ASSERT(drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res,
-                   "must have symcache");
-            alloc_load_symcache_postcall(info);
-            dr_free_module_data(info);
-        }
-        dr_mutex_unlock(post_call_lock);
-    }
-}
-#endif
 
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
@@ -3632,22 +3574,6 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
             }
         }
         dr_mutex_unlock(alloc_routine_lock);
-    }
-
-    if (alloc_ops.track_allocs) {
-#ifdef USE_DRSYMS
-        if (alloc_ops.cache_postcall) {
-            rb_node_t *node;
-            dr_mutex_lock(post_call_lock);
-            node = rb_in_node(mod_pending_tree, info->start);
-            /* module unloaded w/o any code executed */
-            if (node != NULL) {
-                rb_delete(mod_pending_tree, node);
-                mod_pending_entries--;
-            }
-            dr_mutex_unlock(post_call_lock);
-        }
-#endif
     }
 }
 
@@ -7001,16 +6927,7 @@ static dr_emit_flags_t
 alloc_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
                         bool for_trace, bool translating, OUT void **user_data)
 {
-#ifdef USE_DRSYMS
-    if (alloc_ops.track_heap) {
-        /* We must call this before drwrap checks for post-call instru so we
-         * do it during analysis as we only need to check 1st instr anyway
-         * b/c elision is turned off (if we move to insert, add "drwrap" as
-         * the priority.before field)
-         */
-        alloc_check_pending_module(dr_fragment_app_pc(tag));
-    }
-#endif
+    /* Nothing anymore (used to have i#690 mod_pending_tree check here) */
     return DR_EMIT_DEFAULT;
 }
 
