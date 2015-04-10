@@ -470,7 +470,7 @@ stream_cleanup:
  */
 static void
 process_results_file(const char *logdir, const char *symdir,
-                     process_id_t pid, const char *app)
+                     process_id_t pid, const char *app, int errcode)
 {
     HANDLE f;
     char fname[MAXIMUM_PATH];
@@ -488,9 +488,15 @@ process_results_file(const char *logdir, const char *symdir,
     f = CreateFile(wfname, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
-        warn("unable to locate results file since can't open "TSTR_FMT": %d\n"
-             "There was likely an early crash, perhaps due to interference "
-             "from invasive security software.  Try disabling other software.",
+        if (errcode == STATUS_DLL_NOT_FOUND) {
+            warn_prefix("libraries needed by the application are missing.  Check that it "
+                        "runs successfully on its own and check that all needed "
+                        "libraries are in its directory or on the PATH.");
+            return;
+        }
+        warn_prefix("unable to locate results file since can't open "TSTR_FMT": %d\n"
+                    "There was likely an early crash, perhaps due to interference "
+                    "from invasive security software.  Try disabling other software.",
              wfname, GetLastError());
         return;
     }
@@ -1370,7 +1376,7 @@ _tmain(int argc, TCHAR *targv[])
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
 #ifdef WINDOWS
-    process_results_file(logdir, symdir, pid, app_name);
+    process_results_file(logdir, symdir, pid, app_name, errcode);
 #endif
     goto cleanup;
  error:
