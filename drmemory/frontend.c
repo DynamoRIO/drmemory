@@ -461,6 +461,75 @@ stream_cleanup:
     }
 }
 
+/* List of libs we might find inside drmemory.exe */
+static const TCHAR * const known_libs[] = {
+    L"ntdll.dll",
+    L"kernelbase.dll",
+    L"kernel32.dll",
+    L"user32.dll",
+    L"gdi32.dll",
+    L"shell32.dll",
+    L"comctl32.dll",
+    L"apphelp.dll",
+    L"cryptbase.dll",
+    L"sspicli.dll",
+    L"rpcrt4.dll",
+    L"advapi32.dll",
+    L"sechost.dll",
+    L"msvcrt.dll",
+    L"drmemory.exe",
+    L"dynamorio.dll",
+    L"dbghelp.dll",
+    L"drinjectlib.dll",
+    L"drconfiglib.dll",
+};
+#define NUM_KNOWN_LIBS (sizeof(known_libs)/sizeof(known_libs[0]))
+
+static void
+analyze_loaded_modules(void)
+{
+    /* i#1713: look for "suspicious" libraries in the frontend itself. */
+    PBYTE pb = NULL;
+    MEMORY_BASIC_INFORMATION mbi;
+    TCHAR libname[MAXIMUM_PATH];
+    ssize_t len;
+    char msg[MAXIMUM_PATH*10];
+    size_t sofar = 0;
+    uint libs_printed = 0;
+    BUFPRINT(msg, BUFFER_SIZE_ELEMENTS(msg), sofar, len,
+             "Examine the following unusual libraries in this process to help identify\n"
+             "invasive software that may have affected the target application:\n\n");
+    while (VirtualQuery(pb, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+        if (mbi.Type == MEM_IMAGE &&
+            mbi.AllocationBase == mbi.BaseAddress) {
+            len = GetModuleFileNameW((HINSTANCE) mbi.AllocationBase, libname,
+                                     BUFFER_SIZE_ELEMENTS(libname));
+            if (len > 0) {
+                int i;
+                bool print = true;
+                const TCHAR *basename = libname + wcslen(libname) - 1;
+                while (*basename != L'/' && *basename != L'\\' && basename > libname)
+                    basename--;
+                basename++;
+                for (i = 0; i < NUM_KNOWN_LIBS; i++) {
+                    if (_wcsicmp(basename, known_libs[i]) == 0) {
+                        print = false;
+                        break;
+                    }
+                }
+                if (print) {
+                    BUFPRINT(msg, BUFFER_SIZE_ELEMENTS(msg), sofar, len,
+                             "\t%S\n", libname);
+                    libs_printed++;
+                }
+            }
+        }
+        pb += mbi.RegionSize;
+    }
+    if (libs_printed > 0)
+        warn("%s\nPlease file a bug about this at http://drmemory.org/issues", msg);
+}
+
 /* Rather than iterating to find the most recent dir w/ pid in name,
  * or risk running into the client option length limit by passing in a
  * file to write the results to, the client always writes to
@@ -494,10 +563,12 @@ process_results_file(const char *logdir, const char *symdir,
                         "libraries are in its directory or on the PATH.");
             return;
         }
-        warn_prefix("unable to locate results file since can't open "TSTR_FMT": %d\n"
-                    "There was likely an early crash, perhaps due to interference "
-                    "from invasive security software.  Try disabling other software.",
-             wfname, GetLastError());
+        warn_prefix("unable to locate results file: can't open "TSTR_FMT" (code=%d).\n"
+                    "Dr. Memory failed to start the target application, perhaps due to\n"
+                    "interference from invasive security software.\n"
+                    "Try disabling other software or running in a virtual machine.",
+                    wfname, GetLastError());
+        IF_WINDOWS(analyze_loaded_modules());
         return;
     }
     if (!ReadFile(f, resfile, BUFFER_SIZE_ELEMENTS(resfile), &read, NULL)) {
