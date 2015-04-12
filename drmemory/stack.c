@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1215,8 +1215,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* we don't need a 3rd scratch for the lookup, and we rely on reg3 being preserved */
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
-                            mi.reg1.reg, mi.reg2.reg, REG_NULL, false/*jcc long*/,
-                            true/*check alignment*/);
+                            mi.reg1.reg, mi.reg2.reg, REG_NULL, true/*check alignment*/);
 
     /* now addr of shadow byte is in reg1.
      * we want offs within shadow block in reg2: but storing displacement

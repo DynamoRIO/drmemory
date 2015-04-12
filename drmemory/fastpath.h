@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -340,7 +340,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                         bool get_value, bool value_in_reg2, bool need_offs,
                         bool zero_rest_of_offs,
                         reg_id_t reg1, reg_id_t reg2, reg_id_t reg3,
-                        bool jcc_short_slowpath, bool check_alignment);
+                        bool check_alignment);
 
 /***************************************************************************
  * Utility routines
