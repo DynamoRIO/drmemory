@@ -1742,10 +1742,20 @@ dr_init(client_id_t id)
 #endif
     module_data_t *data;
     const char *opstr;
+    char tool_ver[64];
 
     dr_set_client_name("Dr. Memory", "http://drmemory.org/issues");
 
     utils_early_init();
+
+    dr_snprintf(tool_ver, BUFFER_SIZE_ELEMENTS(tool_ver),
+                /* we include the date to distinguish RC and custom builds */
+                "%s-%d-(%s)%s%d", VERSION_STRING, BUILD_NUMBER, build_date,
+                /* we include the Windows version here for convenience */
+                IF_WINDOWS_ELSE(" win",""),
+                IF_WINDOWS_ELSE(get_windows_version(),0));
+    NULL_TERMINATE_BUFFER(tool_ver);
+    dr_set_client_version_string(tool_ver);
 
     /* get app_path before drmem_options_init() */
 #ifdef WINDOWS
