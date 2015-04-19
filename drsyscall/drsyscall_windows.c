@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -55,6 +55,7 @@ dr_os_version_info_t win_ver = {sizeof(win_ver),};
 #define IMM32 USER32
 #define GDI32 USER32
 #define KERNEL32 USER32
+#define NTDLL USER32
 
 static const char * const sysnum_names[] = {
 #define USER32(name, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
@@ -165,6 +166,7 @@ static const int win2K_sysnums[] = {
 #undef IMM32
 #undef GDI32
 #undef KERNEL32
+#undef NTDLL
 
 /***************************************************************************
  * NAME TO NUMBER
@@ -384,8 +386,8 @@ get_primary_syscall_num(void *drcontext, const module_data_t *info,
     }
     if (!ok) {
         /* i#388: use sysnum table if the wrapper is not exported and we don't have
-         * symbol info.  Currently the table only has win32k.sys entries since
-         * all the ntdll wrappers are exported.
+         * symbol info.  The table has both win32k.sys entries (mostly not exported)
+         * and ntoskrnl entries (to handle hook conflicts: i#1686).
          */
         LOG(SYSCALL_VERBOSE, "using name2num_table since no wrapper found for %s\n",
             syslist->name);
@@ -436,7 +438,9 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         !TEST(SYSINFO_SECONDARY_TABLE, syslist->flags))
         *syslist->num_out = syslist->num;
     if (add_name2num) {
-        name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
+        /* Add the Nt variant only if a secondary, which our numx.h table doesn't have */
+        if (is_secondary)
+            name2num_entry_add(syslist->name, syslist->num, false/*no Zw*/);
         /* Add the Zw variant */
         name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/);
     }
@@ -556,7 +560,7 @@ drsyscall_os_init(void *drcontext)
         if (sysnums[i] != NONE) {
             const char *skip_prefix = NULL;
             drsys_sysnum_t sysnum = {sysnums[i], 0};
-            name2num_entry_add(sysnum_names[i], sysnum, false/*no dup*/);
+            name2num_entry_add(sysnum_names[i], sysnum, false/*no Zw*/);
 
             /* we also add the version without the prefix, so e.g. alloc.c
              * can pass in "UserConnectToServer" without having the
@@ -572,7 +576,7 @@ drsyscall_os_init(void *drcontext)
              * NtUserGetThreadDesktop to avoid the wrong # in the table (i#1418).
              */
             if (skip_prefix != NULL) {
-                name2num_entry_add(skip_prefix, sysnum, false/*no dup*/);
+                name2num_entry_add(skip_prefix, sysnum, false/*no Zw*/);
             }
         }
     }
