@@ -1528,11 +1528,10 @@ print_scratch_reg(void *drcontext, scratch_reg_info_t *si, int num, file_t file)
     dr_fprintf(file, "r%d=", num);
     opnd_disassemble(drcontext, opnd_create_reg(si->reg), file);
     if (si->xchg != REG_NULL) {
-        /* opnd_disassemble adds a space */
-        dr_fprintf(file, "xchg ");
+        dr_fprintf(file, " xchg ");
         opnd_disassemble(drcontext, opnd_create_reg(si->xchg), file);
     } else if (si->dead) {
-        dr_fprintf(file, "dead");
+        dr_fprintf(file, " dead");
     } else {
         dr_fprintf(file, "spill#%d", si->slot);
     }
