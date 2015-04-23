@@ -682,8 +682,10 @@ replace_strstr(const char *haystack, const char *needle)
     if (*n == '\0')
         return (char *) haystack;
     while (*hs != '\0') {
-        if (*hs != *n)
+        if (*hs != *n) {
+            hs -= n - 1 - needle; /* backtrack */
             n = needle;
+        }
         if (*hs == *n) {
             n++;
             if (*n == '\0')
@@ -703,8 +705,10 @@ replace_wcsstr(const wchar_t *haystack, const wchar_t *needle)
     if (*n == '\0')
         return (wchar_t *) haystack;
     while (*hs != '\0') {
-        if (*hs != *n)
+        if (*hs != *n) {
+            hs -= n - 1 - needle; /* backtrack */
             n = needle;
+        }
         if (*hs == *n) {
             n++;
             if (*n == '\0')

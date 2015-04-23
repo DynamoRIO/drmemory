@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -106,6 +106,10 @@ TEST(StringTests, strstr) {
     ASSERT_STREQ(strstr("xyzabcxyz", "xyz"), "xyzabcxyz");
     ASSERT_EQ(strstr("xy", "xyz"), (char *)NULL);
     ASSERT_STREQ(strstr("abcd", ""), "abcd");
+    /* Test i#1718 */
+    ASSERT_STREQ(strstr("xxxA", "xxA"), "xxA");
+    ASSERT_STREQ(strstr("PREFIXxxxxxASUFFIX", "xxxxA"), "xxxxASUFFIX");
+    ASSERT_EQ(strstr("xxxAxABxxxA", "xxAB"), (char *)NULL);
 
     /* Test i#1243 where msvcr100!strstr calls into the middle of strchr
      * and has an unaddr if the string doesn't fill out a malloc chunk
@@ -121,6 +125,10 @@ TEST(StringTests, wcsstr) {
     ASSERT_STREQ(wcsstr(L"xyzabcxyz", L"xyz"), L"xyzabcxyz");
     ASSERT_EQ(wcsstr(L"xy", L"xyz"), (wchar_t *)NULL);
     ASSERT_STREQ(wcsstr(L"abcd", L""), L"abcd");
+    /* Test i#1718 */
+    ASSERT_STREQ(wcsstr(L"xxxA", L"xxA"), L"xxA");
+    ASSERT_STREQ(wcsstr(L"PREFIXxxxxxASUFFIX", L"xxxxA"), L"xxxxASUFFIX");
+    ASSERT_EQ(wcsstr(L"xxxAxABxxxA", L"xxAB"), (wchar_t *)NULL);
 
     /* Test i#350 where VS2012 wcsstr is optimized */
     std::wstring s2(L"foo\r\nbar");
