@@ -804,7 +804,7 @@ void
 heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
                  void (*region_remove_cb)(app_pc, app_pc, dr_mcontext_t *mc))
 {
-    heap_lock = dr_mutex_create();
+    heap_lock = dr_rwlock_create();
     cb_add = region_add_cb;
     cb_remove = region_remove_cb;
     heap_tree = rb_tree_create(heap_info_delete);
@@ -819,10 +819,10 @@ heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
 void
 heap_region_exit(void)
 {
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_write_lock(heap_lock);
     rb_tree_destroy(heap_tree);
-    dr_mutex_unlock(heap_lock);
-    dr_mutex_destroy(heap_lock);
+    dr_rwlock_write_unlock(heap_lock);
+    dr_rwlock_destroy(heap_lock);
 }
 
 void
@@ -830,7 +830,7 @@ heap_region_add(app_pc start, app_pc end, uint flags, dr_mcontext_t *mc)
 {
     heap_info_t *info = (heap_info_t *) global_alloc(sizeof(*info), HEAPSTAT_RBTREE);
     IF_DEBUG(rb_node_t *existing;)
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_write_lock(heap_lock);
     LOG(2, "adding heap region "PFX"-"PFX" %s\n", start, end,
         TEST(HEAP_ARENA, flags) ? "arena" : "chunk");
     STATS_INC(heap_regions);
@@ -841,7 +841,7 @@ heap_region_add(app_pc start, app_pc end, uint flags, dr_mcontext_t *mc)
     IF_DEBUG(existing =)
         rb_insert(heap_tree, start, (end - start), (void *) info);
     ASSERT(existing == NULL, "new heap region overlaps w/ existing");
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_write_unlock(heap_lock);
 }
 
 static heap_info_t *
@@ -860,7 +860,7 @@ heap_region_remove(app_pc start, app_pc end, dr_mcontext_t *mc)
     rb_node_t *node = NULL;
     app_pc node_start;
     size_t node_size;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_write_lock(heap_lock);
     node = rb_overlaps_node(heap_tree, start, end);
     if (node != NULL) {
         heap_info_t *info, *clone = NULL;
@@ -894,7 +894,7 @@ heap_region_remove(app_pc start, app_pc end, dr_mcontext_t *mc)
         }
         ASSERT(clone == NULL, "error in earlier clone cond");
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_write_unlock(heap_lock);
     return node != NULL;
 }
 
@@ -904,7 +904,7 @@ heap_region_adjust(app_pc start, app_pc new_end)
     rb_node_t *node = NULL;
     app_pc node_start;
     size_t node_size;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_write_lock(heap_lock);
     node = rb_in_node(heap_tree, start);
     if (node != NULL) {
         heap_info_t *info, *clone;
@@ -919,7 +919,7 @@ heap_region_adjust(app_pc start, app_pc new_end)
         rb_delete(heap_tree, node); /* deletes info */
         rb_insert(heap_tree, node_start, (new_end - node_start), (void *)clone);
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_write_unlock(heap_lock);
     return node != NULL;
 }
 
@@ -932,7 +932,7 @@ heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/,
     app_pc node_start;
     size_t node_size;
     bool res = false;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_read_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         res = true;
@@ -944,7 +944,7 @@ heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/,
         if (flags_out != NULL)
             *flags_out = info->flags;
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_read_unlock(heap_lock);
     return res;
 }
 
@@ -952,9 +952,9 @@ bool
 is_in_heap_region(app_pc pc)
 {
     bool res = false;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_read_lock(heap_lock);
     res = (rb_in_node(heap_tree, pc) != NULL);
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_read_unlock(heap_lock);
     return res;
 }
 
@@ -965,7 +965,7 @@ is_entirely_in_heap_region(app_pc start, app_pc end)
     app_pc node_start;
     size_t node_size;
     bool res = false;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_read_lock(heap_lock);
     node = rb_overlaps_node(heap_tree, start, end);
     if (node != NULL) {
         /* we do not support passing in a range that include multiple
@@ -974,7 +974,7 @@ is_entirely_in_heap_region(app_pc start, app_pc end)
         rb_node_fields(node, &node_start, &node_size, NULL);
         res = (start >= node_start && end <= node_start + node_size);
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_read_unlock(heap_lock);
     return res;
 }
 
@@ -984,13 +984,13 @@ get_heap_region_flags(app_pc pc)
     rb_node_t *node = NULL;
     uint res = 0;
     heap_info_t *info;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_read_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         rb_node_fields(node, NULL, NULL, (void **)&info);
         res = info->flags;
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_read_unlock(heap_lock);
     return res;
 }
 
@@ -1015,7 +1015,7 @@ heap_region_set_heap(app_pc pc, HANDLE heap)
 # ifdef USE_DRSYMS
     ASSERT(heap != get_private_heap_handle(), "app using priv heap");
 # endif
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_write_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         heap_info_t *info;
@@ -1035,7 +1035,7 @@ heap_region_set_heap(app_pc pc, HANDLE heap)
                 node_start, node_start + node_size, heap);
         }
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_write_unlock(heap_lock);
     return node != NULL;
 }
 
@@ -1045,13 +1045,13 @@ heap_region_get_heap(app_pc pc)
     rb_node_t *node = NULL;
     HANDLE res = INVALID_HANDLE_VALUE;
     heap_info_t *info;
-    dr_mutex_lock(heap_lock);
+    dr_rwlock_read_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         rb_node_fields(node, NULL, NULL, (void **)&info);
         res = info->heap;
     }
-    dr_mutex_unlock(heap_lock);
+    dr_rwlock_read_unlock(heap_lock);
     return res;
 }
 
@@ -1078,6 +1078,8 @@ heap_region_iterate(bool (*iter_cb)(byte *start, byte *end, uint flags
     heap_iter_t iter;
     iter.iter_cb = iter_cb;
     iter.cb_data = data;
+    dr_rwlock_read_lock(heap_lock);
     rb_iterate(heap_tree, rb_iter_cb, (void *) &iter);
+    dr_rwlock_read_unlock(heap_lock);
 }
 
