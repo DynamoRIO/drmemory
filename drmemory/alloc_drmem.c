@@ -1327,11 +1327,15 @@ client_stack_dealloc(byte *start, byte *end)
 }
 
 /* Non-interpreted code wrote to app-visible memory */
-void
-client_write_memory(byte *start, size_t size)
+bool
+client_write_memory(byte *start, size_t size, dr_mcontext_t *mc)
 {
-    if (options.shadowing && options.check_uninitialized)
-        shadow_set_range(start, start + size, SHADOW_DEFINED);
+    if (options.shadowing) {
+        app_loc_t loc;
+        pc_to_loc(&loc, mc->pc);
+        return handle_mem_ref(MEMREF_WRITE, &loc, start, size, mc);
+    }
+    return true;
 }
 
 #ifdef DEBUG

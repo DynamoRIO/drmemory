@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2836,6 +2836,12 @@ create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
         new_arena->commit_end = (byte *)new_arena + commit_sz;
         new_arena->reserve_end = (byte *)new_arena + reserve_sz;
         heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
+        /* Even if this is the post-us arena for a pre-us Heap, we store the new
+         * arena as the Heap for easier RtlWalkHeap implementation.  A negative
+         * consequence is that the app sees some extra heaps at startup.
+         * Earlier injection would eliminate the problem.
+         */
+        heap_region_set_heap((byte *)new_arena, (HANDLE)new_arena);
         /* this will create the lock even if TEST(HEAP_NO_SERIALIZE, flags) */
         arena_init(new_arena, NULL);
         new_arena->flags |= (flags & HEAP_CREATE_POSSIBLE_FLAGS);
@@ -3663,13 +3669,13 @@ replace_RtlQueryHeapInformation(HANDLE heap,
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
     NTSTATUS res = STATUS_SUCCESS;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     /* In MSDN only HeapCompatibilityInformation is supported.  It returns a ULONG
      * that we want to set to 0 to indicate neither look-aside lists nor
      * low-fragmentation heap support.
      */
     if (arena == NULL) {
-        dr_mcontext_t mc;
-        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlQueryHeapInformation);
         res = STATUS_INVALID_PARAMETER;
     } else if (info_class != HeapCompatibilityInformation) {
@@ -3677,11 +3683,12 @@ replace_RtlQueryHeapInformation(HANDLE heap,
     } else if (buflen < sizeof(ULONG)) {
         res = STATUS_BUFFER_TOO_SMALL;
     } else {
-        *(ULONG *)buf = 0;
-        client_write_memory(buf, buflen);
+        mc.pc = (app_pc) replace_RtlQueryHeapInformation;
+        if (client_write_memory(buf, buflen, &mc))
+            *(ULONG *)buf = 0;
         if (outlen != NULL) {
-            *outlen = sizeof(ULONG);
-            client_write_memory((byte *)outlen, sizeof(ULONG));
+            if (client_write_memory((byte *)outlen, sizeof(ULONG), &mc))
+                *outlen = sizeof(ULONG);
         }
         res = STATUS_SUCCESS;
     }
@@ -3718,7 +3725,7 @@ replace_RtlSetHeapInformation(HANDLE heap, HEAP_INFORMATION_CLASS info_class,
         res = STATUS_INVALID_PARAMETER;
     }
     exit_client_code(drcontext, false/*need swap*/);
-    return STATUS_SUCCESS;
+    return res;
 }
 
 static SIZE_T WINAPI
@@ -3750,33 +3757,6 @@ replace_RtlCompactHeap(HANDLE heap, ULONG flags)
     return res;
 }
 
-static ULONG WINAPI
-replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
-{
-    void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
-    exit_client_code(drcontext, false/*need swap*/);
-    return 0;
-}
-
-static NTSTATUS WINAPI
-replace_RtlWalkHeap(HANDLE heap, PVOID HeapEntry)
-{
-    void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
-    exit_client_code(drcontext, false/*need swap*/);
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS WINAPI
-replace_RtlEnumProcessHeaps(PVOID/*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
-                            PVOID lParam)
-{
-    void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
-    exit_client_code(drcontext, false/*need swap*/);
-    return STATUS_SUCCESS;
-}
 
 #ifdef X64
 /* See i#907, i#995, i#1032.  For x64, strings are allocated via exported
@@ -3865,6 +3845,75 @@ replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
     LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
+}
+
+/***************************************************************************
+ * RtlHeap iteration replacement routines
+ */
+
+typedef NTSTATUS (*PHEAP_ENUMERATION_ROUTINE)(IN PVOID HeapHandle, IN PVOID UserParam);
+
+typedef struct _getheaps_data_t {
+    ULONG actual_len;
+    ULONG user_len;
+    HANDLE *user_heaps;
+    dr_mcontext_t *mc;
+} getheaps_data_t;
+
+static bool
+heap_iter_getheaps(byte *iter_arena_start, byte *iter_arena_end, uint flags
+                   _IF_WINDOWS(HANDLE heap), void *iter_data)
+{
+    getheaps_data_t *data = (getheaps_data_t *) iter_data;
+    if (TEST(HEAP_ARENA, flags)) {
+        LOG(2, "%s: "PFX"-"PFX" heap="PFX"\n", __FUNCTION__, iter_arena_start,
+            iter_arena_end, heap);
+        if (data->user_len > data->actual_len) {
+            /* We avoid crashing (reported as internal error) if a problem w/ this
+             * write.
+             */
+            if (client_write_memory((byte *)&data->user_heaps[data->actual_len],
+                                    sizeof(data->user_heaps[0]), data->mc))
+                data->user_heaps[data->actual_len] = heap;
+        }
+        data->actual_len++;
+    }
+    return true;
+}
+
+static ULONG WINAPI
+replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
+{
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    getheaps_data_t data = {0, count, heaps, &mc};
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    mc.pc = (app_pc) replace_RtlGetProcessHeaps;
+    /* No input validation needed: the real API crashes if passed NULL */
+    heap_region_iterate(heap_iter_getheaps, &data);
+    exit_client_code(drcontext, false/*need swap*/);
+    return data.actual_len;
+}
+
+static NTSTATUS WINAPI
+replace_RtlEnumProcessHeaps(PHEAP_ENUMERATION_ROUTINE HeapEnumerationRoutine,
+                            PVOID UserParam)
+{
+    void *drcontext = enter_client_code();
+    /* FIXME i#1719: NYI */
+    ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS WINAPI
+replace_RtlWalkHeap(HANDLE heap, PVOID HeapEntry)
+{
+    void *drcontext = enter_client_code();
+    /* FIXME i#1719: NYI */
+    ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
+    return STATUS_SUCCESS;
 }
 
 #endif /* WINDOWS */
@@ -3974,13 +4023,13 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
             *routine = (void *) replace_ignore_arg5;
             *stack = sizeof(void*) * 5;
             return true;
-#if 0 /* FIXME i#1202: NYI */
-        case RTL_ROUTINE_ENUM:
-            *routine = (void *) replace_RtlEnumProcessHeaps;
-            *stack = sizeof(void*) * 2;
-            return true;
         case RTL_ROUTINE_GET_HEAPS:
             *routine = (void *) replace_RtlGetProcessHeaps;
+            *stack = sizeof(void*) * 2;
+            return true;
+#if 0 /* FIXME i#1719: replace these */
+        case RTL_ROUTINE_ENUM:
+            *routine = (void *) replace_RtlEnumProcessHeaps;
             *stack = sizeof(void*) * 2;
             return true;
         case RTL_ROUTINE_WALK:

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -21,6 +21,7 @@
 
 #include "gtest/gtest.h"
 #include "app_suite_utils.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
 
@@ -50,4 +51,25 @@ TEST(MallocTests, HeapInformation) {
 
     res = HeapSetInformation(heap, HeapEnableTerminationOnCorruption, NULL, 0);
     ASSERT_EQ(res, TRUE);
+}
+
+TEST(MallocTests, GetProcessHeaps) {
+    DWORD max_heaps = 100;
+    DWORD num_heaps;
+    HANDLE *heaps = new HANDLE[max_heaps];
+    num_heaps = GetProcessHeaps(max_heaps, heaps);
+    while (num_heaps > max_heaps) {
+        delete [] heaps;
+        max_heaps = num_heaps;
+        heaps = new HANDLE[max_heaps];
+        num_heaps = GetProcessHeaps(max_heaps, heaps);
+    }
+    for (int i = 0; i < num_heaps; i++) {
+        BOOL res = HeapLock(heaps[i]);
+        ASSERT_EQ(res, TRUE);
+        /* XXX i#1719: add HeapWalk and RtlEnumProcessHeaps tests */
+        res = HeapUnlock(heaps[i]);
+        ASSERT_EQ(res, TRUE);
+    }
+    delete [] heaps;
 }

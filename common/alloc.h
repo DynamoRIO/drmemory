@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -477,9 +477,11 @@ client_stack_alloc(byte *start, byte *end, bool defined);
 void
 client_stack_dealloc(byte *start, byte *end);
 
-/* Non-interpreted code wrote to app-visible memory */
-void
-client_write_memory(byte *start, size_t size);
+/* Non-interpreted code wrote to app-visible memory.  Returns true if no errors
+ * were found with the write.
+ */
+bool
+client_write_memory(byte *start, size_t size, dr_mcontext_t *mc);
 
 #ifdef DEBUG
 void

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1082,9 +1082,10 @@ client_stack_dealloc(byte *start, byte *end)
 {
 }
 
-void
-client_write_memory(byte *start, size_t size)
+bool
+client_write_memory(byte *start, size_t size, dr_mcontext_t *mc)
 {
+    return true;
 }
 
 #ifdef DEBUG
