@@ -67,9 +67,22 @@ TEST(MallocTests, GetProcessHeaps) {
     for (int i = 0; i < num_heaps; i++) {
         BOOL res = HeapLock(heaps[i]);
         ASSERT_EQ(res, TRUE);
-        /* XXX i#1719: add HeapWalk and RtlEnumProcessHeaps tests */
+        DWORD regions = 0;
+        PROCESS_HEAP_ENTRY info;
+        info.lpData = NULL;
+        while (HeapWalk(heaps[i], &info)) {
+            if ((info.wFlags & PROCESS_HEAP_ENTRY_BUSY) != 0) {
+                ASSERT_NE(info.lpData, (PVOID)NULL);
+            } else if ((info.wFlags & PROCESS_HEAP_REGION) != 0) {
+                regions++;
+                ASSERT_GT(info.Region.dwCommittedSize, 4095);
+            }
+        }
+        ASSERT_GT(regions, 0);
         res = HeapUnlock(heaps[i]);
         ASSERT_EQ(res, TRUE);
     }
     delete [] heaps;
 }
+
+/* XXX i#1719: add an RtlEnumProcessHeaps test */

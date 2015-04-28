@@ -293,55 +293,6 @@ static app_pc ld_so_data_end;
 #endif
 
 #ifdef WINDOWS
-# ifdef X64
-/* The actual convert from rtl_process_heap_entry_t to PROCESS_HEAP_ENTRY
- * is something like below:
- *   heap_entry->lpData = rtl_heap_entry->lpData;
- *   heap_entry->cbData = (DWORD)rtl_heap_entry->cbData;
- *   heap_entry->cbOverhead = rtl_heap_entry->cbOverhead;
- *   heap_entry->iRegionIndex = rtl_heap_entry->iRegionIndex;
- *   if (!TEST(rtl_heap_entry->flags, 1)) {
- *       // jmp 7fe`fda6321f
- *       ...
- *   } else if (TEST(rtl_heap_entry->flags, 2)) {
- *       // jmp 7fe`fda63263
- *       if (TEST(rtl_heap_entry->flags, 0x100)) {
- *           heap_entry->wFlags = 0;
- *       } else {
- *           heap_entry->wFlags = 2;
- *           heap_entry->Region = NULL;
- *       }
- *   } else {
- *       heap_entry->wFlags = 1;
- *       heap_entry.Region = rtl_heap_entry.Region;
- *   }
- * The major different between the two is the size of cbData,
- * the rtl_process_heap_entry_t.flags do not exactly match with
- * PROCESS_HEAP_ENTRY.wFlags, but close enough since we only care
- * about 1 (== PROCESS_HEAP_REGION).
- */
-typedef struct _rtl_process_heap_entry_t {
-    PVOID lpData;
-    reg_t cbData;
-    BYTE cbOverhead;
-    BYTE iRegionIndex;
-    WORD wFlags;
-    union {
-        struct {
-            HANDLE hMem;
-            DWORD dwReserved[ 3 ];
-        } Block;
-        struct {
-            DWORD dwCommittedSize;
-            DWORD dwUnCommittedSize;
-            LPVOID lpFirstBlock;
-            LPVOID lpLastBlock;
-        } Region;
-    };
-} rtl_process_heap_entry_t;
-# else
-typedef PROCESS_HEAP_ENTRY rtl_process_heap_entry_t;
-# endif
 DECLARE_NTDLL(RtlLockHeap, (IN HANDLE Heap));
 DECLARE_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
 DECLARE_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
@@ -410,6 +361,10 @@ walk_individual_heap(byte *heap,
          * passed lpData.  Also, wFlags containing PROCESS_HEAP_REGION
          * should supposedly only happen for the first block in a region,
          * but it's on for all legit blocks, it seems.
+         *
+         * XXX update: the RtlWalkHeap routine uses different flags from HeapWalk:
+         * see the RTL_PROCESS_* flags in heap.h.  We should update this routine
+         * to use those.
          */
         /* I've seen bogus lpData fields => RtlSizeHeap crashes if free mem.
          * I've also seen bogus lpData pointing into not-yet-committed

@@ -1088,6 +1088,12 @@ client_write_memory(byte *start, size_t size, dr_mcontext_t *mc)
     return true;
 }
 
+bool
+client_read_memory(byte *start, size_t size, dr_mcontext_t *mc)
+{
+    return true;
+}
+
 #ifdef DEBUG
 void
 client_print_callstack(void *drcontext, dr_mcontext_t *mc, app_pc pc)

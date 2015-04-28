@@ -2837,9 +2837,9 @@ create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
         new_arena->reserve_end = (byte *)new_arena + reserve_sz;
         heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
         /* Even if this is the post-us arena for a pre-us Heap, we store the new
-         * arena as the Heap for easier RtlWalkHeap implementation.  A negative
-         * consequence is that the app sees some extra heaps at startup.
-         * Earlier injection would eliminate the problem.
+         * arena as the Heap for easier RtlWalkHeap implementation.  We skip
+         * pre-us heaps during app iteration.
+         * Earlier injection would eliminate the complexity.
          */
         heap_region_set_heap((byte *)new_arena, (HANDLE)new_arena);
         /* this will create the lock even if TEST(HEAP_NO_SERIALIZE, flags) */
@@ -3860,23 +3860,32 @@ typedef struct _getheaps_data_t {
     dr_mcontext_t *mc;
 } getheaps_data_t;
 
+#define STATUS_NO_MORE_ENTRIES ((NTSTATUS)0x8000001a)
+
 static bool
-heap_iter_getheaps(byte *iter_arena_start, byte *iter_arena_end, uint flags
+heap_iter_getheaps(byte *start, byte *end, uint flags
                    _IF_WINDOWS(HANDLE heap), void *iter_data)
 {
     getheaps_data_t *data = (getheaps_data_t *) iter_data;
-    if (TEST(HEAP_ARENA, flags)) {
-        LOG(2, "%s: "PFX"-"PFX" heap="PFX"\n", __FUNCTION__, iter_arena_start,
-            iter_arena_end, heap);
-        if (data->user_len > data->actual_len) {
-            /* We avoid crashing (reported as internal error) if a problem w/ this
-             * write.
-             */
-            if (client_write_memory((byte *)&data->user_heaps[data->actual_len],
-                                    sizeof(data->user_heaps[0]), data->mc))
-                data->user_heaps[data->actual_len] = heap;
+    /* We do not attempt to walk pre-us heaps.  We'd have to mix wrap and
+     * replace in a strange way, and pre-us should be system lib allocs unrelated
+     * to the app (XXX: except for delayed init or attach: though those are
+     * non-default modes).
+     */
+    if (TEST(HEAP_ARENA, flags) && !TEST(HEAP_PRE_US, flags)) {
+        arena_header_t *arena = (arena_header_t *) start;
+        if (TEST(ARENA_MAIN, arena->flags)) {
+            LOG(2, "%s: "PFX"-"PFX" heap="PFX"\n", __FUNCTION__, start, end, heap);
+            if (data->user_len > data->actual_len) {
+                /* We avoid crashing (reported as internal error) if a problem w/ this
+                 * write.
+                 */
+                if (client_write_memory((byte *)&data->user_heaps[data->actual_len],
+                                        sizeof(data->user_heaps[0]), data->mc))
+                    data->user_heaps[data->actual_len] = heap;
+            }
+            data->actual_len++;
         }
-        data->actual_len++;
     }
     return true;
 }
@@ -3887,6 +3896,7 @@ replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
     void *drcontext = enter_client_code();
     dr_mcontext_t mc;
     getheaps_data_t data = {0, count, heaps, &mc};
+    LOG(2, "%s\n", __FUNCTION__);
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     mc.pc = (app_pc) replace_RtlGetProcessHeaps;
     /* No input validation needed: the real API crashes if passed NULL */
@@ -3900,20 +3910,112 @@ replace_RtlEnumProcessHeaps(PHEAP_ENUMERATION_ROUTINE HeapEnumerationRoutine,
                             PVOID UserParam)
 {
     void *drcontext = enter_client_code();
-    /* FIXME i#1719: NYI */
+    /* FIXME i#1719: NYI.  This one is difficult, as we need to run app code.
+     * We probably need an outer drwrap_replace() layer that calls an inner
+     * drwrap_replace_native() layer.  The inner layer does what GetProcessHeaps does
+     * and passes the array (allocated where?) to the outer layer, which is
+     * interpreted and can safely run the callback routine.
+     */
     ASSERT(false, "NYI");
     exit_client_code(drcontext, false/*need swap*/);
     return STATUS_SUCCESS;
 }
 
 static NTSTATUS WINAPI
-replace_RtlWalkHeap(HANDLE heap, PVOID HeapEntry)
+replace_RtlWalkHeap(HANDLE heap, PVOID entry)
 {
     void *drcontext = enter_client_code();
-    /* FIXME i#1719: NYI */
-    ASSERT(false, "NYI");
+    arena_header_t *arena = heap_to_arena(heap);
+    NTSTATUS res = STATUS_SUCCESS;
+    dr_mcontext_t mc;
+    rtl_process_heap_entry_t *e = (rtl_process_heap_entry_t *) entry;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    mc.pc = (app_pc) replace_RtlWalkHeap;
+    LOG(2, "%s heap="PFX" entry="PFX"\n", __FUNCTION__, heap, entry);
+    /* XXX i#1719: we do not bother to try and iterate pre-us heaps */
+    if (arena == NULL) {
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlWalkHeap);
+        res = STATUS_INVALID_PARAMETER;
+    } else if (!client_read_memory((byte *)&e->lpData, sizeof(e->lpData), &mc)) {
+        res = STATUS_INVALID_PARAMETER;
+    } else {
+        arena_header_t *a;
+        byte *cur;
+        chunk_header_t *head = NULL;
+        bool region = false;
+        /* client_read_memory will complain that the arena is unaddr so we safe_read */
+        arena_header_t safe_a;
+        /* We're supposed to have a PROCESS_HEAP_REGION entry with e->Region filled
+         * out prior to the first chunk in each region.
+         */
+        if (e->lpData == NULL) {
+            a = arena;
+            region = true;
+        } else if (!client_read_memory((byte *)e, sizeof(*e), &mc) ||
+                   !safe_read((byte *)e->Block.hMem, sizeof(safe_a), &safe_a)) {
+            res = STATUS_INVALID_PARAMETER;
+        } else {
+            if (TEST(RTL_PROCESS_HEAP_REGION, e->wFlags)) {
+                a = (arena_header_t *) e->lpData;
+                cur = a->start_chunk;
+            } else {
+                cur = (byte *) e->lpData;
+                for (a = arena; a != NULL; a = a->next_arena) {
+                    if (cur >= a->start_chunk && cur < a->next_chunk)
+                        break;
+                }
+                if (a == NULL)
+                    res = STATUS_INVALID_PARAMETER;
+                else {
+                    /* advance to next chunk */
+                    head = header_from_ptr(cur);
+                    if (head == NULL) {
+                        cur = a->next_chunk;
+                        res = STATUS_INVALID_PARAMETER;
+                    } else
+                        cur += head->alloc_size + inter_chunk_space();
+                }
+            }
+            if (cur >= a->next_chunk) {
+                a = a->next_arena;
+                region = true;
+            }
+        }
+        if (res == STATUS_SUCCESS && region &&
+            !client_write_memory((byte *)e, sizeof(*e), &mc))
+            res = STATUS_INVALID_PARAMETER;
+        if (res != STATUS_SUCCESS) {
+            /* error already set */
+        } else if (a == NULL) {
+            res = STATUS_NO_MORE_ENTRIES;
+        } else {
+            e->iRegionIndex = 0;
+            e->cbOverhead = sizeof(chunk_header_t);
+            if (region) {
+                e->wFlags = RTL_PROCESS_HEAP_REGION;
+                e->Region.dwCommittedSize = (DWORD) (a->commit_end - (byte *)a);
+                e->Region.dwUnCommittedSize = (DWORD) (a->reserve_end - a->commit_end);
+                e->Region.lpFirstBlock = (LPVOID) a->start_chunk;
+                e->Region.lpLastBlock = (LPVOID) a->next_chunk;
+                /* Store for use on the next query */
+                e->lpData = (PVOID) a;
+            } else {
+                head = header_from_ptr(cur);
+                if (TEST(CHUNK_FREED, head->flags))
+                    e->wFlags = RTL_PROCESS_HEAP_UNCOMMITTED_RANGE;
+                else
+                    e->wFlags = RTL_PROCESS_HEAP_ENTRY_BUSY;
+                e->lpData = cur;
+                e->cbData = head->alloc_size;
+                /* We can't use unused fields like e->Block.hMem to store the arena
+                 * for use on the next query, as the HeapWalk layer has its own
+                 * copy of this data struct and it doesn't copy all fields out.
+                 */
+            }
+        }
+    }
     exit_client_code(drcontext, false/*need swap*/);
-    return STATUS_SUCCESS;
+    return res;
 }
 
 #endif /* WINDOWS */
@@ -4027,13 +4129,13 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
             *routine = (void *) replace_RtlGetProcessHeaps;
             *stack = sizeof(void*) * 2;
             return true;
-#if 0 /* FIXME i#1719: replace these */
-        case RTL_ROUTINE_ENUM:
-            *routine = (void *) replace_RtlEnumProcessHeaps;
-            *stack = sizeof(void*) * 2;
-            return true;
         case RTL_ROUTINE_WALK:
             *routine = (void *) replace_RtlWalkHeap;
+            *stack = sizeof(void*) * 2;
+            return true;
+#if 0 /* FIXME i#1719: NYI */
+        case RTL_ROUTINE_ENUM:
+            *routine = (void *) replace_RtlEnumProcessHeaps;
             *stack = sizeof(void*) * 2;
             return true;
 #endif
@@ -4515,10 +4617,10 @@ alloc_replace_init(void)
     ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
     LOG(2, "initial arena="PFX"\n", cur_arena);
 #else /* WINDOWS */
-    cur_arena = create_Rtl_heap(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
-    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
     process_heap = get_app_PEB()->ProcessHeap;
     LOG(2, "process heap="PFX"\n", process_heap);
+    cur_arena = create_Rtl_heap(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
 
     hashtable_init(&crtheap_mod_table, CRTHEAP_MOD_TABLE_HASH_BITS, HASH_INTPTR,
                    false/*!strdup*/);

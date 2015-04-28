@@ -1326,7 +1326,7 @@ client_stack_dealloc(byte *start, byte *end)
         register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DEFINED);
 }
 
-/* Non-interpreted code wrote to app-visible memory */
+/* Non-interpreted code about to write to app-visible memory */
 bool
 client_write_memory(byte *start, size_t size, dr_mcontext_t *mc)
 {
@@ -1334,6 +1334,19 @@ client_write_memory(byte *start, size_t size, dr_mcontext_t *mc)
         app_loc_t loc;
         pc_to_loc(&loc, mc->pc);
         return handle_mem_ref(MEMREF_WRITE, &loc, start, size, mc);
+    }
+    return true;
+}
+
+/* Non-interpreted code about to read to app-visible memory */
+bool
+client_read_memory(byte *start, size_t size, dr_mcontext_t *mc)
+{
+    if (options.shadowing) {
+        app_loc_t loc;
+        pc_to_loc(&loc, mc->pc);
+        return handle_mem_ref(MEMREF_CHECK_ADDRESSABLE|MEMREF_IS_READ, &loc,
+                              start, size, mc);
     }
     return true;
 }

@@ -477,11 +477,17 @@ client_stack_alloc(byte *start, byte *end, bool defined);
 void
 client_stack_dealloc(byte *start, byte *end);
 
-/* Non-interpreted code wrote to app-visible memory.  Returns true if no errors
+/* Non-interpreted code about to write to app-visible memory.  Returns true if no errors
  * were found with the write.
  */
 bool
 client_write_memory(byte *start, size_t size, dr_mcontext_t *mc);
+
+/* Non-interpreted code about to read from app-visible memory.  Returns true if no errors
+ * were found with the read.
+ */
+bool
+client_read_memory(byte *start, size_t size, dr_mcontext_t *mc);
 
 #ifdef DEBUG
 void
