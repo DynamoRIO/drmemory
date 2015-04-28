@@ -219,6 +219,13 @@ file_is_readable(char *path)
     return (drfront_access(path, DRFRONT_READ, &ret) == DRFRONT_SUCCESS && ret);
 }
 
+static bool
+file_is_writable(char *path)
+{
+    bool ret = false;
+    return (drfront_access(path, DRFRONT_WRITE, &ret) == DRFRONT_SUCCESS && ret);
+}
+
 static void
 get_absolute_path(const char *src, char *buf, size_t buflen/*# elements*/)
 {
@@ -290,6 +297,8 @@ _tmain(int argc, TCHAR *targv[])
     ssize_t len; /* shared by all BUFPRINT */
 
     char logdir[MAXIMUM_PATH];
+    bool have_logdir = false;
+    bool use_root_for_logdir;
 
 #ifdef WINDOWS
     char *pidfile = NULL;
@@ -354,6 +363,39 @@ _tmain(int argc, TCHAR *targv[])
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
 
     client_ops[0] = '\0';
+
+    /* default logdir */
+    if (drfront_appdata_logdir(drheapstat_root, "Dr. Heapstat", &use_root_for_logdir,
+                               logdir, BUFFER_SIZE_ELEMENTS(logdir)) == DRFRONT_SUCCESS
+        && !use_root_for_logdir) {
+        if ((dr_create_dir(logdir) || dr_directory_exists(logdir)) &&
+            file_is_writable(logdir))
+            have_logdir = true;
+    }
+    if (!have_logdir) {
+        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s%cdrheapstat%clogs",
+                  drheapstat_root, DIRSEP, DIRSEP);
+        NULL_TERMINATE_BUFFER(logdir);
+        if (!file_is_writable(logdir)) {
+            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s%clogs",
+                      drheapstat_root, DIRSEP);
+            NULL_TERMINATE_BUFFER(logdir);
+            if (file_is_writable(logdir))
+                have_logdir = true;
+        } else
+            have_logdir = true;
+    } else
+        have_logdir = true;
+    if (!have_logdir) {
+        /* try logs in cur dir */
+        get_absolute_path("./logs", logdir, BUFFER_SIZE_ELEMENTS(logdir));
+        NULL_TERMINATE_BUFFER(logdir);
+        if (!file_is_writable(logdir)) {
+            /* try cur dir */
+            get_absolute_path(".", logdir, BUFFER_SIZE_ELEMENTS(logdir));
+            NULL_TERMINATE_BUFFER(logdir);
+        }
+    }
 
     /* parse command line */
     /* FIXME PR 487993: use optionsx.h to construct this parsing code */
@@ -574,33 +616,33 @@ _tmain(int argc, TCHAR *targv[])
             use_drheapstat_debug = true;
         }
     }
-    /* If we're installed into Program Files, we have to pick a different
-     * DR logdir to avoid popup msgs (i#1499).  We don't want to use the
-     * same logdir as for drstrace as the latter supports "-" (stderr).
-     */
-    if (!dr_logdir_specified) { /* don't override user-specified DR logdir */
-        char dr_logdir[MAXIMUM_PATH];
-        bool use_root;
-        /* XXX: ideally we would share DrMem's "/dynamorio/" subdir, but that would
-         * require creating both subdirs separately if drstrace is run before drmem.
-         * See comment below as well.
-         */
-        if (drfront_appdata_logdir(dr_root, "Dr. Heapstat", &use_root,
-                                   dr_logdir, BUFFER_SIZE_ELEMENTS(dr_logdir)) !=
-            DRFRONT_SUCCESS ||
-            use_root ||
-            (!dr_create_dir(dr_logdir) && !dr_directory_exists(dr_logdir))) {
-            /* A similar situation: we'd prefer to share DrMem's local install
-             * "drmemory/logs/dynamorio" but that gets complex to support both
-             * in a package and in a dev's local build dir.  Since DR logs
-             * are going to be rare w/ drstrace (only for debugging the tool
-             * itself) we just go w/ simplicity.
-             */
-            get_absolute_path(".", dr_logdir, BUFFER_SIZE_ELEMENTS(dr_logdir));
+
+    drfront_string_replace_character(logdir, ALT_DIRSEP, DIRSEP); /* canonicalize */
+    if (!file_is_writable(logdir)) {
+        fatal("invalid -logdir: cannot find/write %s", logdir);
+        goto error; /* actually won't get here */
+    }
+    info("logdir is \"%s\"", logdir);
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-logdir `%s` ", logdir);
+
+    /* Put DR logs inside drheapstat logdir */
+    if (!dr_logdir_specified) {
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s%cdynamorio", logdir, DIRSEP);
+        NULL_TERMINATE_BUFFER(buf);
+        if (!dr_directory_exists(buf)) {
+            if (!dr_create_dir(buf)) {
+                /* check again in case of a race */
+                if (!dr_directory_exists(buf)) {
+                    fatal("cannot create %s", buf);
+                    goto error; /* actually won't get here */
+                }
+            }
         }
         BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
-                 drops_sofar, len, "-logdir `%s` ", dr_logdir);
+                 drops_sofar, len, "-logdir `%s` ", buf);
     }
+
 #ifdef UNIX
     errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
 #else
