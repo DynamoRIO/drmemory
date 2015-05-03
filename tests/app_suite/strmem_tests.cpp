@@ -110,6 +110,7 @@ TEST(StringTests, strstr) {
     ASSERT_STREQ(strstr("xxxA", "xxA"), "xxA");
     ASSERT_STREQ(strstr("PREFIXxxxxxASUFFIX", "xxxxA"), "xxxxASUFFIX");
     ASSERT_EQ(strstr("xxxAxABxxxA", "xxAB"), (char *)NULL);
+    ASSERT_EQ(strstr("xxx", "a"), (char *)NULL);
 
     /* Test i#1243 where msvcr100!strstr calls into the middle of strchr
      * and has an unaddr if the string doesn't fill out a malloc chunk
