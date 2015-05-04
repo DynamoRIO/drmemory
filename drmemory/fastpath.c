@@ -4901,7 +4901,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  mi->src[0].app, mi->src[0].shadow);
             mark_eflags_used(drcontext, bb, mi->bb);
             ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
-            if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
+            if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow) &&
+                /* i#1722: do not try to check unaddr for indirected shadow */
+                mi->src[0].indir_size == OPSZ_NA) {
                 /* PR 578892: fastpath heap routine unaddr accesses
                  * Can't do this for src1 and src2 b/c no support for more than
                  * one shadow value type to check down below: but this is enough
