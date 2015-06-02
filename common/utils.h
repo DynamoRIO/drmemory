@@ -77,14 +77,46 @@
 # define IF_MACOS_(x) x,
 #endif
 
-#ifdef X64
-# define IF_X64(x) x
-# define IF_X86_32(x)
-# define IF_X86_32_(x)
+#ifndef IF_X64
+# ifdef X64
+#  define IF_X64(x) x
+# else
+#  define IF_X64(x)
+# endif
+#endif
+
+#ifdef X86
+# ifndef IF_X86
+#  define IF_X86(x) x
+#  define IF_X86_ELSE(x, y) x
+# endif
+# ifdef X64
+#  ifndef IF_X86_32
+#   define IF_X86_32(x)
+#  endif
+#  define IF_X86_32_(x)
+# else
+#  ifndef IF_X86_32
+#   define IF_X86_32(x) x
+#  endif
+#  define IF_X86_32_(x) x,
+# endif
 #else
-# define IF_X64(x)
-# define IF_X86_32(x) x
-# define IF_X86_32_(x) x,
+# ifndef IF_X86
+#  define IF_X86(x)
+#  define IF_X86_ELSE(x, y) y
+# endif
+# define IF_X86_32_(x)
+#endif
+
+#ifndef IF_ARM
+# ifdef ARM
+#  define IF_ARM(x) x
+#  define IF_ARM_ELSE(x, y) x
+# else
+#  define IF_ARM(x)
+#  define IF_ARM_ELSE(x, y) y
+# endif
 #endif
 
 #ifdef DEBUG
