@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -409,6 +409,7 @@ typedef enum {
 #ifdef WINDOWS
     DRSYS_GATEWAY_WOW64,
 #endif
+    DRSYS_GATEWAY_SVC, /* ARM */
 } drsys_gateway_t;
 
 /***************************************************************************

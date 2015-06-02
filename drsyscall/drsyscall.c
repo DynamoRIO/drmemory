@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -144,7 +144,7 @@ is_using_sysenter(void)
 bool
 is_using_sysint(void)
 {
-    return (syscall_gateway == DRSYS_GATEWAY_INT);
+    return (syscall_gateway == DRSYS_GATEWAY_INT || syscall_gateway == DRSYS_GATEWAY_SVC);
 }
 
 #ifdef WINDOWS
@@ -158,6 +158,7 @@ is_using_wow64(void)
 static void
 check_syscall_gateway(instr_t *inst)
 {
+#ifdef X86
     if (instr_get_opcode(inst) == OP_sysenter) {
         if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN
             /* some syscalls use int, but consider sysenter the primary */
@@ -185,6 +186,15 @@ check_syscall_gateway(instr_t *inst)
                             || syscall_gateway == DRSYS_GATEWAY_SYSCALL),
                    "multiple system call gateways not supported");
         }
+#elif defined(ARM)
+    if (instr_get_opcode(inst) == OP_svc) {
+        if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
+            syscall_gateway = DRSYS_GATEWAY_SVC;
+        else {
+            ASSERT(syscall_gateway == DRSYS_GATEWAY_SVC,
+                   "multiple system call gateways not supported");
+        }
+#endif
 #ifdef WINDOWS
     } else if (instr_is_wow64_syscall(inst)) {
         if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
@@ -614,7 +624,7 @@ drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OU
     memset(&pt, 0, sizeof(pt));
     if (syscall == NULL || success == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    pt.mc.xax = result;
+    pt.mc.IF_ARM_ELSE(r0,xax) = result;
     *success = os_syscall_succeeded(sysinfo->num, sysinfo, &pt);
     return DRMF_SUCCESS;
 #endif
@@ -630,13 +640,14 @@ get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
         *success = res;
     if (value != NULL) {
 #ifdef X64
-        *value = mc->rax;
+        *value = mc->IF_ARM_ELSE(r0,rax);
 #else
         /* yes, reg_t is unsigned so we have no sign-extension here */
         if (TEST(SYSINFO_RET_64BIT, sysinfo->flags))
-            *value = (uint64)mc->eax | ((uint64)mc->edx << 32);
+            *value = (uint64)mc->IF_ARM_ELSE(r0,eax) |
+                ((uint64)mc->IF_ARM_ELSE(r1,edx) << 32);
         else
-            *value = (uint64)mc->eax;
+            *value = (uint64)mc->IF_ARM_ELSE(r0,eax);
 #endif
     }
     if (error_code != NULL) {
@@ -644,7 +655,7 @@ get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
             *error_code = 0;
         else {
 #ifdef LINUX
-            *error_code = (uint)-(int)mc->xax;
+            *error_code = (uint)-(int)mc->IF_ARM_ELSE(r0,xax);
 #else
             *error_code = (uint)mc->xax;
 #endif

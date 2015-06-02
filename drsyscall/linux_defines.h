@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -72,7 +72,9 @@
 #define _BITS_STAT_H	1
 #include <fcntl.h> /* F_GETFD, etc. */
 
-#include <asm/ldt.h> /* struct user_desc */
+#ifdef X86
+# include <asm/ldt.h> /* struct user_desc */
+#endif
 #include <linux/futex.h>
 #include <linux/mman.h> /* MREMAP_FIXED */
 
