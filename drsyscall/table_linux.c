@@ -1246,7 +1246,79 @@ syscall_info_t syscall_info[] = {
      }
     }, /* == accept4 */
 
-    /* FIXME i#1019: add newly added linux syscalls */
+#ifdef ARM
+    /**************************************************/
+    /* ARM-only */
+    {{PACKNUM(-1,-1,271),0},"pciconfig_iobase", OK, RLONG, 3,
+     {
+         {0, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{PACKNUM(-1,-1,272),0},"pciconfig_read", OK, RLONG, 5,
+     {
+         {0, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, -3, W},
+     }
+    },
+    {{PACKNUM(-1,-1,273),0},"pciconfig_write", OK, RLONG, 5,
+     {
+         {0, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, -3, R},
+     }
+    },
+    {{PACKNUM(-1,-1,289),0},"send", OK, RLONG, 4,
+     {
+         /* Seems to have same 1st 4 args of sendto */
+         {1, -2, R},
+     }
+    },
+    {{PACKNUM(-1,-1,291),0},"recv", OK, RLONG, 4,
+     {
+         /* Seems to have same 1st 4 args of recvfrom */
+         {1, -2, W},
+     }
+    },
+    {{PACKNUM(-1,-1,0x0f0001),0},"breakpoint", OK, RLONG, 1,
+     {
+         /* Return value is this param: */
+         {0, sizeof(reg_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{PACKNUM(-1,-1,0x0f0002),0},"cacheflush", OK, RLONG, 3,
+     {
+         {0, sizeof(void *), SYSARG_INLINED, DRSYS_TYPE_POINTER},
+         {1, sizeof(long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{PACKNUM(-1,-1,0x0f0003),0},"usr26", OK, RLONG, 1,
+     {
+         /* Return value is this param: */
+         {0, sizeof(reg_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{PACKNUM(-1,-1,0x0f0004),0},"usr32", OK, RLONG, 1,
+     {
+         /* Return value is this param: */
+         {0, sizeof(reg_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{PACKNUM(-1,-1,0x0f0005),0},"settls", OK, RLONG, 1,
+     {
+         {0, sizeof(void *), SYSARG_INLINED, DRSYS_TYPE_POINTER},
+     }
+    },
+#endif
+
+    /* XXX i#1019: add newly added linux syscalls */
 };
 
 size_t count_syscall_info = sizeof(syscall_info)/sizeof(syscall_info[0]);
