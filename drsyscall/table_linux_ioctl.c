@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -36,7 +36,7 @@
 /* The name of the ioctl is "ioctl.name".  To avoid long lines from repeating
  * the request name we wrap it in a macro.
  */
-#define IOCTL(request) {PACKNUM(16,54), request}, "ioctl." STRINGIFY(request)
+#define IOCTL(request) {PACKNUM(16,54,54), request}, "ioctl." STRINGIFY(request)
 
 /* All ioctls take fd and request as the first two args. */
 #define FD_REQ \

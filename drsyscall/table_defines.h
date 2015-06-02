@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -42,7 +42,14 @@
 
 #ifdef LINUX
 /* See the big comment "64-bit vs 32-bit" in drsyscall_linux.c. */
-# define PACKNUM(x64,x86) (((x64) << 16) | (x86 & 0xffff))
+# ifdef X86
+#  define PACKNUM(x64,x86,arm) (((x64) << 16) | (x86 & 0xffff))
+# elif defined(ARM)
+/* XXX i#1569: for AArch64 we'll have to see how the numbers change.
+ * We can't pack in the same way b/c the arm-specific syscalls use top bits.
+ */
+#  define PACKNUM(x64,x86,arm) arm
+# endif
 #endif
 
 #ifdef WINDOWS

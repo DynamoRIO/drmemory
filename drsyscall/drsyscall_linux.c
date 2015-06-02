@@ -69,12 +69,21 @@ union ioctl_data {
  */
 /* PACKNUM is defined in table_defines.h */
 /* the cast is for sign extension for -1 sentinel */
-#define UNPACK_X64(packed) ((int)(short)((packed) >> 16))
-#define UNPACK_X86(packed) ((int)(short)((packed) & 0xffff))
-#ifdef X64
-# define UNPACK_NATIVE UNPACK_X64
-#else
-# define UNPACK_NATIVE UNPACK_X86
+#ifdef X86
+# define UNPACK_X64(packed) ((int)(short)((packed) >> 16))
+# define UNPACK_X86(packed) ((int)(short)((packed) & 0xffff))
+# ifdef X64
+#  define UNPACK_NATIVE UNPACK_X64
+# else
+#  define UNPACK_NATIVE UNPACK_X86
+# endif
+#elif defined(ARM)
+/* single number as we only support 32-bit for now */
+# ifdef X64
+#  error NYI i#1569
+# else
+#  define UNPACK_NATIVE(packed) packed
+# endif
 #endif
 
 /* Table that maps system call number to a syscall_info_t* */

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -48,7 +48,7 @@ configure_DynamoRIO_global(OFF ON)
 function(add_drmf_test test_name src_app src_client ext_list pass_regex)
   add_executable(${test_name} ${src_app})
   set_property(TARGET ${test_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
-  if (UNIX AND NOT X64)
+  if (UNIX AND NOT X64 AND NOT ARM)
     append_property_string(TARGET ${test_name} COMPILE_FLAGS "-m32")
     append_property_string(TARGET ${test_name} LINK_FLAGS "-m32")
   endif ()

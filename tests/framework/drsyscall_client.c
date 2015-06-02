@@ -54,14 +54,14 @@ check_mcontext(void *drcontext)
     mc_DR.size = sizeof(mc_DR);
     mc_DR.flags = DR_MC_INTEGER|DR_MC_CONTROL;
     dr_get_mcontext(drcontext, &mc_DR);
-    ASSERT(mc->xdi == mc_DR.xdi, "mc check");
-    ASSERT(mc->xsi == mc_DR.xsi, "mc check");
-    ASSERT(mc->xbp == mc_DR.xbp, "mc check");
-    ASSERT(mc->xsp == mc_DR.xsp, "mc check");
-    ASSERT(mc->xbx == mc_DR.xbx, "mc check");
-    ASSERT(mc->xdx == mc_DR.xdx, "mc check");
-    ASSERT(mc->xcx == mc_DR.xcx, "mc check");
-    ASSERT(mc->xax == mc_DR.xax, "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r7,xdi) == mc_DR.IF_ARM_ELSE(r7,xdi), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r6,xsi) == mc_DR.IF_ARM_ELSE(r6,xsi), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r5,xbp) == mc_DR.IF_ARM_ELSE(r5,xbp), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r4,xsp) == mc_DR.IF_ARM_ELSE(r4,xsp), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r3,xbx) == mc_DR.IF_ARM_ELSE(r3,xbx), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r2,xdx) == mc_DR.IF_ARM_ELSE(r2,xdx), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r1,xcx) == mc_DR.IF_ARM_ELSE(r1,xcx), "mc check");
+    ASSERT(mc->IF_ARM_ELSE(r0,xax) == mc_DR.IF_ARM_ELSE(r0,xax), "mc check");
     ASSERT(mc->xflags == mc_DR.xflags, "mc check");
 }
 
@@ -150,6 +150,14 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "primary should match DR's num");
+
+    if (verbose) {
+        const char *name;
+        drmf_status_t res = drsys_syscall_name(syscall, &name);
+        ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_syscall_name failed");
+        dr_fprintf(STDERR, "syscall %d.%d = %s\n", sysnum_full.number,
+                   sysnum_full.secondary, name);
+    }
 
     check_mcontext(drcontext);
 
@@ -302,8 +310,10 @@ static_iter_cb(drsys_sysnum_t num, drsys_syscall_t *syscall, void *user_data)
     drmf_status_t res = drsys_syscall_name(syscall, &name);
     ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_syscall_name failed");
 
-    if (verbose)
-        dr_fprintf(STDERR, "syscall %d.%d = %s\n", num.number, num.secondary, name);
+    if (verbose) {
+        dr_fprintf(STDERR, "static syscall %d.%d = %s\n", num.number, num.secondary,
+                   name);
+    }
 
     if (drsys_iterate_arg_types(syscall, static_iter_arg_cb, NULL) !=
         DRMF_SUCCESS)
