@@ -604,9 +604,10 @@ extern int tls_idx_util;
 #endif
 
 #ifdef UNIX
-# define ATOMIC_INC32(x) __asm__ __volatile__("lock incl %0" : "=m" (x) : : "memory")
-# define ATOMIC_DEC32(x) __asm__ __volatile__("lock decl %0" : "=m" (x) : : "memory")
-# define ATOMIC_ADD32(x, val) \
+# ifdef X86
+#  define ATOMIC_INC32(x) __asm__ __volatile__("lock incl %0" : "=m" (x) : : "memory")
+#  define ATOMIC_DEC32(x) __asm__ __volatile__("lock decl %0" : "=m" (x) : : "memory")
+#  define ATOMIC_ADD32(x, val) \
     __asm__ __volatile__("lock addl %1, %0" : "=m" (x) : "r" (val) : "memory")
 
 static inline int
@@ -617,6 +618,60 @@ atomic_add32_return_sum(volatile int *x, int val)
                          : "1" (val) : "memory");
     return (cur + val);
 }
+# elif defined(ARM)
+/* XXX: should DR export these for us? */
+#  define ATOMIC_INC32(x)                                   \
+     __asm__ __volatile__(                                  \
+       "1: ldrex r2, %0         \n\t"                       \
+       "   add   r2, r2, #1     \n\t"                       \
+       "   strex r3, r2, %0     \n\t"                       \
+       "   cmp   r3, #0         \n\t"                       \
+       "   bne   1b             \n\t"                       \
+       "   cmp   r2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for ARM mode */              \
+       : : "cc", "memory", "r2", "r3");
+#  define ATOMIC_DEC32(x)                                   \
+     __asm__ __volatile__(                                  \
+       "1: ldrex r2, %0         \n\t"                       \
+       "   sub   r2, r2, #1     \n\t"                       \
+       "   strex r3, r2, %0     \n\t"                       \
+       "   cmp   r3, #0         \n\t"                       \
+       "   bne   1b             \n\t"                       \
+       "   cmp   r2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for ARM mode */              \
+       : : "cc", "memory", "r2", "r3");
+#  define ATOMIC_ADD32(x, val)                              \
+     __asm__ __volatile__(                                  \
+       "1: ldrex r2, %0         \n\t"                       \
+       "   add   r2, r2, %1     \n\t"                       \
+       "   strex r3, r2, %0     \n\t"                       \
+       "   cmp   r3, #0         \n\t"                       \
+       "   bne   1b             \n\t"                       \
+       "   cmp   r2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for ARM mode */              \
+       : "r"  (val)                                         \
+       : "cc", "memory", "r2", "r3");
+#  define ATOMIC_ADD_EXCHANGE32(x, val, result)             \
+     __asm__ __volatile__(                                  \
+       "1: ldrex r2, %0         \n\t"                       \
+       "   add   r2, r2, %2     \n\t"                       \
+       "   strex r3, r2, %0     \n\t"                       \
+       "   cmp   r3, #0         \n\t"                       \
+       "   bne   1b             \n\t"                       \
+       "   sub   r2, r2, %2     \n\t"                       \
+       "   str   r2, %1"                                    \
+       : "=Q" (*x), "=m" (result)                           \
+       : "r"  (val)                                         \
+       : "cc", "memory", "r2", "r3");
+
+static inline int
+atomic_add32_return_sum(volatile int *x, int val)
+{
+    int temp;
+    ATOMIC_ADD_EXCHANGE32(x, val, temp);
+    return (temp + val);
+}
+# endif
 #else
 # define ATOMIC_INC32(x) _InterlockedIncrement((volatile LONG *)&(x))
 # define ATOMIC_DEC32(x) _InterlockedDecrement((volatile LONG *)&(x))
