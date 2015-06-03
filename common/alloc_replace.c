@@ -594,7 +594,7 @@ iterator_unlock(arena_header_t *arena, bool in_alloc)
     /* assumption: we only need xsp and xbp initialized */ \
     (mc)->size = sizeof(*(mc));                            \
     (mc)->flags = DR_MC_CONTROL | DR_MC_INTEGER;           \
-    get_stack_registers(&(mc)->xsp, &(mc)->xbp);           \
+    get_stack_registers(&MC_SP_REG(mc), &MC_FP_REG(mc)); \
 } while (0)
 
 #ifdef WINDOWS

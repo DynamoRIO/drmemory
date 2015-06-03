@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,8 +26,6 @@
 
 #ifndef _ALLOC_DRMEM_H_
 #define _ALLOC_DRMEM_H_ 1
-
-#define DR_REG_PTR_RETURN DR_REG_XAX
 
 #ifdef UNIX
 extern hashtable_t sighand_table;

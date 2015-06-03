@@ -562,11 +562,13 @@ event_thread_init(void *drcontext)
 
     if (options.show_all_threads && !first_thread) {
         dr_mcontext_t mc;
+#ifdef WINDOWS
         app_pc start_addr;
-#ifdef USE_DRSYMS
+# ifdef USE_DRSYMS
         char buf[128];
         size_t sofar = 0;
         ssize_t len;
+# endif
 #endif
         IF_DEBUG(bool ok;)
         mc.size = sizeof(mc);
@@ -574,21 +576,25 @@ event_thread_init(void *drcontext)
         IF_DEBUG(ok = )
             dr_get_mcontext(drcontext, &mc);
         ASSERT(ok, "unable to get mcontext for new thread");
+#ifdef WINDOWS
         start_addr = (app_pc) IF_X64_ELSE(mc.rcx, mc.eax);
-#ifdef USE_DRSYMS
+# ifdef USE_DRSYMS
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                  "Thread #%d @", local_count);
         print_timestamp_elapsed(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
-# ifdef STATISTICS
+#  ifdef STATISTICS
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len, " #bbs=%d", num_bbs);
-# endif
+#  endif
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                  " start="PFX" ", start_addr);
         print_symbol(start_addr, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar,
                      true, PRINT_SYMBOL_OFFSETS);
         LOG(1, "%s\n", buf);
-#else
+# else
         LOG(1, "New thread #%d: start addr "PFX"\n", local_count, start_addr);
+# endif
+#else
+        LOG(1, "New thread #%d\n", local_count);
 #endif
     }
 

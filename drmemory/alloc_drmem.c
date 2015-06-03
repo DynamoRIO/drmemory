@@ -1545,7 +1545,8 @@ client_pre_syscall(void *drcontext, int sysnum)
             sc = (struct sigcontext *) sp;
         }
         if (sc != NULL &&
-            safe_read(&IF_X64_ELSE(sc->rsp, sc->esp), sizeof(new_sp), &new_sp)) {
+            safe_read(&sc->IF_X64_ELSE(rsp, IF_ARM_ELSE(arm_sp, esp)),
+                      sizeof(new_sp), &new_sp)) {
             byte *unaddr_top = NULL;
             if (new_sp > sp && (size_t)(new_sp - sp) < MAX_SIGNAL_FRAME_SIZE) {
                 unaddr_top = new_sp;
@@ -1714,6 +1715,7 @@ instrument_signal_handler(void *drcontext, instrlist_t *bb, instr_t *inst,
  * ADDRESSABILITY
  */
 
+#ifdef X86 /* replacement should avoid needing to port this to ARM */
 static bool
 is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
                      app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
@@ -1787,6 +1789,7 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_free(drcontext, &next);
     return match;
 }
+#endif /* X86 */
 
 bool
 is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
@@ -1891,6 +1894,7 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
      * won't generalize well for other versions of alloca: OTOH we
      * don't want any false negatives.
      */
+#ifdef X86
     instr_t next;
     app_pc dpc = next_pc;
     bool match = false;
@@ -1967,8 +1971,13 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
     instr_free(drcontext, &next);
 
     return match;
+#elif defined(ARM)
+    /* FIXME i#1726: add ARM patterns */
+    return false;
+#endif
 }
 
+#ifdef X86 /* replacement should avoid needing to port this to ARM */
 static bool
 is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
                   app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
@@ -2141,6 +2150,7 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_free(drcontext, &next);
     return match;
 }
+#endif /* X86 */
 
 static bool
 is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
@@ -2275,6 +2285,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
             add_alloca_exception(drcontext, pc);
         }
     }
+#ifdef X86 /* replacement should avoid needing to port this to ARM */
     if (!match) {
         match = is_strlen_pattern(drcontext, write, pc, dpc, addr, sz,
                                   &inst, &now_addressable);
@@ -2287,6 +2298,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
         match = is_rawmemchr_pattern(drcontext, write, pc, dpc, addr, sz,
                                      &inst, &now_addressable);
     }
+#endif
     if (!match) {
         match = is_prefetch(drcontext, write, pc, dpc, addr, sz,
                             &inst, &now_addressable, loc, mc);

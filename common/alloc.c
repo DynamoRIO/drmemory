@@ -983,10 +983,10 @@ replace_realloc_size_post(void *wrapcxt, void *user_data)
 {
     cls_alloc_t *pt = (cls_alloc_t *) user_data;
     dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_INTEGER);
-    ASSERT(mc->xax == 0, "replace_realloc_size_app always returns 0");
+    ASSERT(MC_RET_REG(mc) == 0, "replace_realloc_size_app always returns 0");
     /* should never fail for our uses */
-    mc->xax = malloc_chunk_size(pt->alloc_base);
-    LOG(2, "replace_realloc_size_post "PFX" => "PIFX"\n", pt->alloc_base, mc->xax);
+    MC_RET_REG(mc) = malloc_chunk_size(pt->alloc_base);
+    LOG(2, "replace_realloc_size_post "PFX" => "PIFX"\n", pt->alloc_base, MC_RET_REG(mc));
     drwrap_set_mcontext(wrapcxt);
 }
 
@@ -1095,7 +1095,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
             continue;
         }
         /* XXX: for x64 we will have to consider reachability */
-        if (instr_get_opcode(&inst) == OP_call) {
+        if (instr_is_call(&inst)) {
             opnd_t tgt = instr_get_target(&inst);
             app_pc pc, tgt_pc;
             found_calls++;
@@ -2451,7 +2451,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 void *drcontext = dr_get_current_drcontext();
                 instr_init(drcontext, &inst);
                 decode(drcontext, pc, &inst);
-                if (!instr_valid(&inst) || instr_get_opcode(&inst) == OP_jmp_ind)
+                if (!instr_valid(&inst) || instr_get_opcode(&inst) ==
+                    IF_X86_ELSE(OP_jmp_ind, OP_bx))
                     pc = NULL;
                 instr_free(drcontext, &inst);
             } else
@@ -4910,8 +4911,8 @@ record_mc_for_client(cls_alloc_t *pt, void *wrapcxt)
      * pass operators through and don't handle until malloc/free!
      */
     dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR);
-    pt->outer_xsp = mc->xsp;
-    pt->outer_xbp = mc->xbp;
+    pt->outer_xsp = MC_SP_REG(mc);
+    pt->outer_xbp = MC_FP_REG(mc);
     pt->outer_retaddr = drwrap_get_retaddr(wrapcxt);
     LOG(3, "\t@ level=%d recorded xsp="PFX" xbp="PFX" ra="PFX"\n",
         pt->in_heap_routine, pt->outer_xsp, pt->outer_xbp, pt->outer_retaddr);
@@ -4926,10 +4927,10 @@ static inline app_pc
 set_mc_for_client(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc, app_pc post_call)
 {
     if (pt->allocator != 0) {
-        pt->xsp_tmp = mc->xsp;
-        pt->xbp_tmp = mc->xbp;
-        mc->xsp = pt->outer_xsp;
-        mc->xbp = pt->outer_xbp;
+        pt->xsp_tmp = MC_SP_REG(mc);
+        pt->xbp_tmp = MC_FP_REG(mc);
+        MC_SP_REG(mc) = pt->outer_xsp;
+        MC_FP_REG(mc) = pt->outer_xbp;
         /* XXX i#639: we'd like to have the outer heap routine itself
          * on the callstack.  However, doing so here can result in missing the
          * caller frame (i#913).  What we want is to be able to pass multiple
@@ -4947,8 +4948,8 @@ static inline void
 restore_mc_for_client(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc)
 {
     if (pt->allocator != 0) {
-        mc->xsp = pt->xsp_tmp;
-        mc->xbp = pt->xbp_tmp;
+        MC_SP_REG(mc) = pt->xsp_tmp;
+        MC_FP_REG(mc) = pt->xbp_tmp;
     }
 }
 
@@ -5490,7 +5491,7 @@ handle_free_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     pt->alloc_being_freed = NULL;
 #ifdef WINDOWS
     if (routine->type == RTL_ROUTINE_FREE) {
-        if (mc->xax == 0/*FALSE==failure*/) {
+        if (MC_RET_REG(mc) == 0/*FALSE==failure*/) {
             /* If our prediction is wrong, we can't undo the shadow memory
              * changes since we've lost which were defined vs undefined,
              * along with whether this malloc was pre-us or not.  We
@@ -5556,7 +5557,7 @@ handle_size_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                  dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
     uint failure = IF_WINDOWS_ELSE((routine->type == RTL_ROUTINE_SIZE) ? ~0UL : 0, 0);
-    if (mc->xax != failure) {
+    if (MC_RET_REG(mc) != failure) {
         if (malloc_is_native(pt->alloc_base, pt, true))
             return;
         /* we want to return the size without the redzone */
@@ -5572,8 +5573,8 @@ handle_size_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                             true)) {
             if (pt->alloc_base != NULL) {
                 LOG(2, "size query: changing "PFX" to "PFX"\n",
-                    mc->xax, mc->xax - redzone_size(routine)*2);
-                mc->xax -= redzone_size(routine)*2;
+                    MC_RET_REG(mc), MC_RET_REG(mc) - redzone_size(routine)*2);
+                MC_RET_REG(mc) -= redzone_size(routine)*2;
                 drwrap_set_mcontext(wrapcxt);
 #ifdef WINDOWS
                 /* RtlSizeHeap returns exactly what was asked for, while
@@ -5581,7 +5582,7 @@ handle_size_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                  */
                 ASSERT(routine->type == HEAP_ROUTINE_SIZE_USABLE ||
                        !alloc_ops.size_in_redzone ||
-                       mc->xax == *((size_t *)(pt->alloc_base - redzone_size(routine))),
+                       MC_RET_REG(mc) == *((size_t *)(pt->alloc_base - redzone_size(routine))),
                        "size mismatch");
 #endif
             } else {
@@ -5753,8 +5754,8 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     size_t *real_size_out,
                     bool used_redzone, alloc_routine_entry_t *routine)
 {
-    if (mc->xax != 0) {
-        app_pc app_base = (app_pc) mc->xax;
+    if (MC_RET_REG(mc) != 0) {
+        app_pc app_base = (app_pc) MC_RET_REG(mc);
         size_t real_size;
         bool query_for_size = alloc_ops.get_padded_size;
         if (query_for_size) {
@@ -5782,15 +5783,15 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             if (alloc_ops.size_in_redzone) {
                 ASSERT(redzone_size(routine) >= sizeof(size_t), "redzone size too small");
                 /* store the size for our own use */
-                *((size_t *)mc->xax) = pt->alloc_size;
+                *((size_t *)MC_RET_REG(mc)) = pt->alloc_size;
             }
             /* FIXME: could there be alignment guarantees provided
              * by RtlAllocateHeap that we're messing up?
              * Should we preserve any obvious alignment we see?
              */
             LOG(2, "%s-post changing from "PFX" to "PFX"\n",
-                routine->name, mc->xax, app_base);
-            mc->xax = (reg_t) app_base;
+                routine->name, MC_RET_REG(mc), app_base);
+            MC_RET_REG(mc) = (reg_t) app_base;
             drwrap_set_mcontext(wrapcxt);
         }
 #ifdef WINDOWS
@@ -5871,7 +5872,7 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                    dr_mcontext_t *mc, bool realloc, app_pc post_call,
                    alloc_routine_entry_t *routine)
 {
-    app_pc real_base = (app_pc) mc->xax;
+    app_pc real_base = (app_pc) MC_RET_REG(mc);
     size_t pad_size, real_size = 0;
     app_pc app_base = adjust_alloc_result(drcontext, pt, wrapcxt, mc, &pad_size,
                                           &real_size, true, routine);
@@ -6032,7 +6033,7 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     info.request_size = pt->alloc_size;
     if (alloc_ops.replace_realloc) {
         /* for sz==0 normal to return NULL */
-        if (mc->xax == 0 && pt->realloc_replace_size != 0) {
+        if (MC_RET_REG(mc) == 0 && pt->realloc_replace_size != 0) {
             LOG(2, "realloc-post failure %d %d\n",
                 pt->alloc_size, pt->realloc_replace_size);
             handle_alloc_failure(&info, post_call, mc);
@@ -6054,8 +6055,8 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
 #endif
     ASSERT(info.realloc, "old info should also be realloc");
-    if (mc->xax != 0) {
-        app_pc real_base = (app_pc) mc->xax;
+    if (MC_RET_REG(mc) != 0) {
+        app_pc real_base = (app_pc) MC_RET_REG(mc);
         size_t pad_size, real_size;
         app_pc app_base = adjust_alloc_result(drcontext, pt, wrapcxt, mc, &pad_size,
                                               &real_size,
@@ -6195,7 +6196,7 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                    dr_mcontext_t *mc, app_pc post_call,
                    alloc_routine_entry_t *routine)
 {
-    app_pc real_base = (app_pc) mc->xax;
+    app_pc real_base = (app_pc) MC_RET_REG(mc);
     size_t pad_size, real_size;
     app_pc app_base;
     malloc_info_t info = {sizeof(info)};
@@ -6266,9 +6267,9 @@ handle_create_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      *               PVOID Lock OPTIONAL,
      *               PRTL_HEAP_PARAMETERS Parameters OPTIONAL);
      */
-    LOG(2, "RtlCreateHeap => "PFX"\n", mc->xax);
-    if (mc->xax != 0) {
-        HANDLE heap = (HANDLE) mc->xax;
+    LOG(2, "RtlCreateHeap => "PFX"\n", MC_RET_REG(mc));
+    if (MC_RET_REG(mc) != 0) {
+        HANDLE heap = (HANDLE) MC_RET_REG(mc);
         heap_region_set_heap((byte *)heap, heap);
     }
     pt->in_create = false;
@@ -6820,20 +6821,20 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         (!adjusted && pt->in_heap_adjusted < pt->in_heap_routine)) {
         if (pt->ignored_alloc) {
             LOG(2, "ignored post-alloc routine "PFX" %s => "PFX"\n",
-                func, get_alloc_routine_name(func), mc->xax);
+                func, get_alloc_routine_name(func), MC_RET_REG(mc));
             /* remember the alloc so we can ignore on size or free */
             ASSERT(is_malloc_routine(type) ||
                    is_realloc_routine(type) ||
                    is_calloc_routine(type), "ignored_alloc incorrectly set");
-            malloc_add_common((app_pc)mc->xax,
+            malloc_add_common((app_pc)MC_RET_REG(mc),
                               /* don't need size */
-                              (app_pc)mc->xax, (app_pc)mc->xax,
+                              (app_pc)MC_RET_REG(mc), (app_pc)MC_RET_REG(mc),
                               MALLOC_RTL_INTERNAL, 0, mc, post_call, type);
             pt->ignored_alloc = false;
         } else {
             /* some outer level did the adjustment, so nop for us */
             LOG(2, "recursive post-alloc routine "PFX" %s: no adjustments; eax="PFX"\n",
-                func, get_alloc_routine_name(func), mc->xax);
+                func, get_alloc_routine_name(func), MC_RET_REG(mc));
         }
         return;
     }

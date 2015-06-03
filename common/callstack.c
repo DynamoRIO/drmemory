@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -635,10 +635,11 @@ static void
 dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t amount,
                app_pc pc)
 {
-    byte *xsp = (byte *) mc->xsp;
-    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX":\n", pc, mc->xsp, mc->xbp);
+    byte *xsp = (byte *) MC_SP_REG(mc);
+    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX":\n", pc, MC_SP_REG(mc),
+        MC_FP_REG(mc));
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        while (xsp < (byte *)mc->xsp + amount && xsp < pt->stack_lowest_frame) {
+        while (xsp < (byte *)MC_SP_REG(mc) + amount && xsp < pt->stack_lowest_frame) {
             void *val = *(void **)xsp;
             char buf[128];
             size_t sofar = 0;
@@ -1503,7 +1504,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_callstack));
     int num = num_frames_printed;   /* PR 475453 - wrong call stack depths */
     ssize_t len = 0;
-    ptr_uint_t *pc = (mc == NULL ? NULL : (ptr_uint_t *) mc->xbp);
+    ptr_uint_t *pc = (mc == NULL ? NULL : (ptr_uint_t *) MC_FP_REG(mc));
     size_t prev_sofar = 0;
     struct {
         app_pc next_fp;
@@ -1515,7 +1516,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     bool have_appdata = false;
     bool scanned = false;
     bool last_frame = false;
-    byte *tos = (mc == NULL ? NULL : (byte *) mc->xsp);
+    byte *tos = (mc == NULL ? NULL : (byte *) MC_SP_REG(mc));
 
     ASSERT(max_frames <= ops.global_max_frames, "max_frames > global_max_frames");
 
@@ -1536,13 +1537,13 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     STATS_INC(callstack_walks);
 
     LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
-        mc->xbp, mc->xsp,
+        MC_FP_REG(mc), MC_SP_REG(mc),
         (ops.is_dword_defined == NULL) ?
-        0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp));
-    if (mc->xsp != 0 &&
-        (!ALIGNED(mc->xbp, sizeof(void*)) ||
-         mc->xbp < mc->xsp ||
-         mc->xbp - mc->xsp > ops.stack_swap_threshold ||
+        0 : ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc)));
+    if (MC_SP_REG(mc) != 0 &&
+        (!ALIGNED(MC_FP_REG(mc), sizeof(void*)) ||
+         MC_FP_REG(mc) < MC_SP_REG(mc) ||
+         MC_FP_REG(mc) - MC_SP_REG(mc) > ops.stack_swap_threshold ||
          (ops.ignore_xbp != NULL &&
           ops.ignore_xbp(drcontext, mc)) ||
 #ifdef WINDOWS
@@ -1551,10 +1552,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
 #endif
          /* avoid stale fp,ra pair (i#640) */
          (ops.is_dword_defined != NULL &&
-          (!ops.is_dword_defined(drcontext, (byte*)mc->xbp) ||
-           !ops.is_dword_defined(drcontext, (byte*)mc->xbp + sizeof(void*)))) ||
-         (mc->xbp != 0 &&
-          (!safe_read((byte *)mc->xbp, sizeof(appdata), &appdata) ||
+          (!ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc)) ||
+           !ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc) + sizeof(void*)))) ||
+         (MC_FP_REG(mc) != 0 &&
+          (!safe_read((byte *)MC_FP_REG(mc), sizeof(appdata), &appdata) ||
            /* check the very first retaddr since ebp might point at
             * a misleading stack slot
             */
@@ -1563,11 +1564,11 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
-        LOG(4, "find_next_fp b/c starting w/ non-fp ebp "PFX" (def=%d %d)\n", mc->xbp,
+        LOG(4, "find_next_fp b/c starting w/ non-fp ebp "PFX" (def=%d %d)\n",
+            MC_FP_REG(mc), ops.is_dword_defined == NULL ?
+            0 : ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc)),
             ops.is_dword_defined == NULL ?
-            0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp),
-            ops.is_dword_defined == NULL ?
-            0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp + sizeof(void*)));
+            0 : ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc) + sizeof(void*)));
 #if defined(LINUX) && !defined(X64)
         if (pcs != NULL && pcs->first_is_syscall &&
             !TEST(FP_DO_NOT_SKIP_VSYSCALL_PUSH, ops.fp_flags)) {
@@ -1664,8 +1665,9 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  * Start over w/ top of stack to avoid skipping a frame (i#521).
                  */
                 LOG(4, "find_next_fp "PFX" b/c starting w/ non-fp ebp "PFX"\n",
-                    mc->xsp, mc->xbp);
-                pc = (ptr_uint_t *) find_next_fp(drcontext, pt, (app_pc)mc->xsp, NULL,
+                    MC_SP_REG(mc), MC_FP_REG(mc));
+                pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
+                                                 (app_pc)MC_SP_REG(mc), NULL,
                                                  true/*top frame*/, &custom_retaddr);
                 scanned = true;
                 first_iter = false; /* don't loop */

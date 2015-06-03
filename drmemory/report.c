@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2163,7 +2163,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
 {
     stored_error_t *err = stored_error_create(type);
     if (pcs == NULL) {
-        reg_t save_xbp = mc->xbp;
+        reg_t save_xbp = MC_FP_REG(mc);
         bool zeroed_xbp = false;
         const char *modpath = NULL;
         uint max_frames = (type_is_leak(type) ? options.malloc_max_frames :
@@ -2208,18 +2208,18 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                     if (modpath != NULL && !text_matches_pattern
                         (modpath, "*windows?sys*", true/*ignore case*/)) {
                         zeroed_xbp = true;
-                        mc->xbp = 0;
+                        MC_FP_REG(mc) = 0;
                     }
                 }
             } else {
                 /* we have definedness info so scanning is accurate */
                 zeroed_xbp = true;
-                mc->xbp = 0;
+                MC_FP_REG(mc) = 0;
             }
         }
         packed_callstack_record(&err->pcs, mc, loc, max_frames);
         if (zeroed_xbp) {
-            mc->xbp = save_xbp;
+            MC_FP_REG(mc) = save_xbp;
             /* i#1049: scan may not have been far enough so re-try w/ ebp */
             if (packed_callstack_num_frames(err->pcs) <= 1) {
                 IF_DEBUG(uint ref = )
@@ -3575,7 +3575,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
 void
 report_callstack(void *drcontext, dr_mcontext_t *mc)
 {
-    print_callstack_to_file(drcontext, mc, mc->xip, INVALID_FILE/*use pt->f*/,
+    print_callstack_to_file(drcontext, mc, mc->pc, INVALID_FILE/*use pt->f*/,
                             options.callstack_max_frames);
 }
 #endif /* DEBUG */

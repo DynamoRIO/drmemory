@@ -255,6 +255,18 @@
            "truncating value to ("#type")"#var);    \
 } while (0)
 
+#ifdef X86
+# define MC_RET_REG(mc) (mc)->xax
+# define MC_FP_REG(mc)  (mc)->xbp
+# define MC_SP_REG(mc)  (mc)->xsp
+#elif defined(ARM)
+# define MC_RET_REG(mc) (mc)->r0
+# define MC_FP_REG(mc)  (mc)->r11
+# define MC_SP_REG(mc)  (mc)->sp
+#endif
+
+#define DR_REG_PTR_RETURN IF_X86_ELSE(DR_REG_XAX, DR_REG_R0)
+
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;
 extern uint op_verbose_level;
