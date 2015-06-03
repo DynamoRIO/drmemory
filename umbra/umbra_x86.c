@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -263,11 +263,12 @@ shadow_table_insert_app_to_shadow(void *drcontext,
                                   reg_id_t reg_addr,
                                   reg_id_t reg_index)
 {
+#ifdef X86
     uint disp;
     /* %reg_index = %reg_addr */
-    PRE(ilist, where, INSTR_CREATE_mov_ld(drcontext,
-                                          opnd_create_reg(reg_index),
-                                          opnd_create_reg(reg_addr)));
+    PRE(ilist, where, XINST_CREATE_move(drcontext,
+                                        opnd_create_reg(reg_index),
+                                        opnd_create_reg(reg_addr)));
     /* %reg_index >>= 16 */
     PRE(ilist, where, INSTR_CREATE_shr(drcontext,
                                        opnd_create_reg(reg_index),
@@ -294,6 +295,9 @@ shadow_table_insert_app_to_shadow(void *drcontext,
                                                              sizeof(ptr_int_t),
                                                              disp,
                                                              OPSZ_PTR)));
+#elif defined(ARM)
+    /* FIXME i#1726: port to ARM by adding more XINST_CREATE_ routines */
+#endif
 }
 
 static bool

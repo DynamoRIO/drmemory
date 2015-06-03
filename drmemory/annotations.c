@@ -39,10 +39,11 @@
 #include "shadow.h"
 #include "options.h"
 
+#ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
 static ptr_uint_t
 handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
 {
-#ifdef TOOL_DR_MEMORY
+# ifdef TOOL_DR_MEMORY
     app_pc start = (app_pc)request->args[0];
     ptr_uint_t len = request->args[1];
     LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + len);
@@ -53,21 +54,24 @@ handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
 
     shadow_set_non_matching_range(start, len, SHADOW_DEFINED,
                                   SHADOW_UNADDRESSABLE);
-#endif
+# endif
 
     /* XXX: Not sure what the proper return code is for this request, and most
      * apps don't care.
      */
     return 1;
 }
+#endif
 
 void
 annotate_init(void)
 {
     /* Valgrind annotations are not available for 64-bit Windows */
 #if !(defined(WINDOWS) && defined(X64))
+# ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
     dr_annotation_register_valgrind(DR_VG_ID__MAKE_MEM_DEFINED_IF_ADDRESSABLE,
                                     handle_make_mem_defined_if_addressable);
+# endif
 #endif
 }
 

@@ -1107,7 +1107,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     has_noignorable_mem = false;
     for (i = 0; i < instr_num_dsts(inst); i++) {
         opnd_t opnd = instr_get_dst(inst, i);
-        if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
+        if (opnd_is_memory_reference(opnd) IF_X86(&& instr_get_opcode(inst) != OP_lea))
             has_mem = true;
 #ifdef TOOL_DR_MEMORY
         if (has_mem && opnd_uses_nonignorable_memory(opnd))
@@ -1121,7 +1121,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
                  */
                 if (!(opc_is_push(opc) || (opc_is_pop(opc) && i > 0))) {
                     bi->addressable[reg_to_pointer_sized(opnd_get_reg(opnd)) -
-                                    DR_REG_XAX] = false;
+                                    DR_REG_START_GPR] = false;
                 }
             }
         }
@@ -1129,7 +1129,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (!has_shadowed_reg || !has_mem) {
         for (i = 0; i < instr_num_srcs(inst); i++) {
             opnd_t opnd = instr_get_src(inst, i);
-            if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
+            if (opnd_is_memory_reference(opnd)
+                IF_X86(&& instr_get_opcode(inst) != OP_lea))
                 has_mem = true;
 #ifdef TOOL_DR_MEMORY
             if (has_mem && opnd_uses_nonignorable_memory(opnd))
@@ -1140,7 +1141,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
     if (!has_shadowed_reg && !has_mem &&
-        !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6,
+        !TESTANY(EFLAGS_READ_ARITH|EFLAGS_WRITE_ARITH,
                  instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))
         goto instru_event_bb_insert_done;
 
@@ -1298,9 +1299,11 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
     /* XXX i#777: should do reverse scan during analysis and store info */
     if (options.pattern != 0 && !whole_bb_spills_enabled())
         pattern_instrument_reverse_scan(drcontext, bb);
+# ifdef X86
     if (options.pattern != 0 && options.pattern_opt_repstr &&
         bi->is_repstr_to_loop)
         pattern_instrument_repstr(drcontext, bb, bi, translating);
+# endif
 #endif
 
     if (INSTRUMENT_MEMREFS()) {
