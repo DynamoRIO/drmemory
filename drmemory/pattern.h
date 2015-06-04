@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -41,9 +41,11 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
 void
 pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist);
 
+#ifdef X86
 void
 pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
                           bb_info_t *bi, bool translating);
+#endif
 
 bool
 pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc

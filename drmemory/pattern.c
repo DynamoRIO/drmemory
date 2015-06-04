@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -61,12 +61,22 @@ static void *flush_lock;
 static ptr_uint_t note_base;
 static int num_2byte_faults = 0;
 
+/* For the flags, we're forced to use eax on x86.
+ * For symmetry we use r0 on ARM.
+ * XXX: we should use any dead register.
+ */
+#ifdef X86
+# define FLAGS_REG DR_REG_XAX
+#else
+# define FLAGS_REG DR_REG_R0
+#endif
+
 enum {
     NOTE_NULL = 0,
     NOTE_SAVE_AFLAGS,
-    NOTE_SAVE_AFLAGS_WITH_EAX,    /* need restore app's EAX after */
+    NOTE_SAVE_AFLAGS_WITH_REG,    /* need restore app's eax/r0 after */
     NOTE_RESTORE_AFLAGS,
-    NOTE_RESTORE_AFLAGS_WITH_EAX, /* need restore aflags to EAX first */
+    NOTE_RESTORE_AFLAGS_WITH_REG, /* need restore aflags to eax/r0 first */
     NOTE_MAX_VALUE,
 };
 
@@ -90,6 +100,7 @@ pattern_opnd_needs_check(opnd_t opnd)
     return true;
 }
 
+#ifdef X86
 static void
 pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
 {
@@ -120,6 +131,7 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
                     SPILL_SLOT_5 : PATTERN_SLOT_XAX);
     }
 }
+#endif
 
 /* Insert the code for pattern check on operand refs.
  * The instr sequence instrumented here is used in fault handling for
@@ -138,15 +150,26 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
 
     label = INSTR_CREATE_label(drcontext);
     /* cmp ref, pattern */
+    /* FIXME i#1726: for ARM, we need to load into a reg first */
     PREXL8M(ilist, app,
             INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, pattern), pc));
     /* jne label */
+    /* XXX: add XINST_CREATE_xxxx cross-platform cbr macro to DR */
+#ifdef X86
     PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
                                            opnd_create_instr(label)));
-    /* we assume that the pattern seen is rare enough, so we use ud2a to
+#elif defined(ARM)
+    PRE(ilist, app, INSTR_PRED(INSTR_CREATE_b_short(drcontext, opnd_create_instr(label)),
+                               DR_PRED_NE));
+#endif
+    /* we assume that the pattern seen is rare enough, so we use ud2a or udf to
      * cause an illegal exception if match.
      */
+#ifdef X86
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
+#elif defined(ARM)
+    PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_udf(drcontext, OPND_CREATE_INT32(0)), pc));
+#endif
     /* label */
     PRE(ilist, app, label);
 }
@@ -257,9 +280,11 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
 
     ASSERT(opnd_uses_nonignorable_memory(ref),
            "non-memory-ref opnd is instrumented");
+#ifdef X86
     /* special handling for xlat instr */
     if (instr_get_opcode(app) == OP_xlat)
         pattern_handle_xlat(drcontext, ilist, app, true /* pre */);
+#endif
 
     refs[0] = ref;
     num_checks = pattern_create_check_opnds(bi, refs, opnds
@@ -269,8 +294,10 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     for (i = 0; i < num_checks; i++)
         pattern_insert_cmp_jne_ud2a(drcontext, ilist, app, refs[i], opnds[i]);
 
+#ifdef X86
     if (instr_get_opcode(app) == OP_xlat)
         pattern_handle_xlat(drcontext, ilist, app, false /* post */);
+#endif
 }
 
 static void
@@ -283,12 +310,12 @@ pattern_insert_aflags_label(void *drcontext, instrlist_t *ilist, instr_t *where,
 
     if (save) {
         if (with_eax)
-            note = note_base + NOTE_SAVE_AFLAGS_WITH_EAX;
+            note = note_base + NOTE_SAVE_AFLAGS_WITH_REG;
         else
             note = note_base + NOTE_SAVE_AFLAGS;
     } else {
         if (with_eax)
-            note = note_base + NOTE_RESTORE_AFLAGS_WITH_EAX;
+            note = note_base + NOTE_RESTORE_AFLAGS_WITH_REG;
         else
             note = note_base + NOTE_RESTORE_AFLAGS;
     }
@@ -303,12 +330,14 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
     int i, j, num_refs = 0;
     opnd_t opnd;
 
+#ifdef X86
     if (instr_get_opcode(app) == OP_xlat) {
         /* we use (%xbx, %xax) to emulate xlat's (%xbx, %al) */
         refs[0] = opnd_create_base_disp(DR_REG_XBX, DR_REG_XAX, 1, 0, OPSZ_1);
         *use_eax = true;
         return 1;
     }
+#endif
     /* we do not handle stack access including OP_enter/OP_leave. */
     ASSERT(!options.check_stack_access, "no stack check");
     for (i = 0; i < instr_num_srcs(app); i++) {
@@ -317,7 +346,7 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
             ASSERT(num_refs < max_num_refs, "too many refs per instr");
             refs[num_refs] = opnd;
             num_refs++;
-            if (opnd_uses_reg(opnd, DR_REG_XAX))
+            if (opnd_uses_reg(opnd, FLAGS_REG))
                 *use_eax = true;
         }
     }
@@ -334,7 +363,7 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
             ASSERT(num_refs < max_num_refs, "too many refs per instr");
             refs[num_refs] = opnd;
             num_refs++;
-            if (opnd_uses_reg(opnd, DR_REG_XAX))
+            if (opnd_uses_reg(opnd, FLAGS_REG))
                 *use_eax = true;
         }
     }
@@ -546,7 +575,7 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
     if (options.pattern_opt_elide_overlap)
         pattern_opt_elide_overlap_update_regs(app, bi);
 
-    if (instr_get_opcode(app) == OP_lea ||
+    if (IF_X86(instr_get_opcode(app) == OP_lea ||)
         instr_is_prefetch(app) ||
         instr_is_nop(app))
         return NULL;
@@ -594,6 +623,7 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
     return label;
 }
 
+#ifdef X86
 /* An aggressive optimization to optimize the loop expanded from rep string
  * by introducing an inner loop to avoid the unncessary aflags save/restore.
  * XXX: adding a loop inside bb violates DR's bb constraints:
@@ -732,6 +762,7 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
                     instr_get_app_pc(loop));
     PREXL8(ilist, NULL, jmp);
 }
+#endif /* X86 */
 
 /* Update the arith flag's liveness in a backward scan. */
 static int
@@ -743,9 +774,9 @@ pattern_aflags_liveness_update_on_reverse_scan(instr_t *instr, int liveness)
     if (instr_is_interrupt(instr) || instr_is_syscall(instr))
         return LIVE_LIVE;
     flags = instr_get_arith_flags(instr, DR_QUERY_DEFAULT);
-    if (TESTANY(EFLAGS_READ_6, flags))
+    if (TESTANY(EFLAGS_READ_ARITH, flags))
         return LIVE_LIVE;
-    if (TESTALL(EFLAGS_WRITE_6, flags))
+    if (TESTALL(EFLAGS_WRITE_ARITH, flags))
         return LIVE_DEAD;
     /* XXX: we can also track whether OF is live, to avoid seto/add
      * in aflags save/restore.
@@ -783,12 +814,12 @@ pattern_find_aflags_save_label(instr_t *restore, ptr_uint_t note_restore,
             continue;
         note = (ptr_uint_t)instr_get_note(save);
         if (note != (note_base + NOTE_SAVE_AFLAGS) &&
-            note != (note_base + NOTE_SAVE_AFLAGS_WITH_EAX))
+            note != (note_base + NOTE_SAVE_AFLAGS_WITH_REG))
             continue;
         ASSERT((note         == (note_base + NOTE_SAVE_AFLAGS) &&
                 note_restore == (note_base + NOTE_RESTORE_AFLAGS)) ||
-               (note         == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX) &&
-                note_restore == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)),
+               (note         == (note_base + NOTE_SAVE_AFLAGS_WITH_REG) &&
+                note_restore == (note_base + NOTE_RESTORE_AFLAGS_WITH_REG)),
                "Mis-match on eax save/restore");
         *note_save = note;
         return save;
@@ -826,25 +857,21 @@ pattern_insert_save_aflags(void *drcontext, instrlist_t *ilist, instr_t *save,
     ASSERT(note != 0 && instr_is_label(save), "wrong aflags save label");
     if (save_app_xax) {
         /* save app xax */
-        spill_reg(drcontext, ilist, save, DR_REG_XAX, PATTERN_SLOT_XAX);
+        spill_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_XAX);
     }
     /* save aflags,
      * XXX: we can track oflag usage to avoid saving oflag for some cases.
+     * FIXME i#1726: need to pass in which reg to use for ARM.
      */
     insert_save_aflags_nospill(drcontext, ilist, save, true /* save oflag */);
-
-    PRE(ilist, save, INSTR_CREATE_lahf(drcontext));
-    PRE(ilist, save,
-        INSTR_CREATE_setcc(drcontext, OP_seto,
-                           opnd_create_reg(DR_REG_AL)));
     if (restore_app_xax) {
         /* FIXME: this needs to store where it's keeping things, for
          * event_restore_state()
          */
         /* save aflags into tls slot */
-        spill_reg(drcontext, ilist, save, DR_REG_XAX, PATTERN_SLOT_AFLAGS);
+        spill_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_AFLAGS);
         /* restore app xax */
-        restore_reg(drcontext, ilist, save, DR_REG_XAX, PATTERN_SLOT_XAX);
+        restore_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_XAX);
     }
 }
 
@@ -860,7 +887,7 @@ pattern_insert_restore_aflags(void *drcontext, instrlist_t *ilist,
     ASSERT(note != 0 && instr_is_label(restore), "wrong aflags restore label");
     if (load_aflags) {
         /* restore aflags from tls slot to xax */
-        restore_reg(drcontext, ilist, restore, DR_REG_XAX, PATTERN_SLOT_AFLAGS);
+        restore_reg(drcontext, ilist, restore, FLAGS_REG, PATTERN_SLOT_AFLAGS);
     }
     /* restore aflags
      * XXX: we can track oflag usage to avoid restsoring oflag for some cases.
@@ -868,7 +895,7 @@ pattern_insert_restore_aflags(void *drcontext, instrlist_t *ilist,
     insert_restore_aflags_nospill(drcontext, ilist, restore, true);
     if (restore_app_xax) {
         /* restore app xax */
-        restore_reg(drcontext, ilist, restore, DR_REG_XAX, PATTERN_SLOT_XAX);
+        restore_reg(drcontext, ilist, restore, FLAGS_REG, PATTERN_SLOT_XAX);
     }
 }
 
@@ -884,10 +911,10 @@ pattern_insert_aflags_pair(void *drcontext, instrlist_t *ilist,
     ASSERT(save != NULL, "Mis-match on aflags save/restore");
     prev = instr_get_prev(save);
     pattern_insert_save_aflags(drcontext, ilist, save, eax_live != LIVE_DEAD,
-                               note_save == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX));
+                               note_save == (note_base + NOTE_SAVE_AFLAGS_WITH_REG));
     pattern_insert_restore_aflags(drcontext, ilist, restore,
                                   note_restore == (note_base +
-                                                   NOTE_RESTORE_AFLAGS_WITH_EAX),
+                                                   NOTE_RESTORE_AFLAGS_WITH_REG),
                                   eax_live != LIVE_DEAD);
     instrlist_remove(ilist, restore);
     instr_destroy(drcontext, restore);
@@ -917,7 +944,7 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
         prev = instr_get_prev(instr);
         if (instr_is_app(instr)) {
             eax_live = pattern_reg_liveness_update_on_reverse_scan
-                (instr, DR_REG_XAX, eax_live);
+                (instr, FLAGS_REG, eax_live);
             aflags_live = pattern_aflags_liveness_update_on_reverse_scan
                 (instr, aflags_live);
         }
@@ -936,7 +963,7 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
          *    (can be relaxed later)
          */
         if (note == (note_base + NOTE_RESTORE_AFLAGS) ||
-            note == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)) {
+            note == (note_base + NOTE_RESTORE_AFLAGS_WITH_REG)) {
             if (aflags_live == LIVE_DEAD) {
                 /* aflags is dead, we do not need to save them, remove  */
                 prev = pattern_remove_aflags_pair(drcontext, ilist, instr, note);
@@ -953,6 +980,7 @@ pattern_ill_instr_is_instrumented(byte *pc)
 {
     byte buf[6];
     /* check if our code sequence */
+    /* FIXME i#1726: update for ARM */
     if (!safe_read(pc - JNZ_SHORT_LENGTH - 2 /* 2 bytes of cmp immed value */,
                    BUFFER_SIZE_BYTES(buf), buf)   ||
         (buf[2] != JNZ_SHORT_OPCODE) ||
@@ -1040,8 +1068,10 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
 {
     ushort ud2a;
     /* check code sequence: cmp; jne_short; ud2a */
+    /* FIXME i#1726: for ARM, there will be a load into a reg first */
     if (instr_get_opcode(inst) == OP_cmp &&
-        instr_get_opcode(next) == OP_jne_short &&
+        instr_get_opcode(next) == IF_X86_ELSE(OP_jne_short, OP_b_short) &&
+        /* FIXME i#1726: ARM vs Thumb: UDF_THUMB_OPCODE, UDF_ARM_OPCODE */
         safe_read(next_next_pc, sizeof(ushort), &ud2a) &&
         ud2a == (ushort)UD2A_OPCODE) {
         DODEBUG({
