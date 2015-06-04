@@ -979,8 +979,10 @@ reg_ptrsz_to_16(reg_id_t reg);
 reg_id_t
 reg_ptrsz_to_8(reg_id_t reg);
 
+#ifdef X86
 reg_id_t
 reg_ptrsz_to_8h(reg_id_t reg);
+#endif
 
 reg_id_t
 reg_to_size(reg_id_t reg, opnd_size_t size);

@@ -170,8 +170,8 @@ asm(".section __TEXT,__replace");
 asm(".align 12"); /* 2^12 */
 # define IN_REPLACE_SECTION __attribute__ ((section ("__TEXT,__replace")))
 #elif defined(LINUX)
-asm(".section .replace, \"ax\", @progbits");
-asm(".align 0x1000");
+asm(".section .replace, \"ax\", " IF_X86_ELSE("@progbits","%progbits"));
+asm(".align " IF_X86_ELSE("0x1000","12"));
 # define IN_REPLACE_SECTION __attribute__ ((section (".replace")))
 #else /* WINDOWS */
 ACTUAL_PRAGMA( code_seg(".replace") )
@@ -825,8 +825,8 @@ asm(".section __TEXT,.text");
 asm(".align 12");
 asm(".text");
 #elif defined(LINUX)
-asm(".section .text, \"ax\", @progbits");
-asm(".align 0x1000");
+asm(".section .text, \"ax\", " IF_X86_ELSE("@progbits","%progbits"));
+asm(".align " IF_X86_ELSE("0x1000","12"));
 #else
 ACTUAL_PRAGMA( code_seg() )
 #endif
@@ -1025,22 +1025,23 @@ static void
 replace_all_indirect(bool add, const module_data_t *mod,
                      int index, app_pc indir, app_pc resolved)
 {
+#ifdef X86
     void *drcontext = dr_get_current_drcontext();
     instr_t inst;
     app_pc pc = indir;
-#if !defined(X64) || defined(DEBUG)
+# if !defined(X64) || defined(DEBUG)
     app_pc prev_pc;
-#endif
-#ifndef X64
+# endif
+# ifndef X64
     bool last_was_call = false, first_call = false;
     app_pc addr_got = NULL;
-#endif
+# endif
     instr_init(drcontext, &inst);
     do {
         instr_reset(drcontext, &inst);
-#if !defined(X64) || defined(DEBUG)
+# if !defined(X64) || defined(DEBUG)
         prev_pc = pc;
-#endif
+# endif
         /* look for partial map (i#730) */
         if (!dr_module_contains_addr(mod, pc + MAX_INSTR_SIZE)) {
             WARN("WARNING: decoding off end of module for %s\n",
@@ -1054,7 +1055,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
                 replace_routine_name[index], prev_pc);
             break;
         }
-#ifndef X64
+# ifndef X64
         if (last_was_call) {
             /* At instr after call to thunk: should be add of immed to ebx */
             first_call = true;
@@ -1090,7 +1091,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
         }
         if (!first_call && instr_is_call_direct(&inst))
             last_was_call = true;
-#else
+# else
         if (instr_get_opcode(&inst) == OP_lea &&
             opnd_get_reg(instr_get_dst(&inst, 0)) == REG_XAX &&
             opnd_is_rel_addr(instr_get_src(&inst, 0))) {
@@ -1105,10 +1106,13 @@ replace_all_indirect(bool add, const module_data_t *mod,
             if (addr != resolved)
                 replace_routine(add, mod, addr, index _IF_DEBUG(false));
         }
-#endif
+# endif
     } while (!instr_is_return(&inst));
     instr_reset(drcontext, &inst);
-
+#elif defined(ARM)
+    /* NYI: our current ARM targets do not have indirected routines in glibc. */
+    ASSERT_NOT_IMPLEMENTED();
+#endif
 }
 
 #ifdef USE_DRSYMS

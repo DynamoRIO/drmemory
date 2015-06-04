@@ -1447,7 +1447,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
     ASSERT(options.shadowing, "incorrectly called");
     if (reg_is_gpr(reg)) {
         reg_id_t r = reg_to_pointer_sized(reg);
-        offs = (r - DR_REG_XAX) * IF_X64_ELSE(2, 1);
+        offs = (r - DR_REG_START_GPR) * IF_X64_ELSE(2, 1);
         opsz = IF_X64_ELSE(OPSZ_2, OPSZ_1);
     } else {
         ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "internal shadow reg error");
@@ -1464,6 +1464,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
 uint
 get_shadow_xmm_offs(reg_id_t reg)
 {
+#ifdef X86
     if (reg_is_ymm(reg))
         return offsetof(shadow_aux_registers_t, ymmh) + sizeof(int)*(reg - DR_REG_YMM0);
     if (reg_is_xmm(reg))
@@ -1472,6 +1473,11 @@ get_shadow_xmm_offs(reg_id_t reg)
         ASSERT(reg_is_mmx(reg), "invalid reg");
         return offsetof(shadow_aux_registers_t, mm) + sizeof(short)*(reg - DR_REG_MM0);
     }
+#else
+    /* FIXME i#1726: port to ARM: shadow SIMD regs */
+    ASSERT_NOT_IMPLEMENTED();
+    return 0;
+#endif
 }
 
 opnd_t
@@ -1585,7 +1591,9 @@ shadow_registers_init(void)
     ASSERT(tls_idx_shadow > -1, "failed to reserve TLS slot");
     LOG(2, "TLS shadow base: "PIFX"\n", tls_shadow_base);
     ASSERT(ok, "fatal error: unable to reserve tls slots");
+#ifdef X86
     ASSERT(tls_shadow_seg == EXPECTED_SEG_TLS, "unexpected tls segment");
+#endif
 }
 
 static void
@@ -1639,8 +1647,9 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
     if (reg == REG_NULL)
         return ((byte *)sr) + offsetof(shadow_registers_t, eflags);
     else if (reg_is_gpr(reg))
-        return ((byte *)sr) + (reg_to_pointer_sized(reg) - DR_REG_XAX);
+        return ((byte *)sr) + (reg_to_pointer_sized(reg) - DR_REG_START_GPR);
     else {
+#ifdef X86
         /* Caller must ask for xmm to get low bits (won't all fit in uint) */
         if (reg_is_ymm(reg))
             return (byte *) &sr->aux->ymmh[reg - DR_REG_YMM0];
@@ -1650,6 +1659,11 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
             ASSERT(reg_is_mmx(reg), "invalid reg");
             return (byte *) &sr->aux->mm[reg - DR_REG_MM0];
         }
+#else
+        /* FIXME i#1726: port to ARM: shadow SIMD regs */
+        ASSERT_NOT_IMPLEMENTED();
+        return NULL;
+#endif
     }
 }
 

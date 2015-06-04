@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1190,7 +1190,8 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
         }
     }
     /* we ignore fp/mmx and xmm regs */
-    for (reg = REG_START_32; reg <= REG_EDI/*STOP_32 is R15D!*/; reg++) {
+    for (reg = REG_START_32; reg <= IF_X86_ELSE(REG_EDI/*STOP_32 is R15D!*/, REG_STOP_32);
+         reg++) {
         if (!op_have_defined_info || cb_is_register_defined(drcontext, reg)) {
             reg_t val = reg_get_value(reg, mc);
             LOG(4, "thread "TIDFMT" reg %d: "PFX"\n", dr_get_thread_id(drcontext),

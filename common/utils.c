@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -415,10 +415,21 @@ module_has_debug_info(const module_data_t *mod)
 void
 print_mcontext(file_t f, dr_mcontext_t *mc)
 {
+# ifdef X86
     dr_fprintf(f, "\txax="PFX", xbx="PFX", xcx="PFX", xdx="PFX"\n"
                "\txsi="PFX", xdi="PFX", xbp="PFX", xsp="PFX"\n",
                mc->xax, mc->xbx, mc->xcx, mc->xdx,
                mc->xsi, mc->xdi, mc->xbp, mc->xsp);
+# elif defined(ARM)
+    dr_fprintf(f, "\tr0="PFX", r1="PFX", r2="PFX", r3="PFX"\n"
+               "\tr4="PFX", r5="PFX", r6="PFX", r7="PFX"\n",
+               "\tr8="PFX", r9="PFX", r10="PFX", r11="PFX"\n",
+               "\tr12="PFX", sp="PFX", lr="PFX", pc="PFX"\n",
+               mc->r0, mc->r1, mc->r2, mc->r3,
+               mc->r4, mc->r5, mc->r6, mc->r7,
+               mc->r8, mc->r9, mc->r10, mc->r11,
+               mc->r12, mc->sp, mc->lr, mc->pc);
+# endif
 }
 #endif
 
@@ -1141,6 +1152,7 @@ nonheap_free(void *p, size_t size, heapstat_t type)
  * REGISTER CONVERSION UTILITIES
  */
 
+#ifdef X86
 static reg_id_t
 reg_32_to_8h(reg_id_t reg)
 {
@@ -1148,6 +1160,7 @@ reg_32_to_8h(reg_id_t reg)
            "reg_32_to_8h: passed non-32-bit a-d reg");
     return (reg - REG_EAX) + REG_AH;
 }
+#endif
 
 reg_id_t
 reg_ptrsz_to_16(reg_id_t reg)
@@ -1177,16 +1190,18 @@ reg_ptrsz_to_8(reg_id_t reg)
     return reg_32_to_8(reg);
 }
 
+#ifdef X86
 reg_id_t
 reg_ptrsz_to_8h(reg_id_t reg)
 {
     ASSERT(reg >= DR_REG_XAX && reg <= DR_REG_XBX,
            "wrong register for conversion");
-#ifdef X64
+# ifdef X64
     reg = reg_64_to_32(reg);
-#endif
+# endif
     return reg_32_to_8h(reg);
 }
+#endif
 
 reg_id_t
 reg_to_size(reg_id_t reg, opnd_size_t size)

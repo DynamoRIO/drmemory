@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -366,11 +366,15 @@ perturb_pre_syscall(void *drcontext, int sysnum)
 static bool
 instr_is_synch_op(instr_t *inst)
 {
+#ifdef X86
     return (instr_get_prefix_flag(inst, PREFIX_LOCK) ||
             /* xchg always locks */
             (instr_get_opcode(inst) == OP_xchg &&
              !opnd_same(instr_get_src(inst, 0),
                         instr_get_src(inst, 1))));
+#elif defined(ARM)
+    return instr_is_exclusive_store(inst);
+#endif
 }
 
 static dr_emit_flags_t
