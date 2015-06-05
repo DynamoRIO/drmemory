@@ -45,16 +45,10 @@
 #endif
 
 void
-instrument_init(void);
+gencode_init(void);
 
 void
-instrument_exit(void);
-
-void
-instrument_thread_init(void *drcontext);
-
-void
-instrument_thread_exit(void *drcontext);
+gencode_exit(void);
 
 byte *
 generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc);
@@ -184,6 +178,9 @@ bool
 handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc);
 
 bool
+should_mark_stack_frames_defined(app_pc pc);
+
+bool
 check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
                        dr_mcontext_t *mc, instr_t *inst);
 
@@ -204,18 +201,6 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
 
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);
-
-size_t
-instrument_persist_ro_size(void *drcontext, void *perscxt);
-
-bool
-instrument_persist_ro(void *drcontext, void *perscxt, file_t fd);
-
-bool
-instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT);
-
-void
-bb_save_add_entry(app_pc key, bb_saved_info_t *save);
 
 void
 readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded);

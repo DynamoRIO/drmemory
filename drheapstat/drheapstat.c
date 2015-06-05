@@ -38,6 +38,7 @@
 #include "../drmemory/leak.h"
 #include "../drmemory/stack.h"
 #include "../drmemory/shadow.h"
+#include "../drmemory/instru.h"
 #include "../drmemory/readwrite.h"
 #ifdef MACOS
 # error NYI i#1438

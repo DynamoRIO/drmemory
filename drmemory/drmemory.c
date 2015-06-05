@@ -56,6 +56,7 @@
 #include "drwrap.h"
 #include "drx.h"
 #include "drmemory.h"
+#include "instru.h"
 #include "readwrite.h"
 #include "fastpath.h"
 #include "report.h"

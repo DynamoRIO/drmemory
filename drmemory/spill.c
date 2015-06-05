@@ -29,6 +29,7 @@
 #include "client_per_thread.h"
 #include "options.h"
 #include "spill.h"
+#include "instru.h"
 #include "readwrite.h"
 #include "replace.h"
 #include "shadow.h"
