@@ -173,12 +173,6 @@ extern hashtable_t xl8_sharing_table;
 /* alloca handling in fastpath (i#91) */
 extern hashtable_t ignore_unaddr_table;
 
-#ifdef DEBUG
-/* use seg_tls for actual code */
-# define EXPECTED_SEG_TLS IF_X64_ELSE(SEG_GS, SEG_FS)
-#endif
-extern reg_id_t seg_tls;
-
 bool
 opnd_uses_nonignorable_memory(opnd_t opnd);
 
@@ -228,56 +222,6 @@ readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded);
 
 void
 readwrite_module_unload(void *drcontext, const module_data_t *mod);
-
-/***************************************************************************
- * REGISTER SPILLING
- */
-
-/* eflags eax and up-front save use this slot, and whole-bb spilling stores
- * eflags itself (lahf+seto) here
- */
-#define SPILL_SLOT_EFLAGS_EAX SPILL_SLOT_3
-
-int
-spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead);
-
-void
-spill_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-          dr_spill_slot_t slot);
-
-void
-restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-            dr_spill_slot_t slot);
-
-opnd_t
-spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
-
-bool
-is_spill_slot_opnd(void *drcontext, opnd_t op);
-
-byte *
-get_own_seg_base(void);
-
-uint
-num_own_spill_slots(void);
-
-opnd_t
-opnd_create_own_spill_slot(uint index);
-
-ptr_uint_t
-get_own_tls_value(uint index);
-
-void
-set_own_tls_value(uint index, ptr_uint_t val);
-
-ptr_uint_t
-get_thread_tls_value(void *drcontext, uint index);
-
-void
-set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val);
-
-ptr_uint_t
-get_raw_tls_value(uint offset);
 
 /***************************************************************************
  * ISA UTILITY ROUTINES

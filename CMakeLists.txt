@@ -980,6 +980,7 @@ if (TOOL_DR_HEAPSTAT)
     drmemory/leak.c
     drmemory/options.c
     drmemory/stack.c
+    drmemory/spill.c
     drmemory/readwrite.c
     drmemory/fastpath.c
     drmemory/shadow.c
@@ -989,6 +990,7 @@ else (TOOL_DR_HEAPSTAT)
   set(srcs
     drmemory/annotations.c
     drmemory/drmemory.c
+    drmemory/spill.c
     drmemory/readwrite.c
     drmemory/fastpath.c
     drmemory/stack.c

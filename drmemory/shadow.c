@@ -25,6 +25,7 @@
 #include "utils.h"
 #include "shadow.h"
 #include "umbra.h"
+#include "spill.h"
 #include <limits.h> /* UINT_MAX */
 #include <stddef.h>
 #ifdef TOOL_DR_HEAPSTAT

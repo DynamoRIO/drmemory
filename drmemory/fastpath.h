@@ -218,6 +218,9 @@ struct _bb_info_t {
     elide_reg_cover_info_t reg_cover[NUM_LIVENESS_REGS];
 };
 
+#define SHARING_XL8_ADDR_BI(bi) (!opnd_is_null(bi->shared_memop))
+#define SHARING_XL8_ADDR(mi) SHARING_XL8_ADDR_BI(mi->bb)
+
 /* Info per bb we need to save in order to restore app state */
 typedef struct _bb_saved_info_t {
     reg_id_t scratch1;
@@ -291,44 +294,6 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
  * For stack.c: perhaps should move stack.c's fastpath code here and avoid
  * exporting these?
  */
-
-void
-insert_spill_or_restore(void *drcontext, instrlist_t *bb, instr_t *inst,
-                        scratch_reg_info_t *si, bool spill, bool just_xchg);
-
-bool
-insert_spill_global(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    scratch_reg_info_t *si, bool spill);
-
-void
-pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3,
-                  bool reg3_must_be_ecx, opnd_t no_overlap1, opnd_t no_overlap2);
-
-/* insert aflags save code sequence w/o spill: lahf; seto %al; */
-void
-insert_save_aflags_nospill(void *drcontext, instrlist_t *ilist,
-                           instr_t *inst, bool save_oflag);
-
-/* insert aflags restore code sequence w/o spill: add %al, 0x7f; sahf; */
-void
-insert_restore_aflags_nospill(void *drcontext, instrlist_t *ilist,
-                              instr_t *inst, bool restore_oflag);
-
-void
-insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
-                   scratch_reg_info_t *si, int aflags);
-
-void
-insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
-                      scratch_reg_info_t *si, int aflags);
-
-uint
-get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
-                            bool aflags_only);
-
-void
-restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
-                       fastpath_info_t *mi, bb_info_t *bi);
 
 void
 add_jcc_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, uint jcc_opcode,
