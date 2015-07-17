@@ -92,6 +92,10 @@
 # define FILE_NAME "drsyscall.dll"
 # define FILE_DESCRIPTION "System call monitor"
 # define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_DRFUZZ)
+# define FILE_NAME "drfuzz.dll"
+# define FILE_DESCRIPTION "Fuzz testing library"
+# define FILE_TYPE VFT_DLL
 #elif defined(RC_IS_UMBRA)
 # define FILE_NAME "umbra.dll"
 # define FILE_DESCRIPTION "Shadow memory translator"
