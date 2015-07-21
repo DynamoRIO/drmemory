@@ -93,3 +93,9 @@ add_library(drfuzz_static STATIC ${srcs_static} ${external_srcs})
 configure_DynamoRIO_client(drfuzz_static)
 configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
+
+# We build a separate static target for internal use that has our
+# log/assert/notify infrastructure.
+add_library(drfuzz_int STATIC ${srcs_static})
+configure_DynamoRIO_client(drfuzz_int)
+configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static")
