@@ -85,7 +85,11 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
 endfunction(add_drmf_test)
 
 add_drmf_test(drsyscall_test drsyscall_app.c drsyscall_client.c
-  drsyscall "TEST PASSED")
+  drsyscall "done\n.*TEST PASSED")
 
 add_drmf_test(strace_test drsyscall_app.c strace_client.c
-  drsyscall "TEST PASSED")
+  drsyscall "done\n.*TEST PASSED")
+
+# drfuzz tests
+add_drmf_test(drfuzz_test_empty drfuzz_app_empty.c drfuzz_client_empty.c
+  drfuzz "done\n.*TEST PASSED")
