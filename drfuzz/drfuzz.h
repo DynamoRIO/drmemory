@@ -75,16 +75,11 @@ typedef enum _drfuzz_flags_t {
     /** The target function is a vararg function. */
     DRFUZZ_CALLCONV_VARARG = DRFUZZ_CALLCONV_CDECL,
 #endif
-    /** Reserved for specifying additional calling conventions. */
-    DRFUZZ_CALLCONV_RESERVED_1 = 0x08,
-    /** Reserved for specifying additional calling conventions. */
-    DRFUZZ_CALLCONV_RESERVED_2 = 0x10,
-    /** Reserved for specifying additional calling conventions. */
-    DRFUZZ_CALLCONV_RESERVED_3 = 0x20,
-    /** Reserved for specifying additional calling conventions. */
-    DRFUZZ_CALLCONV_RESERVED_4 = 0x40,
-    /** Reserved for specifying additional calling conventions. */
-    DRFUZZ_CALLCONV_RESERVED_5 = 0x80,
+    DRFUZZ_CALLCONV_RESERVED_1 = 0x08, /**< Reserved for additional calling conventions */
+    DRFUZZ_CALLCONV_RESERVED_2 = 0x10, /**< Reserved for additional calling conventions */
+    DRFUZZ_CALLCONV_RESERVED_3 = 0x20, /**< Reserved for additional calling conventions */
+    DRFUZZ_CALLCONV_RESERVED_4 = 0x40, /**< Reserved for additional calling conventions */
+    DRFUZZ_CALLCONV_RESERVED_5 = 0x80, /**< Reserved for additional calling conventions */
     /** Utility value for masking the set of calling convention flags. */
     DRFUZZ_CALLCONV_MASK = 0xff,
     /* XXX i#1734: calling conventions NYI (assumes cdecl for now) */
@@ -135,6 +130,8 @@ DR_EXPORT
  * drfuzz_get_arg() and drfuzz_set_arg() are not available in this phase of the fuzzing
  * cycle, though drfuzz_get_target_arg() can be used at any time during fuzzing.
  *
+ * \note Recursive invocation of the fuzz target is currently not supported.
+ *
  * @param[in] func_pc             The start pc of the new fuzz target function.
  * @param[in] arg_count           The actual number of arguments passed to the fuzz target
  *                                function during fuzz testing (i.e., for vararg targets,
@@ -159,9 +156,15 @@ DR_EXPORT
  * Get the value of an argument to the fuzz target function at \p target_pc. May only be
  * called while fuzzing of this target is in progress. Will retrieve the arg value for
  * the current fuzz iteration on the current thread. Returns DRMF_SUCCESS on success.
+ *
+ * @param[in] target      The target function.
+ * @param[in] arg         Identifies the argument by its index.
+ * @param[in] original    Specifies whether to get the original value of the argument
+ *                        passed by the app, or the currently applied fuzz value.
+ * @param[out] arg_value  Returns the value of the argument (when successful).
  */
 drmf_status_t
-drfuzz_get_arg(generic_func_t target_pc, int arg, OUT void **arg_value);
+drfuzz_get_arg(generic_func_t target_pc, int arg, bool original, OUT void **arg_value);
 
 DR_EXPORT
 /**

@@ -167,6 +167,7 @@
 #define TEST(mask, var) (((mask) & (var)) != 0)
 #define TESTANY TEST
 #define TESTALL(mask, var) (((mask) & (var)) == (mask))
+#define TESTONE(mask, var) test_one_bit_set((mask) & (var))
 
 #define EXPANDSTR(x) #x
 #define STRINGIFY(x) EXPANDSTR(x)
@@ -802,6 +803,12 @@ unsigned_multiply_will_overflow(size_t m, size_t n);
 
 void
 crash_process(void);
+
+static inline bool
+test_one_bit_set(uint x)
+{
+    return (x > 0) && (x & (x-1)) == 0;
+}
 
 /***************************************************************************
  * WINDOWS SYSCALLS
