@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -467,7 +467,7 @@ endforeach (line)
 # check results.txt
 # XXX i#1688: Disable leak tests for Dr. Heapstat until the offline
 # processor is refactored.
-if (resmatch AND TOOL_DR_MEMORY)
+if (resmatch AND NOT TOOL_DR_HEAPSTAT)
   if (NOT "${postcmd}" STREQUAL "")
     string(REGEX REPLACE "@@" " " postcmd "${postcmd}")
     string(REGEX REPLACE "@" ";" postcmd "${postcmd}")
@@ -641,4 +641,4 @@ if (resmatch AND TOOL_DR_MEMORY)
     endif (cmd2_result)
   endif ("${cmd}" MATCHES "suppress" AND NOT "${cmd}" MATCHES "-suppress")
 
-endif (resmatch AND TOOL_DR_MEMORY)
+endif (resmatch AND NOT TOOL_DR_HEAPSTAT)
