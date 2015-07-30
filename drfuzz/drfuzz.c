@@ -39,7 +39,7 @@
 #include "utils.h"
 #include "drfuzz.h"
 
-#define ARGSIZE(live) ((live)->target->arg_count * sizeof(reg_t))
+#define ARGSIZE(target) ((target)->arg_count * sizeof(reg_t))
 
 #ifdef UNIX
 typedef dr_siginfo_t drfuzz_crash_info_t;
@@ -177,7 +177,7 @@ drfuzz_init(client_id_t client_id)
 #else /* WINDOWS */
     drmgr_register_exception_event(crash_handler);
 #endif
-    drmgr_register_thread_exit_event(thread_init);
+    drmgr_register_thread_init_event(thread_init);
     drmgr_register_thread_exit_event(thread_exit);
 
     tls_idx_fuzzer = drmgr_register_tls_field();
@@ -335,6 +335,8 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
             target_to_fuzz, mc->xsp);
         for (i = 0; i < target->arg_count; i++) { /* store the original arg values */
             live->original_args[i] = (reg_t) drwrap_get_arg(wrapcxt, i);
+            /* copy original args to current args for the first iteration of the fuzz */
+            live->current_args[i] = live->original_args[i];
             LOG(4, "fuzz target "PFX": saving original arg #%d: "PFX"\n",
                 target_to_fuzz, i, live->original_args[i]);
         }
@@ -426,8 +428,8 @@ create_pass_target(void *dcontext, app_pc target_pc)
 {
     fuzz_target_t *target = hashtable_lookup(&fuzz_target_htable, target_pc);
     pass_target_t *live = thread_alloc(dcontext, sizeof(pass_target_t), HEAPSTAT_MISC);
-    live->original_args = thread_alloc(dcontext, ARGSIZE(live), HEAPSTAT_MISC);
-    live->current_args = thread_alloc(dcontext, ARGSIZE(live), HEAPSTAT_MISC);
+    live->original_args = thread_alloc(dcontext, ARGSIZE(target), HEAPSTAT_MISC);
+    live->current_args = thread_alloc(dcontext, ARGSIZE(target), HEAPSTAT_MISC);
     live->target = target;
     return live;
 }
@@ -469,9 +471,9 @@ free_fuzz_target(void *p)
 }
 
 static void
-free_pass_target(void *dcontext, pass_target_t *target)
+free_pass_target(void *dcontext, pass_target_t *pass)
 {
-    thread_free(dcontext, target->original_args, ARGSIZE(target), HEAPSTAT_MISC);
-    thread_free(dcontext, target->current_args, ARGSIZE(target), HEAPSTAT_MISC);
-    thread_free(dcontext, target, sizeof(pass_target_t), HEAPSTAT_MISC);
+    thread_free(dcontext, pass->original_args, ARGSIZE(pass->target), HEAPSTAT_MISC);
+    thread_free(dcontext, pass->current_args, ARGSIZE(pass->target), HEAPSTAT_MISC);
+    thread_free(dcontext, pass, sizeof(*pass), HEAPSTAT_MISC);
 }
