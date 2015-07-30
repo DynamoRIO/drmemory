@@ -205,7 +205,7 @@ if (PACKAGED_WITH_DYNAMORIO)
 endif()
 
 # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
-set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h")
+set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h ${commondir}/../drfuzz/drfuzz.h")
 set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
 set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
 if (TOOL_DR_MEMORY)

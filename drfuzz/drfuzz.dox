@@ -33,25 +33,24 @@
 /**
 ***************************************************************************
 ***************************************************************************
-\page page_umbra Umbra: Shadow Memory Extension
+\page page_drfuzz Dr. Fuzz: Dynamic Fuzz Testing Extension
 
-The \p Umbra DynamoRIO Extension provides shadow memory features.
-\p Umbra is part of the Dr. Memory Framework.
+The \p Dr. Fuzz DynamoRIO Extension provides fuzz testing features.
+\p Dr. Fuzz is part of the Dr. Memory Framework.
 
- - \ref sec_umbra_setup
- - \ref sec_umbra_mapping
- - \ref sec_umbra_API
+ - \ref sec_drfuzz_setup
+ - \ref sec_drfuzz_API
 
-\section sec_umbra_setup Setup
+\section sec_drfuzz_setup Setup
 
-To use \p Umbra with your client, first locate the Dr. Memory
+To use \p Dr. Fuzz with your client, first locate the Dr. Memory
 Framework.  Then use the standard method of using an Extension with the
-name \p umbra.  The two steps will look like this in your client's
+name \p drfuzz.  The two steps will look like this in your client's
 \p CMakeLists.txt file:
 
 \code
 find_package(DrMemoryFramework)
-use_DynamoRIO_extension(clientname umbra)
+use_DynamoRIO_extension(clientname drfuzz)
 \endcode
 
 To point CMake at the framework, set the DrMemoryFramework_DIR variable to
@@ -64,43 +63,23 @@ cmake -G"Ninja" -DDynamoRIO_DIR=c:/path/to/DynamoRIO-Windows-4.1.0-8/cmake -DDrM
 
 That will automatically set up the include path and library dependence.
 
-Your client must call \p umbra_init() prior to accessing any API
-routines in \p umbra, and should call \p umbra_exit() at process exit
+Your client must call \p drfuzz_init() prior to accessing any API
+routines in \p drfuzz, and should call \p drfuzz_exit() at process exit
 time.
 
-\section sec_umbra_mapping Shadow Memory Mapping
+\section sec_drfuzz_API Dr. Fuzz API
 
-A shadow memory mapping scheme \p map is an opaque data structure that describes
-how an application memory address is mapped to its corresponding shadow memory address.
-A mapping scheme can be created using \p umbra_create_mapping() and destroyed using
-\p umbra_destroy_mapping().
-A shadow memory mapping scheme must be created before any use of any shadow memory.
+\p Dr. Fuzz provides the following key features:
+ -# Repeat execution of the test target function with fuzzed arguments
+ -# Mutate argument values using bit flipping or random number algorithms
+ -# Schedule fuzz iterations for a target function and set of arguments
+ -# Report state information on a crash caused by fuzz inputs
 
-Once a mapping scheme is in place, shadow memory can be created and deleted for
-application memory using \p umbra_create_shadow_memory() and
-\p umbra_delete_shadow_memory().
-
-\section sec_umbra_API Umbra API
-
-\p Umbra provides the following key features:
- -# Create/delete shadow memory
- -# Read/write shadow memory
- -# Iterate over every application/shadow memory region
- -# Instrument code to access shadow memory
-
-The client can use the provided \p Umbra APIs to manange and access shadow memory
-without knowing the actual shadow memory address or how shadow memory is managed.
-Advanced users can create "special" shadow memory (read-only memory region with
-default value) or directly access shadow memory for better performanc and memory usage.
-
-Umbra may use page faults to implement lazy shadow memory allocation.  When
-generating meta instructions to read shadow values, be sure to assign
-translation values to the instructions.
-
-Some shadow mapping schemes do not support shadow memory for invalid
-application addresses (i.e., addresses for which no application memory is
-allocated).  If such application addresses are passed to shadow API
-routines, they will fail with DRMF_ERROR_INVALID_ADDRESS, while shadow
-memory type queries will indicate UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW.
+The client can use the provided Dr. Fuzz APIs to fuzz test the target application. The
+most flexible approach is to register fuzz target functions and directly control the
+fuzzing cycle using the callbacks. This approach also requires the most effort, so
+Dr. Fuzz additionally provides mutator and scheduler modules which can be leveraged
+to simplify the fuzzing procedure into a few higher level operations (pending completion
+of issue #1734).
 
 */

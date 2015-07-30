@@ -939,7 +939,7 @@ heap_dump_stats(file_t f);
 char *
 drmem_strdup(const char *src, heapstat_t type);
 
-/* note: Guarantees that even if src overflows n, the allocated buffer will be
+/* note: Guarantees that even if src overflows max, the allocated buffer will be
  * large enough for max characters plus the null-terminator.
  */
 char *

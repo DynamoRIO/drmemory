@@ -36,23 +36,34 @@
 #include "drmgr.h"
 #include "drfuzz.h"
 
+#undef EXPECT /* we don't want msgbox */
+#define EXPECT(cond, msg) \
+    ((void)((!(cond)) ? \
+     (dr_fprintf(STDERR, "EXPECT FAILURE: %s:%d: %s (%s)", \
+                 __FILE__,  __LINE__, #cond, msg), \
+      dr_abort(), 0) : 0))
+
 static void
-pre_fuzz_cb(generic_func_t target_pc, void *fuzzcxt, void **user_data)
+pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
 {
     ptr_uint_t arg_value;
-    if (drfuzz_get_arg(target_pc, 0, false/*cur*/, (void **)&arg_value) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to get arg");
+
+    if (drfuzz_get_arg(fuzzcxt, target_pc, 0, false/*cur*/,
+                       (void **) &arg_value) != DRMF_SUCCESS)
+        EXPECT(false, "drfuzz failed to get arg");
     arg_value = (arg_value + 1);
     if (drfuzz_set_arg(fuzzcxt, 0, (void *)arg_value) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to set arg");
+        EXPECT(false, "drfuzz failed to set arg");
 }
 
 static bool
-post_fuzz_cb(generic_func_t target_pc, void *fuzzcxt, void *user_data)
+post_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
 {
     ptr_uint_t arg_value;
-    if (drfuzz_get_arg(target_pc, 0, false/*cur*/, (void **)&arg_value) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to get arg");
+
+    if (drfuzz_get_arg(fuzzcxt, target_pc, 0, false/*cur*/,
+                       (void **) &arg_value) != DRMF_SUCCESS)
+        EXPECT(false, "drfuzz failed to get arg");
     if (arg_value == 5)
         return false; /* stop */
     return true; /* repeat */
@@ -62,7 +73,7 @@ static void
 exit_event(void)
 {
     if (drfuzz_exit() != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to exit");
+        EXPECT(false, "drfuzz failed to exit");
     dr_fprintf(STDERR, "TEST PASSED\n");
     drmgr_exit();
 }
@@ -74,18 +85,18 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     generic_func_t repeatme_addr;
     drmgr_init();
     if (drfuzz_init(id) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to init");
+        EXPECT(false, "drfuzz failed to init");
     dr_register_exit_event(exit_event);
 
     /* fuzz repeatme */
     app = dr_get_main_module();
     if (app == NULL)
-        DR_ASSERT_MSG(false, "failed to get application module");
+        EXPECT(false, "failed to get application module");
     repeatme_addr = dr_get_proc_address(app->handle, "repeatme");
     if (repeatme_addr == NULL)
-        DR_ASSERT_MSG(false, "failed to find function repeatme");
+        EXPECT(false, "failed to find function repeatme");
     if (drfuzz_fuzz_target(repeatme_addr, 1, DRFUZZ_CALLCONV_CDECL,
                            pre_fuzz_cb, post_fuzz_cb) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to fuzz function repeatme");
+        EXPECT(false, "drfuzz failed to fuzz function repeatme");
     dr_free_module_data(app);
 }

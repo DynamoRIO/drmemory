@@ -46,6 +46,8 @@ DynamoRIO Extension libraries:
    <br>Shadow memory mapping
  - \subpage page_drsymcache
    <br>Persistent caching of symbol lookup data
+ - \subpage page_drfuzz
+   <br>Fuzz testing
  - Dr. Malloc
    <br>Memory allocation tracking (<em>coming soon</em>)
  - Dr. Callstack

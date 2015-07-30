@@ -51,6 +51,10 @@ if (WIN32)
   set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ)
 endif ()
 
+# We set DR libc option on b/c this is needed to link with drsyms_static
+# on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
+set(DynamoRIO_USE_LIBC ON)
+
 macro(configure_drfuzz_target target drwrap drmgr drsyms)
   use_DynamoRIO_extension(drfuzz ${drwrap})
   use_DynamoRIO_extension(drfuzz ${drmgr})

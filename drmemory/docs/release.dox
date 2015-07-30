@@ -101,14 +101,14 @@ The changes between version 1.7.0 and version 1.6.1 include:
    which provides persistent caching of symbol lookup data to reduce
    startup time overhead on large applications.
  - Clarified the final parameter to umbra_get_shadow_memory_type() and
-   umbra_shadow_memory_is_shared() to be #umbra_shadow_memory_type_t
+   umbra_shadow_memory_is_shared() to be umbra_shadow_memory_type_t
    rather than uint.
  - Clarified the 2nd parameter to umbra_create_shadow_memory() to be
-   #umbra_shadow_memory_flags_t rather than uint.
- - Clarified the #umbra_shadow_memory_info_t shadow_type field to be
-   #umbra_shadow_memory_type_t rather than uint.
- - Clarified the #umbra_map_options_t flags field to be
-   #umbra_map_flags_t rather than uint.
+   umbra_shadow_memory_flags_t rather than uint.
+ - Clarified the umbra_shadow_memory_info_t shadow_type field to be
+   umbra_shadow_memory_type_t rather than uint.
+ - Clarified the umbra_map_options_t flags field to be
+   umbra_map_flags_t rather than uint.
  - Added static library versions of drsyscall and umbra.
  - On Windows, handle leak detection (-check_handle_leaks) is now on by default
    in full mode.  However, it is still experimental and conservative,

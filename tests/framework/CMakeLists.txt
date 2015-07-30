@@ -59,7 +59,7 @@ endfunction(add_drmf_test_app)
 # We only expect a few tests, so we simplify things by having a simple
 # regex output for whether they passed.
 # ext_list should be a list of extensions minus the drmf_ prefix.
-function(add_drmf_test test_name app_name src_client ext_list pass_regex)
+function(add_drmf_test test_name app_name src_client ext_list client_options pass_regex)
   set(client_name ${test_name}.client)
   add_library(${client_name} SHARED ${src_client})
   set_property(TARGET ${client_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
@@ -85,7 +85,7 @@ function(add_drmf_test test_name app_name src_client ext_list pass_regex)
   endif ()
   add_test(${test_name}
     ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
-    -client ${client_path} 0 ""
+    -client ${client_path} 0 "${client_options}"
     -msgbox_mask 0 -stderr_mask 0xc
     "--" ${app_path})
   set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
@@ -93,17 +93,37 @@ endfunction(add_drmf_test)
 
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
 add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
-  drsyscall "done\nTEST PASSED")
+  drsyscall "" "done\nTEST PASSED")
 add_drmf_test(strace_test drsyscall_app strace_client.c
-  drsyscall "done\n.*TEST PASSED")
+  drsyscall "" "done\n.*TEST PASSED")
 
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty drfuzz_client_empty.c
-  drfuzz "done\nTEST PASSED")
+  drfuzz "" "done\nTEST PASSED")
 add_drmf_test(drfuzz_test_mutator drfuzz_app_empty drfuzz_client_mutator.c
-  drfuzz "TEST PASSED\n.*done")
+  drfuzz "" "TEST PASSED\n.*done")
 
 add_drmf_test_app(drfuzz_app_repeat drfuzz_app_repeat.c)
 add_drmf_test(drfuzz_test_repeat drfuzz_app_repeat drfuzz_client_repeat.c
-  drfuzz "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED")
+  drfuzz "" "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED")
+
+add_drmf_test_app(drfuzz_app_segfault drfuzz_app_segfault.c)
+
+set(segfault_regex_1 "Fault occured in target.*with 1 args.*")
+set(segfault_regex_2 "Crash originated in target.*with 1 args.*")
+set(segfault_regex_3 "TEST PASSED")
+
+add_drmf_test(drfuzz_test_segfault drfuzz_app_segfault drfuzz_client_segfault.c
+  drfuzz "-crash" "${segfault_regex_1}${segfault_regex_2}${segfault_regex_3}")
+use_DynamoRIO_extension(drfuzz_test_segfault.client drsyms)
+
+add_drmf_test(drfuzz_test_app_abort drfuzz_app_segfault drfuzz_client_segfault.c
+  drfuzz "-abort" "${segfault_regex_2}${segfault_regex_3}")
+use_DynamoRIO_extension(drfuzz_test_app_abort.client drsyms)
+
+add_drmf_test(drfuzz_test_no_crash drfuzz_app_segfault drfuzz_client_segfault.c
+  drfuzz "" ".*TEST PASSED")
+use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
+
+# XXX i#1734: add multi-threaded test, checking for aborted fuzz targets on all threads

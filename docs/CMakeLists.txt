@@ -61,6 +61,7 @@ set(headers
   ${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.h
   ${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.h
   ${PROJECT_SOURCE_DIR}/umbra/umbra.h
+  ${PROJECT_SOURCE_DIR}/drfuzz/drfuzz.h
   ${PROJECT_SOURCE_DIR}/framework/public.h)
 
 # some defines are set by DR config files so we must add here
@@ -104,7 +105,8 @@ add_custom_command(
   # When adding new DRMF extension docs, also add to Doxyfile.in and to
   # DR's api/docs/ext.gendox.
   ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
-       -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox\;${PROJECT_SOURCE_DIR}/umbra/umbra.dox
+       -D
+       srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox\;${PROJECT_SOURCE_DIR}/umbra/umbra.dox\;${PROJECT_SOURCE_DIR}/drfuzz/drfuzz.dox
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
        -Doutfile=${doxyfile}
        -Dversion_number=${TOOL_VERSION_NUMBER}
