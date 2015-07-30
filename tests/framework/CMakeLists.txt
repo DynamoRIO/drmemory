@@ -72,24 +72,24 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
   get_target_property(app_path ${test_name} LOCATION${location_suffix})
   get_target_property(client_path ${client_name} LOCATION${location_suffix})
   if (DEBUG_BUILD)
-    set(drrun_extra -debug)
+    set(drrun_extra -quiet -debug)
   else ()
-    set(drrun_extra "")
+    set(drrun_extra -quiet)
   endif ()
   add_test(${test_name}
     ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
     -client ${client_path} 0 ""
-    -msgbox_mask 0
+    -msgbox_mask 0 -stderr_mask 0xc
     "--" ${app_path})
   set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
 endfunction(add_drmf_test)
 
 add_drmf_test(drsyscall_test drsyscall_app.c drsyscall_client.c
-  drsyscall "done\n.*TEST PASSED")
+  drsyscall "done\nTEST PASSED")
 
 add_drmf_test(strace_test drsyscall_app.c strace_client.c
   drsyscall "done\n.*TEST PASSED")
 
 # drfuzz tests
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty.c drfuzz_client_empty.c
-  drfuzz "done\n.*TEST PASSED")
+  drfuzz "done\nTEST PASSED")
