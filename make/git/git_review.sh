@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # **********************************************************
 # Copyright (c) 2014 Google, Inc.    All rights reserved.
@@ -39,16 +39,23 @@
 #  -s <subject> = specify patchset title (else queried, or log's first line
 #                 for 1st patchset)
 #  -t = prepends "TBR" to the review title
+#  -b = base git ref to diff against
 
 # Send email by default
 email="--send_mail --cc=drmemory-devs@googlegroups.com"
 hashurl="https://github.com/DynamoRIO/drmemory/commit/"
 script=dynamorio/make/upload.py
+# We use HEAD^ instead of origin/master to avoid messing up code review diff
+# after we sync on the master branch.
+base="HEAD^"
 
-while getopts ":ucqtr:s:" opt; do
+while getopts ":ucqtr:s:b:" opt; do
   case $opt in
     u)
       mode="upload"
+      ;;
+    b)
+      base="$OPTARG"
       ;;
     c)
       mode="commit"
@@ -120,7 +127,7 @@ if [ "$mode" = "upload" ]; then
     msg=$(echo -e "Commit log for ${label}:\n---------------\n${log}\n---------------")
     echo "Uploading the review..."
     output=$(python ${root}/${script} -y -e "${user}" ${reviewer} ${issue} \
-        -t "${subject}" -m "${msg}" ${email} origin/master..)
+        -t "${subject}" -m "${msg}" ${email} "${base}"..)
     echo "${output}"
     if test -z "$issue"; then
         number=$(echo "$output" | grep http://)
