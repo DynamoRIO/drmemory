@@ -42,17 +42,24 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 # a function scope, we must set the global vars ahead of time:
 configure_DynamoRIO_global(OFF ON)
 
+function(add_drmf_test_app app_name src_app)
+  add_executable(${app_name} ${src_app})
+  set_property(TARGET ${app_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
+  if (UNIX AND NOT X64 AND NOT ARM)
+    append_property_string(TARGET ${app_name} COMPILE_FLAGS "-m32")
+    append_property_string(TARGET ${app_name} LINK_FLAGS "-m32")
+  endif ()
+  if (UNIX)
+    append_property_string(TARGET ${app_name} COMPILE_FLAGS "-g")
+  else (UNIX)
+    append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi")
+  endif (UNIX)
+endfunction(add_drmf_test_app)
+
 # We only expect a few tests, so we simplify things by having a simple
 # regex output for whether they passed.
 # ext_list should be a list of extensions minus the drmf_ prefix.
-function(add_drmf_test test_name src_app src_client ext_list pass_regex)
-  add_executable(${test_name} ${src_app})
-  set_property(TARGET ${test_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
-  if (UNIX AND NOT X64 AND NOT ARM)
-    append_property_string(TARGET ${test_name} COMPILE_FLAGS "-m32")
-    append_property_string(TARGET ${test_name} LINK_FLAGS "-m32")
-  endif ()
-
+function(add_drmf_test test_name app_name src_client ext_list pass_regex)
   set(client_name ${test_name}.client)
   add_library(${client_name} SHARED ${src_client})
   set_property(TARGET ${client_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
@@ -69,7 +76,7 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
     add_dependencies(${client_name} ${ext})
   endforeach (ext)
 
-  get_target_property(app_path ${test_name} LOCATION${location_suffix})
+  get_target_property(app_path ${app_name} LOCATION${location_suffix})
   get_target_property(client_path ${client_name} LOCATION${location_suffix})
   if (DEBUG_BUILD)
     set(drrun_extra -quiet -debug)
@@ -84,15 +91,19 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
   set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
 endfunction(add_drmf_test)
 
-add_drmf_test(drsyscall_test drsyscall_app.c drsyscall_client.c
+add_drmf_test_app(drsyscall_app drsyscall_app.c)
+add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
   drsyscall "done\nTEST PASSED")
-
-add_drmf_test(strace_test drsyscall_app.c strace_client.c
+add_drmf_test(strace_test drsyscall_app strace_client.c
   drsyscall "done\n.*TEST PASSED")
 
 # drfuzz tests
-add_drmf_test(drfuzz_test_empty drfuzz_app_empty.c drfuzz_client_empty.c
+add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
+add_drmf_test(drfuzz_test_empty drfuzz_app_empty drfuzz_client_empty.c
   drfuzz "done\nTEST PASSED")
+add_drmf_test(drfuzz_test_mutator drfuzz_app_empty drfuzz_client_mutator.c
+  drfuzz "TEST PASSED\n.*done")
 
-add_drmf_test(drfuzz_test_repeat drfuzz_app_repeat.c drfuzz_client_repeat.c
+add_drmf_test_app(drfuzz_app_repeat drfuzz_app_repeat.c)
+add_drmf_test(drfuzz_test_repeat drfuzz_app_repeat drfuzz_client_repeat.c
   drfuzz "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED")

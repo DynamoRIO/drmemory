@@ -115,10 +115,10 @@ configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in"
   @ONLY)
 
 # Make this a test to ensure we don't break it.
-# We use the framework test "drsyscall_test" as the app, and just the
+# We use the framework test "drsyscall_app" as the app, and just the
 # exit code as the success test.
 get_target_property(client_path strace LOCATION${location_suffix})
-get_target_property(app_path drsyscall_test LOCATION${location_suffix})
+get_target_property(app_path drsyscall_app LOCATION${location_suffix})
 if (DEBUG_BUILD)
   set(drrun_extra -debug)
 else ()

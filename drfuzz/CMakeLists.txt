@@ -38,6 +38,7 @@ endif ()
 
 set(srcs
     drfuzz.c
+    drfuzz_mutator.c
     ../framework/version.c)
 
 # i#1594c#3: VS generators fail if static lib has resources
@@ -50,9 +51,10 @@ if (WIN32)
   set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ)
 endif ()
 
-macro(configure_drfuzz_target target drwrap drmgr)
+macro(configure_drfuzz_target target drwrap drmgr drsyms)
   use_DynamoRIO_extension(drfuzz ${drwrap})
   use_DynamoRIO_extension(drfuzz ${drmgr})
+  use_DynamoRIO_extension(drfuzz ${drsyms})
   use_DynamoRIO_extension(drfuzz drcontainers)
   if (UNIX)
     # Avoid relocations which tend to violate security policies
@@ -70,7 +72,7 @@ macro(export_drfuzz_target target drwrap drmgr)
   export_target(${target} NAMESPACE drmf_)
   # Now put in our imports w/o the namespace on them
   set_target_properties(${target} PROPERTIES
-    LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drcontainers")
+    LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drsyms;drcontainers")
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files
@@ -83,7 +85,7 @@ add_library(drfuzz SHARED ${srcs} ${external_srcs})
 set(PREFERRED_BASE 0x79000000)
 configure_DynamoRIO_client(drfuzz)
 set_target_properties(drfuzz PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
-configure_drfuzz_target(drfuzz "drwrap" "drmgr")
+configure_drfuzz_target(drfuzz "drwrap" "drmgr" "drsyms")
 export_drfuzz_target(drfuzz "drwrap" "drmgr")
 install(FILES drfuzz.h DESTINATION ${DRMF_INSTALL_INC})
 
@@ -91,11 +93,11 @@ install(FILES drfuzz.h DESTINATION ${DRMF_INSTALL_INC})
 add_library(drfuzz_static STATIC ${srcs_static} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 configure_DynamoRIO_client(drfuzz_static)
-configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
+configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static" "drsyms_static")
 export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
 add_library(drfuzz_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drfuzz_int)
-configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static")
+configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static" "drsyms_static")

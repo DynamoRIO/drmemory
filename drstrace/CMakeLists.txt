@@ -172,7 +172,7 @@ endif (WIN32)
 # drstrace test
 
 if (BUILD_TOOL_TESTS)
-  get_target_property(app_path drsyscall_test LOCATION${location_suffix})
+  get_target_property(app_path drsyscall_app LOCATION${location_suffix})
   get_target_property(drstrace_path drstrace LOCATION${location_suffix})
   add_test(drstrace ${drstrace_path} -dr ${DynamoRIO_DIR}/.. -- ${app_path})
 endif (BUILD_TOOL_TESTS)

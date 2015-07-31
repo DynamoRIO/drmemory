@@ -41,7 +41,7 @@ exit_event(void)
 {
     if (drfuzz_exit() != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "drfuzz failed to exit");
-    dr_fprintf(STDERR, "TEST PASSED\n");
+    dr_fprintf(STDOUT, "TEST PASSED\n");
     drmgr_exit();
 }
 
