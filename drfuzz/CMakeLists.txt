@@ -83,7 +83,7 @@ add_library(drfuzz SHARED ${srcs} ${external_srcs})
 set(PREFERRED_BASE 0x79000000)
 configure_DynamoRIO_client(drfuzz)
 set_target_properties(drfuzz PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
-configure_drfuzz_target(drfuzz "drwrap_static" "drmgr_static")
+configure_drfuzz_target(drfuzz "drwrap" "drmgr")
 export_drfuzz_target(drfuzz "drwrap" "drmgr")
 install(FILES drfuzz.h DESTINATION ${DRMF_INSTALL_INC})
 

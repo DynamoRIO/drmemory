@@ -170,6 +170,7 @@ drfuzz_init(client_id_t client_id)
     if (res != DRMF_SUCCESS)
         return res;
 
+    drmgr_init();
     drwrap_init();
 
 #ifdef UNIX
@@ -206,6 +207,7 @@ drfuzz_exit(void)
         return DRSYM_ERROR;
 
     drwrap_exit();
+    drmgr_exit();
 
     hashtable_delete(&fuzz_target_htable);
 
