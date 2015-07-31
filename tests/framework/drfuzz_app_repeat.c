@@ -32,24 +32,25 @@
 
 /* Test of the Dr. Fuzz Extension */
 
-#include "dr_api.h"
-#include "drmgr.h"
-#include "drfuzz.h"
+#include <stdio.h>
 
-static void
-exit_event(void)
+#ifdef WINDOWS
+# define EXPORT __declspec(dllexport)
+#else
+# define EXPORT
+#endif
+
+/* repeatme should be re-executed 5 times with arg 1-5 */
+EXPORT void
+repeatme(int i)
 {
-    if (drfuzz_exit() != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to exit");
-    dr_fprintf(STDERR, "TEST PASSED\n");
-    drmgr_exit();
+    printf("hello %d\n", i);
 }
 
-DR_EXPORT void
-dr_client_main(client_id_t id, int argc, const char *argv[])
+int
+main(int argc, char **argv)
 {
-    drmgr_init();
-    if (drfuzz_init(id) != DRMF_SUCCESS)
-        DR_ASSERT_MSG(false, "drfuzz failed to init");
-    dr_register_exit_event(exit_event);
+    repeatme(0);
+    printf("done\n");
+    return 0;
 }

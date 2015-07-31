@@ -328,8 +328,8 @@ test_static_iterator(void)
         ASSERT(false, "drsys_iterate_syscalls failed");
 }
 
-static
-void exit_event(void)
+static void
+exit_event(void)
 {
     drsys_gateway_t gateway;
     if (drsys_syscall_gateway(&gateway) != DRMF_SUCCESS ||
@@ -341,8 +341,8 @@ void exit_event(void)
     drmgr_exit();
 }
 
-DR_EXPORT
-void dr_init(client_id_t id)
+DR_EXPORT void
+dr_client_main(client_id_t id, int argc, const char *argv[])
 {
     drsys_options_t ops = { sizeof(ops), 0, };
     drmgr_init();

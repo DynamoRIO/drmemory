@@ -93,3 +93,6 @@ add_drmf_test(strace_test drsyscall_app.c strace_client.c
 # drfuzz tests
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty.c drfuzz_client_empty.c
   drfuzz "done\nTEST PASSED")
+
+add_drmf_test(drfuzz_test_repeat drfuzz_app_repeat.c drfuzz_client_repeat.c
+  drfuzz "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED")

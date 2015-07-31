@@ -202,8 +202,8 @@ event_filter_syscall(void *drcontext, int sysnum)
     return true; /* intercept everything */
 }
 
-static
-void exit_event(void)
+static void
+exit_event(void)
 {
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
@@ -211,8 +211,8 @@ void exit_event(void)
     drmgr_exit();
 }
 
-DR_EXPORT
-void dr_init(client_id_t id)
+DR_EXPORT void
+dr_client_main(client_id_t id, int argc, const char *argv[])
 {
     drsys_options_t ops = { sizeof(ops), 0, };
     drmgr_init();
