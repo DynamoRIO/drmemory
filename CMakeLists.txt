@@ -1872,8 +1872,7 @@ else (BUILDING_SUB_PACKAGE)
     if (NOT APPLE) # FIXME DRi#1286: no nudge support yet on MacOS
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
     endif (NOT APPLE)
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib${LIB_SFX}\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib${LIB_SFX}\" COPYONLY)")
+    # drconfiglib and drinjectlib are now static libs so no need to install
   else (UNIX)
     if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
