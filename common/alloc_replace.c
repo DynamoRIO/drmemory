@@ -3237,6 +3237,12 @@ replace_RtlDestroyHeap(HANDLE heap)
  * point and perhaps try to do what's mentioned above: pattern-match the heap header
  * accesses (in shadow mode we can wait for the unaddr reports), and locate the call
  * to RtlpFreeHeap.
+ *
+ * XXX i#1720: a win7 ntdll patch changed some of this code to free using RtlFreeHeap
+ * instead of RtlpFreeHeap as we saw before.  That causes invalid heap arg errors.
+ * If all such code now calls RtlFreeHeap, we could consider going back to a
+ * pattern-match approach, which was only abandoned b/c of RtlpFreeHeap: but it would
+ * have to be contingent on this recent ntdll.dll.
  */
 
 /* If we add more fields, we should move this up top-level */

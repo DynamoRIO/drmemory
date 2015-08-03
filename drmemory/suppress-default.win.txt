@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -996,3 +996,15 @@ system call NtGdiDeleteObjectApp
 GDI32.dll!DeleteDC
 GDI32.dll!DeleteDC
 SHELL32.dll!Ordinal*
+
+##################################################
+# i#1565/i#1720: false positive from RtlGetThreadPreferredUILanguages
+
+# RtlGetThreadPreferredUILanguages is split up and only appears
+# with symbols.  We thus use a generalized callstack:
+
+INVALID HEAP ARGUMENT
+name=default i#1720 RtlGetThreadPreferredUILanguages false positive
+ntdll.dll!...
+kernel32.dll!*
+kernel32.dll!CreateProcessInternalW
