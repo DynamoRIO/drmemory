@@ -204,7 +204,7 @@ drfuzz_exit(void)
     if (count > 0)
         return DRMF_SUCCESS;
     if (count < 0)
-        return DRSYM_ERROR;
+        return DRMF_ERROR;
 
     drwrap_exit();
     drmgr_exit();
