@@ -1358,7 +1358,14 @@ replace_in_module(const module_data_t *mod, bool add)
             /* We should find every single routine in libc on linux: on windows
              * the wide-char ones aren't always there
              */
-            IF_UNIX(ASSERT(mod->start != libc, "can't find libc routine to replace"));
+            IF_UNIX(ASSERT(mod->start != libc ||
+                           /* i#1747: bionic libc does not have all reaplce routines.
+                            * We could add a generated array of whether the routine is
+                            * expected to be there instead if more routines are missing.
+                            */
+                           (strcmp(replace_routine_name[i], "rawmemchr") == 0 ||
+                            strcmp(replace_routine_name[i], "strchrnul") == 0),
+                           "can't find libc routine to replace"));
         }
     }
 
