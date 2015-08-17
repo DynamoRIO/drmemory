@@ -52,7 +52,9 @@ function(add_drmf_test_app app_name src_app)
   if (UNIX)
     append_property_string(TARGET ${app_name} COMPILE_FLAGS "-g")
   else (UNIX)
-    append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi")
+    # i#1748: disable inlining optimization to avoid calls to
+    # fuzzing targets being inlined
+    append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi /Ob0")
   endif (UNIX)
 endfunction(add_drmf_test_app)
 
