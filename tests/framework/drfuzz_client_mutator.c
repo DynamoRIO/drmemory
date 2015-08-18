@@ -33,6 +33,8 @@
 /* Test of the Dr. Fuzz Default Mutator */
 
 #include "dr_api.h"
+#include <string.h>
+#include "utils.h"
 #include "drfuzz_mutator.h"
 #include "drfuzz.h"
 
@@ -44,6 +46,9 @@
       dr_abort(), 0) : 0))
 
 #define MAX_BUFFER_LENGTH 256
+
+/* enabling verbose output of each flipped buffer requires rebuild  (~200k lines) */
+#define VERBOSE 0
 
 static drfuzz_mutator_t *mutator_rand, *mutator_iter;
 static byte current_value_buffer[MAX_BUFFER_LENGTH];
@@ -124,7 +129,7 @@ test_default_mutator()
 }
 
 static void
-test_scalar_mutation(size_t size, uint64 max)
+test_random_scalar(size_t size, uint64 max)
 {
     drmf_status_t res;
     uint64 i, step = 1;
@@ -187,7 +192,7 @@ test_scalar_mutation(size_t size, uint64 max)
 }
 
 static void
-test_buffer_mutation(size_t size)
+test_random_buffer(size_t size)
 {
     uint i;
     drmf_status_t res;
@@ -222,6 +227,127 @@ test_buffer_mutation(size_t size)
     EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
 }
 
+static uint64
+compute_permutations(uint bits, uint flips)
+{
+    uint i, max_multiplier, max_divisor;
+    uint64 p;
+
+    if (flips == 0)
+        return 0;
+
+    if (flips < (bits / 2)) {
+        max_multiplier = (bits - flips);
+        max_divisor = flips;
+    } else {
+        max_multiplier = flips;
+        max_divisor = (bits - flips);
+    }
+
+    for (i = bits - 1, p = bits; i > max_multiplier; i--)
+        p *= i;
+    for (i = 2; i <= max_divisor; i++)
+        p /= i;
+    return p;
+}
+
+#if VERBOSE > 0
+static void
+print_byte_buffer(byte *buffer, size_t size)
+{
+    uint i, j;
+    byte b;
+    char c[9] = {0};
+
+    dr_fprintf(STDERR, "   ");
+    for (i = 0; i < size; i++) {
+        b = buffer[i];
+        for (j = 0; j < 8; j++) {
+            c[j] = ((b & 1) == 0) ? '0' : '1';
+            b >>= 1;
+        }
+        dr_fprintf(STDERR, " %s", c);
+    }
+    dr_fprintf(STDERR, "\n");
+}
+#endif
+
+static uint
+count_flips(byte *buffer, size_t size)
+{
+    uint i, j, flips = 0;
+    byte b;
+
+    for (i = 0; i < size; i++) {
+        b = buffer[i];
+        for (j = 0; j < 8; j++) {
+            flips += (b & 1);
+            b >>= 1;
+        }
+    }
+    return flips;
+}
+
+static void
+test_bitflip_buffer(size_t size, uint sparsity, drfuzz_mutator_algorithm_t alg,
+                    uint flags)
+{
+    uint i = 0, flips, expected_flips = 1, expected_iterations;
+    drmf_status_t res;
+    byte byte_buffer[MAX_BUFFER_LENGTH] = {0}, last_buffer[MAX_BUFFER_LENGTH] = {0};
+    drfuzz_mutator_options_t options = DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
+    bool seed_centric = TEST(flags, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+
+    options.alg = alg;
+    options.sparsity = sparsity;
+    options.random_seed = get_random_value();
+    options.flags = flags;
+
+    dr_fprintf(STDERR, "\nFlipping %d bits (sparsity %d, %s, %s)\n\n", (size * 8),
+               sparsity, seed_centric ? "seed-centric" : "progressive",
+               (alg == MUTATOR_ALG_ORDERED) ? "ordered" : "random");
+
+    res = drfuzz_mutator_start(&mutator_iter, &byte_buffer, size, &options);
+    EXPECT(res == DRMF_SUCCESS, "failed to start the mutator with default options");
+    while (drfuzz_mutator_has_next_value(mutator_iter)) {
+        res = drfuzz_mutator_get_next_value(mutator_iter, &byte_buffer);
+        EXPECT(res == DRMF_SUCCESS, "failed to get next fuzz value");
+        res = drfuzz_mutator_get_current_value(mutator_iter, current_value);
+        EXPECT(res == DRMF_SUCCESS, "failed to get current fuzz value");
+
+#if VERBOSE > 0
+        print_byte_buffer(byte_buffer, size);
+#endif
+        if (seed_centric) {
+            flips = count_flips(byte_buffer, size);
+        } else { /* progressive flip, so check last_buffer to see how many were flipped */
+            uint j;
+
+            for (j = 0; j < size; j++)
+                last_buffer[j] ^= byte_buffer[j];
+            flips = count_flips(last_buffer, size);
+            memcpy(last_buffer, byte_buffer, sizeof(*last_buffer));
+        }
+
+        if (flips != expected_flips) {
+            expected_iterations = compute_permutations(size*8, expected_flips);
+            if (sparsity > 1)
+                expected_iterations = (expected_iterations/sparsity) + 2/*start and end*/;
+            EXPECT(i == expected_iterations, "incorrect iteration count");
+            EXPECT(flips == (expected_flips + 1), "flip count advanced by more than one");
+
+            i = 1;
+            expected_flips = flips;
+        } else {
+            i++;
+        }
+    }
+    EXPECT(!drfuzz_mutator_has_next_value(mutator_iter),
+           "ordered bitflip mutator should be exhausted now");
+    res = drfuzz_mutator_stop(mutator_iter);
+    EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
+}
+
 DR_EXPORT
 void dr_client_main(client_id_t id, int argc, const char *argv[])
 {
@@ -229,16 +355,31 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
 
     dr_set_random_seed(dr_get_milliseconds());
 
+    /* test default mutator configuration */
     test_default_mutator();
 
+    /* test ordered, seed-centric flip */
+    test_bitflip_buffer(1, 1, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(2, 1, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(3, 1000, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+
+    /* test random, seed-centric flip */
+    test_bitflip_buffer(1, 1, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(2, 1, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(3, 1000, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+
+    /* test progressive flip */
+    test_bitflip_buffer(1, 1, MUTATOR_ALG_ORDERED, 0);
+    test_bitflip_buffer(1, 1, MUTATOR_ALG_RANDOM, 0);
+
     for (i = 1; i <= 8; i++) {
-        test_scalar_mutation(i, choose_max_value(i)); /* avoids edge cases */
-        test_scalar_mutation(i, 0);                   /* now test edge cases */
-        test_scalar_mutation(i, 1);
+        test_random_scalar(i, choose_max_value(i)); /* avoids edge cases */
+        test_random_scalar(i, 0);                   /* now test edge cases */
+        test_random_scalar(i, 1);
     }
 
     for (i = 0; i < 10; i++)
-        test_buffer_mutation(dr_get_random_value(128) + 16); /* some non-scalar size */
+        test_random_buffer(dr_get_random_value(128) + 16); /* some non-scalar size */
 
     dr_fprintf(STDOUT, "TEST PASSED\n"); /* must use STDOUT for correct ouptut sequence */
 }

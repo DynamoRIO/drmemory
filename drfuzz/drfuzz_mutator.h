@@ -112,6 +112,7 @@ typedef struct _drfuzz_mutator_options_t {
      * The degree of sparseness in the random coverage of MUTATOR_ALG_RANDOM with
      * MUTATOR_UNIT_BITS (invalid for other configurations). Sparsity of n will yield on
      * average 1/n total values relative to MUTATOR_ALG_ORDERED in the same configuration.
+     * If the sparsity is set to 0, the default value of 1 will be used instead.
      */
     uint sparsity;
     /**
@@ -134,7 +135,7 @@ static const drfuzz_mutator_options_t DRFUZZ_MUTATOR_DEFAULT_OPTIONS = {
     MUTATOR_ALG_ORDERED,               /* alg */
     MUTATOR_UNIT_BITS,                 /* unit */
     MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, /* flags */
-    0,                                 /* sparsity */
+    1,                                 /* sparsity */
     0,                                 /* max_value */
     0x5a8390e9a31dc65fULL              /* random_seed */
 };
