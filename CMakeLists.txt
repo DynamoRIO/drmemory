@@ -1014,7 +1014,8 @@ else (TOOL_DR_HEAPSTAT)
     common/utils_shared.c
     ${asm_utils_src}
     common/redblack.c
-    common/crypto.c)
+    common/crypto.c
+    drmemory/fuzzer.c)
   if (UNIX)
     if (APPLE)
       set(srcs ${srcs} drmemory/syscall_macos.c)
@@ -1608,6 +1609,9 @@ add_subdirectory(drfuzz)
 
 # XXX: change this to find_package() + use_DynamoRIO_extension(drfuzz)
 include_directories(drfuzz)
+if (TOOL_DR_MEMORY)
+  target_link_libraries(${client_target} drfuzz_int)
+endif (TOOL_DR_MEMORY)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
@@ -1638,6 +1642,7 @@ if (BUILD_TOOL_TESTS)
     target_link_libraries(unit_tests drsyscall_int)
     target_link_libraries(unit_tests umbra_int)
     target_link_libraries(unit_tests drsymcache_int)
+    target_link_libraries(unit_tests drfuzz_int)
     set(DynamoRIO_RPATH ${old_rpath})
     add_test(unit_tests "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/unit_tests")
   endif (TOOL_DR_MEMORY)

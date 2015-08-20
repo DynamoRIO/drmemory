@@ -265,6 +265,15 @@ drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, drfuzz_flags_t flags,
 
 DR_EXPORT
 /**
+ * Unregister the fuzz target at func_pc from drfuzz. Future executions of the target
+ * function will not be repeated in the fuzz testing loop. Should not be called while the
+ * target function is executing (application may behave incorrectly or crash).
+ */
+drmf_status_t
+drfuzz_unfuzz_target(generic_func_t func_pc);
+
+DR_EXPORT
+/**
  * Register for notification of a fault event, which occurs when the execution of any
  * fuzz target encounters a critical fault (as defined at #drfuzz_fault_t). Since the app
  * may handle the fault, drfuzz does not report it to the user at the time this event

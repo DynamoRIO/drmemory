@@ -913,6 +913,46 @@ else (NOT X64)
     OFF "" 0)
 endif (NOT X64)
 
+if (TOOL_DR_MEMORY)
+  if (UNIX)
+    set(app_extension "")
+    if (X64)
+      set(fuzz_buffer_cpp_symbol "_ZN13BufferPrinter8repeatmeEPjm")
+    else (X64)
+      set(fuzz_buffer_cpp_symbol "_ZN13BufferPrinter8repeatmeEPjj")
+    endif (X64)
+    set(enable_mangled_names "")
+  else (UNIX)
+    set(app_extension ".exe")
+    if (X64)
+      set(fuzz_buffer_cpp_symbol "?repeatme-BufferPrinter--QEAAXPEAI_K-Z") # '-' for '@'
+    else (X64)
+      set(fuzz_buffer_cpp_symbol "?repeatme-BufferPrinter--QAEXPAII-Z") # '-' for '@'
+    endif (X64)
+    set(enable_mangled_names ";-fuzz_mangled_names")
+  endif (UNIX)
+
+  set(fuzz_buffer_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
+  newtest_ex(fuzz_buffer fuzz_buffer.c "" "${fuzz_buffer_ops}" "" OFF "" 0)
+  set(fuzz_buffer_ops "-fuzz_target;fuzz_buffer${app_extension}!repeatme|2|0|1|10")
+  newtest_nobuild_ex(fuzz_buffer.module_name fuzz_buffer
+    "" "${fuzz_buffer_ops}" "" OFF "" 0 "")
+  set(fuzz_buffer_ops
+    "-fuzz_target;fuzz_buffer.cpp${app_extension}!${fuzz_buffer_cpp_symbol}|3|1|2|10${enable_mangled_names}")
+  newtest_ex(fuzz_buffer.cpp fuzz_buffer.cpp "" "${fuzz_buffer_ops}" "" OFF "" 0)
+  if (NOT UNIX)
+    # demangled symbols can't be found on unix (elf table only has mangled)
+    set(fuzz_buffer_ops
+      "-fuzz_target;fuzz_buffer.cpp${app_extension}!BufferPrinter::repeatme|3|1|2|10")
+    newtest_nobuild_ex(fuzz_buffer.cpp.mangled fuzz_buffer.cpp
+      "" "${fuzz_buffer_ops}" "" OFF "" 0 "")
+
+    append_property_string(TARGET fuzz_buffer COMPILE_FLAGS "/Ob0")
+    append_property_string(TARGET fuzz_buffer.cpp COMPILE_FLAGS "/Ob0") # disable opt
+  endif (NOT UNIX)
+  # XXX i#1734: need a test for a fuzz target loaded after target registration
+endif (TOOL_DR_MEMORY)
+
 if (APPLE)
   # Enable a few tests for the test suite without perturbing
   # all the code above.

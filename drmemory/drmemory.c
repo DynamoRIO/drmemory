@@ -72,6 +72,7 @@
 #include <stddef.h> /* for offsetof */
 #include "pattern.h"
 #include "frontend.h"
+#include "fuzzer.h"
 #ifdef WINDOWS
 # include "handlecheck.h"
 #endif /* WINDOWS */
@@ -412,6 +413,8 @@ event_exit(void)
     heap_region_exit();
     if (options.pattern != 0)
         pattern_exit();
+    if (option_specified.fuzz_target)
+        fuzzer_exit();
     if (options.shadowing) {
         shadow_exit();
         if (umbra_exit() != DRMF_SUCCESS)
@@ -1882,6 +1885,11 @@ dr_init(client_id_t id)
         if (umbra_init(client_id) != DRMF_SUCCESS)
             ASSERT(false, "fail to init Umbra");
         shadow_init();
+    }
+
+    if (option_specified.fuzz_target) {
+        fuzzer_init(client_id _IF_WINDOWS(option_specified.fuzz_mangled_names));
+        fuzzer_fuzz_target(options.fuzz_target);
     }
 
     if (options.pattern != 0)

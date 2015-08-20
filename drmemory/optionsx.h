@@ -587,6 +587,20 @@ OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
 OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
                    "Ensure external processes terminated by this one exit cleanly",
                    "Ensure external processes terminated by this one exit cleanly.  Often applications forcibly terminate child processes, which can prevent proper leak checking and error and suppression summarization as well as generation of symbol and code cache files needed for performance.  When this option is enabled, every termination call to another process will be replaced with a directive to the Dr. Memory running in that process to perform a clean shutdown.  If there is no DynamoRIO-based tool in the target process, the regular termination call will be carried out.")
+/* long comment includes HTML escape characters (http://www.doxygen.nl/htmlcmds.html) */
+OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
+                     "Fuzz test the target program according to the specified descriptor"NL
+                     "        Fuzz descriptor format: <target>|<arg-count>|<buffer-index>|<size-index>|<repeat-count>"NL
+                     "        where <target> is one of:"NL
+                     "             <module>!<symbol>"NL
+                     "             <module>+<offset>"NL
+                     "        The alias <main> may be given as the <module> to specify the main module of the program.",
+                     "Fuzz test the target program according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;target&gt;:&lt;arg-count&gt;:&lt;buffer-index&gt;:&lt;size-index&gt;</code></pre>where <code>&lt;target&gt;</code> has one of two formats:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;!&lt;symbol&gt;</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;!#&lt;offset&gt;</code></pre>Here, <code>&lt;module&gt;</code> refers to a single binary image file such as a library (.so or .dll) or an application executable (.exe on Windows). The <code>&lt;offset&gt;</code> specifies the entry point of the target function as a hexadecimal offset (e.g. &quot;0xf7d4&quot;) from the start of the module that contains it (i.e., the library or executable image). The <code>&lt;symbol&gt;</code> may be either a plain C function name, a mangled C++ symbol, or (Windows only) a de-mangled C++ symbol of the form returned by the \\ref page_symquery. The option <code>-fuzz_mangled_names</code> is required for using mangled names in Windows, and the mangled name must have every '@' character escaped by substituting a '-' in its place. The module alias &lt;main&gt; may be used to refer to the main module of the process, which is the program executable. Note that the fuzz testing feature currently assumes the fuzz target function uses the C calling convention (i.e. &quot;cdecl&quot;).")
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(drmemscope, fuzz_mangled_names, false,
+                   "Enable mangled names for fuzz targets on Windows",
+                   "By default, fuzz targets on Windows must use demangled names. Use this option to enabled mangled names. It is required to escape every '@' character by replacing it with a '-' in the mangled name (due to delimiter conflicts over '@' in the toolchain).")
+#endif
 
 /****************************************************************************
  * Un-documented client options, for developer use only

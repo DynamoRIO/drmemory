@@ -45,6 +45,18 @@
 
 #define ARGSIZE(target) ((target)->arg_count * sizeof(reg_t))
 
+#define DRFUZZ_ERROR(...) \
+do { \
+    ELOG(0, "ERROR: [drfuzz] "); \
+    ELOG(0, __VA_ARGS__); \
+} while (0)
+
+#define DRFUZZ_LOG(level, ...) \
+do { \
+    LOG(level, "[drfuzz] "); \
+    LOG(level, __VA_ARGS__); \
+} while (0)
+
 #ifdef UNIX
 typedef dr_signal_action_t drfuzz_fault_action_t;
 # define CRASH_CONTINUE DR_SIGNAL_DELIVER
@@ -258,7 +270,7 @@ drfuzz_init(client_id_t client_id)
 
     tls_idx_fuzzer = drmgr_register_tls_field();
     if (tls_idx_fuzzer < 0) {
-        LOG(1, "drfuzz failed to reserve TLS slot--initialization failed");
+        DRFUZZ_ERROR("drfuzz failed to reserve TLS slot--initialization failed\n");
         return DRMF_ERROR;
     }
 
@@ -358,6 +370,34 @@ drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, drfuzz_flags_t flags,
         hashtable_remove(&fuzz_target_htable, func_pc); /* ignore result: error already */
         return DRMF_ERROR;
     }
+}
+
+DR_EXPORT drmf_status_t
+drfuzz_unfuzz_target(generic_func_t func_pc)
+{
+    drmf_status_t res = DRMF_SUCCESS;
+    fuzz_pass_context_t *fp = drfuzz_get_fuzzcxt();
+    pass_target_t *live_target = lookup_live_target(fp, (app_pc) func_pc);
+    fuzz_target_t *target = hashtable_lookup(&fuzz_target_htable, func_pc);
+
+    if (target == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (live_target != NULL) {
+        /* XXX i#1734: ideally we would check all threads, or flag the target as live */
+        DRFUZZ_ERROR("Attempt to unfuzz a live fuzz target\n");
+        return DRMF_ERROR; /* cannot unfuzz the target in this state */
+    }
+    if (!hashtable_remove(&fuzz_target_htable, func_pc)) {
+        DRFUZZ_ERROR("failed to remove "PIFX" from the fuzz target hashtable\n", func_pc);
+        res = DRMF_ERROR;         /* Missing entry does not prevent unfuzzing, */
+        free_fuzz_target(target); /* but at least free it.                     */
+    }
+    if (!drwrap_unwrap((app_pc) func_pc, pre_fuzz_handler, post_fuzz_handler)) {
+        DRFUZZ_ERROR("failed to unwrap the fuzz target "PIFX" via drwrap_unwrap\n",
+                     func_pc);
+        res = DRMF_ERROR;
+    }
+    return res;
 }
 
 DR_EXPORT drmf_status_t
@@ -570,8 +610,8 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
 
     ASSERT(target != NULL, "pre_fuzz must be associated with a fuzz target");
 
-    LOG(3, "pre_fuzz() for target "PFX" with %d args\n",
-        target_to_fuzz, target->arg_count);
+    DRFUZZ_LOG(3, "pre_fuzz() for target "PFX" with %d args\n",
+               target_to_fuzz, target->arg_count);
 
     /* XXX i#1734: this heuristic may be incorrect when a handled fault occurs during
      * the very last iteration of the last fuzz pass on any thread.
@@ -605,21 +645,21 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
         live->unclobber.retaddr_loc = (reg_t *) mc->xsp; /* see retaddr_unclobber_t */
 #endif
         live->unclobber.retaddr = (reg_t) drwrap_get_retaddr(wrapcxt);
-        LOG(4, "fuzz target "PFX": saving stack pointer "PFX"\n",
-            target_to_fuzz, mc->xsp);
+        DRFUZZ_LOG(4, "fuzz target "PFX": saving stack pointer "PFX"\n",
+                   target_to_fuzz, mc->xsp);
         for (i = 0; i < target->arg_count; i++) { /* store the original arg values */
             live->original_args[i] = (reg_t) drwrap_get_arg(wrapcxt, i);
             /* copy original args to current args for the first iteration of the fuzz */
             live->current_args[i] = live->original_args[i];
-            LOG(4, "fuzz target "PFX": saving original arg #%d: "PFX"\n",
-                target_to_fuzz, i, live->original_args[i]);
+            DRFUZZ_LOG(4, "fuzz target "PFX": saving original arg #%d: "PFX"\n",
+                       target_to_fuzz, i, live->original_args[i]);
         }
     }
 
     /* restore the original arg values before calling the client */
     for (i = 0; i < target->arg_count; i++) {
-        LOG(4, "fuzz target "PFX": restoring original arg #%d: "PFX"\n",
-            target_to_fuzz, i, live->original_args[i]);
+        DRFUZZ_LOG(4, "fuzz target "PFX": restoring original arg #%d: "PFX"\n",
+                   target_to_fuzz, i, live->original_args[i]);
         drwrap_set_arg(wrapcxt, i, (void *) live->original_args[i]);
     }
 
@@ -644,20 +684,20 @@ post_fuzz_handler(void *wrapcxt, void *user_data)
     pass_target_t *live = fp->live_targets;
     bool repeat = live->target->post_fuzz_cb(fp, (generic_func_t) live->target->func_pc);
 
-    LOG(3, "post_fuzz() for target "PFX" (%s)\n", live->target->func_pc,
-        repeat ? "repeat" : "stop");
+    DRFUZZ_LOG(3, "post_fuzz() for target "PFX" (%s)\n", live->target->func_pc,
+               repeat ? "repeat" : "stop");
 
     if (repeat) {
         dr_mcontext_t *mc = drwrap_get_mcontext(wrapcxt);
         IF_DEBUG(drext_status_t redirect_status;);
         /* restore the original xsp before repeating */
-        LOG(4, "fuzz target "PFX": restoring xsp to "PFX"\n", live->target->func_pc,
-            live->xsp);
+        DRFUZZ_LOG(4, "fuzz target "PFX": restoring xsp to "PFX"\n",
+                   live->target->func_pc, live->xsp);
         mc->xsp = live->xsp;
         mc->pc = live->target->func_pc;
         IF_DEBUG(redirect_status =) drwrap_redirect_execution(wrapcxt);
-        LOG(4, "fuzz target "PFX" requesting redirect to self entry; result: %d\n",
-            live->target->func_pc, live->target->func_pc, redirect_status);
+        DRFUZZ_LOG(4, "fuzz target "PFX" requesting redirect to self entry; result: %d\n",
+                   live->target->func_pc, live->target->func_pc, redirect_status);
     } else { /* the current target is finished, so pop from live stack and cache it */
         fp->live_targets = live->next;   /* pop from live stack */
         live->next = fp->cached_targets; /* push to cached stack */
