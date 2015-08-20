@@ -138,7 +138,7 @@ on_win8_or_later(void)
 static bool
 on_supported_version(void)
 {
-    return (win_ver.version <= DR_WINDOWS_VERSION_8_1);
+    return (win_ver.version <= DR_WINDOWS_VERSION_10);
 }
 #elif defined(MACOS)
 static bool
@@ -766,7 +766,10 @@ _tmain(int argc, TCHAR *targv[])
     dr_config_status_t status;
 
     if (dr_standalone_init() == NULL) {
-        /* We assume this is due to a new version of Windows */
+        /* We assume this is due to a new version of Windows.
+         * The user could work around it by setting -max_supported_os_version
+         * in DYNAMORIO_OPTIONS env var.
+         */
         fatal("this version of Windows is not supported by Dr. Memory.");
     }
 #ifdef WINDOWS

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -47,9 +47,9 @@
 
 #include "table_defines.h"
 
-/* FIXME i#97: IIS syscalls!
- * FIXME i#98: fill in data on rest of Vista and Win7 syscalls!
- * FIXME i#99: my windows syscall data is missing 3 types of information:
+/* XXX i#97: add IIS syscalls.
+ * FIXME i#98: fill in data on still-unknown recently-added Windows syscalls.
+ * XXX i#99: my windows syscall data is missing 3 types of information:
  *   - some structs have variable-length data on the end
  *     e.g., PORT_MESSAGE which I do handle today w/ hardcoded support
  *   - some structs have optional fields that don't need to be defined
@@ -3533,6 +3533,17 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
 
+    /***************************************************/
+    /* Added in Windows 10 */
+    /* FIXME i#1750: fill in details */
+    {{WIN10,0},"NtAlpcImpersonateClientContainerOfPort", UNKNOWN, RNTST, 3, },
+    {{WIN10,0},"NtCompareObjects", UNKNOWN, RNTST, 2, },
+    {{WIN10,0},"NtCreatePartition", UNKNOWN, RNTST, 5, },
+    {{WIN10,0},"NtGetCurrentProcessorNumberEx", UNKNOWN, RNTST, 1, },
+    {{WIN10,0},"NtManagePartition", UNKNOWN, RNTST, 5, },
+    {{WIN10,0},"NtOpenPartition", UNKNOWN, RNTST, 3, },
+    {{WIN10,0},"NtRevertContainerImpersonation", UNKNOWN, RNTST, 0, },
+    {{WIN10,0},"NtSetInformationSymbolicLink", UNKNOWN, RNTST, 4, },
 };
 
 #define NUM_NTDLL_SYSCALLS \

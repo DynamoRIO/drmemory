@@ -60,6 +60,7 @@
 # define WIN7     DR_WINDOWS_VERSION_7
 # define WIN8     DR_WINDOWS_VERSION_8
 # define WIN81    DR_WINDOWS_VERSION_8_1
+# define WIN10    DR_WINDOWS_VERSION_10
 #endif
 
 #endif /* _TABLE_DEFINES_H 1 */

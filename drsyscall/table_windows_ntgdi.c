@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -3106,6 +3106,55 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN81,0},"NtGdiDdDDINetDispStopMiracastDisplayDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN81,0},"NtGdiDdDDIPresentMultiPlaneOverlay", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN81,0},"NtGdiGetCurrentDpiInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+
+    /***************************************************/
+    /* Added in Windows 10 */
+    /* FIXME i#1750: fill in details */
+    {{WIN10,0},"NtGdiDdDDIAbandonSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIAcquireSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIAdjustFullscreenGamma", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIChangeVideoMemoryReservation", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDICheckMultiPlaneOverlaySupport2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDICreateContextVirtual", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDICreatePagingQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDICreateSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIDestroyAllocation2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIDestroyPagingQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIEnumAdapters2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIEvict", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIFreeGpuVirtualAddress", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIGetDWMVerticalBlankEvent", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIGetResourcePresentPrivateDriverData", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIGetSetSwapChainMetadata", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIInvalidateCache", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDILock2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIMakeResident", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIMapGpuVirtualAddress", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIMarkDeviceAsError", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDINetDispStartMiracastDisplayDeviceEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDINetDispStopSessions", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIOpenSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIOpenSyncObjectFromNtHandle2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIOpenSyncObjectNtHandleFromName", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIPresentMultiPlaneOverlay2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIQueryClockCalibration", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIQueryVidPnExclusiveOwnership", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIQueryVideoMemoryInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIReclaimAllocations2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIReleaseSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIReserveGpuVirtualAddress", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISetDodIndirectSwapchain", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISetStablePowerState", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISetSyncRefreshCountWaitTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISetVidPnSourceHwProtection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISignalSynchronizationObjectFromCpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISignalSynchronizationObjectFromGpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISignalSynchronizationObjectFromGpu2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDISubmitCommand", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIUnlock2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIUpdateGpuVirtualAddress", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIWaitForSynchronizationObjectFromCpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtGdiDdDDIWaitForSynchronizationObjectFromGpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
 };
 #define NUM_GDI32_SYSCALLS \
     (sizeof(syscall_gdi32_info)/sizeof(syscall_gdi32_info[0]))

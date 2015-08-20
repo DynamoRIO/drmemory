@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2436,6 +2436,62 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN81,0},"NtUserTransformPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{WIN81,0},"NtUserTransformRect", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{WIN81,0},"NtUserUpdateWindowInputSinkHints", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+
+    /***************************************************/
+    /* Added in Windows 10 */
+    /* FIXME i#1750: fill in details */
+    {{WIN10,0},"NtCreateImplicitCompositionInputSink", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtDCompositionCapturePointer", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtDCompositionDuplicateSwapchainHandleToDwm", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtDCompositionEnableDDASupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN10,0},"NtDCompositionEnableMMCSS", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtDCompositionGetAnimationTime", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtDCompositionRegisterVirtualDesktopVisual", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtDCompositionSetChannelCallbackId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtDCompositionSetResourceCallbackId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtDCompositionSetVisualInputSink", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtDCompositionUpdatePointerCapture", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtDesktopCaptureBits", UNKNOWN, DRSYS_TYPE_UNKNOWN, 8, },
+    {{WIN10,0},"NtHWCursorUpdatePointer", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtQueryCompositionInputIsImplicit", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtQueryCompositionInputQueueAndTransform", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtQueryCompositionInputSinkViewId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtRIMAddInputObserver", UNKNOWN, DRSYS_TYPE_UNKNOWN, 7, },
+    {{WIN10,0},"NtRIMGetDevicePreparsedDataLockfree", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtRIMObserveNextInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtRIMRemoveInputObserver", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtRIMUpdateInputObserverRegistration", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtSetCompositionSurfaceAnalogExclusive", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtTokenManagerConfirmOutstandingAnalogToken", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN10,0},"NtTokenManagerGetAnalogExclusiveSurfaceUpdates", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
+    {{WIN10,0},"NtTokenManagerGetAnalogExclusiveTokenEvent", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtTokenManagerOpenSectionAndEvents", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtUserDwmKernelShutdown", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN10,0},"NtUserDwmKernelStartup", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN10,0},"NtUserEnableChildWindowDpiMessage", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserGetDManipHookInitFunction", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserGetPointerFrameArrivalTimes", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserInitializeInputDeviceInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 7, },
+    {{WIN10,0},"NtUserInitializePointerDeviceInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
+    {{WIN10,0},"NtUserInjectDeviceInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserInjectKeyboardInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserInjectMouseInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserInjectPointerInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserIsChildWindowDpiMessageEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtUserIsWindowBroadcastingDpiToChildren", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtUserNavigateFocus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserRegisterDManipHook", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtUserRegisterManipulationThread", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN10,0},"NtUserRegisterShellPTPListener", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserReleaseDwmHitTestWaiters", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN10,0},"NtUserSetActiveProcessForMonitor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserSetCoreWindow", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserSetCoreWindowPartner", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserSetFeatureReportResponse", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserSetManipulationInputTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN10,0},"NtUserSetWindowArrangement", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN10,0},"NtUserSetWindowShowState", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtVisualCaptureBits", UNKNOWN, DRSYS_TYPE_UNKNOWN, 9, },
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -23,8 +23,8 @@
 use strict;
 
 my %name_map = (
-    # special case
-    'GetThreadDesktop' => 'NtUserGetThreadDesktop-SPECIALCASED',
+    # special case: "Desktoa" to precede "Desktop" :)
+    'GetThreadDesktop' => 'NtUserGetThreadDesktoa-SPECIALCASED',
 
     'NtUserControlMagnification' => 'NtUserMagControl',
     'NtUserGetMagnificationLensCtxInformation' => 'NtUserMagGetContextInformation',
@@ -48,6 +48,9 @@ my %name_map = (
     # win8.1
     'NtUserPhysicalToLogicalPointForPerMonitorDPI' => 'NtUserPerMonitorDPIPhysicalToLogicalPoint',
      'NtUserLogicalToPhysicalPointForPerMonitorDPI' => 'NtUserLogicalToPerMonitorDPIPhysicalPoint',
+
+    # win10
+    "NtUserGetDpiSystemMetrics" => "NtUserGetDpiMetrics",
 
     # imm32
     'NtUserImmDisableIme' => 'NtUserDisableThreadIme',
@@ -92,6 +95,13 @@ my %user32_delete = (
     'NtUserDdeDisconnectList' => 1,
     'NtUserFreeDDElParam' => 1,
     'NtUserTestWindowProcess' => 1,
+    );
+
+# On Win10 this shows up in our syscalls files but it matches
+# NtQuerySystemInformation for x64 but NtWow64GetNativeSystemInformation
+# for wow64.  Best to just throw it out.
+my %ntdll_delete = (
+    "RtlGetNativeSystemInformation" => 1,
     );
 
 my %imm32_only = (
@@ -190,6 +200,7 @@ while ($#ARGV >= 0) {
             next if ($name =~ /^NtGdiD3DKMT/);
 
             next if ($prefix =~ /USER32/ && defined($user32_delete{$name}));
+            next if ($prefix =~ /NTDLL/ && defined($ntdll_delete{$name}));
             next if ($prefix =~ /USER32/ && defined($imm32_only{$name}));
             # XXX: there could be new imm32-only wrappers that we'll miss this way!
             next if ($prefix =~ /IMM32/ && !defined($imm32_only{$name}));
@@ -212,10 +223,10 @@ while ($#ARGV >= 0) {
 }
 
 foreach my $n (sort (keys %nums)) {
-    if ($n eq 'NtUserGetThreadDesktop-SPECIALCASED') {
+    if ($n eq 'NtUserGetThreadDesktoa-SPECIALCASED') {
         # preserve the comment and extra entry
         $n = 'GetThreadDesktop';
-        printf "/* i#487: this has a different sysnum on some platforms */\n";
+        printf "/* i#487: this has a different sysnum on some platforms.  It must be before NtUserGetThreadDesktop (i#1418). */\n";
     }
     printf "%s(%-50s", $prefix, $n;
     for (my $i = 0; $i < $os; $i++) {
