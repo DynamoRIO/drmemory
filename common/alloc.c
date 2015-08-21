@@ -593,10 +593,12 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
      */
     { "RtlCompactHeap", RTL_ROUTINE_COMPACT },
     /* RtlpHeapIsLocked is a non-exported routine that is called directly
-     * from LdrShutdownProcess: so we treat the latter as a heap routine
-     * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
+     * from LdrShutdownProcess: so we treat the latter as a heap routine.
+     * i#1751: Similarly on Win10, RtlUnlockProcessHeapOnProcessTerminate is
+     * called from RtlExitUserProcess.
      */
     { "LdrShutdownProcess", RTL_ROUTINE_SHUTDOWN },
+    { "RtlExitUserProcess", RTL_ROUTINE_SHUTDOWN },
 };
 #define POSSIBLE_RTL_ROUTINE_NUM \
     (sizeof(possible_rtl_routines)/sizeof(possible_rtl_routines[0]))
