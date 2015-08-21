@@ -82,7 +82,14 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
 {
     if (opnd_is_far_base_disp(opnd)) {
         if (opnd_get_segment(opnd) == SEG_ES ||
-            opnd_get_segment(opnd) == SEG_DS) {
+            opnd_get_segment(opnd) == SEG_DS ||
+            /* cs: is sometimes seen, as here on win10:
+             *   RPCRT4!Invoke+0x28:
+             *   76d85ea0 2eff1548d5de76  call dword ptr cs:[RPCRT4!
+             *                              __guard_check_icall_fptr (76ded548)]
+             * We assume it's flat.
+             */
+            opnd_get_segment(opnd) == SEG_CS) {
             /* string operation: we assume flat segments */
             opnd_set_size(&opnd, OPSZ_lea);
             PRE(bb, inst,
