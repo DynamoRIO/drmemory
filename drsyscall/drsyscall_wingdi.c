@@ -190,9 +190,11 @@ wingdi_get_secondary_syscall_num(const char *name, uint primary_num)
 
     /* add secondary usercall with & without primary prefix */
     name2num_entry_add(name, num, false/*no Zw*/);
-    skip_primary = strstr(name, "Param.");
-    if (skip_primary != NULL) {
-        name2num_entry_add(skip_primary + strlen("Param."), num, false/*no Zw*/);
+    skip_primary = strstr(name, ".");
+    if (skip_primary != NULL &&
+        /* don't add unknown w/o primary */
+        strstr(name, ".UNKNOWN") == NULL) {
+        name2num_entry_add(skip_primary + 1/*"."*/, num, false/*no Zw*/);
     }
     return num.secondary;
 }

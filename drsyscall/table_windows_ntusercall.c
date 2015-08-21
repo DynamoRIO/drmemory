@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -37,8 +37,9 @@
 /* FIXME i#1094: the official return type is DWORD_PTR but it would be more useful
  * to give the actual types
  */
-/* FIXME i#1153: Windows 8 added some syscalls we have not yet added here */
-/* FIXME i#1360: Windows 8.1 added some syscalls we have not yet added here */
+/* FIXME i#1153: Windows 8 added some syscalls we do not have details for */
+/* FIXME i#1360: Windows 8.1 added some syscalls we do not have details for */
+/* FIXME i#1750: Windows 8.1 added some syscalls we do not have details for */
 
 /* FIXME i#1089: fill in info on all the inlined args for all of
  * syscalls in this file.
@@ -55,15 +56,17 @@ syscall_info_t syscall_UserCallNoParam_info[] = {
     {{0,0},"NtUserCallNoParam.MSQCLEARWAKEMASK", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.ALLOWFOREGNDACTIVATION", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.CREATESYSTEMTHREADS", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
-    {{0,0},"NtUserCallNoParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{0,0},"NtUserCallNoParam.DESKTOPHASWATERMARK", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.DESTROY_CARET", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.GETDEVICECHANGEINFO", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.GETIMESHOWSTATUS", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.GETINPUTDESKTOP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.GETMSESSAGEPOS", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.GETREMOTEPROCID", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN8,0},"NtUserCallNoParam.GETUNPREDICTEDMESSAGEPOS", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.HIDECURSORNOCAPTURE", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.LOADCURSANDICOS", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN8,0},"NtUserCallNoParam.ISQUEUEATTACHED", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.PREPAREFORLOGOFF", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.RELEASECAPTURE", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.RESETDBLCLICK", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
@@ -83,8 +86,12 @@ syscall_info_t syscall_UserCallNoParam_info[] = {
     {{0,0},"NtUserCallNoParam.INIT_MESSAGE_PUMP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.UNINIT_MESSAGE_PUMP", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {{0,0},"NtUserCallNoParam.LOADUSERAPIHOOK", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN81,0},"NtUserCallNoParam.ENABLEMIPSHELLTHREAD", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN81,0},"NtUserCallNoParam.ISMIPSHELLTHREADENABLED", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN8,0},"NtUserCallNoParam.DEFERREDDESKTOPROTATION", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{WIN10,0},"NtUserCallNoParam.ENABLEPERMONITORMENUSCALING", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
-    {{0,0},"NtUserCallNoParam.OK", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{0,0},"NtUserCallNoParam.UNKNOWN", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
 };
 
 syscall_info_t syscall_UserCallOneParam_info[] = {
@@ -102,6 +109,7 @@ syscall_info_t syscall_UserCallOneParam_info[] = {
          {0, sizeof(POINTL), W},
      }
     },
+    {{WIN10,0},"NtUserCallOneParam.FORCEFOCUSBASEDMOUSEWHEELROUTING", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{0,0},"NtUserCallOneParam.GETINPUTEVENT", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*DWORD*/},
     {{0,0},"NtUserCallOneParam.GETKEYBOARDLAYOUT", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*DWORD*/},
     {{0,0},"NtUserCallOneParam.GETKEYBOARDTYPE", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*DWORD*/},
@@ -142,8 +150,13 @@ syscall_info_t syscall_UserCallOneParam_info[] = {
     {{0,0},"NtUserCallOneParam.SHOWSTARTGLASS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{0,0},"NtUserCallOneParam.SWAPMOUSEBUTTON", OK, DRSYS_TYPE_UNSIGNED_INT, 2, /*BOOL*/},
 
-    {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
-    {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{0,0},"NtUserCallOneParam.WOWMODULEUNLOAD", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{0,0},"NtUserCallOneParam.UNKNOWNA", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN8,0},"NtUserCallOneParam.DWMLOCKSCREENUPDATES", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN8,0},"NtUserCallOneParam.ENABLESESSIONFORMMCSS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN8,0},"NtUserCallOneParam.UNKNOWNB", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN8,0},"NtUserCallOneParam.ISTHREADMESSAGEQUEUEATTACHED", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN81,0},"NtUserCallOneParam.POSTUIACTIONS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
 };
@@ -152,7 +165,8 @@ syscall_info_t syscall_UserCallHwnd_info[] = {
     {{0,0},"NtUserCallHwnd.DWP_GETENABLEDPOPUP", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {{0,0},"NtUserCallHwnd.GETWNDCONTEXTHLPID", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwnd.REGISTERSHELLHOOKWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwnd.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserCallHwnd.UNKNOWNA", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
+    {{WIN10,0},"NtUserCallHwnd.UNKNOWNB", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwnd.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
 };
@@ -171,7 +185,10 @@ syscall_info_t syscall_UserCallHwndParam_info[] = {
     {{0,0},"NtUserCallHwndParam.SETDIALOGPOINTER", OK, SYSARG_TYPE_UINT32, 3, /*HWND, BOOL*/ },
     {{0,0},"NtUserCallHwndParam.SETVISIBLE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserCallHwndParam.SETWNDCONTEXTHLPID", OK, SYSARG_TYPE_UINT32, 3, /*HWND, HANDLE*/},
+    {{WIN81,0},"NtUserCallHwndParam.UNKNOWNA", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserCallHwndParam.SETWINDOWSTATE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
+    {{WIN10,0},"NtUserCallHwndParam.UNKNOWNB", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
+    {{WIN10,0},"NtUserCallHwndParam.REGISTERWINDOWARRANGEMENTCALLOUT", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwndParam.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
 };
@@ -190,18 +207,14 @@ syscall_info_t syscall_UserCallHwndLock_info[] = {
     {{0,0},"NtUserCallHwndLock.SETSYSMENU", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndLock.UPDATECKIENTRECT", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwndLock.UPDATEWINDOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserCallHwndLock.SETACTIVEIMMERSIVEWINDOW", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
+    {{WIN10,0},"NtUserCallHwndLock.GETWINDOWTRACKINFOASYNC", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwndLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
 };
 
 syscall_info_t syscall_UserCallTwoParam_info[] = {
-    {{0,0},"NtUserCallTwoParam.ENABLEWINDOW", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
-    {{0,0},"NtUserCallTwoParam.REDRAWTITLE", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
-    {{0,0},"NtUserCallTwoParam.SHOWOWNEDPOPUPS", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
-    {{0,0},"NtUserCallTwoParam.SWITCHTOTHISWINDOW", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
-    {{0,0},"NtUserCallTwoParam.UPDATEWINDOWS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
-
+    {{WIN81,0},"NtUserCallTwoParam.UNKNOWNA", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.CHANGEWNDMSGFILTER", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.GETCURSORPOS", OK, DRSYS_TYPE_UNSIGNED_INT, 3,
      {
@@ -233,11 +246,19 @@ syscall_info_t syscall_UserCallTwoParam_info[] = {
     {{0,0},"NtUserCallTwoParam.SETPHYSCURSORPOS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallTwoParam.UNHOOKWINDOWSHOOK", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*int, HOOKPROC*/},
     {{0,0},"NtUserCallTwoParam.WOWCLEANUP", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{WIN10,0},"NtUserCallTwoParam.ENABLESHELLWINDOWMGT", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallTwoParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
 };
 
 syscall_info_t syscall_UserCallHwndParamLock_info[] = {
+    {{WIN8,0},"NtUserCallHwndParamLock.UNKNOWNA", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{0,0},"NtUserCallHwndParamLock.ENABLEWINDOW", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
+    {{WIN10,0},"NtUserCallHwndParamLock.SETMODERNAPPWINDOW", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{0,0},"NtUserCallHwndParamLock.REDRAWTITLE", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{0,0},"NtUserCallHwndParamLock.SHOWOWNEDPOPUPS", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
+    {{0,0},"NtUserCallHwndParamLock.SWITCHTOTHISWINDOW", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{0,0},"NtUserCallHwndParamLock.UPDATEWINDOWS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{0,0},"NtUserCallHwndParamLock.VALIDATERGN", OK, SYSARG_TYPE_UINT32, 3, /*HWND, HRGN*/},
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwndParamLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 3, /*HWND, HRGN*/},
