@@ -77,6 +77,13 @@ typedef struct _stringop_entry_t {
 } stringop_entry_t;
 
 #ifdef TOOL_DR_MEMORY
+/* We wait until 1st bb to set thread data structs, as we want the mcxt
+ * and DR doesn't provide it at initial thread init (i#117).
+ */
+bool first_bb = true;
+#endif
+
+#ifdef TOOL_DR_MEMORY
 static dr_emit_flags_t
 instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
                         bool for_trace, bool translating, OUT void **user_data);
@@ -849,9 +856,6 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
                         bool for_trace, bool translating, OUT void **user_data)
 {
     bb_info_t *bi;
-#ifdef TOOL_DR_MEMORY
-    static bool first_bb = true;
-#endif
 
     if (go_native)
         return DR_EMIT_GO_NATIVE;

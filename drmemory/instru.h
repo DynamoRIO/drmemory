@@ -31,6 +31,7 @@
 
 extern hashtable_t stringop_us2app_table;
 extern void *stringop_lock;
+extern bool first_bb; /* has the 1st bb been executed yet? */
 
 void
 instrument_init(void);

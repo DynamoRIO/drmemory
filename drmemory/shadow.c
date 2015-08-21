@@ -26,6 +26,7 @@
 #include "shadow.h"
 #include "umbra.h"
 #include "spill.h"
+#include "instru.h"
 #include <limits.h> /* UINT_MAX */
 #include <stddef.h>
 #ifdef TOOL_DR_HEAPSTAT
@@ -1534,7 +1535,11 @@ shadow_registers_thread_init(void *drcontext)
 #endif
 #ifdef TOOL_DR_MEMORY
     aux = thread_alloc(drcontext, sizeof(*sr->aux), HEAPSTAT_SHADOW);
-    if (first_thread) {
+    if (first_thread ||
+        /* If the app created other threads early before DR took over, we
+         * have to treat everything as defined.
+         */
+        !first_bb) {
         first_thread = false;
         /* since we're in late, we consider everything defined
          * (if we were in at init APC, only stack pointer would be defined) */
