@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -148,7 +148,9 @@ vsyscall_pc(void *drcontext, byte *entry)
             return NULL;
         }
         if (opc == OP_mov_imm && opnd_is_reg(instr_get_dst(&instr, 0)) &&
-            opnd_get_reg(instr_get_dst(&instr, 0)) == REG_EDX) {
+            opnd_get_reg(instr_get_dst(&instr, 0)) == REG_EDX &&
+            /* win10 wow64 also has call* edx: exclude it */
+            !is_wow64_process()) {
             ASSERT(opnd_is_immed_int(instr_get_src(&instr, 0)), "internal error");
             vpc = (byte *) opnd_get_immed_int(instr_get_src(&instr, 0));
         }
