@@ -2587,7 +2587,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,0},"NtWow64ReadVirtualMemory64", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtWow64QueryVirtualMemory64", UNKNOWN, RNTST, 8, },
+    {{0,WIN10},"NtWow64QueryVirtualMemory64", UNKNOWN, RNTST, 8, },
 
     /***************************************************/
     /* added in Windows Vista SP0 */
@@ -3544,6 +3544,11 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN10,0},"NtOpenPartition", UNKNOWN, RNTST, 3, },
     {{WIN10,0},"NtRevertContainerImpersonation", UNKNOWN, RNTST, 0, },
     {{WIN10,0},"NtSetInformationSymbolicLink", UNKNOWN, RNTST, 4, },
+    {{WIN10,0},"NtWow64IsProcessorFeaturePresent", OK, RNTST, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
 };
 
 #define NUM_NTDLL_SYSCALLS \

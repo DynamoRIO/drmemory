@@ -2470,6 +2470,7 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN10,0},"NtUserDwmKernelStartup", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{WIN10,0},"NtUserEnableChildWindowDpiMessage", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN10,0},"NtUserGetDManipHookInitFunction", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN10,0},"NtUserGetDpiMetrics", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN10,0},"NtUserGetPointerFrameArrivalTimes", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{WIN10,0},"NtUserInitializeInputDeviceInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 7, },
     {{WIN10,0},"NtUserInitializePointerDeviceInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
