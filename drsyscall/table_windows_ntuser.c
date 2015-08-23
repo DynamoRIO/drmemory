@@ -1253,8 +1253,9 @@ syscall_info_t syscall_user32_info[] = {
      * param and 6th param.  However, enough are identical for our purposes that
      * we handle in code.  That's based on an early examination: if more and
      * more need special handling we may want to switch to a secondary table(s).
+     * The return value is an LRESULT.
      */
-    {{0,0},"NtUserMessageCall", OK, SYSARG_TYPE_BOOL32, 7,
+    {{0,0},"NtUserMessageCall", OK, SYSARG_TYPE_SINT32, 7,
      {
          {0, sizeof(HANDLE),  SYSARG_INLINED,    DRSYS_TYPE_HANDLE},
          {1, sizeof(UINT),    SYSARG_INLINED,    DRSYS_TYPE_UNSIGNED_INT},
@@ -1263,7 +1264,11 @@ syscall_info_t syscall_user32_info[] = {
           * XXX: non-memarg client would want secondary table(s)!
           */
          {3, sizeof(LPARAM),  SYSARG_INLINED,    DRSYS_TYPE_SIGNED_INT},
-         /* 4th param is sometimes IN and sometimes OUT so we special-case it */
+         /* 4th param is sometimes IN and sometimes OUT so we special-case it.
+          * XXX: however, now that we know the syscall return is
+          * LRESULT (i#1752), and this param always seems to be NULL,
+          * we may need to revisit what type it really is.
+          */
          {4, sizeof(LRESULT), SYSARG_NON_MEMARG, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(DWORD),   SYSARG_INLINED,    DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(BOOL),    SYSARG_INLINED,    DRSYS_TYPE_BOOL},

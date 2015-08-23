@@ -849,7 +849,12 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t 
          */
         if (TEST(SYSINFO_RET_MINUS1_FAIL, info->flags))
             return (res != -1);
+        if (info->return_type != DRSYS_TYPE_NTSTATUS) {
+            /* We don't really know, so safest to assume it succeeded */
+            return true;
+        }
     }
+    /* We fell through on NTSTATUS, or we don't know and we guess it's NTSTATUS */
     if (res == STATUS_BUFFER_OVERFLOW) {
         /* Data is filled in so consider success (i#358) */
         return true;

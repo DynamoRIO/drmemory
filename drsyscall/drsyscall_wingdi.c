@@ -1544,7 +1544,11 @@ handle_UserMessageCall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
     BOOL ansi = (BOOL) pt->sysarg[6];
     bool result_written = true;
 
-    /* First, handle result param: whether read or written */
+    /* First, handle result param: whether read or written.
+     * XXX i#1752: the return value of the syscall is actually the LRESULT, so
+     * it's not clear whether this param #4 is really used as an OUT param.
+     * It's NULL in all instances of the syscall observed so far.
+     */
     if (type == FNID_SENDMESSAGECALLBACK ||
         type == FNID_SENDMESSAGEFF ||
         type == FNID_SENDMESSAGEWTOOPTION)
