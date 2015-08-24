@@ -44,6 +44,7 @@
 #include "../wininc/ndk_extypes.h" /* required by ntuser.h */
 #include "../wininc/ntuser.h"
 #include "../wininc/ntuser_win8.h"
+#include <commctrl.h> /* for EM_GETCUEBANNER */
 
 /***************************************************************************/
 /* System calls with wrappers in user32.dll.
@@ -1663,6 +1664,64 @@ handle_UserMessageCall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
                                 (byte *) lparam, sizeof(WINDOWPOS),
                                 "WM_WINDOWPOSCHANGING", DRSYS_TYPE_STRUCT, "WINDOWPOS"))
             return;
+        break;
+    }
+
+    /* Edit control messages:
+     *
+     * For now we only have handling for writes by the kernel for EM_GET*.
+     * FIXME i#1752: add checking of reads, and go through the rest of the EM_*
+     * types and find other writes.
+     * XXX i#1752: add tests for these.
+     */
+    case EM_GETSEL: {
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_WRITE,
+                                (byte *) lparam, sizeof(DWORD),
+                                "EM_GETSEL", DRSYS_TYPE_UNSIGNED_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ORD_WPARAM, SYSARG_WRITE,
+                                (byte *) wparam, sizeof(DWORD),
+                                "EM_GETSEL", DRSYS_TYPE_UNSIGNED_INT, NULL))
+            return;
+        break;
+    }
+    case EM_GETRECT: {
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_WRITE,
+                                (byte *) lparam, sizeof(RECT),
+                                "EM_GETRECT", DRSYS_TYPE_STRUCT, "RECT"))
+            return;
+        break;
+    }
+    case EM_GETLINE: {
+        /* 1st WORD in buf holds # chars */
+        WORD chars;
+        if (safe_read((WORD *) lparam, sizeof(chars), &chars)) {
+            if (ansi) {
+                handle_cstring(ii, ORD_LPARAM, SYSARG_WRITE, "EM_GETLINE buffer",
+                               (byte *) lparam, chars*sizeof(char), NULL, true);
+            } else {
+                handle_cwstring(ii, "EM_GETLINE buffer", (byte *) lparam,
+                                chars*sizeof(wchar_t), ORD_LPARAM, SYSARG_WRITE,
+                                NULL, true);
+            }
+            if (ii->abort)
+                return;
+        }
+        break;
+    }
+    case EM_GETCUEBANNER: {
+        handle_cwstring(ii, "EM_GETCUEBANNER buffer", (byte *) wparam,
+                        lparam*sizeof(wchar_t), ORD_WPARAM, SYSARG_WRITE,
+                        NULL, true);
+        if (ii->abort)
+            return;
+        break;
+    }
+
+    default: {
+        DO_ONCE({ WARN("WARNING: unhandled NtUserMessageCall types found\n"); });
+        LOG(SYSCALL_VERBOSE, "WARNING: unhandled NtUserMessageCall message type 0x%x\n",
+            msg);
         break;
     }
     }
