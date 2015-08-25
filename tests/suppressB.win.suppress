@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -30,11 +30,14 @@ suppress.exe!call_buf_asm
 suppress.exe!non_module_test
 
 UNINITIALIZED READ
+# Some platforms have kernelbase.dll!VirtualQueryEx while others have
+# ntdll.dll!ZwQueryVirtualMemory.
 name=syscall
 system call NtQueryVirtualMemory parameter value #1
-kernel*.dll!VirtualQueryEx
-kernel*.dll!VirtualQuery
+*!*Query*
+...
 suppress.exe!syscall_test
+suppress.exe!test
 
 # ensure * matches any frame (i#527)
 UNINITIALIZED READ
@@ -43,11 +46,15 @@ name=not in a module
 suppress.exe!non_module_test
 
 UNINITIALIZED READ
-name=syscall
+# Some platforms have kernelbase.dll!VirtualQueryEx while others have
+# ntdll.dll!ZwQueryVirtualMemory.
+name=syscall2
 *
-kernel*.dll!VirtualQuery
+*!*Query*
+...
 suppress.exe!syscall_test
-suppress.exe!run_some_again
+*
+suppress.exe!main
 
 #-------------------------------------------------------------------------------
 
