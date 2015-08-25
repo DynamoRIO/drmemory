@@ -323,6 +323,13 @@ typedef struct _arena_header_t {
  */
 # define HEAP_CREATE_POSSIBLE_FLAGS 0x40007
 static HANDLE process_heap;
+/* i#1754: for pre-us mapped memory, in particular the shared-memory CsrPortHeap,
+ * we do not attempt to detect uninitialized reads as it very difficult to
+ * track writes by csrss.  The simplest way to accomplish this is to mark
+ * all allocs as defined by zeroing them.
+ */
+# define WINDOWS_ZERO_MEMORY(arena, alloc_flags) \
+    (TEST(ARENA_PRE_US_MAPPED, (arena)->flags) || TEST(HEAP_ZERO_MEMORY, (alloc_flags)))
 #else
 # define ARENA_MAIN 0x0001
 #endif
@@ -3470,7 +3477,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
              ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                !TEST(HEAP_NO_SERIALIZE, flags)) ?
               ALLOC_SYNCHRONIZE : 0) |
-             (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
+             (WINDOWS_ZERO_MEMORY(arena, flags) ? ALLOC_ZERO : 0) |
              ALLOC_INVOKE_CLIENT, drcontext,
              &mc, (app_pc)replace_RtlAllocateHeap,
              MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
@@ -3501,7 +3508,7 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
              ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                !TEST(HEAP_NO_SERIALIZE, flags)) ?
               ALLOC_SYNCHRONIZE : 0) |
-             (TEST(HEAP_ZERO_MEMORY, flags) ? ALLOC_ZERO : 0) |
+             (WINDOWS_ZERO_MEMORY(arena, flags) ? ALLOC_ZERO : 0) |
              (TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags) ?
               ALLOC_IN_PLACE_ONLY : 0) |
              ALLOC_ALLOW_EMPTY
