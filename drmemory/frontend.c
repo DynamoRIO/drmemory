@@ -1300,13 +1300,28 @@ _tmain(int argc, TCHAR *targv[])
     if (strstr(client_ops, "-lib_blacklist`") == NULL) {
         if (drfront_get_env_var("SYSTEMROOT", buf, BUFFER_SIZE_ELEMENTS(buf)) ==
             DRFRONT_SUCCESS) {
-            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
                      /* Add .d?? to still report errors in app .exe but not
                       * in *.dll or *.drv.
                       */
-                     cliops_sofar, len,
-                     "-lib_blacklist %s*.d?? ",
+                     "-lib_blacklist `%s*.d??",
                      buf);
+            /* i#1755: consider "C:\Program Files\Common Files\Microsoft Shared" to
+             * be on the blacklist.
+             */
+# define    MS_SHARED_DIRNAME "Microsoft Shared"
+            if (drfront_get_env_var("CommonProgramFiles", buf, BUFFER_SIZE_ELEMENTS(buf))
+                == DRFRONT_SUCCESS) {
+                BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
+                         ",%s%c%s*.d??", buf, DIRSEP, MS_SHARED_DIRNAME);
+            }
+            if (drfront_get_env_var("CommonProgramFiles(x86)", buf,
+                                    BUFFER_SIZE_ELEMENTS(buf)) == DRFRONT_SUCCESS) {
+                BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
+                         ",%s%c%s*.d??", buf, DIRSEP, MS_SHARED_DIRNAME);
+            }
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
+                     "` ");
         }
     }
 #ifdef WINDOWS
