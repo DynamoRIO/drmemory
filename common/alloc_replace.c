@@ -3432,6 +3432,13 @@ replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
  * Continue RtlHeap API replacement routines:
  */
 
+/* i#1572: Rtl*Heap return BOOLEAN up through win7, but BOOL on win8+.
+ * There's no downside to returning BOOL instead of BOOLEAN if our value
+ * is either 0 or 1 (i.e., no weird != 1 true values) so we always do that.
+ * Our code either uses A) TRUE or FALSE constants or B) !!bool.
+ */
+typedef BOOL RTL_HEAP_BOOL_TYPE;
+
 static void
 handle_Rtl_alloc_failure(void *drcontext, arena_header_t *arena, ULONG flags)
 {
@@ -3523,12 +3530,12 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     return res;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOLEAN res = FALSE;
+    RTL_HEAP_BOOL_TYPE res = FALSE;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" flags=0x%x ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
@@ -3598,12 +3605,12 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
  * as a safe spot, and we redirect our return to the code cache
  * via DRi#849.
  */
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_RtlLockHeap(HANDLE heap)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOLEAN res = FALSE;
+    RTL_HEAP_BOOL_TYPE res = FALSE;
     LOG(2, "%s heap="PFX" (arena="PFX")\n", __FUNCTION__, heap, arena);
     if (arena == NULL) {
         dr_mcontext_t mc;
@@ -3624,12 +3631,12 @@ replace_RtlLockHeap(HANDLE heap)
     return res;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_RtlUnlockHeap(HANDLE heap)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOLEAN res = FALSE, invalid = FALSE;;
+    RTL_HEAP_BOOL_TYPE res = FALSE, invalid = FALSE;;
     LOG(2, "%s heap="PFX" (arena="PFX")\n", __FUNCTION__, heap, arena);
     if (arena == NULL) {
         dr_mcontext_t mc;
@@ -3647,12 +3654,12 @@ replace_RtlUnlockHeap(HANDLE heap)
     return res;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
-    BOOLEAN res = FALSE, invalid = FALSE;
+    RTL_HEAP_BOOL_TYPE res = FALSE, invalid = FALSE;
     if (arena == NULL) {
         dr_mcontext_t mc;
         INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -3775,7 +3782,7 @@ replace_RtlCompactHeap(HANDLE heap, ULONG flags)
 /* See i#907, i#995, i#1032.  For x64, strings are allocated via exported
  * heap routines, but freed via internal.
  */
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_NtdllpFreeStringRoutine(PVOID ptr)
 {
     void *drcontext = enter_client_code();
@@ -3784,7 +3791,7 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
      * We ignore it here.
      */
     arena_header_t *arena = heap_to_arena(process_heap);
-    BOOLEAN res = FALSE;
+    RTL_HEAP_BOOL_TYPE res = FALSE;
     bool ok;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -3806,7 +3813,7 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
 }
 #endif
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg0(void)
 {
     void *drcontext = enter_client_code();
@@ -3815,7 +3822,7 @@ replace_ignore_arg0(void)
     return TRUE;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg1(void *arg1)
 {
     void *drcontext = enter_client_code();
@@ -3824,7 +3831,7 @@ replace_ignore_arg1(void *arg1)
     return TRUE;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg2(void *arg1, void *arg2)
 {
     void *drcontext = enter_client_code();
@@ -3833,7 +3840,7 @@ replace_ignore_arg2(void *arg1, void *arg2)
     return TRUE;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
 {
     void *drcontext = enter_client_code();
@@ -3842,7 +3849,7 @@ replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
     return TRUE;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
 {
     void *drcontext = enter_client_code();
@@ -3851,7 +3858,7 @@ replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
     return TRUE;
 }
 
-static BOOLEAN WINAPI
+static RTL_HEAP_BOOL_TYPE WINAPI
 replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
 {
     void *drcontext = enter_client_code();
