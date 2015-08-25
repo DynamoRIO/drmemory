@@ -334,28 +334,29 @@ foreach (str ${patterns})
     string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     string(REGEX REPLACE "(^|\n)%if !CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     # distinguish pre-vista from post-vista
-    if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+    if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
       string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1"
         ${str} "${${str}}")
-    else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+    else ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
       string(REGEX REPLACE "(^|\n)%if CYGWIN_PREVISTA[^%]+\n%endif\n" "\\1"
         ${str} "${${str}}")
-    endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+    endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
   else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
     if (WIN32)
       string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       # distinguish pre-win8 from win8
-      if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "" ${str} "${${str}}")
+      if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" ""
+          ${str} "${${str}}")
         string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1"
           ${str} "${${str}}")
-      else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+      else ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
         string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" ""
           ${str} "${${str}}")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "\\1"
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" "\\1"
           ${str} "${${str}}")
-      endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+      endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
     elseif (UNIX)
       string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
