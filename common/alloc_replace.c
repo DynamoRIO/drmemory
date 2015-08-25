@@ -3604,7 +3604,7 @@ replace_RtlLockHeap(HANDLE heap)
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
     BOOLEAN res = FALSE;
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX" (arena="PFX")\n", __FUNCTION__, heap, arena);
     if (arena == NULL) {
         dr_mcontext_t mc;
         INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -3630,7 +3630,7 @@ replace_RtlUnlockHeap(HANDLE heap)
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
     BOOLEAN res = FALSE, invalid = FALSE;;
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX" (arena="PFX")\n", __FUNCTION__, heap, arena);
     if (arena == NULL) {
         dr_mcontext_t mc;
         INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -4713,6 +4713,15 @@ alloc_replace_exit(void)
     LOG(1, "  dbgcrt mismatches:  %9d\n", dbgcrt_mismatch);
     LOG(1, "  allocs left native: %9d\n", allocs_left_native);
 #endif
+
+    /* On Win10 at process exit, RtlLockHeap is called but the private
+     * RtlUnlockProcessHeapOnProcessTerminate does the unlock and so
+     * we don't see it.  This exiting thread should be the one who owns the lock.
+     */
+    if (dr_recurlock_self_owns(cur_arena->lock)) {
+        LOG(2, "Process heap (arena="PFX") is locked at exit: unlocking\n", cur_arena);
+        app_heap_unlock(dr_get_current_drcontext(), cur_arena->lock);
+    }
 
     alloc_iterate(free_user_data_at_exit, NULL, false/*free too*/);
     /* XXX: should add hashtable_iterate() to drcontainers */
