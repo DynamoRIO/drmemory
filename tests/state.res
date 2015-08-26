@@ -19,9 +19,4 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: writing 1 byte(s)
-%if WINDOWS
 state.c:131
-%endif
-%if UNIX
-state.c:131
-%endif

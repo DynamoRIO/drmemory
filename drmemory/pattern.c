@@ -1033,7 +1033,7 @@ pattern_handle_ill_fault(void *drcontext,
                                       &addr, &is_write, &pos);
          memopidx++) {
         app_loc_t loc;
-        size_t size = 0;
+        size_t size;
         opnd_t opnd = is_write ?
             instr_get_dst(&instr, pos) : instr_get_src(&instr, pos);
         if (!opnd_uses_nonignorable_memory(opnd))
@@ -1110,7 +1110,8 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
  * by us.
  */
 bool
-pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc
+pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
+                          dr_mcontext_t *mc
                           _IF_WINDOWS(app_pc target)
                           _IF_WINDOWS(bool guard))
 {
@@ -1126,8 +1127,33 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc
     if (!safe_decode(drcontext, next_pc, &next, &next_pc))
         goto handle_light_mode_segv_fault_done;
     /* check if our own code */
-    if (!pattern_segv_instr_is_instrumented(raw_mc->pc, next_pc, &inst, &next))
+    if (!pattern_segv_instr_is_instrumented(raw_mc->pc, next_pc, &inst, &next)) {
+        app_pc addr;
+        bool is_write;
+        uint pos;
+        int  memopidx;
+        app_loc_t loc;
+        size_t size;
+        opnd_t opnd;
+        dr_mem_info_t info;
+        for (memopidx = 0;
+             instr_compute_address_ex_pos(&inst, mc, memopidx,
+                                          &addr, &is_write, &pos);
+             memopidx++) {
+            if (dr_query_memory_ex(addr, &info)) {
+                if (info.type == DR_MEMTYPE_FREE) {
+                    opnd = is_write ?
+                        instr_get_dst(&inst, pos) : instr_get_src(&inst, pos);
+                    size = opnd_size_in_bytes(opnd_get_size(opnd));
+                    pc_to_loc(&loc, mc->pc);
+                    report_unaddressable_access(&loc, addr, size, is_write,
+                                                addr, addr + size, mc);
+                }
+                /* FIXME i#1015: report unaddr error for write on read-only */
+            }
+        }
         goto handle_light_mode_segv_fault_done;
+    }
 #ifdef WINDOWS
     if (guard) {
         /* violation caused by us, restore the guard page.

@@ -45,6 +45,8 @@ malloc.c:205
 Error #8: UNADDRESSABLE ACCESS beyond heap bounds: writing 4 byte(s)
 malloc.c:211
 %endif
+: UNADDRESSABLE ACCESS: reading 1 byte(s)
+malloc.c:288
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 # for now just removing error#

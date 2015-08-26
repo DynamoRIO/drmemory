@@ -3448,7 +3448,8 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
         LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
             info->raw_mcontext->xip, info->mcontext->xip, target);
         if (options.pattern != 0) {
-            if (pattern_handle_segv_fault(drcontext, info->raw_mcontext))
+            if (pattern_handle_segv_fault(drcontext, info->raw_mcontext,
+                                          info->mcontext))
                 return DR_SIGNAL_SUPPRESS;
             return DR_SIGNAL_DELIVER;
         } else if (ZERO_STACK() &&
@@ -3498,7 +3499,8 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
          * the guard page.
          */
         guard = excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION;
-        return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext
+        return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext,
+                                          excpt->mcontext
                                           _IF_WINDOWS(target)
                                           _IF_WINDOWS(guard));
     } else if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {

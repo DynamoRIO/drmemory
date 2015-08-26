@@ -27,6 +27,8 @@ Error #3: UNINITIALIZED READ
 malloc.c:135
 Error #4: INVALID HEAP ARGUMENT
 malloc.c:179
+Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
+malloc.c:288
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:239

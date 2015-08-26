@@ -22,7 +22,7 @@ starting
 generating SIGSEGV
 eax is correct
 done
-~~Dr.M~~ NO ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~       1 unique,     1 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)

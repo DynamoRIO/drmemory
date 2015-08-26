@@ -284,6 +284,9 @@ main()
         *((char **)(pX + sizeof(pX))) = pD;
     }
 
+    if (setjmp(mark) == 0) {
+        c = *(char *)0x100; /* i#1015: unaddr on wild access */
+    }
     printf("all done\n");
     return 0;
 }

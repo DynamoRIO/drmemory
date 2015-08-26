@@ -37,3 +37,5 @@ malloc.c:203
 %if WINDOWS_8_PLUS
 malloc.c:205
 %endif
+: UNADDRESSABLE ACCESS: reading 1 byte(s)
+malloc.c:288
