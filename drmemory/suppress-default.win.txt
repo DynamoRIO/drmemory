@@ -1008,3 +1008,14 @@ name=default i#1720 RtlGetThreadPreferredUILanguages false positive
 ntdll.dll!...
 kernel32.dll!*
 kernel32.dll!CreateProcessInternalW
+
+##################################################
+# i#1669: win10-specific process creation error
+# XXX: the 2nd param here is not PUNICODE_STRING: we
+# should update the database.
+
+UNADDRESSABLE ACCESS
+name=default i#1669 win10 create process
+system call NtApphelpCacheControl UNICODE_STRING content
+...
+KERNELBASE.dll!CreateProcessInternalW
