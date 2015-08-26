@@ -201,7 +201,9 @@ event_post_syscall(void *drcontext, int sysnum)
         DRMF_SUCCESS || !success) {
         /* With the new early injector on Linux, we see access, open, + stat64 fail */
 #ifdef WINDOWS
-        ASSERT(false, "no syscalls in this app should fail");
+        /* On win10, NtQueryValueKey fails */
+        ASSERT(strcmp(name, "NtQueryValueKey") == 0,
+               "syscalls in this app shouldn't fail");
 #endif
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)
@@ -269,10 +271,10 @@ test_static_queries(void)
 #endif
 
     /* Test number to name.
-     * i#1692: We choose syscall 1 because on WOW64 syscall 0 has some upper bits
-     * set. As a result num.number = 0 assert fails.
+     * i#1692/i#1669: We choose syscall 16 because on WOW64 syscall 0 has some upper
+     * bits set, and other low numbers are not present on various platforms.
      */
-    num.number = 1;
+    num.number = 16;
     num.secondary = 0;
     if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_number_to_syscall failed");

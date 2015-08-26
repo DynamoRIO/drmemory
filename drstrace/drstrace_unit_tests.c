@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /*
@@ -117,9 +117,12 @@ check_symbol_fetching()
     char symbol_dir[MAXIMUM_PATH];
     char symsrv_path[MAXIMUM_PATH];
     bool pdb_exists;
+    drfront_status_t res;
+
     if (drfront_get_absolute_path("../logs",
                                   symbol_dir, MAXIMUM_PATH) != DRFRONT_SUCCESS) {
-        printf("drfront_get_absolute_path failed\n");
+        fprintf(stderr, "drfront_get_absolute_path failed\n");
+        fflush(stderr);
         dr_abort();
     }
     /* create output dir with appended PID */
@@ -128,35 +131,45 @@ check_symbol_fetching()
               dr_get_process_id());
 
     if (drfront_create_dir(symbol_dir) != DRFRONT_SUCCESS) {
-        printf("drfront_create_dir failed\n");
+        fprintf(stderr, "drfront_create_dir failed\n");
+        fflush(stderr);
         dr_abort();
     }
     if (drfront_sym_init(symbol_dir, DBGHELP_PATH) != DRFRONT_SUCCESS) {
-        printf("drfront_sym_init failed\n");
+        fprintf(stderr, "drfront_sym_init failed\n");
+        fflush(stderr);
         dr_abort();
     }
     if (drfront_set_client_symbol_search_path(symbol_dir, true, symsrv_path,
                                               MAXIMUM_PATH) != DRFRONT_SUCCESS) {
-        printf("drfront_set_client_symbol_search_path failed\n");
+        fprintf(stderr, "drfront_set_client_symbol_search_path failed\n");
+        fflush(stderr);
         dr_abort();
     }
     if (drfront_set_symbol_search_path(symsrv_path) != DRFRONT_SUCCESS) {
-        printf("drfront_set_symbol_search_path failed\n");
+        fprintf(stderr, "drfront_set_symbol_search_path failed\n");
+        fflush(stderr);
         dr_abort();
     }
 
-    if (drfront_fetch_module_symbols(SYMBOL_DLL_PATH, symbol_dir,
-                                     MAXIMUM_PATH) != DRFRONT_SUCCESS) {
-        printf("drfront_fetch_module_symbols failed\n");
+    /* Provide more info b/c this can fail if the test dir is moved or sthg */
+    res = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, symbol_dir,
+                                       MAXIMUM_PATH);
+    if (res != DRFRONT_SUCCESS) {
+        fprintf(stderr, "drfront_fetch_module_symbols failed %d for |%s| in dir |%s|\n",
+               res, SYMBOL_DLL_PATH, symbol_dir);
+        fflush(stderr);
         dr_abort();
     }
     if (drfront_access(symbol_dir, DRFRONT_READ, &pdb_exists) != DRFRONT_SUCCESS ||
         !pdb_exists) {
-        printf("drfront_access failed\n");
+        fprintf(stderr, "drfront_access failed\n");
+        fflush(stderr);
         dr_abort();
     }
     if (drfront_sym_exit() != DRFRONT_SUCCESS) {
-        printf("drfront_sym_exit failed\n");
+        fprintf(stderr, "drfront_sym_exit failed\n");
+        fflush(stderr);
         dr_abort();
     }
     /* XXX i#1606: We should call fetch symbols functionality
