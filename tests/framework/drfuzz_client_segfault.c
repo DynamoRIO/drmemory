@@ -36,6 +36,7 @@
 #include <string.h>
 #include "drmgr.h"
 #include "drsyms.h"
+#include "drwrap.h"
 #include "drfuzz.h"
 
 /* Finds the print_data() function in the target app. */
@@ -98,7 +99,7 @@ fault_deleted(void *fuzzcxt, drfuzz_fault_t *fault)
 
 /* Make sure the fake user data is still set on the fuzz target per-thread instance. */
 static void
-delete_per_thread_data(void *per_thread_data)
+delete_per_thread_data(void *fuzzcxt, void *per_thread_data)
 {
     EXPECT(per_thread_data == (per_thread_is_null ? NULL : fake_per_thread_data),
                                "per-thread user data is incorrect");
@@ -162,7 +163,7 @@ thread_crash(void *fuzzcxt, drfuzz_fault_thread_state_t *state)
  * to 100000, causing a segfault by attempting to read a static array way out of bounds.
  */
 static void
-pre_fuzz(void *fuzzcxt, generic_func_t target_pc)
+pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
     drmf_status_t res;
     const char *user_data;
@@ -257,7 +258,7 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
         EXPECT(false, "failed to register the thread crash event");
 
     target_pc = find_target_pc();
-    if (drfuzz_fuzz_target(target_pc, 1, DRFUZZ_CALLCONV_CDECL,
+    if (drfuzz_fuzz_target(target_pc, 1, 0, DRWRAP_CALLCONV_DEFAULT,
                            pre_fuzz, post_fuzz) != DRMF_SUCCESS)
         EXPECT(false, "failed to register the fuzz target");
 

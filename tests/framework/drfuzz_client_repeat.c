@@ -44,7 +44,7 @@
       dr_abort(), 0) : 0))
 
 static void
-pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
+pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
     ptr_uint_t arg_value;
 
@@ -95,7 +95,7 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     repeatme_addr = dr_get_proc_address(app->handle, "repeatme");
     if (repeatme_addr == NULL)
         EXPECT(false, "failed to find function repeatme");
-    if (drfuzz_fuzz_target(repeatme_addr, 1, DRFUZZ_CALLCONV_CDECL,
+    if (drfuzz_fuzz_target(repeatme_addr, 1, 0, DRWRAP_CALLCONV_DEFAULT,
                            pre_fuzz_cb, post_fuzz_cb) != DRMF_SUCCESS)
         EXPECT(false, "drfuzz failed to fuzz function repeatme");
     dr_free_module_data(app);

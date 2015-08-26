@@ -1888,7 +1888,9 @@ dr_init(client_id_t id)
     }
 
     if (option_specified.fuzz_target) {
-        fuzzer_init(client_id _IF_WINDOWS(option_specified.fuzz_mangled_names));
+        fuzzer_init(client_id, options.shadowing, options.redzone_size, options.pattern,
+                    options.check_uninitialized
+                    _IF_WINDOWS(option_specified.fuzz_mangled_names));
         fuzzer_fuzz_target(options.fuzz_target);
     }
 

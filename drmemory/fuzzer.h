@@ -31,7 +31,9 @@
 
 /* Initialize the fuzzer. */
 void
-fuzzer_init(client_id_t client_id _IF_WINDOWS(bool fuzz_mangled_names));
+fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
+            uint redzone_size, bool check_uninitialized
+            _IF_WINDOWS(bool fuzz_mangled_names));
 
 /* Exit the fuzzer. */
 void
@@ -39,12 +41,16 @@ fuzzer_exit();
 
 /* Set up fuzzing as specified by the target_descriptor, which has the form:
  *
- *     <target>:<arg-count>:<buffer-index>:<size-index>
+ *     <target>|<arg-count>|<buffer-index>|<size-index>|<repeat-count>[|<call-conv>]
  *
  * where <target> is one of
  *
  *     <module>!<symbol>
  *     <module>+<offset>
+ *
+ * and the optional <call-conv> is the integer value of a DRWRAP_CALLCONV_* constant
+ * (see drwrap_callconv_t in the DynamoRIO API documentation). If not specified, the
+ * default calling convention for the platform will be used (DRWRAP_CALLCONV_DEFAULT).
  *
  * The fuzzer currently only supports one target at a time. This function may be called
  * multiple times, but on each call the previous target will be removed. Accordingly, this
@@ -55,8 +61,6 @@ fuzzer_exit();
  * multiple instances of the module are loaded simultaneously, only the target occurring
  * in the first instance of the module will be fuzzed. It is not necessary for the target
  * module to be loaded at the time this function is called; it will be fuzzed when loaded.
- *
- * Assumes the target uses the C calling convention (i.e., "cdecl").
  */
 bool
 fuzzer_fuzz_target(const char *target_descriptor);

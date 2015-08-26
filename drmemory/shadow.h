@@ -94,6 +94,8 @@
 /* extracts the 2 bits for byte#n from the dword-representing byte v */
 #define SHADOW_DWORD2BYTE(v, n) (((v) & (0x3 << 2*(n))) >> 2*(n))
 
+typedef void * shadow_buffer_t;
+
 extern uint val_to_dword[];
 extern uint val_to_qword[];
 extern uint val_to_dqword[];
@@ -190,6 +192,20 @@ shadow_translation_addr(app_pc addr);
 /* Returns a pointer to an always-bitlevel shadow block */
 byte *
 shadow_bitlevel_addr(void);
+
+/* Saves the shadow values for the specified app memory region into a newly allocated
+ * buffer. The caller must free the returned shadow buffer using shadow_free_buffer(),
+ */
+shadow_buffer_t *
+shadow_save_region(app_pc start, size_t size);
+
+/* Restore the shadow state of a buffer that was saved using shadow_save_buffer(). */
+void
+shadow_restore_region(shadow_buffer_t *shadow_buffer);
+
+/* Free a shadow buffer that was allocated in shadow_save_buffer(). */
+void
+shadow_free_buffer(shadow_buffer_t *shadow_buffer);
 
 /* Sets the two bits for each byte in the range [start, end) */
 void

@@ -156,6 +156,20 @@ umbra_map_t *umbra_map;
 #define SHADOW_REDZONE_VALUE_SIZE 1
 #define REDZONE_SIZE 512
 
+typedef struct _saved_region_t {
+    app_pc start;
+    size_t size;
+    bitmap_t shadow;
+} saved_region_t;
+
+/* extend size to uint boundary if the exact required size is not already aligned */
+#define SIZEOF_SAVED_BUFFER_SHADOW(size) \
+    (ALIGN_FORWARD(((size) / SHADOW_GRANULARITY), SHADOW_GRANULARITY))
+
+/* single allocation for saved_region_t and its shadow buffer */
+#define SIZEOF_SAVED_BUFFER(size) \
+    (sizeof(saved_region_t) + SIZEOF_SAVED_BUFFER_SHADOW(size))
+
 #ifndef X64
 static byte *special_unaddressable;
 static byte *special_undefined;
@@ -482,6 +496,58 @@ shadow_replace_special(app_pc addr)
         return NULL;
     }
     return shadow_addr;
+}
+
+/* Saves the shadow values for the specified app memory region into a newly allocated
+ * buffer. The caller must free the returned shadow buffer using shadow_free_buffer(),
+ */
+shadow_buffer_t *
+shadow_save_region(app_pc start, size_t size)
+{
+    uint i, shadow_value;
+    size_t saved_buffer_size = SIZEOF_SAVED_BUFFER(size);
+    saved_region_t *saved = global_alloc(saved_buffer_size, HEAPSTAT_SHADOW);
+    umbra_shadow_memory_info_t shadow_info;
+
+    if (MAP_4B_TO_1B) {
+        ASSERT_NOT_IMPLEMENTED();
+        return NULL;
+    }
+
+    /* single allocation: struct at the front, buffer at the back */
+    saved->start = start;
+    saved->size = size;
+    saved->shadow = (bitmap_t)((byte *) saved + sizeof(saved_region_t));
+
+    /* XXX i#1734: this can be optimized for better performance on large buffers */
+    umbra_shadow_memory_info_init(&shadow_info);
+    for (i = 0; i < saved->size; i++) {
+        shadow_value = shadow_get_byte(&shadow_info, (byte *) start + i);
+        bitmapx2_set(saved->shadow, i, shadow_value);
+    }
+    return (shadow_buffer_t *) saved;
+}
+
+/* Restore the shadow state for a region that was saved using shadow_save_buffer(). */
+void
+shadow_restore_region(shadow_buffer_t *shadow_buffer)
+{
+    uint i;
+    saved_region_t *saved = (saved_region_t *) shadow_buffer;
+    umbra_shadow_memory_info_t shadow_info;
+
+    umbra_shadow_memory_info_init(&shadow_info);
+    for (i = 0; i < saved->size; i++)
+        shadow_set_byte(&shadow_info, saved->start + i, bitmapx2_get(saved->shadow, i));
+}
+
+/* Free a shadow buffer that was allocated in shadow_save_buffer(). */
+void
+shadow_free_buffer(shadow_buffer_t *shadow_buffer)
+{
+    saved_region_t *saved = (saved_region_t *) shadow_buffer;
+
+    global_free(saved, SIZEOF_SAVED_BUFFER(saved->size), HEAPSTAT_SHADOW);
 }
 
 /* Sets the two bits for each byte in the range [start, end) */

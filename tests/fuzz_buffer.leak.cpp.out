@@ -29,9 +29,10 @@ Buffer: 0x1 0x2 0x3 0x4
 Buffer: 0x1 0x2 0x3 0x4
 Buffer: 0x1 0x2 0x3 0x4
 done
-~~Dr.M~~ NO ERRORS FOUND:
+~~Dr.M~~ ERRORS FOUND:
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       1 unique,     1 total,     12 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

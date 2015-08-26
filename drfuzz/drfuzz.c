@@ -69,10 +69,10 @@ typedef bool drfuzz_fault_action_t;
 typedef struct _fuzz_target_t {
     app_pc func_pc;
     uint arg_count;
-    drfuzz_flags_t flags;
+    uint flags;
     void *user_data; /* see drfuzz_{g,s}et_target_user_data() */
     void (*delete_user_data_cb)(void *user_data);
-    void (*pre_fuzz_cb)(void *, generic_func_t);
+    void (*pre_fuzz_cb)(void *, generic_func_t, dr_mcontext_t *);
     bool (*post_fuzz_cb)(void *, generic_func_t);
 } fuzz_target_t;
 
@@ -132,7 +132,7 @@ typedef struct _pass_target_t {
     reg_t *original_args; /* original arg values passed by the app to the fuzz target */
     reg_t *current_args;  /* fuzzed argument values for the current iteration */
     void *user_data;      /* see drfuzz_{g,s}et_target_per_thread_user_data() */
-    void (*delete_user_data_cb)(void *user_data);
+    void (*delete_user_data_cb)(void *fuzzcxt, void *user_data);
     struct _pass_target_t *next;   /* chains either stack in fuzz_pass_context_t */
 } pass_target_t;
 
@@ -237,7 +237,7 @@ static void
 free_fuzz_target(void *p);
 
 static void
-free_pass_target(void *dcontext, pass_target_t *target);
+free_pass_target(fuzz_pass_context_t *fp, pass_target_t *target);
 
 static void
 free_thread_state(fuzz_pass_context_t *fp);
@@ -339,16 +339,14 @@ thread_exit(void *dcontext)
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, drfuzz_flags_t flags,
-                   void (*pre_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc),
+drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, uint flags, uint wrap_flags,
+                   void (*pre_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc,
+                                       dr_mcontext_t *mc),
                    bool (*post_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc))
 {
     fuzz_target_t *target;
 
     if (func_pc == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
-
-    if (!TESTONE(DRFUZZ_CALLCONV_MASK, flags))
         return DRMF_ERROR_INVALID_PARAMETER;
 
     target = global_alloc(sizeof(fuzz_target_t), HEAPSTAT_MISC);
@@ -364,7 +362,8 @@ drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, drfuzz_flags_t flags,
     }
 
     /* wrap after adding to hashtable: avoids racing on presence of hashtable entry */
-    if (drwrap_wrap((app_pc) func_pc, pre_fuzz_handler, post_fuzz_handler)) {
+    if (drwrap_wrap_ex((app_pc) func_pc, pre_fuzz_handler, post_fuzz_handler,
+                       NULL, wrap_flags)) {
         return DRMF_SUCCESS;
     } else {
         hashtable_remove(&fuzz_target_htable, func_pc); /* ignore result: error already */
@@ -484,6 +483,10 @@ drfuzz_unregister_crash_process_event(void (*event)(drfuzz_crash_state_t *state)
 DR_EXPORT void *
 drfuzz_get_fuzzcxt(void)
 {
+    /* XXX i#1734: might prefer to return a status code, because this may fail,
+     * e.g. during startup the client may call this before any thread init events,
+     * in which case the fuzzcxt will not have been initialized into our TLS slot.
+     */
     return drmgr_get_tls_field(dr_get_current_drcontext(), tls_idx_fuzzer);
 }
 
@@ -576,7 +579,8 @@ drfuzz_get_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t targe
 DR_EXPORT drmf_status_t
 drfuzz_set_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
                                        IN void *user_data,
-                                       IN void (*delete_callback)(void *user_data))
+                                       IN void (*delete_callback)(void *fuzzcxt,
+                                                                  void *user_data))
 {
     fuzz_pass_context_t *fp = (fuzz_pass_context_t *) fuzzcxt;
     pass_target_t *target;
@@ -669,7 +673,7 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
     *live->unclobber.retaddr_loc = live->unclobber.retaddr; /* restore retaddr to stack */
 #endif
 
-    target->pre_fuzz_cb(fp, (generic_func_t) target_to_fuzz);
+    target->pre_fuzz_cb(fp, (generic_func_t) target_to_fuzz, mc);
     drwrap_set_mcontext(wrapcxt);
     for (i = 0; i < target->arg_count; i++)
         live->current_args[i] = (reg_t) drwrap_get_arg(wrapcxt, i);
@@ -900,7 +904,7 @@ clear_cached_targets(fuzz_pass_context_t *fp)
     pass_target_t *cached, *next;
     for (cached = fp->cached_targets; cached != NULL; cached = next) {
         next = cached->next;
-        free_pass_target(fp->dcontext, cached);
+        free_pass_target(fp, cached);
     }
     fp->cached_targets = NULL;
 }
@@ -911,7 +915,7 @@ clear_pass_targets(fuzz_pass_context_t *fp)
     pass_target_t *live, *next;
     for (live = fp->live_targets; live != NULL; live = next) {
         next = live->next;
-        free_pass_target(fp->dcontext, live);
+        free_pass_target(fp, live);
     }
     fp->live_targets = NULL;
     clear_cached_targets(fp);
@@ -941,13 +945,15 @@ free_fuzz_target(void *p)
 }
 
 static void
-free_pass_target(void *dcontext, pass_target_t *target)
+free_pass_target(fuzz_pass_context_t *fp, pass_target_t *target)
 {
     if (target->delete_user_data_cb != NULL && target->user_data != NULL)
-        target->delete_user_data_cb(target->user_data);
-    thread_free(dcontext, target->original_args, ARGSIZE(target->target), HEAPSTAT_MISC);
-    thread_free(dcontext, target->current_args, ARGSIZE(target->target), HEAPSTAT_MISC);
-    thread_free(dcontext, target, sizeof(*target), HEAPSTAT_MISC);
+        target->delete_user_data_cb(fp, target->user_data);
+    thread_free(fp->dcontext, target->original_args, ARGSIZE(target->target),
+                HEAPSTAT_MISC);
+    thread_free(fp->dcontext, target->current_args, ARGSIZE(target->target),
+                HEAPSTAT_MISC);
+    thread_free(fp->dcontext, target, sizeof(*target), HEAPSTAT_MISC);
 }
 
 static void

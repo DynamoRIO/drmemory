@@ -38,6 +38,7 @@
 /* Framework-shared headers */
 #include "drmemory_framework.h"
 #include "../framework/drmf.h"
+#include "drwrap.h"
 
 /**
  * @file drfuzz.h
@@ -168,38 +169,6 @@ typedef struct _drfuzz_crash_state_t {
     drfuzz_fault_thread_state_t **thread_states; /**< An array of thread states. */
 } drfuzz_crash_state_t;
 
-/**
- * Values for the flags parameter to drfuzz_fuzz_target(). */
-typedef enum _drfuzz_flags_t {
-    /** The target function uses the IA-32 cdecl calling convention. */
-    DRFUZZ_CALLCONV_CDECL = 0x01,
-    /* For the purposes of drfuzz, stdcall is an alias to cdecl, since the only
-     * difference is whether the caller or callee cleans up the stack, and drfuzz
-     * ignores this detail by simply storing the stack pointer value on target entry.
-     */
-    /** The target function uses the Microsoft IA-32 stdcall calling convention. */
-    DRFUZZ_CALLCONV_STDCALL = DRFUZZ_CALLCONV_CDECL,
-    /** The target function uses the IA-32 fastcall calling convention. */
-    DRFUZZ_CALLCONV_FASTCALL = 0x02,
-    /** The target function uses the Microsoft IA-32 thiscall calling convention. */
-    DRFUZZ_CALLCONV_THISCALL = 0x04,
-#ifdef X64
-    /** The target function is a vararg function. */
-    DRFUZZ_CALLCONV_VARARG = DRFUZZ_CALLCONV_FASTCALL,
-#else
-    /** The target function is a vararg function. */
-    DRFUZZ_CALLCONV_VARARG = DRFUZZ_CALLCONV_CDECL,
-#endif
-    DRFUZZ_CALLCONV_RESERVED_1 = 0x08, /**< Reserved for additional calling conventions */
-    DRFUZZ_CALLCONV_RESERVED_2 = 0x10, /**< Reserved for additional calling conventions */
-    DRFUZZ_CALLCONV_RESERVED_3 = 0x20, /**< Reserved for additional calling conventions */
-    DRFUZZ_CALLCONV_RESERVED_4 = 0x40, /**< Reserved for additional calling conventions */
-    DRFUZZ_CALLCONV_RESERVED_5 = 0x80, /**< Reserved for additional calling conventions */
-    /** Utility value for masking the set of calling convention flags. */
-    DRFUZZ_CALLCONV_MASK = 0xff,
-    /* XXX i#1734: calling conventions NYI (assumes cdecl for now) */
-} drfuzz_flags_t;
-
 DR_EXPORT
 /**
  * Initialize the Dr. Fuzz extension. This function must be called before any other
@@ -245,22 +214,32 @@ DR_EXPORT
  * drfuzz_get_arg() and drfuzz_set_arg() are not available in this phase of the fuzzing
  * cycle, though drfuzz_get_target_arg() can be used at any time during fuzzing.
  *
+ * The fuzzer implements repeated execution of the target function using the drwrap
+ * extension, which accepts a flags argument for each wrapped target function. Use the
+ * \p wrap_flags parameter to pass flags through to the internal drwrap_wrap_ex() call.
+ * The calling convention specified in the \p wrap_flags must be correct or the target
+ * function will have incorrect arguments and/or a corrupt stack during fuzz testing.
+ *
  * \note Recursive invocation of the fuzz target is currently not supported.
  *
  * @param[in] func_pc             The start pc of the new fuzz target function.
  * @param[in] arg_count           The actual number of arguments passed to the fuzz target
  *                                function during fuzz testing (i.e., for vararg targets,
  *                                the client must know how many args are actually used).
- * @param[in] flags               Flags are optional, except that the calling convention
- *                                must be specified (using one of DRFUZZ_CALLCONV_*).
+ * @param[in] flags               Reserved for future use; must be set to 0.
+ * @param[in] wrap_flags          Flags for the delegated call to wrap the fuzz target
+ *                                function for repeated execution; see drwrap_wrap_ex().
  * @param[in] pre_fuzz_cb         Called prior to each fuzz iteration of the target
- *                                function (must not be NULL).
+ *                                function (must not be NULL). Any changes made by the
+ *                                callee to the application registers must be applied to
+ *                                the mcontext provided (or they will not take effect).
  * @param[in] post_fuzz_cb        Called following each fuzz iteration of the target
  *                                function (must not be NULL).
  */
 drmf_status_t
-drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, drfuzz_flags_t flags,
-                   void (*pre_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc),
+drfuzz_fuzz_target(generic_func_t func_pc, uint arg_count, uint flags, uint wrap_flags,
+                   void (*pre_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc,
+                                       dr_mcontext_t *mc),
                    bool (*post_fuzz_cb)(void *fuzzcxt, generic_func_t target_pc));
 
 DR_EXPORT
@@ -457,7 +436,8 @@ DR_EXPORT
 drmf_status_t
 drfuzz_set_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
                                        IN void *user_data,
-                                       IN void (*delete_callback)(void *user_data));
+                                       IN void (*delete_callback)(void *fuzzcxt,
+                                                                  void *user_data));
 
 DR_EXPORT
 /**

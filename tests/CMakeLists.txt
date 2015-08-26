@@ -909,6 +909,7 @@ else (NOT X64)
 endif (NOT X64)
 
 if (TOOL_DR_MEMORY)
+  # variables for platform-specific options and descriptor components
   if (UNIX)
     set(app_extension "")
     if (X64)
@@ -927,23 +928,62 @@ if (TOOL_DR_MEMORY)
     set(enable_mangled_names ";-fuzz_mangled_names")
   endif (UNIX)
 
-  set(fuzz_buffer_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
-  newtest_ex(fuzz_buffer fuzz_buffer.c "" "${fuzz_buffer_ops}" "" OFF "" 0)
-  set(fuzz_buffer_ops "-fuzz_target;fuzz_buffer${app_extension}!repeatme|2|0|1|10")
+  # fuzz the c target
+  set(fuzz_buffer_drmem_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
+  newtest_ex(fuzz_buffer fuzz_buffer.c
+    "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0)
+  if (NOT X64) # test detection of errors that requires shadow-memory
+    newtest_nobuild_ex(fuzz_buffer.uninitialized fuzz_buffer
+      "" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.overwrite fuzz_buffer
+      "initialize;overwrite" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.overread fuzz_buffer
+      "initialize;overread" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.underwrite fuzz_buffer
+      "initialize;underwrite" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.underread fuzz_buffer
+      "initialize;underread" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.leak fuzz_buffer
+      "initialize;leak" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+  endif (NOT X64)
+  set(fuzz_buffer_drmem_ops "-fuzz_target;fuzz_buffer${app_extension}!repeatme|2|0|1|10")
   newtest_nobuild_ex(fuzz_buffer.module_name fuzz_buffer
-    "" "${fuzz_buffer_ops}" "" OFF "" 0 "")
-  set(fuzz_buffer_ops
-    "-fuzz_target;fuzz_buffer.cpp${app_extension}!${fuzz_buffer_cpp_symbol}|3|1|2|10${enable_mangled_names}")
-  newtest_ex(fuzz_buffer.cpp fuzz_buffer.cpp "" "${fuzz_buffer_ops}" "" OFF "" 0)
+    "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+
+  # fuzz the cpp target
+  if (NOT UNIX AND NOT X64)
+    set(cpp_callconv "|0x06000000") # on Windows x86 the target uses thiscall
+  endif (NOT UNIX AND NOT X64)
+  set(fuzz_buffer_symbol "fuzz_buffer.cpp${app_extension}!${fuzz_buffer_cpp_symbol}")
+  set(fuzz_buffer_drmem_ops
+    "-fuzz_target;${fuzz_buffer_symbol}|3|1|2|10${cpp_callconv}${enable_mangled_names}")
+  newtest_ex(fuzz_buffer.cpp fuzz_buffer.cpp "initialize"
+    "${fuzz_buffer_drmem_ops}" "" OFF "" 0)
+  if (NOT X64) # test detection of errors that requires shadow-memory
+    newtest_nobuild_ex(fuzz_buffer.uninitialized.cpp fuzz_buffer.cpp
+      "" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.overwrite.cpp fuzz_buffer.cpp
+      "initialize;overwrite" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.underwrite.cpp fuzz_buffer.cpp
+      "initialize;underwrite" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.overread.cpp fuzz_buffer.cpp
+      "initialize;overread" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.underread.cpp fuzz_buffer.cpp
+      "initialize;underread" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+    newtest_nobuild_ex(fuzz_buffer.leak.cpp fuzz_buffer.cpp
+      "initialize;leak" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+  endif (NOT X64)
   if (NOT UNIX)
     # demangled symbols can't be found on unix (elf table only has mangled)
-    set(fuzz_buffer_ops
-      "-fuzz_target;fuzz_buffer.cpp${app_extension}!BufferPrinter::repeatme|3|1|2|10")
-    newtest_nobuild_ex(fuzz_buffer.cpp.mangled fuzz_buffer.cpp
-      "" "${fuzz_buffer_ops}" "" OFF "" 0 "")
+    set(fuzz_buffer_symbol "fuzz_buffer.cpp${app_extension}!BufferPrinter::repeatme")
+    set(fuzz_buffer_drmem_ops
+      "-fuzz_target;${fuzz_buffer_symbol}|3|1|2|10${cpp_callconv}")
+    newtest_nobuild_ex(fuzz_buffer.cpp.demangled fuzz_buffer.cpp
+      "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
 
+    # disable optimizations to prevent the target from being inlined
     append_property_string(TARGET fuzz_buffer COMPILE_FLAGS "/Ob0")
-    append_property_string(TARGET fuzz_buffer.cpp COMPILE_FLAGS "/Ob0") # disable opt
+    append_property_string(TARGET fuzz_buffer.cpp COMPILE_FLAGS "/Ob0")
   endif (NOT UNIX)
   # XXX i#1734: need a test for a fuzz target loaded after target registration
 endif (TOOL_DR_MEMORY)

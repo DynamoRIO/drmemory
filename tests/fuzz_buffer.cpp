@@ -34,6 +34,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef WINDOWS
 # define EXPORT __declspec(dllexport)
@@ -41,31 +42,102 @@
 # define EXPORT
 #endif
 
+#define BUFFER_ELEMENTS 4
+#define ELEMENT_SIZE (sizeof(uint))
+
+typedef unsigned int uint;
+
+class BufferPrinter;
+
+class DeliberateErrors {
+    friend class BufferPrinter;
+
+    public:
+        DeliberateErrors(const char *deliberate_error);
+
+    private:
+        bool overread;
+        bool underread;
+        bool overwrite;
+        bool underwrite;
+        bool leak;
+        uint fuzz_iteration;
+};
+
 class BufferPrinter {
+
     public:
         /* print the contents of the buffer as unsigned integers */
         EXPORT void
-        repeatme(unsigned int *buffer, size_t size);
+        repeatme(uint *buffer, size_t size);
+
+        BufferPrinter(const char *deliberate_error);
+
+        ~BufferPrinter();
+
+    private:
+        DeliberateErrors *deliberate_errors;
 };
 
-EXPORT void
-BufferPrinter::repeatme(unsigned int *buffer, size_t size)
+BufferPrinter::BufferPrinter(const char *deliberate_error)
 {
-    unsigned int i;
+    deliberate_errors = new DeliberateErrors(deliberate_error);
+}
+
+BufferPrinter::~BufferPrinter()
+{
+    if (!deliberate_errors->leak)
+        delete deliberate_errors;
+}
+
+EXPORT void
+BufferPrinter::repeatme(uint *buffer, size_t size)
+{
+    uint i = 0, elements = (size / ELEMENT_SIZE);
 
     printf("Buffer:");
-    for (i = 0; i < (size / sizeof(unsigned int)); i++)
+    for (i = 0; i < elements; i++)
         printf(" 0x%x", buffer[i]);
     printf("\n");
+
+    if ((++deliberate_errors->fuzz_iteration % 2) == 0) {
+        if (deliberate_errors->overread)
+            printf("over-read: %d\n", buffer[elements + 1]);
+        if (deliberate_errors->underread)
+            printf("under-read: %d\n", *(buffer - 1));
+        if (deliberate_errors->overwrite)
+            buffer[elements] = 7;
+        if (deliberate_errors->underwrite)
+            *(buffer - 1) = 7;
+    }
+}
+
+DeliberateErrors::DeliberateErrors(const char *deliberate_error)
+{
+    this->overread = (strcmp(deliberate_error, "overread") == 0);
+    this->underread = (strcmp(deliberate_error, "underread") == 0);
+    this->overwrite = (strcmp(deliberate_error, "overwrite") == 0);
+    this->underwrite = (strcmp(deliberate_error, "underwrite") == 0);
+    this->leak = (strcmp(deliberate_error, "leak") == 0);
+    this->fuzz_iteration = 0;
 }
 
 int
 main(int argc, char **argv)
 {
-    unsigned int buffer[] = {1,2,3,4};
+    uint i, size = BUFFER_ELEMENTS * ELEMENT_SIZE, *buffer = new uint[BUFFER_ELEMENTS];
+    const char *deliberate_error = (argc > 2 ? argv[2] : "");
+    BufferPrinter bp(deliberate_error);
 
-    BufferPrinter bp;
-    bp.repeatme(buffer, sizeof(buffer));
+    if (argc > 1 && strcmp(argv[1], "initialize") == 0) {
+        for (i = 0; i < BUFFER_ELEMENTS; i++)
+            buffer[i] = (i + 1);
+    }
+
+    bp.repeatme(buffer, size);
+
+    delete [] buffer;
+
     printf("done\n");
     return 0;
 }
