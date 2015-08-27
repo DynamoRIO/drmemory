@@ -195,6 +195,14 @@ message(STATUS "Dr. Memory version number: ${TOOL_VERSION_NUMBER}")
 
 # Avoid "BUILD_NUMBER" name since conflics w/ DR's var
 set(TOOL_BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
+# However, we do want to set it to avoid "custom build" in messages
+# from DR.  To make it easy to correlate, we set it to a formula computed
+# from the DrMem ver.
+string(REPLACE "." ";" ver_list ${TOOL_VERSION_NUMBER})
+list(GET ver_list 0 TOOL_VERSION_MAJOR)
+list(GET ver_list 1 TOOL_VERSION_MINOR)
+math(EXPR BUILD_NUMBER
+  "${TOOL_VERSION_MAJOR}*100 + ${TOOL_VERSION_MINOR}*10 + ${VERSION_NUMBER_PATCHLEVEL}")
 
 string(REGEX REPLACE "\\." "," TOOL_VERSION_COMMAS "${TOOL_VERSION_NUMBER}")
 
