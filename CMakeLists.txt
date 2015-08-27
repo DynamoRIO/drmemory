@@ -726,7 +726,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "5.0.16667")
+set(DynamoRIO_VERSION_REQUIRED "5.0.16674")
 
 set(DR_install_dir "dynamorio")
 
@@ -1131,9 +1131,6 @@ if (WIN32)
 
   # This flag is added by VS generators so we may as well add for Ninja
   set(new_flags "/nxcompat")
-
-  # DRi#893: asm code is producing safeseh compilation failures w/ VS2012
-  set(new_flags "${new_flags} /safeseh:no")
 
   # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
   # and VS generators seem to set it already, so we add here for Ninja).

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -120,11 +120,6 @@ function(tobuild name source)
   set_props(${name})
 
   if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
-    if (WIN32)
-      # DRi#893: asm code is producing safeseh compilation failures w/ VS2012.
-      # I believe I have the proper prologue+epilogue but I still the error, so:
-      append_property_string(TARGET ${name} LINK_FLAGS "/safeseh:no")
-    endif ()
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       add_dependencies(${name} ${gen_asm_tgt})
     endif ()
