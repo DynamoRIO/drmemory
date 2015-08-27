@@ -872,7 +872,6 @@ UxTheme.dll!GetThemeBackgroundContentRect
 UNINITIALIZED READ
 name=default i#1324 mingw runtime
 *!__mingw_glob
-*!__mingw_CRTStartup
 
 ##################################################
 # i#599: known reachable allocs in MSCRT
