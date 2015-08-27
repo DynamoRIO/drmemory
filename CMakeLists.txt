@@ -1997,6 +1997,7 @@ else (UNIX)
       # reinstalling the same version. See i#1620.
       set(CPACK_WIX_UPGRADE_GUID 1A8D7CEE-2ABA-4462-B0D6-86F26715128E)
       set(CPACK_WIX_PRODUCT_GUID 67675AD6-1FB0-4DE1-9ECF-84997515025E)
+      set(CPACK_WIX_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/make/Wix.Template.in")
     else (WIX)
       message(STATUS "WIX compiler candle.exe not found. Please add it to path or install the WIX tooset. Installing as a Zip")
       set(CPACK_GENERATOR "ZIP")
