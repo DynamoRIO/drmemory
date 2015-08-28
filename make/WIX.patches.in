@@ -18,4 +18,8 @@
         </InstallExecuteSequence>
   </CPackWiXFragment>
 
+  <CPackWiXFragment Id="#PRODUCTFEATURE">
+        <ComponentRef Id="CM_SHORTCUT_EXTRA"/>
+  </CPackWiXFragment>
+
 </CPackWiXPatch>

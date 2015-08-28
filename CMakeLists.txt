@@ -2002,6 +2002,9 @@ else (UNIX)
     set(CPACK_WIX_UPGRADE_GUID 1A8D7CEE-2ABA-4462-B0D6-86F26715128E)
     set(CPACK_WIX_PRODUCT_GUID 67675AD6-1FB0-4DE1-9ECF-84997515025E)
     set(CPACK_WIX_PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/make/WIX.patches.in")
+    set(CPACK_WIX_EXTRA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/make/WIX.extra.in")
+    # This is required for the util:InternetShortcut in WIX.extra.in
+    set(CPACK_WIX_EXTENSIONS "WiXUtilExtension")
     # This should show up in Add/Remove Programs:
     set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://drmemory.org")
   else ()

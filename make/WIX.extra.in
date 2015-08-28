@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+    <Fragment>
+        <DirectoryRef Id="PROGRAM_MENU_FOLDER">
+          <Component Id="CM_SHORTCUT_EXTRA" Guid="*">
+            <RegistryValue Root="HKCU" Key="Software\Google\Dr. Memory" Name="installed_links" Type="integer" Value="1" KeyPath="yes"/>
+            <Shortcut Id="CM_SP_explore"
+                Name="Explore Dr. Memory (drag your app onto drmemory.exe)"
+                Target="[SystemFolder]explorer.exe" Arguments="&quot;[$CM_CP_bin.drmemory.exe]&quot;"/>
+            <Shortcut Id="CM_SP_docs_shortcut"
+                Name="Dr. Memory documentation"
+                Target="[#CM_FP_drmemory.docs.html.index.html]"/>
+            <util:InternetShortcut Id="CM_SP_www_shortcut"
+                Name="Dr. Memory home page"
+                Target="http://drmemory.org/"/>
+            </Component>
+        </DirectoryRef>
+    </Fragment>
+</Wix>
