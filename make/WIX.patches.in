@@ -1,0 +1,21 @@
+<CPackWiXPatch>
+
+  <CPackWiXFragment Id="#PRODUCT">
+        <CustomAction Id="remove_vs_tool" FileKey="CM_FP_bin.vs_external_tool.exe"
+            ExeCommand=" -uninstall" Execute="immediate" Return="asyncNoWait" />
+        <!-- Using Return="check" results in failure at uninstall: so the
+             "NOT Installed AND NOT REMOVE" is somehow matching there.
+             For now just going with no check of the return code.
+        -->
+        <CustomAction Id="add_vs_tool" FileKey="CM_FP_bin.vs_external_tool.exe"
+            ExeCommand="&quot;[#CM_FP_bin.drmemory.exe]&quot;" Execute="immediate"
+            Return="asyncNoWait" />
+        <InstallExecuteSequence>
+        <Custom Action='remove_vs_tool' Before='InstallInitialize'>
+            (NOT UPGRADINGPRODUCTCODE) AND (REMOVE="ALL")</Custom>
+        <Custom Action='add_vs_tool' After='InstallFinalize'>
+            NOT Installed AND NOT REMOVE</Custom>
+        </InstallExecuteSequence>
+  </CPackWiXFragment>
+
+</CPackWiXPatch>
