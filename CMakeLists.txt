@@ -1934,6 +1934,12 @@ endif ()
 
 # "make package package_source"
 
+if (USER_SPECIFIED_DynamoRIO_DIR)
+  set(favicon_path "${DynamoRIO_DIR}/../docs/html/favicon.ico")
+else (USER_SPECIFIED_DynamoRIO_DIR)
+  set(favicon_path "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
+endif (USER_SPECIFIED_DynamoRIO_DIR)
+
 if (UNIX)
   # not bothering with TZ or TBZ2 or STGZ (.sh)
   set(CPACK_GENERATOR "TGZ")
@@ -2007,6 +2013,7 @@ else (UNIX)
     set(CPACK_WIX_EXTENSIONS "WiXUtilExtension")
     # This should show up in Add/Remove Programs:
     set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://drmemory.org")
+    set(CPACK_WIX_PRODUCT_ICON "${favicon_path}")
   else ()
     message(STATUS "Neither NSIS nor WIX found (please install and add to path if desired).  Creating only a zip package.")
     set(CPACK_GENERATOR "ZIP")
@@ -2095,13 +2102,7 @@ set(CPACK_NSIS_MENU_LINKS
   "bin/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"
   "${toolname}/docs/html/index.html" "${toolname_cap_spc} documentation"
   "http://drmemory.org/" "${toolname_cap_spc} web page")
-if (USER_SPECIFIED_DynamoRIO_DIR)
-  set(CPACK_NSIS_MUI_ICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
-  set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
-else (USER_SPECIFIED_DynamoRIO_DIR)
-  set(CPACK_NSIS_MUI_ICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
-  set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
-endif (USER_SPECIFIED_DynamoRIO_DIR)
+set(CPACK_NSIS_MUI_ICON "${favicon_path}")
 # XXX: CPACK_PACKAGE_ICON: need a .bmp
 
 # i#1009c#4: auto-register Dr. Memory as a Visual Studio External Tool
