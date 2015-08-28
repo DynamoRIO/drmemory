@@ -143,13 +143,13 @@ uninstall_tool(HKEY key)
     }
 
     for (i = 0; i < num_keys; i++) {
-        _snwprintf(name, BUFFER_SIZE_ELEMENTS(name), L"ToolCmd%d", i);
+        _snwprintf(name, BUFFER_SIZE_ELEMENTS(name), L"ToolTitle%d", i);
         NULL_TERMINATE_BUFFER(name);
         size = BUFFER_SIZE_BYTES(val);
         res = RegQueryValueExW(key, name, 0, &type, (LPBYTE) val, &size);
         NULL_TERMINATE_BUFFER(val);
         if (res == ERROR_SUCCESS && type == REG_SZ &&
-            wcsstr(val, L"drmemory.exe") != NULL) {
+            wcscmp(val, TOOL_TITLE) == 0) {
             printf("Removing Dr. Memory entry #%d\n", i);
             break;
         }
@@ -226,13 +226,13 @@ install_tool(HKEY key, const wchar_t *tool_path)
     }
 
     for (i = 0; i < num_keys; i++) {
-        _snwprintf(name, BUFFER_SIZE_ELEMENTS(name), L"ToolCmd%d", i);
+        _snwprintf(name, BUFFER_SIZE_ELEMENTS(name), L"ToolTitle%d", i);
         NULL_TERMINATE_BUFFER(name);
         size = BUFFER_SIZE_BYTES(val);
         res = RegQueryValueExW(key, name, 0, &type, (LPBYTE) val, &size);
         NULL_TERMINATE_BUFFER(val);
         if (res == ERROR_SUCCESS && type == REG_SZ &&
-            wcsstr(val, L"drmemory.exe") != NULL) {
+            wcscmp(val, TOOL_TITLE) == 0) {
             /* XXX: should we only replace if the path is from our installer
              * to avoid clobbering a manually-added special entry or sthg?
              * But we can't really tell if they used a custom install dir.
