@@ -33,6 +33,7 @@
 #include "stack.h"
 #ifdef TOOL_DR_MEMORY
 # include "alloc_drmem.h"
+# include "report.h"
 #endif
 #include "pattern.h"
 
@@ -3430,6 +3431,53 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
 
     return true;
 }
+
+/* i#1015: report write-to-read-only as an unaddressable warning */
+static void
+handle_possible_write_to_read_only(void *drcontext,
+                                   dr_mcontext_t *raw_mc,
+                                   dr_mcontext_t *mc)
+{
+    app_pc addr;
+    bool is_write;
+    uint pos;
+    int  memopidx;
+    app_loc_t loc;
+    size_t size;
+    dr_mem_info_t info;
+    instr_t inst;
+    ASSERT(options.shadowing, "shadowing disabled");
+
+    instr_init(drcontext, &inst);
+    if (!safe_decode(drcontext, raw_mc->pc, &inst, NULL)) {
+        instr_free(drcontext, &inst);
+        return;
+    }
+    /* someone could send a SIGSEGV signal, so we iterate instr opnds
+     * to check possible write-to-read-only errors
+     */
+    for (memopidx = 0;
+         instr_compute_address_ex_pos(&inst, mc, memopidx,
+                                      &addr, &is_write, &pos);
+         memopidx++) {
+        if (!is_write)
+            continue;
+        if (!dr_query_memory_ex(addr, &info) ||
+            info.type == DR_MEMTYPE_FREE ||
+            TEST(DR_MEMPROT_WRITE, info.prot) ||
+            TEST(info.prot, DR_MEMPROT_PRETEND_WRITE))
+            continue;
+        size = opnd_size_in_bytes(opnd_get_size(instr_get_dst(&inst, pos)));
+        pc_to_loc(&loc, mc->pc);
+        /* XXX: how to avoid double report on write-to-unaddressable,
+         * as the shadow have been updated by the first report?
+         * It should be ok since it is unlikely to have an unaddressable
+         * read-only region.
+         */
+        report_unaddr_warning(&loc, mc, "writing to readonly memory", addr, size, true);
+    }
+    instr_free(drcontext, &inst);
+}
 #endif /* TOOL_DR_MEMORY */
 
 /* PR 448701: we fault if we write to a special block */
@@ -3467,6 +3515,9 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
              * write for sub-dword.
              */
             return DR_SIGNAL_SUPPRESS;
+        } else if (options.report_write_to_read_only) {
+            handle_possible_write_to_read_only(drcontext, info->raw_mcontext,
+                                               info->mcontext);
         }
     } else if (info->sig == SIGILL) {
         LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
@@ -3521,6 +3572,10 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
              * write for sub-dword.
              */
             return false;
+        } else if (options.report_write_to_read_only &&
+                   excpt->record->ExceptionCode != STATUS_GUARD_PAGE_VIOLATION) {
+            handle_possible_write_to_read_only(drcontext, excpt->raw_mcontext,
+                                               excpt->mcontext);
         }
     } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
         if (options.pattern != 0) {

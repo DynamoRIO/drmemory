@@ -1148,6 +1148,15 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
                     pc_to_loc(&loc, mc->pc);
                     report_unaddressable_access(&loc, addr, size, is_write,
                                                 addr, addr + size, mc);
+                } else if (is_write && options.report_write_to_read_only &&
+                           !TEST(DR_MEMPROT_WRITE, info.prot)) {
+                    if (IF_WINDOWS(guard ||) TEST(info.prot, DR_MEMPROT_PRETEND_WRITE))
+                        continue;
+                    opnd = instr_get_dst(&inst, pos);
+                    size = opnd_size_in_bytes(opnd_get_size(opnd));
+                    pc_to_loc(&loc, mc->pc);
+                    report_unaddr_warning(&loc, mc, "writing to readonly memory",
+                                          addr, size, true);
                 }
                 /* FIXME i#1015: report unaddr error for write on read-only */
             }

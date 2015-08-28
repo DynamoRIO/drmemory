@@ -431,6 +431,10 @@ OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, report_leak_max, int, 10000, -1, INT_MAX,
                     "Maximum leaks to report (-1=no limit)",
                     "Maximum leaks to report (-1=no limit).  This includes 'potential' leaks listed separately.")
+OPTION_CLIENT_BOOL(drmemscope, report_write_to_read_only, true,
+                   "Report writes to read-only memory as unaddressable errors",
+                   "Report writes to read-only memory as unaddressable errors.")
+
 OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
                    "Print details on each duplicate error",
                    "Print details on each duplicate error rather than only showing unique error details")

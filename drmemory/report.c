@@ -3075,6 +3075,19 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
 
 #define UNADDR_MSG_SZ 0x100
 void
+report_unaddr_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+                      app_pc addr, size_t sz, bool report_instruction)
+{
+    char buf[UNADDR_MSG_SZ];
+    ssize_t len = 0;
+    size_t sofar = 0;
+    ASSERT(strlen(msg) < (UNADDR_MSG_SZ/2), "msg is too large");
+    BUFPRINT(buf, UNADDR_MSG_SZ, sofar, len, "%s "PFX"-"PFX,
+             msg, addr, addr + sz, sz);
+    report_warning(loc, mc, buf, addr, sz, report_instruction);
+}
+
+void
 report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             app_pc container_start, app_pc container_end,
                             dr_mcontext_t *mc)

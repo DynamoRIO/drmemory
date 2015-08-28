@@ -58,6 +58,10 @@ void
 report_thread_exit(void *drcontext);
 
 void
+report_unaddr_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+                      app_pc addr, size_t sz, bool report_instruction);
+
+void
 report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             app_pc container_start, app_pc container_end,
                             dr_mcontext_t *mc);
