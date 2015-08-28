@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required (VERSION 2.2)
+cmake_minimum_required (VERSION 2.4)
 
 # custom args beyond the base runsuite_common_pre.cmake:
 # arguments are a ;-separated list (must escape as \; from ctest_run_script())

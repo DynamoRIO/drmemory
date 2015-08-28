@@ -18,7 +18,11 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# XXX i#1652: make this a separate project and use --build-and-test
+
 cmake_minimum_required(VERSION 2.6)
+
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
 # Always build Debug
 set(CMAKE_BUILD_TYPE "Debug")
@@ -70,7 +74,12 @@ function(add_drmf_test test_name app_name src_client ext_list client_options pas
   configure_DynamoRIO_client(${client_name})
 
   foreach (ext ${ext_list})
-    use_DynamoRIO_extension(${client_name} drmf_${ext}) # drmf_ prefix b/c internal
+    if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
+        "${CMAKE_VERSION}" VERSION_GREATER "3.0")
+      use_DynamoRIO_extension(${client_name} ${ext})
+    else ()
+      use_DynamoRIO_extension(${client_name} drmf_${ext}) # drmf_ prefix b/c internal
+    endif ()
     use_DynamoRIO_extension(${client_name} drmgr)
     # We use the namespace prefix to allow us to avoid target conflicts
     # (else we'd need a completely separate build for these tests),

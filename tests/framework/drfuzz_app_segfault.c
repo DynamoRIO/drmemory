@@ -33,6 +33,7 @@
 /* Test of fault handling in the Dr. Fuzz Extension */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef WINDOWS
 # define EXPORT __declspec(dllexport)

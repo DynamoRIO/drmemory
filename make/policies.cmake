@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,32 +18,27 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-# Be sure to prefix all global vars with "drmf_" to avoid conflicts
-# with the containing project.
+if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "3.1")
+  cmake_policy(SET CMP0054 OLD)
+endif ()
 
-cmake_policy(PUSH)
 if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
     "${CMAKE_VERSION}" VERSION_GREATER "3.0")
+  # XXX i#1651: put in actual changes to support CMake 3.x
+  cmake_policy(SET CMP0026 OLD)
   # XXX i#1652: update to cmake 2.8.12's better handling of interface exports
   cmake_policy(SET CMP0024 OLD)
 endif ()
 
-if (${CMAKE_CXX_SIZEOF_DATA_PTR} EQUAL 4)
-  set(drmf_is_x64 OFF)
-elseif (${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 4)
-  set(drmf_is_x64 OFF)
-else ()
-  set(drmf_is_x64 ON)
+if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "2.8.12")
+  # XXX i#1481: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0022 OLD)
 endif ()
 
-if (drmf_is_x64)
-  set(drmf_bits 64)
-else (drmf_is_x64)
-  set(drmf_bits 32)
-endif (drmf_is_x64)
-
-# Be sure to not conflict w/ DR's "cwd" var (i#1105)
-get_filename_component(drmf_cwd "${CMAKE_CURRENT_LIST_FILE}" PATH)
-
-include(${drmf_cwd}/DRMFTarget${drmf_bits}.cmake)
-cmake_policy(POP)
+if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
+  # XXX DRi#1418: update to cmake 2.8.12's better handling of interface imports
+  cmake_policy(SET CMP0020 OLD)
+endif ()

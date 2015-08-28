@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -19,6 +19,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 cmake_minimum_required(VERSION 2.6)
+
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
 find_package(DrMemoryFramework PATHS ${framework_dir})
 
@@ -60,14 +62,15 @@ configure_DynamoRIO_client(drstracelib)
 
 # We could link with the internal static lib but it's a good exercise
 # to test the public version:
-# While we seem to need the drmf_ prefix here for shared drsyscall, for static
-# that doesn't work while this does -- go figure:
-use_DynamoRIO_extension(drstracelib drsyscall_static)
-use_DynamoRIO_extension(drstracelib drmgr_static)
-use_DynamoRIO_extension(drstracelib drx_static)
 # XXX: We could use a dynamic drsyms, although drmemory is using static.
 # So we'd need special deployment here.
 use_DynamoRIO_extension(drstracelib drsyms_static)
+# While we seem to need the drmf_ prefix here for shared drsyscall, for static
+# that doesn't work while this does -- go figure (and we can't use drmf_ w/
+# cmake 3.+ anyway: i#1652):
+use_DynamoRIO_extension(drstracelib drsyscall_static)
+use_DynamoRIO_extension(drstracelib drmgr_static)
+use_DynamoRIO_extension(drstracelib drx_static)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib

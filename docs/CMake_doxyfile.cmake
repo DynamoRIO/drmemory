@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -77,7 +77,7 @@ include("${DynamoRIO_DIR}/docs_doxyutils.cmake")
 set(input_paths srcdir outdir optionsdir commondir)
 doxygen_path_xform(${DOXYGEN_EXECUTABLE} "${input_paths}")
 
-configure_file(${commondir_orig}/Doxyfile.in ${outfile} COPY_ONLY)
+configure_file(${commondir_orig}/Doxyfile.in ${outfile} COPYONLY)
 process_doxyfile(${outfile} ${DOXYGEN_EXECUTABLE} ${doxygen_ver})
 
 file(READ ${outfile} string)

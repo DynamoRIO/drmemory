@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -19,6 +19,12 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 cmake_minimum_required(VERSION 2.8)
+
+if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
+    "${CMAKE_VERSION}" VERSION_GREATER "3.0")
+  # XXX i#1663: put in actual changes to support CMake 3.x
+  cmake_policy(SET CMP0026 OLD)
+endif ()
 
 # Collapse VS generator into a single config, to match Makefiles.
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -114,21 +120,23 @@ configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in"
   "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt"
   @ONLY)
 
-# Make this a test to ensure we don't break it.
-# We use the framework test "drsyscall_app" as the app, and just the
-# exit code as the success test.
-get_target_property(client_path strace LOCATION${location_suffix})
-get_target_property(app_path drsyscall_app LOCATION${location_suffix})
-if (DEBUG_BUILD)
-  set(drrun_extra -debug)
-else ()
-  set(drrun_extra "")
+if (BUILD_TOOL_TESTS)
+  # Make this a test to ensure we don't break it.
+  # We use the framework test "drsyscall_app" as the app, and just the
+  # exit code as the success test.
+  get_target_property(client_path strace LOCATION${location_suffix})
+  get_target_property(app_path drsyscall_app LOCATION${location_suffix})
+  if (DEBUG_BUILD)
+    set(drrun_extra -debug)
+  else ()
+    set(drrun_extra "")
+  endif ()
+  add_test(strace_sample
+    ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
+    -client ${client_path} 0 ""
+    -msgbox_mask 0
+    "--" ${app_path})
 endif ()
-add_test(strace_sample
-  ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
-  -client ${client_path} 0 ""
-  -msgbox_mask 0
-  "--" ${app_path})
 
 set(INSTALL_SAMPLES ${INSTALL_PREFIX}${DRMF_BASEDIR}/samples)
 if (X64)

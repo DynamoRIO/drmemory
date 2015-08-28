@@ -25,16 +25,7 @@
 # (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
 cmake_minimum_required(VERSION 2.8.10.1)
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
-  # XXX DRi#1418: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0020 OLD)
-endif ()
-
-# XXX i#1663: Dr. Memory does not yet support CMake 3
-if ("${CMAKE_MAJOR_VERSION}" VERSION_EQUAL "3")
-  message(FATAL_ERROR "Dr. Memory does not yet support CMake 3")
-endif ()
+include(make/policies.cmake NO_POLICY_SCOPE)
 
 # like DR, we collapse VS generator into one config since
 # we don't have enough control over output dirs
@@ -1572,7 +1563,15 @@ endif (X64)
 file(WRITE ${framework_dir}/${exported_targets_name}.cmake "")
 set(exported_targets_append "")
 macro(export_target)
-  export(TARGETS ${ARGV} FILE ${framework_dir}/${exported_targets_name}.cmake
+  if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
+      "${CMAKE_VERSION}" VERSION_GREATER "3.0")
+    set(tgt_args "")
+  else ()
+    # We use a prefix primarily to make it easy to test the imported targets,
+    # and to give a better "bundled extensions" feel.
+    set(tgt_args NAMESPACE drmf_)
+  endif ()
+  export(TARGETS ${ARGV} ${tgt_args} FILE ${framework_dir}/${exported_targets_name}.cmake
     APPEND)
   set(toadd "
 SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELEASE RelWithDebInfo)

@@ -71,10 +71,8 @@ macro(export_drfuzz_target target drwrap drmgr)
   # We need to clear the dependents that come from DR to avoid the prefix
   # from affecting them too.
   set_target_properties(${target} PROPERTIES LINK_INTERFACE_LIBRARIES "")
-  # We use a prefix primarily to make it easy to test the imported targets,
-  # and to give a better "bundled extensions" feel.
-  export_target(${target} NAMESPACE drmf_)
-  # Now put in our imports w/o the namespace on them
+  export_target(${target})
+  # Now put in our imports (w/o any namespace on them)
   set_target_properties(${target} PROPERTIES
     LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drsyms;drcontainers")
   install(TARGETS ${target} EXPORT ${exported_targets_name}

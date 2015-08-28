@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -26,7 +26,7 @@
 #
 # Invoke like this: "ctest -S package.cmake,dr=<path-to-DynamoRIO>\;build=<build#>"
 
-cmake_minimum_required (VERSION 2.2)
+cmake_minimum_required (VERSION 2.4)
 
 # set from an including package script
 if (NOT DEFINED arg_sub_package)

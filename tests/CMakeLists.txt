@@ -21,6 +21,8 @@
 
 cmake_minimum_required(VERSION 2.6)
 
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
+
 # Restore global flags after all configure_DynamoRIO_client() calls.
 foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
   if ("${config}" STREQUAL "")
