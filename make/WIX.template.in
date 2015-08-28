@@ -39,15 +39,21 @@
 
         <FeatureRef Id="ProductFeature"/>
 
-        <UIRef Id="WixUI_InstallDir" />
+        <UIRef Id="$(var.CPACK_WIX_UI_REF)" />
 
-        <CustomAction Id="remove_vs_tool" FileKey="FILE_ID_22"
-        ExeCommand=" -uninstall" Execute="immediate" Return="asyncNoWait" />
-        <CustomAction Id="add_vs_tool" FileKey="FILE_ID_22"
-        ExeCommand="[#FILE_ID_6]" Execute="immediate" Return="asyncNoWait" />
+        <?include "properties.wxi"?>
+        <?include "product_fragment.wxi"?>
+
+        <CustomAction Id="remove_vs_tool" FileKey="CM_FP_bin.vs_external_tool.exe"
+            ExeCommand=" -uninstall" Execute="immediate" Return="asyncNoWait" />
+        <CustomAction Id="add_vs_tool" FileKey="CM_FP_bin.vs_external_tool.exe"
+            ExeCommand="&quot;[#CM_FP_bin.drmemory.exe]&quot;" Execute="immediate"
+            Return="check" />
         <InstallExecuteSequence>
-        <Custom Action='remove_vs_tool' Before='InstallInitialize'> (NOT UPGRADINGPRODUCTCODE) AND (REMOVE="ALL")</Custom>
-        <Custom Action='add_vs_tool' After='InstallFinalize'> NOT Installed AND NOT REMOVE</Custom>
+        <Custom Action='remove_vs_tool' Before='InstallInitialize'>
+            (NOT UPGRADINGPRODUCTCODE) AND (REMOVE="ALL")</Custom>
+        <Custom Action='add_vs_tool' After='InstallFinalize'>
+            NOT Installed AND NOT REMOVE</Custom>
         </InstallExecuteSequence>
     </Product>
 </Wix>

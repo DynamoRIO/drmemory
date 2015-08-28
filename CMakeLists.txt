@@ -1951,10 +1951,22 @@ if (UNIX)
     endif (APPLE)
   endif (VMKERNEL)
 else (UNIX)
-  # do not require NSIS, since we do "make package" as part of test suite
-  find_program(NSIS nsis HINT "$ENV{PROGRAMFILES}/NSIS" DOC "NSIS for creating installer")
+  # We don't require NSIS or WIX since we do "make package" as part of test suite
+  set(WIX "WIX-NOTFOUND")
+  set(NSIS "NSIS-NOTFOUND")
+  # Our WIX config requires recent features
+  if ("${CMAKE_VERSION}" VERSION_EQUAL "3.3" OR
+      "${CMAKE_VERSION}" VERSION_GREATER "3.3")
+    # WIX's candle.exe must be on the path for cpack to run it, so hints don't help
+    find_program(WIX candle DOC "WIX for creating installer")
+  endif ()
+  # Prefer WIX
+  if (NOT WIX)
+    find_program(NSIS nsis HINT "$ENV{PROGRAMFILES}/NSIS" DOC
+      "NSIS for creating installer")
+  endif ()
   if (NSIS)
-    message(STATUS "NSIS found: will build installer")
+    message(STATUS "NSIS found: will build NSIS-based installer")
     set(CPACK_GENERATOR "ZIP;NSIS")
     # Ensure we have the NSIS with an 8192 PATH limit (i#1029)
     get_filename_component(nsis_path "${NSIS}" PATH)
@@ -1981,27 +1993,23 @@ else (UNIX)
         message(FATAL_ERROR "Installed NSIS has a too-small path limit.  See i#1029.")
       endif ()
     endif (strings)
-  else (NSIS)
-    # XXX i#1620: To switch entirely from NSIS to WIX
-    # will need to generate GUID's to install over previous NSIS installs and
-    # to make sure registry values are written to that were originally done
-    # with tools/vs_external_tool.c
-    message(STATUS "NSIS not found: will try building with WIX")
-    find_program(WIX candle HINT "$ENV{PROGRAMFILES}/bin" DOC "WIX for creating installer")
-    if (WIX)
-      # Make sure to specify BUILDING_PACKAGE. See i#1099 about absolute path.
-      message(STATUS "WIX found. Using WIX to install")
-      set(CPACK_GENERATOR "ZIP;WIX")
-      # Variables below are set to allow for upgrade but prevent
-      # reinstalling the same version. See i#1620.
-      set(CPACK_WIX_UPGRADE_GUID 1A8D7CEE-2ABA-4462-B0D6-86F26715128E)
-      set(CPACK_WIX_PRODUCT_GUID 67675AD6-1FB0-4DE1-9ECF-84997515025E)
-      set(CPACK_WIX_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/make/Wix.Template.in")
-    else (WIX)
-      message(STATUS "WIX compiler candle.exe not found. Please add it to path or install the WIX tooset. Installing as a Zip")
-      set(CPACK_GENERATOR "ZIP")
-    endif (WIX)
-  endif (NSIS)
+  elseif (WIX)
+    message(STATUS "WIX found: will build WIX-based .msi installer")
+    # Make sure to specify BUILDING_PACKAGE. See i#1099 about absolute path.
+    set(CPACK_GENERATOR "ZIP;WIX")
+    # Variables below are set to allow for upgrade but prevent
+    # reinstalling the same version. See i#1620.
+    set(CPACK_WIX_UPGRADE_GUID 1A8D7CEE-2ABA-4462-B0D6-86F26715128E)
+    set(CPACK_WIX_PRODUCT_GUID 67675AD6-1FB0-4DE1-9ECF-84997515025E)
+    # We may want to update this with new features: currently targeting
+    # CMake/CPack 3.3.
+    set(CPACK_WIX_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/make/WIX.template.in")
+    # This should show up in Add/Remove Programs:
+    set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://drmemory.org")
+  else ()
+    message(STATUS "Neither NSIS nor WIX found (please install and add to path if desired).  Creating only a zip package.")
+    set(CPACK_GENERATOR "ZIP")
+  endif ()
   set(CPACK_SOURCE_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "Windows")
   if (USE_DRSYMS)
@@ -2085,7 +2093,7 @@ set(CPACK_NSIS_MENU_LINKS
   # CPACK_PACKAGE_EXECUTABLES list, even though we don't want one.
   "bin/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"
   "${toolname}/docs/html/index.html" "${toolname_cap_spc} documentation"
-  "http://dynamorio.org/${toolname}.html" "${toolname_cap_spc} web page")
+  "http://drmemory.org/" "${toolname_cap_spc} web page")
 if (USER_SPECIFIED_DynamoRIO_DIR)
   set(CPACK_NSIS_MUI_ICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
   set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")

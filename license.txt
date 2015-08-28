@@ -3,8 +3,8 @@ Dr. Memory: the memory debugger
 ===========================================================================
 Primary license: LGPL
 
-All of Dr. Memory except certain portions called out in subsequent sections
-on this page is licensed under the following LGPL license:
+All of Dr. Memory except certain portions called out in subsequent
+sections on this page is licensed under the following LGPL license:
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
