@@ -17,5 +17,19 @@
                 Target="http://drmemory.org/"/>
             </Component>
         </DirectoryRef>
+
+        <!-- i#1761: ideally we'd have a dialog where the user picks
+             whether to do this and whether system or user, but for
+             now we always do it for user (the zip file can be used
+             instead of installer if this is undesirable).
+        -->
+        <ComponentGroup Id="CG_ADD_TO_PATH" Directory="INSTALL_ROOT">
+          <Component Id="CM_ADD_TO_PATH" Guid="208034b8-7cc5-4718-9b99-ac50201c3f90"
+              KeyPath="yes">
+            <!-- XXX i#1762: not being removed on uninstall!  Why? -->
+            <Environment Id="ENV_PATH" Name="PATH" Value="[$CM_CP_bin.drmemory.exe]"
+                Permanent="no" Part="last" Action="set" System="no" />
+          </Component>
+        </ComponentGroup>
     </Fragment>
 </Wix>

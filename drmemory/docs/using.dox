@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -120,9 +120,9 @@ you will need to <a href="http://drmemory.org">download the installer</a>.
 \section sec_windows_system System Install
 
 Download the \p .exe version of Dr. Memory.  Run the downloaded file to
-launch the installer.  We recommend selecting the checkbox "Add to system
-path for current user" to simplify use of the tool.  You can also elect to
-place a Dr. Memory icon on the desktop if you would like to run your
+launch the installer.  The installer automatically adds Dr. Memory to the
+PATH for the current user, to simplify use of the tool.  It also
+places a Dr. Memory icon on the desktop if you would like to run your
 applications under Dr. Memory by dragging and dropping.
 
 If you already have a prior version of Dr. Memory installed, uninstall it

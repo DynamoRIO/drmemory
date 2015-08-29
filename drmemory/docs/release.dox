@@ -66,6 +66,9 @@ The changes between \TOOL_VERSION and version 1.8.0 include:
    execution of any program function while mutating the arguments. Use
    new option -fuzz_target to fuzz test any C or C++ target function
    having a buffer argument and a corresponding buffer size argument.
+ - Switched the Windows installer from an NSIS-based executable to
+   a WIX-based .msi file.  The new installer automatically adds
+   Dr. Memory to the PATH for the current user.
 
 The changes between \TOOL_VERSION and version 1.7.0 include:
  - Dropped official support for Windows 2000.
