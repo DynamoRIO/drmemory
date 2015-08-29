@@ -1723,10 +1723,13 @@ if (WIN32)
       PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
   endif (USE_DRSYMS)
-  install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/README
-    DESTINATION "${INSTALL_PREFIX}."
-    RENAME "README.txt")
+  # We want carriage returns for nice viewing in Notepad, etc.:
+  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/README readme_content)
+  string(REPLACE "\n" "\r\n" readme_content ${readme_content})
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/README.txt ${readme_content})
+   install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/README.txt
+    DESTINATION "${INSTALL_PREFIX}.")
 else (WIN32)
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/README
