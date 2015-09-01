@@ -59,8 +59,13 @@ Ensure your Linux installation is able to build 32-bit applications. On
 64-bit Ubuntu you will want these packages:
 
 \verbatim
-sudo apt-get install ia32-libs g++-multilib
+sudo apt-get install g++-multilib
 \endverbatim
+
+On Ubuntu older than 13.04, the `ia32-libs` package should also be
+installed.  On 13.04 and higher, 32-bit libraries must be chosen
+individually, but normally they are installed by default in most
+distributions.
 
 ********************
 \section sec_linux_install Installing
@@ -199,8 +204,13 @@ Ensure your Linux installation is able to build 32-bit applications.  On
 64-bit Ubuntu you will want these packages:
 
 \verbatim
-sudo apt-get install ia32-libs g++-multilib
+sudo apt-get install g++-multilib
 \endverbatim
+
+On Ubuntu older than 13.04, the `ia32-libs` package should also be
+installed.  On 13.04 and higher, 32-bit libraries must be chosen
+individually, but normally they are installed by default in most
+distributions.
 
 Dr. Memory currently only supports DWARF2 line information, not stabs.
 DWARF2 is the default for modern versions of \p gcc.

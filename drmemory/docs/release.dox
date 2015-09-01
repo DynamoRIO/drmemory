@@ -71,7 +71,7 @@ The changes between \TOOL_VERSION and version 1.8.0 include:
    Dr. Memory to the PATH for the current user.
  - Added unaddressable warning report on write-to-readonly-memory.
 
-The changes between \TOOL_VERSION and version 1.7.0 include:
+The changes between version 1.8.0 and version 1.7.0 include:
  - Dropped official support for Windows 2000.
  - Enabled -delay_frees_stack by default.
  - The Windows installer now automatically adds Dr. Memory as an External
