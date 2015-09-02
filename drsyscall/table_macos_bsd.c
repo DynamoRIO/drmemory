@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -153,7 +153,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_open /*5*/}, "open", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -173,18 +173,18 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_link /*9*/}, "link", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
+         {1, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_unlink /*10*/}, "unlink", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_chdir /*12*/}, "chdir", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_fchdir /*13*/}, "fchdir", OK, RLONG, 1,
@@ -194,20 +194,20 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_mknod /*14*/}, "mknod", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{SYS_chmod /*15*/}, "chmod", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{SYS_chown /*16*/}, "chown", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -282,7 +282,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_access /*33*/}, "access", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -409,7 +409,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_chroot /*61*/}, "chroot", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_msync /*65*/}, "msync", OK, RLONG, 3,
@@ -630,8 +630,8 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_rename /*128*/}, "rename", OK, RLONG, 2,
      {
-         {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
-         {1, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
+         {1, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_flock /*131*/}, "flock", OK, RLONG, 2,
@@ -642,7 +642,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_mkfifo /*132*/}, "mkfifo", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -672,18 +672,18 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_mkdir /*136*/}, "mkdir", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{SYS_rmdir /*137*/}, "rmdir", OK, RLONG, 1,
      {
-         {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_utimes /*138*/}, "utimes", OK, RLONG, 2,
      {
-         {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(struct timeval), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
@@ -740,7 +740,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_statfs /*157*/}, "statfs", OK, RLONG, 2,
      {
-         {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(struct statfs), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
@@ -752,7 +752,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_unmount /*159*/}, "unmount", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -850,7 +850,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_stat /*188*/}, "stat", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
      }
     },
@@ -862,13 +862,13 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_lstat /*190*/}, "lstat", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
      }
     },
     {{SYS_pathconf /*191*/}, "pathconf", OK, RLONG, 2,
      {
-         {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -893,7 +893,7 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_getdirentries /*196*/}, "getdirentries", OK, RLONG, 4,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
          {2, sizeof(u_int), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(long), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
@@ -951,7 +951,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_undelete /*205*/}, "undelete", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_ATsocket /*206*/}, "ATsocket", OK, RLONG, 1,
@@ -1078,7 +1078,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_delete /*226*/}, "delete", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS_copyfile /*227*/}, "copyfile", OK, RLONG, 4,
@@ -1134,7 +1134,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_getxattr /*234*/}, "getxattr", OK, RLONG, 6,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1154,7 +1154,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_setxattr /*236*/}, "setxattr", OK, RLONG, 6,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1174,7 +1174,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_removexattr /*238*/}, "removexattr", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -1188,7 +1188,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_listxattr /*240*/}, "listxattr", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1422,7 +1422,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_open_extended /*277*/}, "open_extended", OK, RLONG, 6,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(uid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(gid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1438,7 +1438,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_stat_extended /*279*/}, "stat_extended", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
@@ -1446,7 +1446,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_lstat_extended /*280*/}, "lstat_extended", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
@@ -1462,7 +1462,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_chmod_extended /*282*/}, "chmod_extended", OK, RLONG, 5,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(uid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(gid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1524,7 +1524,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_mkfifo_extended /*291*/}, "mkfifo_extended", OK, RLONG, 5,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(uid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(gid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1533,7 +1533,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_mkdir_extended /*292*/}, "mkdir_extended", OK, RLONG, 5,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(uid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(gid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1846,7 +1846,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_stat64 /*338*/}, "stat64", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
      }
     },
@@ -1858,13 +1858,13 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_lstat64 /*340*/}, "lstat64", OK, RLONG, 2,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
      }
     },
     {{SYS_stat64_extended /*341*/}, "stat64_extended", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
@@ -1872,7 +1872,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_lstat64_extended /*342*/}, "lstat64_extended", OK, RLONG, 4,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
@@ -1889,7 +1889,7 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_getdirentries64 /*344*/}, "getdirentries64", OK, RLONG, 4,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(void *), W|HT, DRSYS_TYPE_POINTER},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(off_t), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
@@ -1915,7 +1915,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS___pthread_chdir /*348*/}, "__pthread_chdir", OK, RLONG, 1,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
      }
     },
     {{SYS___pthread_fchdir /*349*/}, "__pthread_fchdir", OK, RLONG, 1,
@@ -2003,7 +2003,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_lchown /*364*/}, "lchown", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(uid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(gid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -2177,7 +2177,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_open_nocancel /*398*/}, "open_nocancel", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }

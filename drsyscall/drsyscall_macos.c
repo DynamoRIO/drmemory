@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -84,6 +84,44 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
  * SHADOW PER-ARG-TYPE HANDLING
  */
 
+/* XXX i#1440: share w/ Linux */
+static bool
+handle_cstring_access(sysarg_iter_info_t *ii,
+                      const sysinfo_arg_t *arg_info,
+                      app_pc start, uint size/*in bytes*/)
+{
+    return handle_cstring(ii, arg_info->param, arg_info->flags,
+                          NULL, start, size, NULL,
+                          /* let normal check ensure full size is addressable */
+                          false);
+}
+
+/* XXX i#1440: share w/ Linux */
+static void
+check_strarray(sysarg_iter_info_t *ii, char **array, int ordinal, const char *id)
+{
+    char *str;
+    int i = 0;
+#   define STR_ARRAY_MAX_ITER 64*1024 /* safety check */
+    while (safe_read(&array[i], sizeof(str), &str) && str != NULL
+           && i < STR_ARRAY_MAX_ITER) {
+        handle_cstring(ii, ordinal, SYSARG_READ, id, (app_pc)str, 0, NULL, false);
+        i++;
+    }
+}
+
+/* XXX i#1440: share w/ Linux */
+static bool
+handle_strarray_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
+                       app_pc start, uint size)
+{
+    char id[16];
+    dr_snprintf(id, BUFFER_SIZE_ELEMENTS(id), "%s%d", "parameter #", arg_info->param);
+    NULL_TERMINATE_BUFFER(id);
+    check_strarray(ii, (char **)start, arg_info->param, id);
+    return true; /* check_strarray checks whole array */
+}
+
 static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const sysinfo_arg_t *arg_info,
@@ -93,9 +131,13 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
         return false;
 
     switch (arg_info->misc) {
-        /* FIXME i#1440: add handling -- probably want SYSARG_TYPE_CSTRING,
-         * SYSARG_TYPE_SOCKADDR, DRSYS_TYPE_CSTRARRAY?  Share w/ Linux?
-         */
+    case SYSARG_TYPE_CSTRING:
+        return handle_cstring_access(ii, arg_info, start, size);
+    case DRSYS_TYPE_CSTRARRAY:
+        return handle_strarray_access(ii, arg_info, start, size);
+    /* FIXME i#1440: add more handling -- probably also want
+     * SYSARG_TYPE_SOCKADDR?  Share w/ Linux?
+     */
     }
     return false;
 }
