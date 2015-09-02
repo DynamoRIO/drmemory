@@ -337,13 +337,12 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "calloc", HEAP_ROUTINE_CALLOC },
     /* for cfree we ignore 2 extra args if there are any, as glibc itself does */
     { "cfree", HEAP_ROUTINE_FREE },
-    /* XXX i#94: not supported yet */
 #ifdef  UNIX
     { "posix_memalign", HEAP_ROUTINE_POSIX_MEMALIGN },
-#endif
     { "memalign", HEAP_ROUTINE_MEMALIGN },
     { "valloc", HEAP_ROUTINE_VALLOC },
     { "pvalloc", HEAP_ROUTINE_PVALLOC },
+#endif
     /* We do not change args or return val for these: we simply allow
      * them to access heap headers.  Returned stats will be inflated
      * by redzones: oh well.
@@ -358,7 +357,9 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "malloc_set_state",     HEAP_ROUTINE_NOT_HANDLED },
     { "independent_calloc",   HEAP_ROUTINE_NOT_HANDLED },
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
+#ifdef WINDOWS
     /* XXX i#199: intercept _recalloc and _aligned_* malloc routines */
+#endif
 #ifdef MACOS
     { "malloc_create_zone",   ZONE_ROUTINE_CREATE },
     { "malloc_destroy_zone",  ZONE_ROUTINE_DESTROY },
@@ -370,6 +371,20 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "malloc_zone_realloc",  ZONE_ROUTINE_REALLOC },
     { "malloc_zone_memalign", ZONE_ROUTINE_MEMALIGN },
     { "malloc_zone_free",     ZONE_ROUTINE_FREE },
+#endif
+#ifdef  UNIX
+    /* i#1740: ld.so uses __libc_memalign.  We include the rest for
+     * completeness.
+     */
+    { "__libc_malloc",   HEAP_ROUTINE_MALLOC },
+    { "__libc_realloc",  HEAP_ROUTINE_REALLOC },
+    { "__libc_free",     HEAP_ROUTINE_FREE },
+    { "__libc_calloc",   HEAP_ROUTINE_CALLOC },
+    { "__libc_memalign", HEAP_ROUTINE_MEMALIGN },
+    { "__libc_valloc",   HEAP_ROUTINE_VALLOC },
+    { "__libc_pvalloc",  HEAP_ROUTINE_PVALLOC },
+    { "__libc_mallopt",  HEAP_ROUTINE_STATS },
+    { "__libc_mallinfo", HEAP_ROUTINE_STATS },
 #endif
 #ifdef WINDOWS
     /* the _impl versions are sometimes called directly (i#31)
