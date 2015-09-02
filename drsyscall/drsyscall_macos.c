@@ -25,8 +25,9 @@
 
 #include <sys/syscall.h>
 #include <string.h>
+#include <fcntl.h>
 
-/* FIXME i#1440: port Dr. Syscall to Mac OSX */
+/* FIXME i#1440: finish porting Dr. Syscall to Mac OSX */
 
 /***************************************************************************
  * SYSTEM CALLS FOR MAC
@@ -65,7 +66,17 @@ void
 os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     switch (ii->arg->sysnum.number) {
-        /* FIXME i#1440: add handling */
+    case SYS_open:
+    case SYS_open_nocancel: {
+        /* 3rd arg is only required for O_CREAT */
+        int flags = (int) pt->sysarg[1];
+        if (TEST(O_CREAT, flags)) {
+            if (!report_sysarg_type(ii, 2, SYSARG_READ, sizeof(int),
+                                    DRSYS_TYPE_SIGNED_INT, NULL))
+                return;
+        }
+        break;
+    }
     }
     /* If you add any handling here: need to check ii->abort first */
 }

@@ -151,11 +151,11 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{SYS_open /*5*/}, "open", OK, RLONG, 3,
+    {{SYS_open /*5*/}, "open", OK, RLONG, 2,
      {
          {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         /* 3rd arg is optional: special-cased */
      }
     },
     {{SYS_close /*6*/}, "close", OK, RLONG, 1,
@@ -2175,11 +2175,11 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{SYS_open_nocancel /*398*/}, "open_nocancel", OK, RLONG, 3,
+    {{SYS_open_nocancel /*398*/}, "open_nocancel", OK, RLONG, 2,
      {
          {0, 0, R|CT, DRSYS_TYPE_CSTRING},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         /* 3rd arg is optional: special-cased */
      }
     },
     {{SYS_close_nocancel /*399*/}, "close_nocancel", OK, RLONG, 1,
