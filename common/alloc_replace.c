@@ -295,6 +295,8 @@ typedef struct _arena_header_t {
      * Xref i#1699.
      */
     malloc_zone_t zone_inlined;
+    /* Some apps write to zone_inlined.zone_name and then mark the page read-only. */
+    char padding[PAGE_SIZE-sizeof(malloc_zone_t)];
     /* For child arenas to point at the parent */
     malloc_zone_t *zone;
 #endif
