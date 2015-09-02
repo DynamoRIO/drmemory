@@ -2739,7 +2739,7 @@ replace_posix_memalign(void **out, size_t align, size_t size)
     int res = 0;
     byte *alloc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "replace_posix_memalign align=%d size=%d\n", align, size);
+    LOG(2, "%s align=%d size=%d\n", __FUNCTION__, align, size);
     /* alignment must be power of 2 */
     if (!IS_POWER_OF_2(align) || out == NULL) {
         client_handle_alloc_failure(size, (app_pc)replace_posix_memalign, &mc);
@@ -2753,13 +2753,70 @@ replace_posix_memalign(void **out, size_t align, size_t size)
             res = EINVAL;
         }
     }
-    LOG(2, "\treplace_posix_memalign %d %d => "PFX"\n", align, size, res);
+    LOG(2, "\t%s %d %d => "PFX"\n", __FUNCTION__, align, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_memalign(size_t align, size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    byte *res = NULL;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s align=%d size=%d\n", __FUNCTION__, align, size);
+    if (!IS_POWER_OF_2(align))
+        client_handle_alloc_failure(size, (app_pc)replace_memalign, &mc);
+    else {
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size, align, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_memalign, MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s %d %d => "PFX"\n", __FUNCTION__, align, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_valloc(size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    byte *res = NULL;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s size=%d\n", __FUNCTION__, size);
+    res = ONDSTACK_REPLACE_ALLOC_COMMON
+        (arena, size, PAGE_SIZE,
+         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+         drcontext, &mc, (app_pc)replace_valloc, MALLOC_ALLOCATOR_MALLOC);
+    LOG(2, "\t%s %d => "PFX"\n", __FUNCTION__, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_pvalloc(size_t size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    byte *res = NULL;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s size=%d\n", __FUNCTION__, size);
+    res = ONDSTACK_REPLACE_ALLOC_COMMON
+        (arena, ALIGN_FORWARD(size, PAGE_SIZE), PAGE_SIZE,
+         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+         drcontext, &mc, (app_pc)replace_pvalloc, MALLOC_ALLOCATOR_MALLOC);
+    LOG(2, "\t%s %d => "PFX"\n", __FUNCTION__, size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 #endif
 
-/* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
+/* XXX i#94: replace mallopt(), mallinfo(), etc. */
 
 /***************************************************************************
  * Operators
@@ -4423,18 +4480,48 @@ replace_malloc_zone_free(malloc_zone_t *zone, void *ptr)
 static void *
 replace_malloc_zone_valloc(malloc_zone_t *zone, size_t size)
 {
-    /* FIXME i#94: implement aligned malloc requests */
-    ASSERT_NOT_IMPLEMENTED();
-    return NULL;
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s zone="PFX" (=> "PFX") size="PIFX"\n",
+        __FUNCTION__, zone, arena, size);
+    if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_valloc);
+    else {
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size, PAGE_SIZE, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_malloc_zone_valloc, MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s "PFX" %d => "PIFX"\n", __FUNCTION__, zone, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void *
 replace_malloc_zone_memalign(malloc_zone_t *zone, size_t alignment, size_t size)
 {
-    /* FIXME i#94: implement aligned malloc requests */
-    LOG(2, "%s: align=%d, size=%d\n", __FUNCTION__, alignment, size);
-    ASSERT_NOT_IMPLEMENTED();
-    return NULL;
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = zone_to_arena(zone);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s zone="PFX" (=> "PFX") size="PIFX"\n",
+        __FUNCTION__, zone, arena, size);
+    if (!IS_POWER_OF_2(alignment))
+        client_handle_alloc_failure(size, (app_pc)replace_malloc_zone_memalign, &mc);
+    else if (arena == NULL)
+        report_invalid_zone(zone, &mc, (app_pc)replace_malloc_zone_memalign);
+    else {
+        res = ONDSTACK_REPLACE_ALLOC_COMMON
+            (arena, size, alignment, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+             drcontext, &mc, (app_pc)replace_malloc_zone_memalign,
+             MALLOC_ALLOCATOR_MALLOC);
+    }
+    LOG(2, "\t%s "PFX" %d => "PIFX"\n", __FUNCTION__, zone, size, res);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void
@@ -4635,6 +4722,15 @@ func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_mat
 #ifdef  UNIX
     case HEAP_ROUTINE_POSIX_MEMALIGN:
         *routine = (void *) replace_posix_memalign;
+        return true;
+    case HEAP_ROUTINE_MEMALIGN:
+        *routine = (void *) replace_memalign;
+        return true;
+    case HEAP_ROUTINE_VALLOC:
+        *routine = (void *) replace_valloc;
+        return true;
+    case HEAP_ROUTINE_PVALLOC:
+        *routine = (void *) replace_pvalloc;
         return true;
 #endif
     default: break; /* continue below */

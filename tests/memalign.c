@@ -31,6 +31,7 @@
 #include <assert.h>
 #ifdef UNIX
 # include <errno.h>
+# include <unistd.h>
 #endif
 
 /* i#94: handle auxiliary alloc routines: memalign(), valloc(), etc. */
@@ -41,6 +42,7 @@ int main()
 {
     void *p;
     int i, res;
+    char c;
 #ifdef LINUX
     struct mallinfo info;
 
@@ -65,6 +67,8 @@ int main()
     res = posix_memalign(&p, 256, 42);
     assert(res == 0 && p != NULL);
     assert(ALIGNED(p, 256));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 42); /* unaddr */
     free(p);
 
     /* Test with pulling from free list (has to be run "-delay_frees 0").
@@ -79,6 +83,8 @@ int main()
     res = posix_memalign(&p, 128, 99);
     assert(res == 0 && p != NULL);
     assert(ALIGNED(p, 128));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 99); /* unaddr */
     free(p);
 
     /* Test non-power-of-2 */
@@ -90,7 +96,35 @@ int main()
     res = posix_memalign(&p, 512, 256*1024); /* 128K is our mmap min */
     assert(res == 0 && p != NULL);
     assert(ALIGNED(p, 512));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 256*1024); /* unaddr */
     free(p);
+
+#ifndef MACOS
+    p = memalign(64, 3);
+    assert(p != NULL);
+    assert(ALIGNED(p, 64));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 3); /* unaddr */
+    free(p);
+#endif
+
+    p = valloc(643);
+    assert(p != NULL);
+    assert(ALIGNED(p, sysconf(_SC_PAGESIZE)));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 643); /* unaddr */
+    free(p);
+
+#ifndef MACOS
+    p = pvalloc(643);
+    assert(p != NULL);
+    assert(ALIGNED(p, sysconf(_SC_PAGESIZE)));
+    c = *((char *)p - 1); /* unaddr */
+    c = *((char *)p + 643); /* ok */
+    c = *((char *)p + sysconf(_SC_PAGESIZE)); /* unaddr */
+    free(p);
+#endif
 
     printf("success\n");
     return 0;

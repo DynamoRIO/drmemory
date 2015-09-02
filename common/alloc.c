@@ -341,12 +341,13 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 #ifdef  UNIX
     { "posix_memalign", HEAP_ROUTINE_POSIX_MEMALIGN },
 #endif
-    { "memalign", HEAP_ROUTINE_NOT_HANDLED },
-    { "valloc", HEAP_ROUTINE_NOT_HANDLED },
-    { "pvalloc", HEAP_ROUTINE_NOT_HANDLED },
-    /* we do not change args or return val for these: we simply allow
-     * them to access heap headers.  returned stats will be inflated
+    { "memalign", HEAP_ROUTINE_MEMALIGN },
+    { "valloc", HEAP_ROUTINE_VALLOC },
+    { "pvalloc", HEAP_ROUTINE_PVALLOC },
+    /* We do not change args or return val for these: we simply allow
+     * them to access heap headers.  Returned stats will be inflated
      * by redzones: oh well.
+     * XXX i#94: add -replace_malloc support for these.
      */
     { "mallopt",              HEAP_ROUTINE_STATS },
     { "mallinfo",             HEAP_ROUTINE_STATS },
@@ -357,7 +358,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "malloc_set_state",     HEAP_ROUTINE_NOT_HANDLED },
     { "independent_calloc",   HEAP_ROUTINE_NOT_HANDLED },
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
-    /* FIXME i#94: memalign, valloc, pvalloc, etc. */
+    /* XXX i#199: intercept _recalloc and _aligned_* malloc routines */
 #ifdef MACOS
     { "malloc_create_zone",   ZONE_ROUTINE_CREATE },
     { "malloc_destroy_zone",  ZONE_ROUTINE_DESTROY },

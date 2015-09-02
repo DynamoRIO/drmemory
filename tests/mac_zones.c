@@ -26,6 +26,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <assert.h>
+#include <unistd.h>
+
+#define ALIGNED(x, alignment) ((((uintptr_t)x) & ((alignment)-1)) == 0)
 
 int
 main(void)
@@ -64,18 +67,16 @@ main(void)
     assert(*(int *)m1 == 0);
     malloc_zone_free(myzone, m1);
 
-#if 0 /* FIXME i#1699: add support for these aligned allocs */
     m1 = malloc_zone_valloc(myzone, 58);
     assert(m1 != NULL);
-    assert(((uintptr_t)m1 & 0xfff) == 0); /* page-aligned */
+    assert(ALIGNED(m1, sysconf(_SC_PAGESIZE)));
     assert(*(int *)m1 == 0);
     malloc_zone_free(myzone, m1);
 
     m1 = malloc_zone_memalign(myzone, 256, 58);
     assert(m1 != NULL);
-    assert(((uintptr_t)m1 & 0xff) == 0); /* 256-aligned */
+    assert(ALIGNED(m1, 256));
     malloc_zone_free(myzone, m1);
-#endif
 
     m1 = malloc_zone_malloc(myzone, 58);
     assert(m1 != NULL);

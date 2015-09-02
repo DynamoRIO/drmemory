@@ -756,7 +756,8 @@ if (TOOL_DR_MEMORY)
 
   if (UNIX)
     newtest(memalign memalign.c)
-    newtest_nobuild(memalign-nodelay memalign "" "-delay_frees;0" "" OFF "")
+    newtest_nobuild(memalign.nodelay memalign "" "-delay_frees;0" "" OFF "memalign")
+    newtest_nobuild(memalign.pattern memalign "" "-light" "" OFF "")
   endif (UNIX)
 
   # persistent cache tests: currently only light mode is supported
