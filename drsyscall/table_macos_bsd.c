@@ -414,7 +414,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_msync /*65*/}, "msync", OK, RLONG, 3,
      {
-         {0, sizeof(caddr_t), W|HT, DRSYS_TYPE_CSTRING},
+         {0, sizeof(caddr_t), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -422,20 +422,20 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_vfork /*66*/}, "vfork", OK, RLONG, 0, },
     {{SYS_munmap /*73*/}, "munmap", OK, RLONG, 2,
      {
-         {0, sizeof(caddr_t), W|HT, DRSYS_TYPE_CSTRING},
+         {0, sizeof(caddr_t), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{SYS_mprotect /*74*/}, "mprotect", OK, RLONG, 3,
      {
-         {0, sizeof(caddr_t), W|HT, DRSYS_TYPE_CSTRING},
+         {0, sizeof(caddr_t), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{SYS_madvise /*75*/}, "madvise", OK, RLONG, 3,
      {
-         {0, sizeof(caddr_t), W|HT, DRSYS_TYPE_CSTRING},
+         {0, sizeof(caddr_t), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -1847,7 +1847,7 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_stat64 /*338*/}, "stat64", OK, RLONG, 2,
      {
          {0, 0, R|CT, DRSYS_TYPE_CSTRING},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {1, sizeof(struct stat64), W},
      }
     },
     {{SYS_fstat64 /*339*/}, "fstat64", OK, RLONG, 2,
