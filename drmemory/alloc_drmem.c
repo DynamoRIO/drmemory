@@ -2353,7 +2353,8 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
                          IF_MACOS_ELSE(4, 8)) == 0 ||
                  /* i#1703: dyld also accesses DR through these two libs */
                  IF_MACOS(strcmp(modname, "libmacho.dylib") == 0 ||
-                          strcmp(modname, "libobjc.A.dylib") == 0 ||)
+                          strcmp(modname, "libobjc.A.dylib") == 0 ||
+                          strcmp(modname, "libdyld.dylib") == 0 ||)
                  is_in_client_or_DR_lib(pc))) {
                 /* If this happens too many times we may want to go back to
                  * marking our libs as defined and give up on catching wild
