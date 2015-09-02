@@ -2431,15 +2431,28 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
     ASSERT(!found || addr+sz >= start - options.redzone_size,
            "bug in delay free overlap calc");
     if (found) {
-        etp->free_start = start;
-        etp->free_size = end - start;
+        /* For the Note labels, we do want to mention overlap with freed redzones,
+         * but we try to avoid overlap with memalign pre-padding (i#94).
+         */
+        if (!options.delay_frees_stack || etp->free_pcs != NULL) {
+            etp->free_start = start;
+            etp->free_size = end - start;
+        }
         /* Don't label an access to a freed redzone as a use-after-free, as
          * it can easily be an underflow from an adjacent live malloc.
          * We'll still list it as "N bytes beyond memory that was freed".
          * We do want to include access to freed padding.
+         *
+         * Also don't label a free list entry without a callstack as a
+         * use-after-free, as it could be an artificial free from something
+         * like the pre-alloc padding for memalign (i#94).
+         * If !options.delay_frees_stack we label it anyway: better to properly
+         * label real use-after-free and have bad labeling for rare memalign
+         * underflow.
          */
         if (addr < (byte *) ALIGN_FORWARD(end, MALLOC_CHUNK_ALIGNMENT) &&
-            addr+sz >= etp->free_start)
+            addr+sz >= etp->free_start &&
+            (!options.delay_frees_stack || etp->free_pcs != NULL))
             etp->use_after_free = true;
     }
 }
