@@ -1211,6 +1211,13 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
  * General syscall arg processing
  */
 
+/* We use this sentinel value for C string params.  We want a non-zero value
+ * to indicate the param is present, but we want to pass 0 to handle_cstring().
+ * We need the non-zero value to be large enough to avoid triggering the
+ * truncation check vs sysarg_known_sz.
+ */
+#define SIZE_DYNAMIC (ptr_uint_t)-1
+
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
 sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
@@ -1218,7 +1225,10 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
 {
     ptr_uint_t size = 0;
     sysinfo_arg_t *arg = &sysinfo->arg[argnum];
-    if (arg->size == SYSARG_POST_SIZE_RETVAL) {
+    if (arg->size == 0 && TEST(SYSARG_COMPLEX_TYPE, arg->flags) &&
+        arg->misc == SYSARG_TYPE_CSTRING) {
+        return SIZE_DYNAMIC; /* we'll figure out size later */
+    } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
         /* XXX: some syscalls (in particular NtGdi* and NtUser*) return
          * the capacity needed when the input buffer is NULL or
          * size of input buffer is given as 0.  For the buffer being NULL
@@ -1410,8 +1420,9 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
          * we should check here since harder to undo post-syscall on failure.
          */
         if (start != NULL && size > 0) {
+            size_t real_sz = (size == SIZE_DYNAMIC) ? 0 : size;
             bool skip = os_handle_pre_syscall_arg_access(ii, &sysinfo->arg[i],
-                                                         start, size);
+                                                         start, real_sz);
             if (ii->abort)
                 break;
             /* i#502-c#5, i#1169: some arg should be ignored if another arg is NULL */
@@ -1430,7 +1441,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                        "message buffer too small");
                 NULL_TERMINATE_BUFFER(idmsg);
 
-                if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, size, idmsg))
+                if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, real_sz, idmsg))
                     break;
             }
         }

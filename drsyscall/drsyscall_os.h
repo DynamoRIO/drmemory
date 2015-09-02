@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -315,7 +315,7 @@ typedef struct _cls_syscall_t {
     bool extra_inuse[SYSCALL_NUM_ARG_STORE];
 #endif
     /* We need to store the size in pre for use in post (for i#1119)
-     * and we can't syare sysarg_sz as some syscalls are both known
+     * and we can't share sysarg_sz as some syscalls are both known
      * and unknown.
      */
     size_t sysarg_known_sz[SYSCALL_NUM_ARG_STORE];
