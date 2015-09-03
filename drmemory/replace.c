@@ -98,6 +98,7 @@
     REPLACE_DEF(stpcpy, NULL)      \
     REPLACE_DEF(strstr, "wcsstr")  \
     REPLACE_DEF(wcsstr, NULL)      \
+    IF_UNIX(REPLACE_DEF(bzero, NULL)) \
     IF_MACOS(REPLACE_NAME_DEF(_platform_memchr, memchr, NULL)) \
     IF_MACOS(REPLACE_NAME_DEF(_platform_memcmp, memcmp, NULL)) \
     IF_MACOS(REPLACE_NAME_DEF(_platform_memmove, memmove, NULL)) \
@@ -105,7 +106,8 @@
     IF_MACOS(REPLACE_NAME_DEF(_platform_strchr, strchr, NULL)) \
     IF_MACOS(REPLACE_NAME_DEF(_platform_strcmp, strcmp, NULL)) \
     IF_MACOS(REPLACE_NAME_DEF(_platform_strncmp, strncmp, NULL)) \
-    IF_MACOS(REPLACE_NAME_DEF(_platform_strlen, strlen, NULL))
+    IF_MACOS(REPLACE_NAME_DEF(_platform_strlen, strlen, NULL)) \
+    IF_MACOS(REPLACE_NAME_DEF(_platform_bzero, bzero, NULL))
 
 /* XXX i#350: add wrappers for wcsncpy, wcscat,
  * wcsncat, wmemmove.
@@ -213,6 +215,14 @@ replace_wmemset(wchar_t *dst, wchar_t val_in, size_t size)
     return ret;
 }
 END_DO_NOT_OPTIMIZE
+
+DO_NOT_OPTIMIZE
+
+IN_REPLACE_SECTION void
+replace_bzero(void *dst, size_t size)
+{
+    replace_memset(dst, 0, size);
+}
 
 IN_REPLACE_SECTION void *
 replace_memcpy(void *dst, const void *src, size_t size)
@@ -1359,7 +1369,7 @@ replace_in_module(const module_data_t *mod, bool add)
              * the wide-char ones aren't always there
              */
             IF_UNIX(ASSERT(mod->start != libc ||
-                           /* i#1747: bionic libc does not have all reaplce routines.
+                           /* i#1747: bionic libc does not have all replace routines.
                             * We could add a generated array of whether the routine is
                             * expected to be there instead if more routines are missing.
                             */
