@@ -1018,3 +1018,33 @@ name=default i#1669 win10 create process
 system call NtApphelpCacheControl UNICODE_STRING content
 ...
 KERNELBASE.dll!CreateProcessInternalW
+
+##################################################
+# i#1769: Norton injected code errors
+
+UNINITIALIZED READ
+name=default i#1769 Norton UMEngx86
+...
+UMEngx86.dll!*
+
+UNADDRESSABLE ACCESS
+name=default i#1769 Norton beyond-TOS A
+instruction=*0xfffff???(%esp)*
+<not in a module>
+kernel*.dll!*
+
+UNADDRESSABLE ACCESS
+name=default i#1769 Norton beyond-TOS B
+instruction=*0xfffff???(%esp)*
+<not in a module>
+ntdll.dll!*
+
+UNINITIALIZED READ
+name=default i#1769 Norton thread A
+<not in a module>
+kernel32.dll!BaseThreadInitThunk
+
+UNINITIALIZED READ
+name=default i#1769 Norton thread B
+system call NtQueryInformationThread parameter value #2
+kernel32.dll!BaseThreadInitThunk
