@@ -126,12 +126,21 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
         return DRMF_ERROR_INVALID_PARAMETER;
 
     if (TEST(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, options->flags) &&
-        options->unit != MUTATOR_UNIT_BITS)
+        options->unit != MUTATOR_UNIT_BITS) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify seed-centric"NL);
+        NOTIFY_ERROR("mutation together with the numeric mutation unit."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (options->sparsity > 0 && options->unit == MUTATOR_UNIT_NUM)
+    }
+    if (options->sparsity > 0 && options->unit == MUTATOR_UNIT_NUM) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify mutation"NL);
+        NOTIFY_ERROR("sparsity together with the numeric mutation unit."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (options->max_value > 0 && mutator->size > MAX_NUMERIC_SIZE)
+    }
+    if (options->max_value > 0 && mutator->size > MAX_NUMERIC_SIZE) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify a max mutator"NL);
+        NOTIFY_ERROR("value together with a mutation buffer size larger than 8 bytes."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
+    }
 
     if (mutator->index == 0) {
         memcpy(&mutator->options, options, sizeof(drfuzz_mutator_options_t));
@@ -251,7 +260,7 @@ generate_random_number(mutator_t *mutator)
 static drmf_status_t
 get_next_random_number(mutator_t *mutator, void *buffer)
 {
-    uint value;
+    uint64 value;
 
     if (mutator->options.max_value == 0) {
         drmf_status_t res;
@@ -260,14 +269,14 @@ get_next_random_number(mutator_t *mutator, void *buffer)
 
         for (i = 0; (i + 7) < mutator->size; i += 8) { /* step 8 bytes while available */
             value = generate_random_number(mutator);
-            res = write_scalar((void *) ((ptr_uint_t) buffer + i), 8, value);
+            res = write_scalar((void *) ((byte *) buffer + i), 8, value);
             if (res != DRMF_SUCCESS)
                 return res;
         }
         remainder = mutator->size - i;          /* calculate remaining bytes */
-        mask = (2 << (remainder * 8)) - 1;      /* set up mask */
+        mask = (1ULL << (remainder * 8)) - 1ULL;      /* set up mask */
         value = generate_random_number(mutator) & mask;
-        return write_scalar((void *) ((ptr_uint_t) buffer + i), remainder, value);
+        return write_scalar((void *) ((byte *) buffer + i), remainder, value);
     } else {
         if (mutator->size > sizeof(uint64))
             return DRMF_ERROR; /* cannot cap a non-integer value */
@@ -500,8 +509,8 @@ distributed_flip_bit(byte *b, uint i, size_t size)
     uint bit = i / size;
     b[byte] ^= (1 << bit);
 
-    ASSERT(byte >= size, "Error! Byte is out of range\n");
-    ASSERT(bit >= 8, "Error! Bit is out of range\n");
+    ASSERT(byte < size, "byte is out of range");
+    ASSERT(bit < 8, "bit is out of range");
 }
 
 /* Applies the current value of each bit index in the flipper to the target `buffer`. */

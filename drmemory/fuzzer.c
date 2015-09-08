@@ -44,14 +44,14 @@
 #define LOG_PREFIX "[fuzzer]"
 #define FUZZ_ERROR(...) \
 do { \
-    ELOG(0, "ERROR: "LOG_PREFIX" "); \
-    ELOG(0, __VA_ARGS__); \
+    ELOG(1, "ERROR: "LOG_PREFIX" "); \
+    ELOG(1, __VA_ARGS__); \
 } while (0)
 
 #define FUZZ_REG_ERROR(...) \
 do { \
-    ELOG(0, "ERROR: "LOG_PREFIX" failed to register the fuzz target: "); \
-    ELOG(0, __VA_ARGS__); \
+    ELOG(1, "ERROR: "LOG_PREFIX" failed to register the fuzz target: "); \
+    ELOG(1, __VA_ARGS__); \
 } while (0)
 
 #define FUZZ_WARN(...) \
@@ -68,14 +68,22 @@ typedef enum _fuzz_target_type_t {
 
 typedef struct _callconv_args_t callconv_args_t; /* defined under shadow banner */
 
+typedef struct _fuzz_state_t {
+    bool repeat;
+    thread_id_t thread_id;
+    byte *input_buffer; /* reference to the fuzz target's buffer arg */
+    size_t input_size;  /* size of the fuzz target's buffer arg */
+} fuzz_state_t;
+
+static fuzz_state_t fuzz_state;
+
 typedef struct _fuzz_target_t {
     fuzz_target_type_t type;
     bool enabled;
     bool registered; /* XXX i#1734: NYI multiple instances of the target module */
-    bool repeat;
-    const char *raw_descriptor; /* cached reference -- not allocated */
+    bool process_is_fuzzing;
     generic_func_t pc;
-    char *module_name;
+    char *module_name; /* when NULL, indicates no fuzzer target is active or pending */
     union {
         size_t offset;
         char *symbol;
@@ -91,6 +99,8 @@ typedef struct _fuzz_target_t {
     const callconv_args_t *callconv_args;
 } fuzz_target_t;
 
+static fuzz_target_t fuzz_target;
+
 typedef struct _shadow_config_t {
     bool save_restore_enabled;
     uint redzone_size;
@@ -99,8 +109,6 @@ typedef struct _shadow_config_t {
 } shadow_config_t;
 
 static shadow_config_t shadow_config;
-
-static fuzz_target_t fuzz_target;
 
 static void
 module_loaded(void *drcontext, const module_data_t *module, bool loaded);
@@ -115,7 +123,7 @@ static void
 tokenizer_exit_with_usage_error();
 
 static bool
-user_input_parse(char *descriptor);
+user_input_parse_target(char *descriptor, const char *raw_descriptor);
 
 static void
 free_fuzz_target();
@@ -135,8 +143,8 @@ fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
         tokenizer_exit_with_usage_error();
     }
 #endif
-    if (pattern != 0)
-        FUZZ_WARN("pattern mode not fully supported--redzone will not be reset");
+    if (pattern != 0 && !shadow_config.save_restore_enabled)
+        FUZZ_WARN("pattern mode not fully supported--redzone will not be reset\n");
 
     drmgr_init();
     if (drfuzz_init(client_id) != DRMF_SUCCESS)
@@ -181,19 +189,20 @@ fuzzer_fuzz_target(const char *target_descriptor)
         FUZZ_ERROR("File-based fuzz descriptor is not implemented yet\n");
         ASSERT(false, "File-based fuzz descriptor is not implemented yet\n");
         return false;
-    } else {
-        fuzz_target.raw_descriptor = target_descriptor;
     }
 
     descriptor_copy = drmem_strdup(target_descriptor, HEAPSTAT_MISC);
-    if (user_input_parse(descriptor_copy)) {
+    if (user_input_parse_target(descriptor_copy, target_descriptor)) {
         /* register the target now if the module is loaded */
         module = dr_lookup_module_by_name(fuzz_target.module_name);
         if (module == NULL) {
             LOG(1, LOG_PREFIX" Skipping fuzz target for now because "
                 "module %s is not loaded now.\n", fuzz_target.module_name);
         } else {
-            fuzz_target.enabled = register_fuzz_target(module);
+            if (register_fuzz_target(module))
+                fuzz_target.enabled = true;
+            else
+                free_fuzz_target();
             dr_free_module_data(module);
         }
     }
@@ -202,7 +211,7 @@ fuzzer_fuzz_target(const char *target_descriptor)
         free_fuzz_target();
 
     global_free(descriptor_copy, strlen(descriptor_copy) + 1/*null-term*/, HEAPSTAT_MISC);
-    return fuzz_target.enabled;
+    return fuzz_target.module_name != NULL;
 }
 
 bool
@@ -319,44 +328,6 @@ typedef struct _shadow_state_t {
 #define SIZEOF_SHADOW_STATE() \
     (sizeof(shadow_state_t) + (fuzz_target.callconv_args->reg_count * sizeof(uint)))
 
-/* Save shadow state of the memory pointed by the target's buffer argument. */
-static inline void
-shadow_state_save_buffer(void *fuzzcxt, shadow_state_t *shadow)
-{
-    drmf_status_t res;
-
-    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
-                         true/*original*/, (void **) &shadow->app_start);
-    if (res != DRMF_SUCCESS) {
-        FUZZ_ERROR("Failed to obtain reference to the buffer arg for the fuzz target\n");
-        ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
-        fuzz_target.enabled = false;
-        return;
-    }
-
-    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
-                         true/*original*/, (void **) &shadow->app_size);
-    if (res != DRMF_SUCCESS) {
-        FUZZ_ERROR("Failed to obtain the buffer size for the fuzz target\n");
-        ASSERT(false, "Failed to obtain the buffer size");
-        fuzz_target.enabled = false;
-        return;
-    }
-
-    /* Validate that the arg index for the buffer size given by the user appears to be
-     * reasonable. If not, exit with an error instead of crashing with alloc problems.
-     */
-    if (shadow->app_size > MAX_BUFFER_SIZE) {
-        FUZZ_ERROR("Buffer size of the fuzz target is out of range: %d. "
-                   "Max allowed is %d.\n", shadow->app_size, MAX_BUFFER_SIZE);
-        ASSERT(false, "Target's buffer size too large");
-        fuzz_target.enabled = false;
-        return;
-    }
-
-    shadow->buffer_shadow = shadow_save_region(shadow->app_start, shadow->app_size);
-}
-
 /* Save shadow state for the arg registers and stack frame. */
 static inline void
 shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
@@ -378,10 +349,10 @@ shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
 static inline void
 shadow_state_reset_redzone(shadow_state_t *shadow)
 {
-    byte *tail = shadow->app_start + shadow->app_size;
+    byte *tail = fuzz_state.input_buffer + fuzz_state.input_size;
 
-    shadow_set_range(shadow->app_start - shadow_config.redzone_size, shadow->app_start,
-                     SHADOW_UNADDRESSABLE);
+    shadow_set_range(fuzz_state.input_buffer - shadow_config.redzone_size,
+                     fuzz_state.input_buffer, SHADOW_UNADDRESSABLE);
     shadow_set_range(tail, tail + shadow_config.redzone_size, SHADOW_UNADDRESSABLE);
 }
 
@@ -480,20 +451,78 @@ pattern_reset_redzone()
     /* XXX i#1734: NYI */
 }
 
+static inline void
+find_target_buffer(void *fuzzcxt)
+{
+    byte *input_buffer;
+    drmf_status_t res;
+
+    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
+                         true/*original*/, (void **) &input_buffer);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to obtain reference to the buffer arg for the fuzz target\n");
+        ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
+        fuzz_target.enabled = false;
+        return;
+    }
+    fuzz_state.input_buffer = input_buffer;
+
+    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
+                         true/*original*/, (void **) &fuzz_state.input_size);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to obtain the buffer size for the fuzz target\n");
+        ASSERT(false, "Failed to obtain the buffer size");
+        fuzz_target.enabled = false;
+        return;
+    }
+
+    /* Validate that the arg index for the buffer size given by the user appears to be
+     * reasonable. If not, exit with an error instead of crashing with alloc problems.
+     */
+    if (fuzz_state.input_size > MAX_BUFFER_SIZE) {
+        FUZZ_ERROR("Buffer size of the fuzz target is out of range: %d. "
+                   "Max allowed is %d.\n", fuzz_state.input_size, MAX_BUFFER_SIZE);
+        ASSERT(false, "Target's buffer size too large");
+        fuzz_target.enabled = false;
+    }
+}
+
 static void
 pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
     drmf_status_t res;
     shadow_state_t *shadow;
     void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    bool is_fuzz_entry = !fuzz_state.repeat;
 
     LOG(4, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
 
     if (!fuzz_target.enabled)
         return;
 
+    if (is_fuzz_entry && fuzz_state.thread_id == 0) {
+        fuzz_state.thread_id = dr_get_thread_id(dr_get_current_drcontext());
+        LOG(1, LOG_PREFIX" Fuzzing on thread %d\n", fuzz_state.thread_id);
+    }
+    if (fuzz_state.thread_id != dr_get_thread_id(dcontext))
+        return;
+
+    if (is_fuzz_entry)
+        find_target_buffer(fuzzcxt);
+
     if (shadow_config.save_restore_enabled) {
-        if (fuzz_target.repeat) {
+        if (is_fuzz_entry) {
+            if (!init_thread_shadow_state(&shadow)) {
+                FUZZ_ERROR("Failed to initialize the shadow memory state for target "PIFX
+                           "on thread 0x%x. Disabling the fuzz target."NL,
+                           fuzz_target.pc, dr_get_thread_id(dcontext));
+                fuzz_target.enabled = false;
+                return;
+            }
+            shadow->buffer_shadow = shadow_save_region(fuzz_state.input_buffer,
+                                                       fuzz_state.input_size);
+            shadow_state_save_stack_frame(mc, shadow);
+        } else {
             res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
                                                          (void **) &shadow);
             if (res != DRMF_SUCCESS) {
@@ -505,23 +534,13 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             }
             shadow_restore_region(shadow->buffer_shadow);
             shadow_state_reset_redzone(shadow);
-        } else {
-            if (!init_thread_shadow_state(&shadow)) {
-                FUZZ_ERROR("Failed to initialize the shadow memory state for target "PIFX
-                           "on thread 0x%x. Disabling the fuzz target."NL,
-                           fuzz_target.pc, dr_get_thread_id(dcontext));
-                fuzz_target.enabled = false;
-                return;
-            }
-            shadow_state_save_buffer(fuzzcxt, shadow);
-            shadow_state_save_stack_frame(mc, shadow);
         }
     } else if (shadow_config.pattern != 0) {
         pattern_reset_redzone();
     }
     /* XXX i#1734: May want to consider an option to not reset redzone state.  */
 
-    if (!fuzz_target.repeat)
+    if (!fuzz_state.repeat)
         fuzz_target.repeat_index = 0; /* new entry to the target */
 }
 
@@ -531,9 +550,12 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     if (!fuzz_target.enabled)
         return false; /* in case someone unfuzzed while a target was looping */
 
-    LOG(4, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
+    if (fuzz_state.thread_id != dr_get_thread_id(drfuzz_get_drcontext(fuzzcxt)))
+        return false;
 
-    fuzz_target.repeat = (fuzz_target.repeat_index++ < fuzz_target.repeat_count);
+    LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
+
+    fuzz_state.repeat = (fuzz_target.repeat_index++ < fuzz_target.repeat_count);
 
     if (shadow_config.save_restore_enabled) {
         drmf_status_t res;
@@ -550,7 +572,7 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
             return false;
         }
 
-        if (fuzz_target.repeat) {
+        if (fuzz_state.repeat) {
             dr_mcontext_t mc;
 
             mc.size = sizeof(dr_mcontext_t);
@@ -562,7 +584,8 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
         }
     }
 
-    return fuzz_target.repeat;
+    fuzz_target.process_is_fuzzing = fuzz_state.repeat;
+    return fuzz_state.repeat;
 }
 
 static void
@@ -572,9 +595,9 @@ module_loaded(void *drcontext, const module_data_t *module, bool loaded)
 
     ASSERT_NOT_TESTED("Registration of fuzz target on module load");
 
-    if (fuzz_target.enabled && !fuzz_target.registered &&
-        name != NULL && strcmp(name, fuzz_target.module_name) == 0)
-        register_fuzz_target(module);
+    if (!fuzz_target.registered && name != NULL && fuzz_target.module_name != NULL &&
+        strcmp(name, fuzz_target.module_name) == 0)
+        fuzz_target.enabled = register_fuzz_target(module);
 }
 
 static void
@@ -584,8 +607,8 @@ module_unloaded(void *drcontext, const module_data_t *module)
 
     ASSERT_NOT_TESTED("Unregistration of fuzz target on module unload");
 
-    if (fuzz_target.enabled && !fuzz_target.registered &&
-        name != NULL && strcmp(name, fuzz_target.module_name) == 0)
+    if (fuzz_target.enabled && !fuzz_target.registered && name != NULL &&
+        fuzz_target.module_name != NULL && strcmp(name, fuzz_target.module_name) == 0)
         free_fuzz_target();
 }
 
@@ -660,21 +683,23 @@ free_fuzz_target()
 /* Simple string tokenizer that copies space-delimited tokens from a string. */
 
 typedef struct _tokenizer_t {
-    bool start;          /* whether any tokens have been copied from this tokenizer yet */
-    const char *raw_src; /* original head of the src string (not moved by tokenization) */
-    const char *src;     /* tokenizer src string (tokenizer does not write to it) */
-    heapstat_t type;     /* allocation type */
+    bool start;           /* whether any tokens have been copied from the tokenizer yet */
+    const char *src_head; /* head of the src string (not moved by tokenization) */
+    const char *src;      /* tokenizer src string (tokenizer does not write to it) */
+    const char *raw_src;  /* raw user input, for reference in error messages */
+    heapstat_t type;      /* allocation type */
 } tokenizer_t;
 
 #define RAW_SNIPPET_FORMAT "'%.32s%s'"
 #define RAW_SNIPPET_ARGS(s) (s), strlen(s) > 32 ? "..." : ""
 
 static void
-tokenizer_init(tokenizer_t *t, const char *src, heapstat_t type)
+tokenizer_init(tokenizer_t *t, const char *src, const char *raw_src, heapstat_t type)
 {
     t->start = true;
-    t->raw_src = src;
+    t->src_head = src;
     t->src = src;
+    t->raw_src = raw_src;
     t->type = type;
 }
 
@@ -713,26 +738,39 @@ tokenizer_has_next(IN tokenizer_t *t, IN char delimiter)
 }
 
 static bool
+tokenizer_find_next(IN tokenizer_t *t, OUT const char **src_ptr_out, IN char delim,
+                    IN char raw_delim, IN const char *field_name)
+{
+    const char *src_ptr = NULL;
+
+    if (*t->src != '\0')
+        src_ptr = strchr(t->start ? t->src : ++t->src, delim);
+    if (src_ptr == NULL) {
+        uint tail_len = strlen(t->src);
+        if (tail_len == 0) { /* is there a tail on the string? */
+            NOTIFY_ERROR("Missing %s delimiter in descriptor:"NL, field_name);
+            NOTIFY_ERROR("did not find '%c' at position %d in "RAW_SNIPPET_FORMAT"."NL,
+                         raw_delim, t->src - t->src_head, RAW_SNIPPET_ARGS(t->raw_src));
+            tokenizer_exit_with_usage_error();
+            *src_ptr_out = NULL;
+            return false;
+        }
+        src_ptr = t->src + tail_len; /* use the trailing token */
+    }
+    *src_ptr_out = src_ptr;
+    return true;
+}
+
+static bool
 tokenizer_copy_next(IN tokenizer_t *t, OUT size_t *len, OUT char **token,
                     IN char delimiter, IN const char *field_name)
 {
     const char *src_ptr = NULL;
 
-    if (*t->src != '\0')
-        src_ptr = strchr(t->start ? t->src : ++t->src, ' ');
-    if (src_ptr == NULL) {
-        uint len = strlen(t->src);
-        if (len == 0) { /* is there a tail on the string? */
-            NOTIFY_ERROR("Missing %s in descriptor:"NL, field_name);
-            NOTIFY_ERROR("did not find '%c' at position %d in "RAW_SNIPPET_FORMAT"."NL,
-                         delimiter, t->src - t->raw_src,
-                         RAW_SNIPPET_ARGS(fuzz_target.raw_descriptor));
-            tokenizer_exit_with_usage_error();
-            return false;
-        }
-        src_ptr = t->src + len; /* ok, copy the tail */
-    }
-    return tokenizer_copy_to(t, src_ptr, len, token);
+    if (tokenizer_find_next(t, &src_ptr, ' ', delimiter, field_name))
+        return tokenizer_copy_to(t, src_ptr, len, token);
+    else
+        return false;
 }
 
 static bool
@@ -804,7 +842,7 @@ replace_char(char *dst, char old, char new)
 }
 
 static bool
-user_input_parse(char *descriptor)
+user_input_parse_target(char *descriptor, const char *raw_descriptor)
 {
     char *desc_ptr = NULL, *module_name, *function /*symbol or offset*/;
     const char function_separators[] = {MODULE_SEP, OFFSET_SEP, '\0'};
@@ -816,13 +854,12 @@ user_input_parse(char *descriptor)
     replace_char(descriptor, ' ', TEMP_SPACE_CHAR); /* replace spaces with placeholder */
     replace_char(descriptor, '|', ' '); /* replace pipes with spaces for dr_get_token() */
 
-    tokenizer_init(&tokens, (const char *) descriptor /*tokenizer will not modify it*/,
-                   HEAPSTAT_MISC);
+    tokenizer_init(&tokens, (const char *) descriptor, raw_descriptor, HEAPSTAT_MISC);
 
     if (!tokenizer_strchrs(&tokens, (const char **) &desc_ptr, function_separators)) {
         NOTIFY_ERROR("Missing symbol or offset in descriptor:"NL);
         NOTIFY_ERROR("    did not find '!' or '+' in "RAW_SNIPPET_FORMAT"."NL,
-                     RAW_SNIPPET_ARGS(fuzz_target.raw_descriptor));
+                     RAW_SNIPPET_ARGS(raw_descriptor));
         tokenizer_exit_with_usage_error();
     }
     switch (*desc_ptr) { /* must be one of `function_separators` */
