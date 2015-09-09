@@ -69,13 +69,16 @@ void *
 thread_main(void *arg)
 {
     byte b = (byte) (intptr_t) arg;
+    char *buffer = malloc(sizeof(TEST_BUFFER));
     pthread_mutex_t lock;
 
     pthread_mutex_init(&lock, NULL);
 
-    print_buffer(TEST_BUFFER, TEST_BUFFER_SIZE, &b, &lock);
+    strncpy(buffer, TEST_BUFFER, TEST_BUFFER_SIZE);
+    print_buffer(buffer, TEST_BUFFER_SIZE, &b, &lock);
 
     pthread_mutex_destroy(&lock);
+    free(buffer);
     return NULL;
 }
 

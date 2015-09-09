@@ -65,8 +65,12 @@ int WINAPI
 thread_main(void *arg)
 {
     byte b = (byte) (intptr_t) arg;
+    char *buffer = malloc(sizeof(TEST_BUFFER));
 
-    print_buffer(TEST_BUFFER, TEST_BUFFER_SIZE, &b);
+    strncpy(buffer, TEST_BUFFER, TEST_BUFFER_SIZE);
+    print_buffer(buffer, TEST_BUFFER_SIZE, &b);
+
+    free(buffer);
     return 0;
 }
 

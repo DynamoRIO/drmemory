@@ -1,0 +1,210 @@
+/* **********************************************************
+ * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_fuzzer Fuzz Testing Mode
+
+Dr. Memory provides a fuzz testing mode that repeatedly executes one function
+in the target application, mutating the value of one argument before each
+iteration. Fuzz mode is configured using the runtime option \p -fuzz_target,
+and the mutator is configured using the option \p -fuzz_mutator. Both of
+these options require the user to supply a descriptor to define the behavior
+of the feature. An overview of each descriptor format is provided in the
+\ref page_options (and the command line help text). Many of these options
+require a more complete explanation, which is provided in the following
+sections.
+
+\section sec_fuzzer_target Fuzzer Target
+
+The fuzzer is capable of testing one target function on potentially multiple
+concurrent threads. Specify the target function on the Dr. Memory command
+line using the value of option \p -fuzz_target (see \ref page_options).
+To find the target function at runtime, the fuzzer needs to know either its
+symbol name, or its offset from the start of the module. In addition, to
+repeatedly execute the target function, the fuzzer needs to know (a) how
+many arguments it has, (b) which argument should be fuzzed, and (c) which
+argument specifies the size of the fuzzed argument. For example, to fuzz
+the following C function in the "munger" module:
+
+    void munge_buffer(uint8_t *buffer, size_t size);
+
+you would specify the following command-line option to \p drmemory:
+
+    -fuzz_target 'munger!munge_buffer|2|0|1|0'
+
+where the final "0" indicates to fuzz the target indefinitely (or until the
+mutator is exhausted, which is rarely possible). Note that in Windows the
+module name must be include its extension (optional on linux):
+
+    -fuzz_target 'munger.exe!munge_buffer|2|0|1|0'
+
+In bash, use single-quotes to avoid special behaviors of the '!' and '|' characters.
+
+\section sec_cpp_targets C++ Targets
+
+Specifying C function targets is much simpler than C++ targets because the
+symbol name is the plain text name of the function, and the calling convention
+is almost always the default. For C++ functions, the mangled or de-mangled name
+is required. On Unix the fuzzer only accepts mangled names, while on Windows it
+accepts both the mangled and de-mangled names (for the former, use Windows-only
+option \p -fuzz_mangled_names). To fuzz the following function on
+Unix (compiling the app with 32-bit gcc):
+
+    void CryptoMagic::MungeBuffer(unsigned int *buffer, size_t size);
+
+you would specify the following option to \p drmemory:
+
+    -fuzz_target 'crypto!_ZN13CryptoMagic8MungeBufferEPjj|2|0|1|0'
+
+\section sec_calling_conventions Calling Conventions
+
+The fuzzer's default calling convention is \p cdecl on 32-bit x86 platforms,
+\p AMD64 on 64-bit *nix, and \p Microsoft \p x64 for Visual Studio 64-bit
+applications. Use the optional last field of option \p -fuzz_mutator to
+specify a different calling convention. For example, to fuzz the following
+function on Windows (compiling the app with Visual Studio):
+
+    void CryptoMagic::MungeBuffer(unsigned int *buffer, size_t size);
+
+you would specify:
+
+    -fuzz_target 'crypto.exe!?MungeBuffer-CryptoMagic--QAEXPAII-Z|3|1|2|0|6'
+
+The calling convention \p 6 specifies \p thiscall (as defined by the enum
+\p drwrap_callconv_t in the DynamoRIO header file \p drwrap.h). Since the
+\p MungeBuffer() method is a non-static class member, the first argument
+is reserved by the compiler for the \p this pointer. Accordingly, the
+argument indexes in the descriptor (fields 3 and 4, \p "|1|2|") have been
+adjusted to account for the implicit first argument, along with the argument
+count (field 2, \p "|3|"). Notice that the \p '@' characters in the symbol
+have been escaped with \p '-' for compatibility with the Dr. Memory command-line
+processor.
+
+\section sec_mutator_alg_and_unit Mutator Algorithms and Units
+
+The fuzzer provides two algorithms for mutating the fuzzed argument, ordered
+and random, and each algorithm can operate in terms of bit-flips or integers.
+The latter option is referred to as the "unit" of mutation. The behavior of
+these two mutator options can be easily seen in the following example, where
+the app's original argument value is all zero (at left), and each successive
+value reflects one mutation:
+
+    Ordered bit-flip: 0x00000000 => 0x00000001 => 0x00000100 => 0x00010000 => 0x01000000
+    Random bit-flip:  0x00000000 => 0x00200000 => 0x00008000 => 0x00000004 => 0x00002000
+    Ordered numeric:  0x00000000 => 0x00000001 => 0x00000002 => 0x00000003 => 0x00000004
+    Random numeric:   0x00000000 => 0x7abcbb5e => 0xc6f15f41 => 0xaebd59a2 => 0xc375f0ae
+
+Notice that the bit-flip unit does not flip bits in a lexical sequence, even
+when the ordered algorithm is selected. Instead, it distributes the flips across
+the bytes first, and secondarily across the bits of each byte. The goal is to
+improve mutator coverage for very large input buffers, especially when the sparsity
+option is used (see below). The following sequence illustrates how ordered bit-flip
+distributes all permutations of a single flip across a 2-byte buffer:
+
+    0x0000 => 0x0001 => 0x0100 => 0x0002 => 0x0200 => 0x0004 => 0x0400 => 0x0008 => 0x0800
+           => 0x0010 => 0x1000 => 0x0020 => 0x0200 => 0x0040 => 0x4000 => 0x0080 => 0x8000
+
+After completing all flips of a single bit, the mutator will proceed to flip two bits:
+
+    0x0000 => 0x0101 => 0x0003 => 0x0201 => 0x0005 => 0x0401 => 0x0009 => 0x0801 => 0x0011
+           => 0x1001 => 0x0021 => 0x2001 => 0x0041 => 0x4001 => 0x0081 => 0x8001 => 0x0006
+
+\section sec_mutator_rand_gen Mutator Random Number Generator
+
+The mutator uses a stateless xorshift algorithm for all of its randomized
+decisions (see xorshift64star on https://en.wikipedia.org/wiki/Xorshift).
+For randomized bit-flip, the mutator selects which bits to flip using the
+Fisher-Yates shuffle (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle).
+
+To repeat a fuzz test using the exact same sequence of values for the fuzz
+target function, specify the same random seed as the original fuzz test
+using the mutator descriptor's optional last field. To avoid repeating the
+exact same fuzz test when using the random algorithm, and pass flag \p 't'
+in the mutator descriptor (field 3 in option \p -fuzz_mutator) to seed the
+random algorithm with the system clock time. The seed will be reported in
+the log and in the console output (when enabled) for future reference, e.g.,
+to repeat that fuzz test.
+
+\section sec_mutator_proximity Mutator "Proximity" via Reset Option
+
+Although the fuzzer executes the target function as rapidly as possible on
+the given hardware (by redirecting execution directly from the function
+return back into the function entry point), the number of possible values
+for the fuzzed argument usually makes it impossible to try all permutations.
+In many scenarios, the most interesting app functionality can be reached
+using argument values that are very similar to a "correct" or "typical"
+input value. For this reason, the fuzzer takes the original argument value
+passed by the application as a starting point for mutation. To explore input
+values that are most similar to the app's original input value, use flag
+\p 'r' in the mutator descriptor (field 3 in option \p -fuzz_mutator) to
+reset the argument to the app's original value before each mutation. Omitting
+this flag will cause the successive mutations to accumulate. For example, a
+bit-flipping mutator using the reset option might generate the following
+sequence on a 4-byte buffer, where the first value is the app's original
+argument value, and each successive value reflects one mutation (marked
+with overstrike):
+
+                          __          __          __          __
+    0x01020304 => 0x01020305 => 0x01020204 => 0x01030304 => 0x00020304
+
+But the same mutator without the reset option would generate this sequence:
+
+                          __          ____        ______      ________
+    0x01020304 => 0x01020305 => 0x01020205 => 0x01030205 => 0x00030205
+
+As you can see, the mutated value remains very similar to the original input
+when using the reset option, but quickly diverges without it.
+
+\section sec_mutator_sparsity Mutator Sparsity
+
+For many target functions, the reset option generates inputs that are too
+similar, causing the majority of inputs to be redundant--yet completely
+random input may also be ineffective. To generate a moderately diverse
+range of input values, the sparsity can be specified in the mutator
+descriptor (field 4 in option \p -fuzz_mutator). The term "sparsity" refers
+to the coverage of the space of possible input values, where a sparsity of
+1 indicates to first cover all values reachable by a single bit-flip of the
+app's original argument value, then cover all values reachable by 2 bit-flips,
+and so on. By increasing the sparsity, the mutator will reduce the number
+of permutations it generates at each degree of bit flipping. The following
+table provides an example of sparsity one, given a 4-byte input buffer:
+
+    Bit-Flip Degree   Total Mutator Values
+                  1                     32
+                  2                    992
+                  3                  29760
+
+By increasing the sparsity to just 4, the number of mutator values at each
+degree of bit flipping is greatly reduced:
+
+    Bit-Flip Degree   Total Mutator Values
+                  1                      8
+                  2                    248
+                  3                   7440
+
+This second approach balances the diversity of input values with the
+proximity of each generated input to the app's original argument value.
+
+****************************************************************************
+****************************************************************************
+*/

@@ -940,6 +940,24 @@ if (TOOL_DR_MEMORY)
   set(fuzz_buffer_drmem_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
   newtest_ex(fuzz_buffer fuzz_buffer.c
     "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0)
+  set(mutator_drmem_ops "-fuzz_mutator;o|b|r|3")
+  newtest_nobuild_ex(fuzz_buffer.mutator.o-b-s-3 fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
+  set(mutator_drmem_ops "-fuzz_mutator;r|b|r|3")
+  newtest_nobuild_ex(fuzz_buffer.mutator.r-b-s-3 fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
+  set(mutator_drmem_ops "-fuzz_mutator;o|b||3")
+  newtest_nobuild_ex(fuzz_buffer.mutator.o-b-3 fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
+  set(mutator_drmem_ops "-fuzz_mutator;r|n||0")
+  newtest_nobuild_ex(fuzz_buffer.mutator.r-n fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
+  set(mutator_drmem_ops "-fuzz_mutator;r|n||0|0x123456789abcdef0")
+  newtest_nobuild_ex(fuzz_buffer.mutator.random_seed fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
+  set(fuzz_one_input_drmem_ops "-fuzz_one_input;0102030405060708090a0b0c0d0e0f10")
+  newtest_nobuild_ex(fuzz_buffer.one-input fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${fuzz_one_input_drmem_ops}" "" OFF "" 0 "")
   if (NOT X64) # test detection of errors that requires shadow-memory
     newtest_nobuild_ex(fuzz_buffer.uninitialized fuzz_buffer
       "" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
@@ -960,7 +978,7 @@ if (TOOL_DR_MEMORY)
 
   # fuzz the cpp target
   if (NOT UNIX AND NOT X64)
-    set(cpp_callconv "|0x06000000") # on Windows x86 the target uses thiscall
+    set(cpp_callconv "|6") # on Windows x86 the target uses thiscall
   endif (NOT UNIX AND NOT X64)
   set(fuzz_buffer_symbol "fuzz_buffer.cpp${app_extension}!${fuzz_buffer_cpp_symbol}")
   set(fuzz_buffer_drmem_ops

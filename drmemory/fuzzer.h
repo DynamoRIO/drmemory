@@ -48,9 +48,10 @@ fuzzer_exit();
  *     <module>!<symbol>
  *     <module>+<offset>
  *
- * and the optional <call-conv> is the integer value of a DRWRAP_CALLCONV_* constant
- * (see drwrap_callconv_t in the DynamoRIO API documentation). If not specified, the
- * default calling convention for the platform will be used (DRWRAP_CALLCONV_DEFAULT).
+ * Use <repeat-count> of 0 to repeat the fuzz target until the mutator is exhausted.
+ * The optional <call-conv> is the integer value of a DRWRAP_CALLCONV_* constant (see
+ * drwrap_callconv_t in the DynamoRIO API documentation). If not specified, the default
+ * calling convention for the platform will be used (DRWRAP_CALLCONV_DEFAULT).
  *
  * The fuzzer currently only supports one target at a time. This function may be called
  * multiple times, but on each call the previous target will be removed. Accordingly, this
@@ -73,5 +74,35 @@ fuzzer_fuzz_target(const char *target_descriptor);
  */
 bool
 fuzzer_unfuzz_target();
+
+/* Configure the mutator according to the specified descriptor, which has the form:
+ *
+ *     <algorithm>|<unit>|<flags>|<sparsity>[|<random_seed>]
+ *
+ * where <algorithm> is one of the drfuzz_mutator_algorithm_t:
+ *     r = MUTATOR_ALG_RANDOM
+ *     o = MUTATOR_ALG_ORDERED
+ * The <unit> is one of the drfuzz_mutator_unit_t:
+ *     b = MUTATOR_UNIT_BITS
+ *     n = MUTATOR_UNIT_NUM
+ * The <flags> are any combination of:
+ *     r = reset the input buffer to the original app value before each mutation
+ *         (drfuzz_mutator_flags_t.MUTATOR_FLAG_BITFLIP_SEED_CENTRIC)
+ *     t = seed the mutator's random number generator with the current clock time
+ *         (drfuzz_mutator_options_t.random_seed)
+ * The <sparsity> is an integer specifying the drfuzz_mutator_options_t.sparsity.
+ * The optional <random_seed> is an 8-byte hexadecimal integer which assigns the
+ * drfuzz_mutator_options_t.random_seed, e.g. "0x123456789abcdef0".
+ */
+bool
+fuzzer_set_mutator_descriptor(const char *mutator_descriptor);
+
+/* Configure the fuzzer to execute only one iteration of the fuzz target using
+ * the specified input_value for the fuzz target's input buffer. The input_value
+ * should be an ASCII representation of a hexadecimal byte sequence, e.g. "7f392a".
+ * This function facilitates confirmation of app errors found during fuzzing.
+ */
+void
+fuzzer_set_singleton_input(const char *input_value);
 
 #endif /* _FUZZER_H_ */

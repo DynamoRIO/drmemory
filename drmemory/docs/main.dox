@@ -62,6 +62,9 @@ following sections:
 - \ref page_light
   <br>A lighter-weight mode for faster execution.
 
+- \ref page_fuzzer
+  <br>A fuzz testing mode.
+
 - \ref page_options
   <br>Dr. Memory Runtime Option Reference
 

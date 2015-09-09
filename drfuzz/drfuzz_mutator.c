@@ -273,10 +273,13 @@ get_next_random_number(mutator_t *mutator, void *buffer)
             if (res != DRMF_SUCCESS)
                 return res;
         }
-        remainder = mutator->size - i;          /* calculate remaining bytes */
-        mask = (1ULL << (remainder * 8)) - 1ULL;      /* set up mask */
-        value = generate_random_number(mutator) & mask;
-        return write_scalar((void *) ((byte *) buffer + i), remainder, value);
+        remainder = mutator->size - i; /* calculate remaining bytes */
+        if (remainder > 0) {
+            mask = (1ULL << (remainder * 8)) - 1ULL;      /* set up mask */
+            value = generate_random_number(mutator) & mask;
+            res = write_scalar((void *) ((byte *) buffer + i), remainder, value);
+        }
+        return res;
     } else {
         if (mutator->size > sizeof(uint64))
             return DRMF_ERROR; /* cannot cap a non-integer value */

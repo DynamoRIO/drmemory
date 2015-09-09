@@ -71,7 +71,7 @@ repeatme(uint *buffer, size_t size)
 
     printf("Buffer:");
     for (i = 0; i < elements; i++)
-        printf(" 0x%x", buffer[i]);
+        printf(" 0x%08x", buffer[i]);
     printf("\n");
 
     if ((++deliberate_errors.fuzz_iteration % 2) == 0) {

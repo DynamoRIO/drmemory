@@ -210,7 +210,8 @@ set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
 set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
-    "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")
+    "using.dox" "using.dox errors.dox reports.dox light.dox fuzzer.dox"
+    string "${string}")
   string(REGEX REPLACE
     "main.dox" "main.dox tools.dox ${headers}" string "${string}")
 else ()

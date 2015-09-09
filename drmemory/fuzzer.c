@@ -26,6 +26,7 @@
 #include "umbra.h"
 #include "shadow.h"
 #include "drwrap.h"
+#include "drfuzz_mutator.h"
 #include "fuzzer.h"
 
 #ifdef WINDOWS
@@ -40,6 +41,8 @@
 #define OFFSET_SEP '+'
 #define AT_ESCAPE '-'
 #define TEMP_SPACE_CHAR '\1'
+/* XXX i#1734: move this to drwrap.h */
+#define CALLCONV_FLAG_SHIFT 0x18  /* offset of drwrap_callconv_t in drwrap_wrap_flags_t */
 
 #define LOG_PREFIX "[fuzzer]"
 #define FUZZ_ERROR(...) \
@@ -80,6 +83,7 @@ typedef struct _fuzz_state_t {
      */
     byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
     size_t input_size;       /* size of the fuzz target's buffer arg */
+    drfuzz_mutator_t *mutator;
 } fuzz_state_t;
 
 /* Definition of the fuzz target and its global state of registration and fuzzing. */
@@ -100,8 +104,10 @@ typedef struct _fuzz_target_t {
     uint buffer_arg;
     uint size_arg;
     uint repeat_count;    /* number of times to fuzz the target (0 means indefinite) */
+    const char *singleton_input;
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
+    drfuzz_mutator_options_t *mutator_options;
 } fuzz_target_t;
 
 static fuzz_target_t fuzz_target;
@@ -137,6 +143,9 @@ tokenizer_exit_with_usage_error();
 
 static bool
 user_input_parse_target(char *descriptor, const char *raw_descriptor);
+
+static bool
+user_input_parse_mutator(char *descriptor, const char *raw_descriptor);
 
 static void
 free_fuzz_target();
@@ -248,15 +257,39 @@ fuzzer_fuzz_target(const char *target_descriptor)
 bool
 fuzzer_unfuzz_target()
 {
+    bool success = false;
+
     if (fuzz_target.enabled) {
         drmf_status_t res = drfuzz_unfuzz_target(fuzz_target.pc);
         if (res != DRMF_SUCCESS)
             FUZZ_ERROR("failed to unfuzz the target "PIFX"\n", fuzz_target.pc);
         free_fuzz_target();
-        return (res == DRMF_SUCCESS);
-    } else {
-        return false;
+        success = (res == DRMF_SUCCESS);
     }
+
+    return success;
+}
+
+/* XXX i#1734: could define the mutator as a set of callbacks for extensibility */
+bool
+fuzzer_set_mutator_descriptor(const char *mutator_descriptor)
+{
+    bool res;
+    char *descriptor_copy;
+
+    if (fuzz_target.module_name == NULL)
+        return false;
+
+    descriptor_copy = drmem_strdup(mutator_descriptor, HEAPSTAT_MISC);
+    res = user_input_parse_mutator(descriptor_copy, mutator_descriptor);
+    global_free(descriptor_copy, strlen(descriptor_copy) + 1/*null-term*/, HEAPSTAT_MISC);
+    return res;
+}
+
+void
+fuzzer_set_singleton_input(const char *input_value)
+{
+    fuzz_target.singleton_input = input_value;
 }
 
 /***************************************************************************************
@@ -482,6 +515,43 @@ pattern_reset_redzone()
     /* XXX i#1734: NYI */
 }
 
+/***************************************************************************************
+ * FUZZER PRIVATE
+ */
+
+static inline void
+log_buffer(uint loglevel, byte *buffer, size_t size)
+{
+    uint i;
+
+    for (i = 0; i < size; i++) { /* print in strict byte order */
+        LOG(loglevel, "%02x", buffer[i]);
+        if ((i % 32) == 31 && i < (size - 1)/*single newline*/)
+            LOG(loglevel, NL);  /* 8 dwords per line */
+        else if ((i % 4) == 3)
+            LOG(loglevel, " "); /* space between dwords */
+    }
+}
+
+static inline void
+apply_singleton_input(fuzz_state_t *fuzz_state)
+{
+    uint i, b, len = strlen(fuzz_target.singleton_input), byte_count = (len / 2);
+
+    ASSERT(len % 2 == 0, "Singleton input must have 2 digits per byte");
+    ASSERT(fuzz_state->input_size == byte_count, "Singleton input has incorrect size");
+
+    for (i = 0; i < byte_count; i++) {
+        if (dr_sscanf(fuzz_target.singleton_input + (i * 2), "%02x", &b) != 1) {
+            NOTIFY_ERROR("Failed to parse '%c%c' as a hexadecimal byte."NL,
+                         fuzz_target.singleton_input[i * 2],
+                         fuzz_target.singleton_input[(i * 2) + 1]);
+            tokenizer_exit_with_usage_error();
+        }
+        fuzz_state->input_buffer[i] = b;
+    }
+}
+
 static inline void
 find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
@@ -590,8 +660,45 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     }
     /* XXX i#1734: May want to consider an option to not reset redzone state.  */
 
-    if (!fuzz_state->repeat)
-        fuzz_state->repeat_index = 0; /* new entry to the target */
+    if (is_fuzz_entry) {
+        const drfuzz_mutator_options_t *mutator_options;
+
+        if (fuzz_target.repeat_count > 0) /* else repeat until mutator exhausts */
+            fuzz_state->repeat_index = 0; /* new entry to the target */
+        else
+            LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
+
+        LOG(1, "Initializing mutator with buffer:\n\n");
+        log_buffer(1, fuzz_state->input_buffer, fuzz_state->input_size);
+
+        if (fuzz_state->mutator != NULL) {
+            drfuzz_mutator_stop(fuzz_state->mutator); /* in case a target was aborted */
+            fuzz_state->mutator = NULL;
+        }
+
+        if (fuzz_target.mutator_options == NULL)
+            mutator_options = &DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
+        else
+            mutator_options = fuzz_target.mutator_options;
+        res = drfuzz_mutator_start(&fuzz_state->mutator, fuzz_state->input_buffer,
+                                   fuzz_state->input_size, mutator_options);
+        if (res != DRMF_SUCCESS) {
+            NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
+            dr_abort();
+        }
+    }
+
+    if (fuzz_target.singleton_input == NULL) {
+        drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->input_buffer);
+        if (fuzz_target.repeat_count == 0) /* repeating until mutator exhausts */
+            fuzz_state->repeat = drfuzz_mutator_has_next_value(fuzz_state->mutator);
+    } else {
+        apply_singleton_input(fuzz_state);
+        fuzz_state->repeat = false;
+    }
+
+    LOG(2, "\n"LOG_PREFIX" Executing target with mutated buffer:\n");
+    log_buffer(2, fuzz_state->input_buffer, fuzz_state->input_size);
 }
 
 static bool
@@ -609,7 +716,8 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
 
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
 
-    fuzz_state->repeat = (fuzz_state->repeat_index++ < fuzz_target.repeat_count);
+    if (fuzz_target.repeat_count > 0 && fuzz_target.singleton_input == NULL)
+        fuzz_state->repeat = (++fuzz_state->repeat_index < fuzz_target.repeat_count);
 
     if (shadow_config.save_restore_enabled) {
         drmf_status_t res;
@@ -638,8 +746,13 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
         }
     }
 
-    if (!fuzz_state->repeat)
+    if (!fuzz_state->repeat) {
+        if (fuzz_state->mutator != NULL) {
+            drfuzz_mutator_stop(fuzz_state->mutator);
+            fuzz_state->mutator = NULL;
+        }
         free_target_buffer(fuzz_state, fuzzcxt);
+    }
     return fuzz_state->repeat;
 }
 
@@ -741,6 +854,10 @@ free_fuzz_target()
     if (fuzz_target.type == FUZZ_TARGET_SYMBOL && fuzz_target.symbol != NULL) {
         global_free(fuzz_target.symbol, strlen(fuzz_target.symbol) + 1, HEAPSTAT_MISC);
     }
+    if (fuzz_target.mutator_options != NULL) {
+        global_free(fuzz_target.mutator_options, sizeof(drfuzz_mutator_options_t),
+                    HEAPSTAT_MISC);
+    }
     memset(&fuzz_target, 0, sizeof(fuzz_target_t));
 }
 
@@ -757,6 +874,11 @@ typedef struct _tokenizer_t {
     const char *raw_src;  /* raw user input, for reference in error messages */
     heapstat_t type;      /* allocation type */
 } tokenizer_t;
+
+typedef enum _tokenizer_char_type_t {
+    TOKENIZER_CHAR_SINGLETON,
+    TOKENIZER_CHAR_SET
+} tokenizer_char_type_t;
 
 #define RAW_SNIPPET_FORMAT "'%.32s%s'"
 #define RAW_SNIPPET_ARGS(s) (s), strlen(s) > 32 ? "..." : ""
@@ -805,6 +927,15 @@ tokenizer_has_next(IN tokenizer_t *t, IN char delimiter)
     return (next_ptr != NULL || strlen(t->src) > 0); /* found delimiter or a tail */
 }
 
+static char
+tokenizer_peek_next(IN tokenizer_t *t)
+{
+    if (*t->src == '\0')
+        return '\0';
+    else
+        return *(t->start ? t->src : t->src + 1);
+}
+
 static bool
 tokenizer_find_next(IN tokenizer_t *t, OUT const char **src_ptr_out, IN char delim,
                     IN char raw_delim, IN const char *field_name)
@@ -842,15 +973,59 @@ tokenizer_copy_next(IN tokenizer_t *t, OUT size_t *len, OUT char **token,
 }
 
 static bool
-tokenizer_next_uint(IN tokenizer_t *t, OUT uint *dst,
-                    IN char delimiter, bool hex, IN const char *field_name)
+tokenizer_next_char(IN tokenizer_t *t, OUT char *c, IN char delimiter,
+                    IN const char *accepted_codes, IN const char *field_name,
+                    tokenizer_char_type_t char_type)
+{
+    size_t len;
+    const char *src_ptr = NULL;
+    bool valid = false;
+
+    if (tokenizer_find_next(t, &src_ptr, ' ', delimiter, field_name)) {
+        len = src_ptr - t->src;
+        if (len == 0) {
+            if (char_type == TOKENIZER_CHAR_SET)
+                return false; /* end of set */
+            *c = ' ';
+            valid = true;
+        } else if (char_type == TOKENIZER_CHAR_SET || len == 1) {
+            const char *next_code;
+
+            for (next_code = accepted_codes; *next_code != '\0'; next_code++) {
+                if (*next_code == *t->src) {
+                    valid = true;
+                    *c = *t->src;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!valid) {
+        NOTIFY_ERROR("Failed to understand '%.1s' as a %s."NL, t->src, field_name);
+        NOTIFY_ERROR("Expected one of '{%s}' at position %d in "RAW_SNIPPET_FORMAT"."NL,
+                     accepted_codes, t->src - t->src_head, RAW_SNIPPET_ARGS(t->raw_src));
+        tokenizer_exit_with_usage_error();
+        return false;
+    }
+
+    if (char_type == TOKENIZER_CHAR_SINGLETON)
+        t->src += len;
+    t->start = false;
+    return true;
+}
+
+static bool
+tokenizer_next_uint(IN tokenizer_t *t, OUT byte *dst, IN char delimiter,
+                    IN bool hex, IN bool is_64, IN const char *field_name)
 {
     size_t len;
     char *src;
+    const char *format = hex ? (is_64 ? "0x%llx" : "0x%x") : (is_64 ? "%lld" : "%d");
 
     if (!tokenizer_copy_next(t, &len, &src, delimiter, field_name))
         return false;
-    if (dr_sscanf(src, hex ? "0x%x" : "%d", dst) != 1) {
+    if (dr_sscanf(src, format, dst) != 1) {
         NOTIFY_ERROR("Failed to parse '%s' as the %s."NL, src, field_name);
         global_free(src, len, t->type);
         tokenizer_exit_with_usage_error();
@@ -1006,19 +1181,24 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor)
         replace_char(fuzz_target.symbol, TEMP_SPACE_CHAR, ' '); /* put the spaces back */
     } /* end of obligation for `function`: it's either parked on fuzz_target or freed */
 
-    if (!tokenizer_next_uint(&tokens, &fuzz_target.arg_count, '|', false, "buffer arg"))
+    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.arg_count,
+                             '|', false, false, "buffer arg"))
         return false;
-    if (!tokenizer_next_uint(&tokens, &fuzz_target.buffer_arg, '|', false, "size arg"))
+    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.buffer_arg,
+                             '|', false, false, "size arg"))
         return false;
-    if (!tokenizer_next_uint(&tokens, &fuzz_target.size_arg, '|', false, "repeat count"))
+    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.size_arg,
+                             '|', false, false, "repeat count"))
         return false;
-    if (!tokenizer_next_uint(&tokens, &fuzz_target.repeat_count,
-                             '|', false, "repeat count"))
+    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.repeat_count,
+                             '|', false, false, "repeat count"))
         return false;
     if (tokenizer_has_next(&tokens, '|')) {
-        if (!tokenizer_next_uint(&tokens, (uint *) &fuzz_target.callconv,
-                                 true, '|', "calling convention"))
+        uint callconv;
+        if (!tokenizer_next_uint(&tokens, (byte *) &callconv,
+                                 '|', false, false, "calling convention"))
             return false;
+        fuzz_target.callconv = (callconv << CALLCONV_FLAG_SHIFT);
     } else {
         fuzz_target.callconv = DRWRAP_CALLCONV_DEFAULT;
     }
@@ -1038,5 +1218,119 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor)
             ASSERT_NOT_TESTED("Save and restore shadow registers");
     });
 
+    return true;
+}
+
+static void
+log_flag(drfuzz_mutator_options_t *options, drfuzz_mutator_flags_t flag,
+         const char *display_name)
+{
+    if (TEST(flag, options->flags))
+        LOG(1, LOG_PREFIX" Set mutator flag '%s'\n", display_name);
+    else
+        LOG(1, LOG_PREFIX" Cleared mutator flag '%s'\n", display_name);
+}
+
+static bool
+user_input_parse_mutator(char *descriptor, const char *raw_descriptor)
+{
+    char code;
+    uint64 time_millis;
+    bool user_specified_time_seed = false;
+    tokenizer_t tokens;
+    drfuzz_mutator_options_t *options;
+
+    if (fuzz_target.mutator_options == NULL)
+        options = global_alloc(sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+    else
+        options = fuzz_target.mutator_options; /* will overwrite all values */
+    memcpy(options, &DRFUZZ_MUTATOR_DEFAULT_OPTIONS, sizeof(drfuzz_mutator_options_t));
+    options->flags = 0; /* no default flags when user specifies a descriptor */
+
+    replace_char(descriptor, '|', ' '); /* replace pipes with spaces for dr_get_token() */
+    tokenizer_init(&tokens, (const char *) descriptor, raw_descriptor, HEAPSTAT_MISC);
+
+    if (!tokenizer_next_char(&tokens, &code, '|', "or\0", "mutator algorithm",
+                             TOKENIZER_CHAR_SINGLETON)) {
+        global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+        return false;
+    }
+    switch (code) {
+    case 'o':
+        options->alg = MUTATOR_ALG_ORDERED;
+        LOG(1, LOG_PREFIX" Set mutator algorithm to 'ordered'\n");
+        break;
+    case 'r':
+        options->alg = MUTATOR_ALG_RANDOM;
+        LOG(1, LOG_PREFIX" Set mutator algorithm to 'random'\n");
+        break;
+    default: break; /* use the default value */
+    }
+
+    if (!tokenizer_next_char(&tokens, &code, '|', "nb\0", "mutator unit",
+                             TOKENIZER_CHAR_SINGLETON)) {
+        global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+        return false;
+    }
+    switch (code) {
+    case 'n':
+        options->unit = MUTATOR_UNIT_NUM;
+        LOG(1, LOG_PREFIX" Set mutator unit to 'numeric'\n");
+        break;
+    case 'b':
+        options->unit = MUTATOR_UNIT_BITS;
+        LOG(1, LOG_PREFIX" Set mutator unit to 'bit-flip'\n");
+        break;
+    default: break; /* use the default value */
+    }
+
+    while (tokenizer_next_char(&tokens, &code, '|', "rt\0", "mutator flag",
+                               TOKENIZER_CHAR_SET)) {
+        switch (code) {
+        case 'r':
+            options->flags |= MUTATOR_FLAG_BITFLIP_SEED_CENTRIC;
+            break;
+        case 't': /* report the specific seed to stderr for release visibility */
+            time_millis = dr_get_milliseconds();
+            LOG(1, "Initialize mutator's random seed with time 0x%llx\n", time_millis);
+            NOTIFY("Dr. Fuzz mutator random seed: 0x%llx"NL, time_millis);
+            options->random_seed = time_millis;
+            user_specified_time_seed = true;
+            break;
+        default:
+            NOTIFY_ERROR("Unknown mutator flag '%c'"NL, code);
+            FUZZ_ERROR("Unknown mutator flag '%c'"NL, code);
+            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+            tokenizer_exit_with_usage_error();
+            return false;
+        }
+    }
+    log_flag(options, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, "seed-centric");
+
+    if (!tokenizer_next_uint(&tokens, (byte *) &options->sparsity,
+                             '|', false, false, "mutator sparsity"))
+        return false;
+
+    if (tokenizer_peek_next(&tokens) != '\0') { /* optional mutator random seed */
+        if (user_specified_time_seed) {
+            NOTIFY_ERROR("Cannot specify both a random seed and a randomized random seed "
+                         "for the same mutator."NL);
+            FUZZ_ERROR("Cannot specify both a random seed and a randomized random seed "
+                       "for the same mutator."NL);
+            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+            tokenizer_exit_with_usage_error();
+            return false;
+        }
+        if (!tokenizer_next_uint(&tokens, (byte *) &options->random_seed,
+                                 '|', true, true, "mutator random seed")) {
+            NOTIFY_ERROR("Failed to parse the mutator random seed."NL);
+            FUZZ_ERROR("Failed to parse the mutator random seed."NL);
+            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
+            tokenizer_exit_with_usage_error();
+            return false;
+        }
+    }
+
+    fuzz_target.mutator_options = options;
     return true;
 }

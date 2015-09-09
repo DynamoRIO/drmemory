@@ -339,6 +339,8 @@ shell when targeting non-Cygwin applications.
 Once you have installed Dr. Memory and built your application properly, the
 next step is to execute it on your workload of choice under Dr. memory.
 
+To fuzz test an application, use Dr. Memory's \ref page_fuzzer.
+
 ********************
 \section sec_vstudio Dr. Memory as a Visual Studio Tool
 
