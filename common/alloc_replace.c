@@ -3231,6 +3231,12 @@ libc_heap_handle(const module_data_t *mod)
             if (!safe_read(addr, sizeof(pre_us_heap), &pre_us_heap))
                 pre_us_heap = NULL;
             LOG(3, "%s: _crtheap @"PFX" => "PFX"\n", __FUNCTION__, addr, pre_us_heap);
+            /* i#1766: Chromium sets their _crtheap to 1! */
+            if (pre_us_heap < (HANDLE)PAGE_SIZE) {
+                LOG(3, "%s: clamping _crtheap from "PFX" to NULL\n", __FUNCTION__,
+                    pre_us_heap);
+                pre_us_heap = NULL;
+            }
             if (alloc_ops.use_symcache)
                 drsymcache_add(mod, "_crtheap", addr - mod->start);
         }
