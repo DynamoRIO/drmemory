@@ -68,39 +68,45 @@ typedef enum _fuzz_target_type_t {
 
 typedef struct _callconv_args_t callconv_args_t; /* defined under shadow banner */
 
+/* Maintains fuzzing data and state during a fuzz pass. One instance per thread. */
 typedef struct _fuzz_state_t {
     bool repeat;
+    uint repeat_index;
     thread_id_t thread_id;
-    byte *input_buffer; /* reference to the fuzz target's buffer arg */
-    size_t input_size;  /* size of the fuzz target's buffer arg */
+    byte *input_buffer;      /* reference to the fuzz target's buffer arg */
+    /* While these two fields are thread-local like the others, they may be accessed
+     * by another thread at any time, e.g. during error reporting. Acquire the
+     * fuzz_target_buf_lock before accessing or updating them.
+     */
+    byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
+    size_t input_size;       /* size of the fuzz target's buffer arg */
 } fuzz_state_t;
 
-static fuzz_state_t fuzz_state;
-
+/* Definition of the fuzz target and its global state of registration and fuzzing. */
 typedef struct _fuzz_target_t {
     fuzz_target_type_t type;
     bool enabled;
-    bool registered; /* XXX i#1734: NYI multiple instances of the target module */
-    bool process_is_fuzzing;
-    generic_func_t pc;
-    char *module_name; /* when NULL, indicates no fuzzer target is active or pending */
+    generic_func_t pc;   /* start of the target instance that is being fuzzed */
+    char *module_name;   /* when NULL, indicates no fuzzer target is active or pending */
+    app_pc module_start; /* start pc of the module instance that is being fuzzed */
+                         /* XXX i#1734: NYI multiple instances of the target module */
     union {
         size_t offset;
         char *symbol;
     };
-    uint arg_count;
-    uint arg_count_regs;
-    uint arg_count_stack;
+    uint arg_count;       /* total number of arguments to the target */
+    uint arg_count_regs;  /* number of target function arguments in registers */
+    uint arg_count_stack; /* number of target function arguments on the stack */
     uint buffer_arg;
     uint size_arg;
-    uint repeat_count;
-    uint repeat_index;
+    uint repeat_count;    /* number of times to fuzz the target (0 means indefinite) */
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
 } fuzz_target_t;
 
 static fuzz_target_t fuzz_target;
 
+/* Global configuration of the shadow memory and related handling options. */
 typedef struct _shadow_config_t {
     bool save_restore_enabled;
     uint redzone_size;
@@ -109,6 +115,13 @@ typedef struct _shadow_config_t {
 } shadow_config_t;
 
 static shadow_config_t shadow_config;
+
+/* Protects the fuzz_state_t fields input_buffer_copy and input_size for access from
+ * other threads while the fuzz_state_t owner thread is fuzzing its target.
+ */
+static void *fuzz_target_buf_lock;
+
+static int tls_idx_fuzzer;
 
 static void
 module_loaded(void *drcontext, const module_data_t *module, bool loaded);
@@ -128,6 +141,12 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor);
 static void
 free_fuzz_target();
 
+static void
+thread_init(void *dcontext);
+
+static void
+thread_exit(void *dcontext);
+
 void
 fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
             uint redzone_size, bool check_uninitialized
@@ -146,10 +165,22 @@ fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
     if (pattern != 0 && !shadow_config.save_restore_enabled)
         FUZZ_WARN("pattern mode not fully supported--redzone will not be reset\n");
 
+    fuzz_target_buf_lock = dr_mutex_create();
+
     drmgr_init();
     if (drfuzz_init(client_id) != DRMF_SUCCESS)
         ASSERT(false, "fail to init Dr. Fuzz");
 
+    tls_idx_fuzzer = drmgr_register_tls_field();
+    if (tls_idx_fuzzer < 0) {
+        NOTIFY_ERROR("Fuzzer failed to reserve a TLS slot."NL);
+        dr_abort();
+    }
+
+    if (!drmgr_register_thread_init_event(thread_init))
+        ASSERT(false, "fail to register thread init event");
+    if (!drmgr_register_thread_exit_event(thread_exit))
+        ASSERT(false, "fail to register thread exit event");
     if (!drmgr_register_module_load_event(module_loaded))
         ASSERT(false, "fail to register module load event");
     if (!drmgr_register_module_unload_event(module_unloaded))
@@ -165,6 +196,8 @@ void
 fuzzer_exit()
 {
     free_fuzz_target();
+
+    dr_mutex_destroy(fuzz_target_buf_lock);
 
     if (drfuzz_exit() != DRMF_SUCCESS)
         ASSERT(false, "fail to exit Dr. Fuzz");
@@ -201,8 +234,6 @@ fuzzer_fuzz_target(const char *target_descriptor)
         } else {
             if (register_fuzz_target(module))
                 fuzz_target.enabled = true;
-            else
-                free_fuzz_target();
             dr_free_module_data(module);
         }
     }
@@ -347,12 +378,12 @@ shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
 }
 
 static inline void
-shadow_state_reset_redzone(shadow_state_t *shadow)
+shadow_state_reset_redzone(fuzz_state_t *fuzz_state, shadow_state_t *shadow)
 {
-    byte *tail = fuzz_state.input_buffer + fuzz_state.input_size;
+    byte *tail = fuzz_state->input_buffer + fuzz_state->input_size;
 
-    shadow_set_range(fuzz_state.input_buffer - shadow_config.redzone_size,
-                     fuzz_state.input_buffer, SHADOW_UNADDRESSABLE);
+    shadow_set_range(fuzz_state->input_buffer - shadow_config.redzone_size,
+                     fuzz_state->input_buffer, SHADOW_UNADDRESSABLE);
     shadow_set_range(tail, tail + shadow_config.redzone_size, SHADOW_UNADDRESSABLE);
 }
 
@@ -452,10 +483,12 @@ pattern_reset_redzone()
 }
 
 static inline void
-find_target_buffer(void *fuzzcxt)
+find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
     byte *input_buffer;
     drmf_status_t res;
+
+    dr_mutex_lock(fuzz_target_buf_lock);
 
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
                          true/*original*/, (void **) &input_buffer);
@@ -463,28 +496,44 @@ find_target_buffer(void *fuzzcxt)
         FUZZ_ERROR("Failed to obtain reference to the buffer arg for the fuzz target\n");
         ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
         fuzz_target.enabled = false;
-        return;
+        goto unlock;
     }
-    fuzz_state.input_buffer = input_buffer;
 
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
-                         true/*original*/, (void **) &fuzz_state.input_size);
+                         true/*original*/, (void **) &fuzz_state->input_size);
     if (res != DRMF_SUCCESS) {
         FUZZ_ERROR("Failed to obtain the buffer size for the fuzz target\n");
         ASSERT(false, "Failed to obtain the buffer size");
         fuzz_target.enabled = false;
-        return;
+        goto unlock;
     }
 
     /* Validate that the arg index for the buffer size given by the user appears to be
      * reasonable. If not, exit with an error instead of crashing with alloc problems.
      */
-    if (fuzz_state.input_size > MAX_BUFFER_SIZE) {
+    if (fuzz_state->input_size > MAX_BUFFER_SIZE) {
         FUZZ_ERROR("Buffer size of the fuzz target is out of range: %d. "
-                   "Max allowed is %d.\n", fuzz_state.input_size, MAX_BUFFER_SIZE);
+                   "Max allowed is %d.\n", fuzz_state->input_size, MAX_BUFFER_SIZE);
         ASSERT(false, "Target's buffer size too large");
         fuzz_target.enabled = false;
+        goto unlock;
     }
+
+    fuzz_state->input_buffer = input_buffer;
+    fuzz_state->input_buffer_copy = global_alloc(fuzz_state->input_size, HEAPSTAT_MISC);
+    memcpy(fuzz_state->input_buffer_copy, input_buffer, fuzz_state->input_size);
+
+unlock:
+    dr_mutex_unlock(fuzz_target_buf_lock);
+}
+
+static inline void
+free_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
+{
+    dr_mutex_lock(fuzz_target_buf_lock);
+    global_free(fuzz_state->input_buffer_copy, fuzz_state->input_size, HEAPSTAT_MISC);
+    fuzz_state->input_size = 0;
+    dr_mutex_unlock(fuzz_target_buf_lock);
 }
 
 static void
@@ -493,22 +542,23 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     drmf_status_t res;
     shadow_state_t *shadow;
     void *dcontext = drfuzz_get_drcontext(fuzzcxt);
-    bool is_fuzz_entry = !fuzz_state.repeat;
+    fuzz_state_t *fuzz_state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+    bool is_fuzz_entry = !fuzz_state->repeat;
 
     LOG(4, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
 
     if (!fuzz_target.enabled)
         return;
 
-    if (is_fuzz_entry && fuzz_state.thread_id == 0) {
-        fuzz_state.thread_id = dr_get_thread_id(dr_get_current_drcontext());
-        LOG(1, LOG_PREFIX" Fuzzing on thread %d\n", fuzz_state.thread_id);
+    if (is_fuzz_entry && fuzz_state->thread_id == 0) {
+        fuzz_state->thread_id = dr_get_thread_id(dr_get_current_drcontext());
+        LOG(1, LOG_PREFIX" Fuzzing on thread %d\n", fuzz_state->thread_id);
     }
-    if (fuzz_state.thread_id != dr_get_thread_id(dcontext))
+    if (fuzz_state->thread_id != dr_get_thread_id(dcontext))
         return;
 
     if (is_fuzz_entry)
-        find_target_buffer(fuzzcxt);
+        find_target_buffer(fuzz_state, fuzzcxt);
 
     if (shadow_config.save_restore_enabled) {
         if (is_fuzz_entry) {
@@ -519,8 +569,8 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 fuzz_target.enabled = false;
                 return;
             }
-            shadow->buffer_shadow = shadow_save_region(fuzz_state.input_buffer,
-                                                       fuzz_state.input_size);
+            shadow->buffer_shadow = shadow_save_region(fuzz_state->input_buffer,
+                                                       fuzz_state->input_size);
             shadow_state_save_stack_frame(mc, shadow);
         } else {
             res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
@@ -533,29 +583,33 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 return;
             }
             shadow_restore_region(shadow->buffer_shadow);
-            shadow_state_reset_redzone(shadow);
+            shadow_state_reset_redzone(fuzz_state, shadow);
         }
     } else if (shadow_config.pattern != 0) {
         pattern_reset_redzone();
     }
     /* XXX i#1734: May want to consider an option to not reset redzone state.  */
 
-    if (!fuzz_state.repeat)
-        fuzz_target.repeat_index = 0; /* new entry to the target */
+    if (!fuzz_state->repeat)
+        fuzz_state->repeat_index = 0; /* new entry to the target */
 }
 
 static bool
 post_fuzz(void *fuzzcxt, generic_func_t target_pc)
 {
+    void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    fuzz_state_t *fuzz_state = (fuzz_state_t *) drmgr_get_tls_field(dcontext,
+                                                                    tls_idx_fuzzer);
+
     if (!fuzz_target.enabled)
         return false; /* in case someone unfuzzed while a target was looping */
 
-    if (fuzz_state.thread_id != dr_get_thread_id(drfuzz_get_drcontext(fuzzcxt)))
+    if (fuzz_state->thread_id != dr_get_thread_id(drfuzz_get_drcontext(fuzzcxt)))
         return false;
 
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
 
-    fuzz_state.repeat = (fuzz_target.repeat_index++ < fuzz_target.repeat_count);
+    fuzz_state->repeat = (fuzz_state->repeat_index++ < fuzz_target.repeat_count);
 
     if (shadow_config.save_restore_enabled) {
         drmf_status_t res;
@@ -572,7 +626,7 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
             return false;
         }
 
-        if (fuzz_state.repeat) {
+        if (fuzz_state->repeat) {
             dr_mcontext_t mc;
 
             mc.size = sizeof(dr_mcontext_t);
@@ -584,8 +638,24 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
         }
     }
 
-    fuzz_target.process_is_fuzzing = fuzz_state.repeat;
-    return fuzz_state.repeat;
+    if (!fuzz_state->repeat)
+        free_target_buffer(fuzz_state, fuzzcxt);
+    return fuzz_state->repeat;
+}
+
+static void
+thread_init(void *dcontext)
+{
+    fuzz_state_t *state = thread_alloc(dcontext, sizeof(fuzz_state_t), HEAPSTAT_MISC);
+    memset(state, 0, sizeof(fuzz_state_t));
+    drmgr_set_tls_field(dcontext, tls_idx_fuzzer, (void *) state);
+}
+
+static void
+thread_exit(void *dcontext)
+{
+    fuzz_state_t *state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+    thread_free(dcontext, state, sizeof(fuzz_state_t), HEAPSTAT_MISC);
 }
 
 static void
@@ -595,20 +665,17 @@ module_loaded(void *drcontext, const module_data_t *module, bool loaded)
 
     ASSERT_NOT_TESTED("Registration of fuzz target on module load");
 
-    if (!fuzz_target.registered && name != NULL && fuzz_target.module_name != NULL &&
-        strcmp(name, fuzz_target.module_name) == 0)
+    if (fuzz_target.module_start == 0 && name != NULL &&
+        fuzz_target.module_name != NULL && strcmp(name, fuzz_target.module_name) == 0)
         fuzz_target.enabled = register_fuzz_target(module);
 }
 
 static void
 module_unloaded(void *drcontext, const module_data_t *module)
 {
-    const char *name = dr_module_preferred_name(module);
-
     ASSERT_NOT_TESTED("Unregistration of fuzz target on module unload");
 
-    if (fuzz_target.enabled && !fuzz_target.registered && name != NULL &&
-        fuzz_target.module_name != NULL && strcmp(name, fuzz_target.module_name) == 0)
+    if (fuzz_target.enabled && fuzz_target.module_start == module->start)
         free_fuzz_target();
 }
 
@@ -655,7 +722,7 @@ register_fuzz_target(const module_data_t *module)
     if (res == DRMF_SUCCESS) {
         LOG(1, LOG_PREFIX" Successfully registered fuzz target at pc "PIFX"\n",
             fuzz_target.pc);
-        fuzz_target.registered = true;
+        fuzz_target.module_start = module->start;
         return true;
     } else {
         FUZZ_REG_ERROR("drfuzz_fuzz_target returned %d.\n", res);
@@ -670,6 +737,7 @@ free_fuzz_target()
         global_free(fuzz_target.module_name, strlen(fuzz_target.module_name) + 1,
                     HEAPSTAT_MISC);
     }
+    fuzz_target.module_start = 0;
     if (fuzz_target.type == FUZZ_TARGET_SYMBOL && fuzz_target.symbol != NULL) {
         global_free(fuzz_target.symbol, strlen(fuzz_target.symbol) + 1, HEAPSTAT_MISC);
     }

@@ -994,6 +994,16 @@ if (TOOL_DR_MEMORY)
     append_property_string(TARGET fuzz_buffer.cpp COMPILE_FLAGS "/Ob0")
   endif (NOT UNIX)
   # XXX i#1734: need a test for a fuzz target loaded after target registration
+
+  if (NOT X64)
+    set(fuzz_threads_drmem_ops "-fuzz_target;<main>!print_buffer|2|0|1|10")
+    if (UNIX)
+      newtest_ex(fuzz_threads fuzz_pthreads.c "" "${fuzz_threads_drmem_ops}" "" OFF "" 0)
+      target_link_libraries(fuzz_threads pthread)
+    else (UNIX)
+      newtest_ex(fuzz_threads fuzz_winthreads.c "" "${fuzz_threads_drmem_ops}" "" OFF "" 0)
+    endif (UNIX)
+  endif (NOT X64)
 endif (TOOL_DR_MEMORY)
 
 if (APPLE)

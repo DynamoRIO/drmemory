@@ -61,6 +61,8 @@ fuzzer_exit();
  * multiple instances of the module are loaded simultaneously, only the target occurring
  * in the first instance of the module will be fuzzed. It is not necessary for the target
  * module to be loaded at the time this function is called; it will be fuzzed when loaded.
+ *
+ * Concurrent execution of the target function is supported.
  */
 bool
 fuzzer_fuzz_target(const char *target_descriptor);
