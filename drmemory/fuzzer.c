@@ -25,6 +25,7 @@
 #include "utils.h"
 #include "umbra.h"
 #include "shadow.h"
+#include "report.h"
 #include "drwrap.h"
 #include "drfuzz_mutator.h"
 #include "fuzzer.h"
@@ -43,6 +44,9 @@
 #define TEMP_SPACE_CHAR '\1'
 /* XXX i#1734: move this to drwrap.h */
 #define CALLCONV_FLAG_SHIFT 0x18  /* offset of drwrap_callconv_t in drwrap_wrap_flags_t */
+#define TARGET_BUFFER_TRUNC "..."
+#define TARGET_BUFFER_TRUNC_LEN strlen(TARGET_BUFFER_TRUNC)
+#define LOG_LEVEL_ELOG 0xffffffff
 
 #define LOG_PREFIX "[fuzzer]"
 #define FUZZ_ERROR(...) \
@@ -75,16 +79,29 @@ typedef struct _callconv_args_t callconv_args_t; /* defined under shadow banner 
 typedef struct _fuzz_state_t {
     bool repeat;
     uint repeat_index;
-    thread_id_t thread_id;
+    thread_id_t thread_id;   /* always safe to access without lock */
     byte *input_buffer;      /* reference to the fuzz target's buffer arg */
     /* While these two fields are thread-local like the others, they may be accessed
      * by another thread at any time, e.g. during error reporting. Acquire the
-     * fuzz_target_buf_lock before accessing or updating them.
+     * fuzz_state_lock before accessing or updating them.
      */
     byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
     size_t input_size;       /* size of the fuzz target's buffer arg */
     drfuzz_mutator_t *mutator;
 } fuzz_state_t;
+
+/* List of the fuzz states for all process threads. Protected by fuzz_state_lock. It
+ * is safe to access the input_buffer_copy and input_size fields of each state while
+ * holding the fuzz_state_lock, and it is always safe to access the thread_id, but it
+ * is only safe to access the repeat, repeat_index, and input_buffer fields when the
+ * owning thread is known to be suspended (e.g., when all threads are suspended).
+ */
+typedef struct _fuzz_state_list_t {
+    fuzz_state_t *state;
+    struct _fuzz_state_list_t *next;
+} fuzz_state_list_t;
+
+static fuzz_state_list_t *state_list = NULL;
 
 /* Definition of the fuzz target and its global state of registration and fuzzing. */
 typedef struct _fuzz_target_t {
@@ -122,10 +139,13 @@ typedef struct _shadow_config_t {
 
 static shadow_config_t shadow_config;
 
+static bool fuzzer_initialized;
+
 /* Protects the fuzz_state_t fields input_buffer_copy and input_size for access from
- * other threads while the fuzz_state_t owner thread is fuzzing its target.
+ * other threads while the fuzz_state_t owner thread is fuzzing its target. Also
+ * protects the state_list during thread init/exit and error reporting.
  */
-static void *fuzz_target_buf_lock;
+static void *fuzz_state_lock;
 
 static int tls_idx_fuzzer;
 
@@ -174,7 +194,7 @@ fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
     if (pattern != 0 && !shadow_config.save_restore_enabled)
         FUZZ_WARN("pattern mode not fully supported--redzone will not be reset\n");
 
-    fuzz_target_buf_lock = dr_mutex_create();
+    fuzz_state_lock = dr_mutex_create();
 
     drmgr_init();
     if (drfuzz_init(client_id) != DRMF_SUCCESS)
@@ -199,6 +219,8 @@ fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
     if (fuzz_mangled_names)
         SymSetOptions(SymGetOptions() & ~SYMOPT_UNDNAME);
 #endif
+
+    fuzzer_initialized = true;
 }
 
 void
@@ -206,7 +228,7 @@ fuzzer_exit()
 {
     free_fuzz_target();
 
-    dr_mutex_destroy(fuzz_target_buf_lock);
+    dr_mutex_destroy(fuzz_state_lock);
 
     if (drfuzz_exit() != DRMF_SUCCESS)
         ASSERT(false, "fail to exit Dr. Fuzz");
@@ -218,6 +240,9 @@ fuzzer_fuzz_target(const char *target_descriptor)
 {
     char *descriptor_copy; /* writable working copy */
     module_data_t *module;
+
+    if (!fuzzer_initialized)
+        return false;
 
     if (fuzz_target.enabled && fuzz_target.type != FUZZ_TARGET_NONE) {
         if (!fuzzer_unfuzz_target())
@@ -290,6 +315,111 @@ void
 fuzzer_set_singleton_input(const char *input_value)
 {
     fuzz_target.singleton_input = input_value;
+}
+
+static void
+print_target_buffer(fuzz_state_t *state, char *buffer, size_t buffer_size,
+                    size_t *sofar, ssize_t *len, const char *prefix)
+{
+    uint i;
+
+    BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s"NL"%s", prefix, prefix);
+    for (i = 0; i < state->input_size; i++) { /* print in lexical byte order */
+        BUFPRINT(buffer, buffer_size, *sofar, *len,
+                 "%02x", state->input_buffer[i]);
+        if ((buffer_size - *sofar) <= (TARGET_BUFFER_TRUNC_LEN + 1/*null-term*/)) {
+            BUFPRINT(buffer, buffer_size, *sofar, *len, TARGET_BUFFER_TRUNC);
+            break;
+        }
+        if ((i % 32) == 31 &&            /* 8 dwords on each line, and             */
+            i < (state->input_size - 1)) /* avoid extra newline when it ends flush */
+            BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s", prefix);
+        else if ((i % 4) == 3)
+            BUFPRINT(buffer, buffer_size, *sofar, *len, " "); /* space between dwords */
+    }
+    BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s"NL, prefix);
+}
+
+static inline void
+log_target_buffer(void *dcontext, uint loglevel, fuzz_state_t *thread)
+{
+    char *buffer;
+    ssize_t len = 0;
+    size_t sofar = 0, buffer_size;
+
+    buffer_size = (thread->input_size * 2) /*two chars per byte*/ +
+                  (thread->input_size / 4) /*space between dwords*/ +
+                  ((thread->input_size / 32) * sizeof(NL)) /*internal newline*/ +
+                  (sizeof(NL) * 4) /*newlines top and bottom*/ + 1 /*null-term*/;
+    buffer = thread_alloc(dcontext, buffer_size, HEAPSTAT_MISC);
+    print_target_buffer(thread, buffer, buffer_size, &sofar, &len, ""/*no prefix*/);
+    ASSERT(sofar <= buffer_size, "buffer overflowed the expected size");
+    if (loglevel == LOG_LEVEL_ELOG)
+        ELOG(1, buffer);
+    else
+        LOG(loglevel, buffer);
+    thread_free(dcontext, buffer, buffer_size, HEAPSTAT_MISC);
+}
+
+size_t
+fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size)
+{
+    ssize_t len = 0;
+    size_t sofar = 0;
+    fuzz_state_t *this_thread, *report_thread = NULL;
+    uint fuzzing_thread_count = 0;
+    fuzz_state_list_t *next = state_list;
+
+    if (!fuzzer_initialized)
+        return 0;
+
+    if (dcontext == NULL)
+        dcontext = dr_get_current_drcontext();
+    this_thread = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+
+    /* If TLS is cleaned up already, the process must be exiting, so skip the fuzzer
+     * state report b/c fuzz state is irrelevant to all errors reported at exit time.
+     */
+    if (this_thread == NULL)
+        return 0;
+
+    dr_mutex_lock(fuzz_state_lock);
+
+    if (this_thread->input_size > 0)
+        report_thread = this_thread;
+    while (next != NULL) {
+        if (next->state->input_size > 0) {
+            fuzzing_thread_count++;
+
+            ELOG(1, "Thread %d was executing a fuzz target with buffer value:");
+            log_target_buffer(dcontext, LOG_LEVEL_ELOG, this_thread);
+
+            if (report_thread == NULL)       /* look for a single other thread fuzzing */
+                report_thread = next->state; /* (ignored if fuzzing_thread_count > 1)  */
+        }
+        next = next->next;
+    }
+
+    if (fuzzing_thread_count > 0) {
+        BUFPRINT(notify, notify_size, sofar, len,
+                 INFO_PFX"%d threads were executing fuzz targets."NL""INFO_PFX,
+                 fuzzing_thread_count);
+        if (report_thread == this_thread || fuzzing_thread_count == 1) {
+            if (report_thread == this_thread) {
+                BUFPRINT(notify, notify_size, sofar, len, "The error thread");
+            } else { /* XXX i#1734: would like to have a test for this case */
+                BUFPRINT(notify, notify_size, sofar, len,
+                         "Thread id %d", report_thread->thread_id);
+            }
+            BUFPRINT(notify, notify_size, sofar, len,
+                     " was executing the fuzz target with input value:");
+            print_target_buffer(this_thread, notify, notify_size, &sofar, &len, INFO_PFX);
+            ASSERT(sofar <= notify_size, "buffer overflowed the expected size");
+        }
+    }
+
+    dr_mutex_unlock(fuzz_state_lock);
+    return sofar;
 }
 
 /***************************************************************************************
@@ -520,20 +650,6 @@ pattern_reset_redzone()
  */
 
 static inline void
-log_buffer(uint loglevel, byte *buffer, size_t size)
-{
-    uint i;
-
-    for (i = 0; i < size; i++) { /* print in strict byte order */
-        LOG(loglevel, "%02x", buffer[i]);
-        if ((i % 32) == 31 && i < (size - 1)/*single newline*/)
-            LOG(loglevel, NL);  /* 8 dwords per line */
-        else if ((i % 4) == 3)
-            LOG(loglevel, " "); /* space between dwords */
-    }
-}
-
-static inline void
 apply_singleton_input(fuzz_state_t *fuzz_state)
 {
     uint i, b, len = strlen(fuzz_target.singleton_input), byte_count = (len / 2);
@@ -558,7 +674,7 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
     byte *input_buffer;
     drmf_status_t res;
 
-    dr_mutex_lock(fuzz_target_buf_lock);
+    dr_mutex_lock(fuzz_state_lock);
 
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
                          true/*original*/, (void **) &input_buffer);
@@ -594,16 +710,16 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
     memcpy(fuzz_state->input_buffer_copy, input_buffer, fuzz_state->input_size);
 
 unlock:
-    dr_mutex_unlock(fuzz_target_buf_lock);
+    dr_mutex_unlock(fuzz_state_lock);
 }
 
 static inline void
 free_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
-    dr_mutex_lock(fuzz_target_buf_lock);
+    dr_mutex_lock(fuzz_state_lock);
     global_free(fuzz_state->input_buffer_copy, fuzz_state->input_size, HEAPSTAT_MISC);
     fuzz_state->input_size = 0;
-    dr_mutex_unlock(fuzz_target_buf_lock);
+    dr_mutex_unlock(fuzz_state_lock);
 }
 
 static void
@@ -668,8 +784,11 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         else
             LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
 
-        LOG(1, "Initializing mutator with buffer:\n\n");
-        log_buffer(1, fuzz_state->input_buffer, fuzz_state->input_size);
+        DOLOG(1, {
+            LOG(1, "Initializing mutator with buffer:\n\n");
+            log_target_buffer(dcontext, 1, fuzz_state);
+            LOG(1, "\n\n");
+        });
 
         if (fuzz_state->mutator != NULL) {
             drfuzz_mutator_stop(fuzz_state->mutator); /* in case a target was aborted */
@@ -697,8 +816,10 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         fuzz_state->repeat = false;
     }
 
-    LOG(2, "\n"LOG_PREFIX" Executing target with mutated buffer:\n");
-    log_buffer(2, fuzz_state->input_buffer, fuzz_state->input_size);
+    DOLOG(3, {
+        LOG(3, "\n"LOG_PREFIX" Executing target with mutated buffer:\n");
+        log_target_buffer(dcontext, 3, fuzz_state);
+    });
 }
 
 static bool
@@ -762,13 +883,45 @@ thread_init(void *dcontext)
     fuzz_state_t *state = thread_alloc(dcontext, sizeof(fuzz_state_t), HEAPSTAT_MISC);
     memset(state, 0, sizeof(fuzz_state_t));
     drmgr_set_tls_field(dcontext, tls_idx_fuzzer, (void *) state);
+
+    dr_mutex_lock(fuzz_state_lock);
+    fuzz_state_list_t *list_item = thread_alloc(dcontext, sizeof(fuzz_state_list_t),
+                                                HEAPSTAT_MISC);
+    list_item->state = state;
+    list_item->next = state_list;
+    state_list = list_item;
+    dr_mutex_unlock(fuzz_state_lock);
 }
 
 static void
 thread_exit(void *dcontext)
 {
     fuzz_state_t *state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+    fuzz_state_list_t *state_item = NULL;
+
+    dr_mutex_lock(fuzz_state_lock);
+    if (state_list != NULL) {
+        fuzz_state_list_t *prev = NULL, *next = state_list;
+        while (next != NULL) {
+            if (next->state == state) {
+                state_item = next;  /* found this thread's state,  */
+                if (prev == NULL)   /* now remove it from the list */
+                    state_list = state_list->next;
+                else
+                    prev->next = next->next;
+                break;
+            }
+            prev = next;
+            next = next->next;
+        }
+    }
+    dr_mutex_unlock(fuzz_state_lock);
+
     thread_free(dcontext, state, sizeof(fuzz_state_t), HEAPSTAT_MISC);
+    if (state_item == NULL)
+        LOG(1, "Error: failed to find an exiting thread in the fuzz state list.\n");
+    else
+        thread_free(dcontext, state_item, sizeof(fuzz_state_list_t), HEAPSTAT_MISC);
 }
 
 static void

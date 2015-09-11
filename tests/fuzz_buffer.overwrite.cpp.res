@@ -18,21 +18,6 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Buffer: 0x00000000 0x00000002 0x00000003 0x00000004
-Buffer: 0x00000101 0x00000002 0x00000003 0x00000004
-Buffer: 0x00010001 0x00000002 0x00000003 0x00000004
-Buffer: 0x01000001 0x00000002 0x00000003 0x00000004
-Buffer: 0x00000001 0x00000003 0x00000003 0x00000004
-Buffer: 0x00000001 0x00000102 0x00000003 0x00000004
-Buffer: 0x00000001 0x00010002 0x00000003 0x00000004
-Buffer: 0x00000001 0x01000002 0x00000003 0x00000004
-Buffer: 0x00000001 0x00000002 0x00000002 0x00000004
-Buffer: 0x00000001 0x00000002 0x00000103 0x00000004
-done
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       1 unique,     1 total,     12 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
+The error thread was executing the fuzz target with input value:
+01010000 02000000 03000000 04000000

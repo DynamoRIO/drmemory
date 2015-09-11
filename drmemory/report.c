@@ -37,10 +37,13 @@
 #include "callstack.h"
 #include "heap.h"
 #include "alloc_drmem.h"
+#include "fuzzer.h"
 #ifdef UNIX
 # include <errno.h>
 #endif
 #include <limits.h>
+
+#define FUZZER_MSG_SZ 0x100
 
 static uint error_id; /* errors + leaks */
 static uint error_id_potential; /* potential errors + leaks */
@@ -215,6 +218,9 @@ typedef struct _error_toprint_t {
      */
     const char *aux_msg;
     packed_callstack_t *aux_pcs;
+
+    /* For the state of any threads executing a fuzz target: */
+    const char *fuzzer_msg;
 
     /* For leaks: */
     size_t indirect_size;       /* Size of indirect allocs. */
@@ -2719,6 +2725,7 @@ static void
 report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
 {
     void *drcontext = dr_get_current_drcontext();
+    char fuzzer_buf[FUZZER_MSG_SZ];
     stored_error_t *err;
     bool reporting = false;
     suppress_spec_t *spec;
@@ -2806,6 +2813,11 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
             IF_DEBUG(disassemble_set_syntax(0));
         }
     }
+
+    if (fuzzer_error_report(drcontext, fuzzer_buf, FUZZER_MSG_SZ) > 0)
+        etp->fuzzer_msg = fuzzer_buf;
+    else
+        etp->fuzzer_msg = NULL;
 
     /* i#838: If we have a wildcard suppression covering this module for this
      * error type, don't bother taking the stack trace, unless we need to log
@@ -3076,6 +3088,9 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         BUFPRINT(buf, bufsz, sofar, len, "%sinstruction: %s"NL,
                  INFO_PFX, ecs->instruction);
     }
+
+    if (etp->fuzzer_msg != NULL)
+        BUFPRINT(buf, bufsz, sofar, len, etp->fuzzer_msg);
 
     if (!for_log && !options.check_leaks && type_is_leak(etp->errtype)) {
         BUFPRINT(buf, bufsz, sofar, len,

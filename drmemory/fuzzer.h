@@ -105,4 +105,13 @@ fuzzer_set_mutator_descriptor(const char *mutator_descriptor);
 void
 fuzzer_set_singleton_input(const char *input_value);
 
+/* If a fuzz target is registered and is currently executing on any thread, write a
+ * short description of the global fuzzer state (for all threads) to the user_message,
+ * and write a more complete state record to the global log. The dcontext argument
+ * may be NULL, in which case the fuzzer will lookup the current dcontext. Returns
+ * true if any thread was fuzzing; i.e., if anything was written to user_message.
+ */
+size_t
+fuzzer_error_report(IN void *dcontext, OUT char *user_message, IN size_t size);
+
 #endif /* _FUZZER_H_ */
