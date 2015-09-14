@@ -881,12 +881,12 @@ static void
 thread_init(void *dcontext)
 {
     fuzz_state_t *state = thread_alloc(dcontext, sizeof(fuzz_state_t), HEAPSTAT_MISC);
+    fuzz_state_list_t *list_item = thread_alloc(dcontext, sizeof(fuzz_state_list_t),
+                                                HEAPSTAT_MISC);
     memset(state, 0, sizeof(fuzz_state_t));
     drmgr_set_tls_field(dcontext, tls_idx_fuzzer, (void *) state);
 
     dr_mutex_lock(fuzz_state_lock);
-    fuzz_state_list_t *list_item = thread_alloc(dcontext, sizeof(fuzz_state_list_t),
-                                                HEAPSTAT_MISC);
     list_item->state = state;
     list_item->next = state_list;
     state_list = list_item;
