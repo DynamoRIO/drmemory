@@ -48,12 +48,7 @@
 #ifdef UNIX
 /* Data for which we need direct addressability access from instrumentation */
 typedef struct _tls_instru_t {
-    /* We store segment bases here for dynamic access from thread-shared code.
-     * We no longer need to store the app's bases as DR does it for us
-     * and we can just use dr_insert_get_seg_base() (xref i#93).
-     */
-    byte *dr_fs_base;
-    byte *dr_gs_base;
+    byte *dr_tls_base;
 } tls_instru_t;
 /* followed by reg spill slots */
 # define NUM_INSTRU_TLS_SLOTS (sizeof(tls_instru_t)/sizeof(byte *))
@@ -78,7 +73,7 @@ tls_base_offs(void)
 {
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     return tls_instru_base +
-        offsetof(tls_instru_t, IF_X64_ELSE(dr_gs_base, dr_fs_base));
+        offsetof(tls_instru_t, dr_tls_base);
 }
 #endif
 
@@ -128,26 +123,18 @@ instru_tls_thread_init(void *drcontext)
 {
 #ifdef UNIX
     tls_instru_t *tls;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 
     /* bootstrap: can't call get_own_seg_base() until set up seg base fields */
-    byte *dr_fs_base = dr_get_dr_segment_base(SEG_FS);
-    byte *dr_gs_base = dr_get_dr_segment_base(SEG_GS);
+    byte *dr_tls_base = dr_get_dr_segment_base(seg_tls);
     /* We used to acquire the app's fs and gs bases (via opnd_compute address on
      * a synthetic far-base-disp opnd) but with early injection they aren't set
      * up yet, and we'd need to do work to handle changes: instead, now that
      * DR supplies dr_insert_get_seg_base(), we just use that.
      */
-# ifdef X64
-    tls = (tls_instru_t *) (dr_gs_base + tls_instru_base);
-# else
-    tls = (tls_instru_t *) (dr_fs_base + tls_instru_base);
-# endif
-    tls->dr_fs_base  = dr_fs_base;
-    tls->dr_gs_base  = dr_gs_base;
-    LOG(1, "dr: fs base="PFX", gs base="PFX"\n", dr_fs_base, dr_gs_base);
+    tls = (tls_instru_t *) (dr_tls_base + tls_instru_base);
+    ASSERT(tls != NULL, "TLS should not be NULL");
+    tls->dr_tls_base  = dr_tls_base;
+    LOG(1, "dr: TLS base="PFX"\n", dr_tls_base);
     /* store in per-thread data struct so we can access from another thread */
     drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
 #else
@@ -643,7 +630,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
 
     if (mi->eax.used) {
         /* caller wants us to ignore eax and eflags */
-    } else if (!whole_bb_spills_enabled() && mi->aflags != EFLAGS_WRITE_6) {
+    } else if (!whole_bb_spills_enabled() && mi->aflags != EFLAGS_WRITE_ARITH) {
         mi->eax.reg = DR_REG_XAX;
         mi->eax.used = true;
         mi->eax.dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
@@ -705,7 +692,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
                     live[nxt_dead] = LIVE_LIVE;
                     STATS_INC(reg_xchg);
                 } else {
-                    mi->reg3.slot = spill_reg3_slot(mi->aflags == EFLAGS_WRITE_6,
+                    mi->reg3.slot = spill_reg3_slot(mi->aflags == EFLAGS_WRITE_ARITH,
                                                     !mi->eax.used || mi->eax.dead,
                                                     /* later we'll update these */
                                                     false, false);
@@ -785,7 +772,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     if (mi->bb->reg1.reg == REG_NULL &&
         need3 && !mi->reg3.dead && mi->reg3.xchg == REG_NULL) {
         /* See if we can use slots 1 or 2 instead: matters when using DR slots */
-        mi->reg3.slot = spill_reg3_slot(mi->aflags == EFLAGS_WRITE_6,
+        mi->reg3.slot = spill_reg3_slot(mi->aflags == EFLAGS_WRITE_ARITH,
                                         !mi->eax.used || mi->eax.dead,
                                         mi->reg1.dead, mi->reg2.dead);
     }
@@ -945,7 +932,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
         (bi->reg2.reg == DR_REG_XAX && scratch_reg2_is_avail(inst, mi, bi));
     if (!bi->eflags_used)
         return;
-    if (bi->aflags != EFLAGS_WRITE_6) {
+    if (bi->aflags != EFLAGS_WRITE_ARITH) {
         /* slot 5 won't be used for 3rd reg (that's 4) and is ok for temp use */
         si.slot = SPILL_SLOT_5;
         if (eax_dead || bi->aflags_where == AFLAGS_IN_EAX) {
@@ -1146,6 +1133,7 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
      * handle fault
      */
     uses[DR_REG_XSP - REG_START] = INT_MAX;
+#ifdef X86
     /* Future work PR 492073: If esi/edi/ebp are among the least-used, xchg
      * w/ cx/dx/bx and swap in each app instr.  Have to ensure results in
      * legal instrs (if app uses sub-dword, or certain addressing modes).
@@ -1153,6 +1141,12 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     uses[DR_REG_XBP - REG_START] = INT_MAX;
     uses[DR_REG_XSI - REG_START] = INT_MAX;
     uses[DR_REG_XDI - REG_START] = INT_MAX;
+#elif defined(ARM)
+    /* stolen reg must not be used */
+    uses[dr_get_stolen_reg() - REG_START] = INT_MAX;
+    uses[DR_REG_LR - REG_START] = INT_MAX;
+    uses[DR_REG_PC - REG_START] = INT_MAX;
+#endif /* X86/ARM */
 #ifdef X64
     /* XXX i#1632: once we have byte-to-byte shadowing we shouldn't need
      * just a/b/c/d regs and should be able to use these.  For now with
@@ -1219,14 +1213,15 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     bi->reg2.global = true;
 
 #ifdef STATISTICS
-    if (uses_least > 0)
+    if (uses_least > 0) {
         STATS_INC(reg_spill_used_in_bb);
-    else
+    } else {
         STATS_INC(reg_spill_unused_in_bb);
-    if (uses_second > 0)
+    } if (uses_second > 0) {
         STATS_INC(reg_spill_used_in_bb);
-    else
+    } else {
         STATS_INC(reg_spill_unused_in_bb);
+    }
 #endif
     DOLOG(3, {
         void *drcontext = dr_get_current_drcontext();
@@ -1338,7 +1333,7 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
 bool
 instr_is_spill(instr_t *inst)
 {
-    return (instr_get_opcode(inst) == OP_mov_st &&
+    return (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_st, OP_str) &&
             is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_dst(inst, 0)) &&
             opnd_is_reg(instr_get_src(inst, 0)));
 }
@@ -1346,7 +1341,7 @@ instr_is_spill(instr_t *inst)
 bool
 instr_is_restore(instr_t *inst)
 {
-    return (instr_get_opcode(inst) == OP_mov_ld &&
+    return (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_ld, OP_ldr) &&
             is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
             opnd_is_reg(instr_get_dst(inst, 0)));
 }
@@ -1375,7 +1370,7 @@ mark_eflags_used(void *drcontext, instrlist_t *bb, bb_info_t *bi)
      * FIXME: for use in fastpath_pre_instrument() for post-instr
      * save are we using the pre-instr analysis?
      */
-    if (bi->aflags == EFLAGS_WRITE_6) {
+    if (bi->aflags == EFLAGS_WRITE_ARITH) {
         LOG(4, "eflags are dead so not saving\n");
         return;
     }
@@ -1388,7 +1383,7 @@ mark_eflags_used(void *drcontext, instrlist_t *bb, bb_info_t *bi)
     bi->eflags_used = true;
     save_aflags_if_live(drcontext, bb, where_spill, NULL, bi);
 #ifdef STATISTICS
-    if (bi->aflags != EFLAGS_WRITE_6)
+    if (bi->aflags != EFLAGS_WRITE_ARITH)
         STATS_INC(aflags_saved_at_top);
 #endif
 }
@@ -1428,12 +1423,14 @@ mark_scratch_reg_used(void *drcontext, instrlist_t *bb,
 bool
 instr_needs_eflags_restore(instr_t *inst, uint aflags_liveness)
 {
-    return (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT)) ||
+    return (TESTANY(EFLAGS_READ_ARITH,
+                    instr_get_eflags(inst, DR_QUERY_DEFAULT)) ||
             /* If the app instr writes some subset of eflags we need to restore
              * rest so they're combined properly
              */
-            (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
-             aflags_liveness != EFLAGS_WRITE_6));
+            (TESTANY(EFLAGS_WRITE_ARITH,
+                     instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
+             aflags_liveness != EFLAGS_WRITE_ARITH));
 }
 
 /* Invoked after the regular pre-app instrumentation */
@@ -1491,11 +1488,11 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
                     bi->shared_memop = opnd_create_null();
                 } else {
                     PRE(bb, inst,
-                        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(bi->reg2.reg),
-                                            opnd_create_reg(bi->reg1.reg)));
+                        XINST_CREATE_store(drcontext, opnd_create_reg(bi->reg2.reg),
+                                           opnd_create_reg(bi->reg1.reg)));
                     PRE(bb, next,
-                        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(bi->reg1.reg),
-                                            opnd_create_reg(bi->reg2.reg)));
+                        XINST_CREATE_store(drcontext, opnd_create_reg(bi->reg1.reg),
+                                           opnd_create_reg(bi->reg2.reg)));
                 }
             }
             insert_spill_global(drcontext, bb, inst, &bi->reg1, false/*restore*/);
@@ -1550,11 +1547,11 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else {
                 bi->reg1.used = true;
                 PRE(bb, inst,
-                    INSTR_CREATE_mov_st(drcontext, opnd_create_reg(bi->reg2.reg),
-                                        opnd_create_reg(bi->reg1.reg)));
+                    XINST_CREATE_store(drcontext, opnd_create_reg(bi->reg2.reg),
+                                       opnd_create_reg(bi->reg1.reg)));
                 PRE(bb, next,
-                    INSTR_CREATE_mov_st(drcontext, opnd_create_reg(bi->reg1.reg),
-                                        opnd_create_reg(bi->reg2.reg)));
+                    XINST_CREATE_store(drcontext, opnd_create_reg(bi->reg1.reg),
+                                       opnd_create_reg(bi->reg2.reg)));
             }
         }
     }
@@ -1564,8 +1561,9 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
         bi->reg2.used = true;
         insert_spill_global(drcontext, bb, next, &bi->reg2, true/*save*/);
     }
-    if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
-        bi->aflags != EFLAGS_WRITE_6) {
+    if (TESTANY(EFLAGS_WRITE_ARITH,
+                instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
+        bi->aflags != EFLAGS_WRITE_ARITH) {
         /* Optimization: no need if next is jcc and we just checked definedness */
         if (IF_DRMEM(bi->eflags_defined && ) opc_is_jcc(instr_get_opcode(next))) {
             /* We just wrote to real eflags register, so don't restore at end */

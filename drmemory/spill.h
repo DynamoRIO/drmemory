@@ -30,9 +30,13 @@
 #include "fastpath.h"
 
 #ifdef DEBUG
+# ifdef X86
 /* use seg_tls for actual code */
-# define EXPECTED_SEG_TLS IF_X64_ELSE(SEG_GS, SEG_FS)
-#endif
+#  define EXPECTED_SEG_TLS IF_X64_ELSE(SEG_GS, SEG_FS)
+# elif defined(ARM)
+#  define EXPECTED_SEG_TLS dr_get_stolen_reg()
+# endif /* X86 */
+#endif /* DEBUG */
 extern reg_id_t seg_tls;
 
 /***************************************************************************

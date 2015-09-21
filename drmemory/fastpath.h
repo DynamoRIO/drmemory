@@ -40,13 +40,12 @@ enum {
     AFLAGS_IN_TLS,
     AFLAGS_IN_EAX,
 };
-#ifdef X64
-# define NUM_LIVENESS_REGS 16
-# define REG_START     REG_START_64
-#else
-# define NUM_LIVENESS_REGS 8
-# define REG_START     REG_START_32
+#ifdef X86
+# define NUM_LIVENESS_REGS IF_X64_ELSE(16, 8)
+#elif defined(ARM)
+# define NUM_LIVENESS_REGS IF_X64_ELSE(32, 16)
 #endif
+#define  REG_START         IF_X64_ELSE(REG_START_64, REG_START_32)
 
 typedef struct _scratch_reg_info_t {
     reg_id_t reg;
