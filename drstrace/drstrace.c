@@ -320,6 +320,18 @@ print_structure(buf_info_t *buf, drsym_type_t *type, drsys_arg_t *arg, void *add
             print_structure(buf, ptr_type->elt_type, arg, mem_value);
             OUTPUT(buf, "*");
             return;
+        } else if (type->kind == DRSYM_TYPE_ARRAY) {
+            OUTPUT(buf, "array(%d)={", type->size);
+            /* only print up to the first 4 bytes of the array */
+            safe_read_field(buf, addr, 0x1, true);
+            for (i = 1; i < type->size && i < 4; i++) {
+                OUTPUT(buf, ", ");
+                safe_read_field(buf, (byte *)addr + i, 0x1, true);
+            }
+            if (i < type->size)
+                OUTPUT(buf, ", ...");
+            OUTPUT(buf, "}");
+            return;
         } else {
             /* Print integer base types */
             switch (type->size) {
