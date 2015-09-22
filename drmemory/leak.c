@@ -1145,24 +1145,21 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 }
             }
             /* Now pc points to an aligned and defined (non-heap) ptrsz bytes */
-            /* FIXME PR 475518: improve performance of all these reads and table
+            /* XXX PR 475518: improve performance of all these reads and table
              * lookups: this scan is where the noticeable pause at exit comes
              * from, not the identification of defined regions.
              */
-#ifdef VMX86_SERVER /* really should be !HAVE_PROC_MAPS */
-            if (!op_have_defined_info) {
-                /* memory query is unreliable, and we don't have definedness
-                 * info, so we can and have crashed here
-                 */
-                if (safe_read(pc, sizeof(pointer), &pointer))
-                    check_reachability_pointer(pointer, pc, defined_end, data);
-            } else  {
-#endif
-                /* Threads are suspended and we checked readability so safe to deref */
-                pointer = *((app_pc*)pc);
+#ifdef UNIX
+            /* i#1773: we could hit a bus error even on a readable page.  Also
+             * on some UNIX platforms like VMX86_SERVER we do not have a
+             * reliable memory query.
+             */
+            if (leak_safe_read_heap(pc, (void **)&pointer))
                 check_reachability_pointer(pointer, pc, defined_end, data);
-#ifdef VMX86_SERVER /* really should be !HAVE_PROC_MAPS */
-            }
+#else
+            /* Threads are suspended and we checked readability so safe to deref */
+            pointer = *((app_pc*)pc);
+            check_reachability_pointer(pointer, pc, defined_end, data);
 #endif
         }
         pc = (byte *) ALIGN_FORWARD(defined_end, sizeof(void*));
