@@ -306,7 +306,7 @@ get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
 }
 
 static bool
-create_dir_if_necessary(const char *dir)
+create_dir_if_necessary(const char *dir, const char *option)
 {
     /* Using dr_ API here since available and perhaps we'll want this
      * same frontend on linux someday.
@@ -315,7 +315,7 @@ create_dir_if_necessary(const char *dir)
         if (!dr_create_dir(dir)) {
             /* check again in case of a race */
             if (!dr_directory_exists(dir)) {
-                fatal("cannot create %s", dir);
+                fatal("cannot create %s! Use %s to set proper path", dir, option);
                 return false;
             }
         }
@@ -1250,7 +1250,7 @@ _tmain(int argc, TCHAR *targv[])
             if (!dr_create_dir(scratch)) {
                 /* check again in case of a race */
                 if (!dr_directory_exists(scratch)) {
-                    fatal("cannot create %s", scratch);
+                    fatal("cannot create %s! Use -logdir to set proper path", scratch);
                     goto error; /* actually won't get here */
                 }
             }
@@ -1262,7 +1262,8 @@ _tmain(int argc, TCHAR *targv[])
     if (symdir[0] == '\0') { /* not set by user */
         _snprintf(symdir, BUFFER_SIZE_ELEMENTS(symdir), "%s%csymcache", logdir, DIRSEP);
         NULL_TERMINATE_BUFFER(symdir);
-        if (!create_dir_if_necessary(symdir))
+        /* Users need change -logdir if the default symcache dir creation failed. */
+        if (!create_dir_if_necessary(symdir, "-logdir"))
             goto error; /* actually won't get here */
     }
     if (!file_is_writable(symdir)) {
@@ -1280,7 +1281,8 @@ _tmain(int argc, TCHAR *targv[])
             _snprintf(persist_dir, BUFFER_SIZE_ELEMENTS(persist_dir),
                       "%s%ccodecache", logdir, DIRSEP);
             NULL_TERMINATE_BUFFER(persist_dir);
-            if (!create_dir_if_necessary(persist_dir))
+            /* Users need change -logdir if the default persist_dir creation failed. */
+            if (!create_dir_if_necessary(persist_dir, "-logdir"))
                 goto error; /* actually won't get here */
         }
         drfront_string_replace_character(persist_dir, ALT_DIRSEP,
