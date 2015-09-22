@@ -38,6 +38,11 @@
 #include "utils.h"
 #include "shadow.h"
 #include "options.h"
+#ifdef TOOL_DR_MEMORY
+# include "alloc_drmem.h"
+#else
+extern void check_reachability(bool at_exit);
+#endif
 
 #ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
 static ptr_uint_t
@@ -61,6 +66,14 @@ handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
      */
     return 1;
 }
+
+static ptr_uint_t
+handle_do_leak_check(dr_vg_client_request_t *request)
+{
+    LOG(2, "%s\n", __FUNCTION__);
+    check_reachability(false/*!at_exit*/);
+    return 0;
+}
 #endif
 
 void
@@ -71,6 +84,8 @@ annotate_init(void)
 # ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
     dr_annotation_register_valgrind(DR_VG_ID__MAKE_MEM_DEFINED_IF_ADDRESSABLE,
                                     handle_make_mem_defined_if_addressable);
+    dr_annotation_register_valgrind(DR_VG_ID__DO_LEAK_CHECK,
+                                    handle_do_leak_check);
 # endif
 #endif
 }

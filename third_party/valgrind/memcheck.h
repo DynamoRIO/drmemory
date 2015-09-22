@@ -184,7 +184,7 @@ typedef
 
 /* Do a full memory leak check (like --leak-check=full) mid-execution. */
 #define VALGRIND_DO_LEAK_CHECK                                   \
-   {unsigned long _qzz_res;                                      \
+   {__attribute__((unused)) unsigned long _qzz_res;              \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                      \
                             VG_USERREQ__DO_LEAK_CHECK,           \
                             0, 0, 0, 0, 0);                      \

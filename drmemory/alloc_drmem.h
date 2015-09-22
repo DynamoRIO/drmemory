@@ -27,6 +27,8 @@
 #ifndef _ALLOC_DRMEM_H_
 #define _ALLOC_DRMEM_H_ 1
 
+#include "callstack.h" /* app_loc_t */
+
 #ifdef UNIX
 extern hashtable_t sighand_table;
 #endif
