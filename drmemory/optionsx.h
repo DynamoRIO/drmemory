@@ -626,8 +626,10 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_mutator, "",
                      "                 (drfuzz_mutator_flags_t.MUTATOR_FLAG_BITFLIP_SEED_CENTRIC)"NL
                      "             t = seed the mutator's random number generator with the current clock time"NL
                      "                 (drfuzz_mutator_options_t.random_seed)"NL
-                     "         and the <sparsity> is an integer specifying a number of values to skip between mutations"NL
-                     "         (drfuzz_mutator_options_t.sparsity). See the HTML documentation for more details."NL,
+                     "         and <sparsity> is an integer specifying a number of values to skip between"NL
+                     "         mutations (drfuzz_mutator_options_t.sparsity),"NL
+                     "         and <random_seed> (optional) is used by the internal random number generator."NL
+                     "         See the HTML documentation for more details."NL,
                      "Configure the input mutator of the fuzz tester according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;algorithm&gt;|&lt;unit&gt;|&lt;flags&gt;|&lt;sparsity&gt;[|&lt;random_seed&gt;]</code></pre>where <code>&lt;algorithm&gt;</code> is one of the drfuzz_mutator_algorithm_t:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>r = random selection of bits or numbers (MUTATOR_ALG_RANDOM)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>o = ordered sequence of bits or numbers (MUTATOR_ALG_ORDERED)</code></pre>and <code>&lt;unit&gt;</code> is one of the drfuzz_mutator_unit_t:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>b = mutation by bit flipping (MUTATOR_UNIT_BITS)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>n = mutation by random number generation (MUTATOR_UNIT_NUM)</code></pre>and <code>&lt;flags&gt;</code> are any combination of:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>r = reset to the original buffer value passed by the app before each mutation</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>t = seed the mutator's random number generator with the current clock time (drfuzz_mutator_options_t.random_seed)</code></pre>and the <code>&lt;sparsity&gt;</code> is an integer specifying a number of values to skip between mutations (<code>drfuzz_mutator_options_t.sparsity</code>). See \\ref page_fuzzer for more detailed information.")
 OPTION_CLIENT_STRING(drmemscope, fuzz_one_input, "",
                      "Specify one fuzz input value to test."NL

@@ -80,7 +80,7 @@ you would specify the following option to \p drmemory:
 
 The fuzzer's default calling convention is \p cdecl on 32-bit x86 platforms,
 \p AMD64 on 64-bit *nix, and \p Microsoft \p x64 for Visual Studio 64-bit
-applications. Use the optional last field of option \p -fuzz_mutator to
+applications. Use the optional last field of option \p -fuzz_target to
 specify a different calling convention. For example, to fuzz the following
 function on Windows (compiling the app with Visual Studio):
 
@@ -138,12 +138,15 @@ Fisher-Yates shuffle (https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 
 To repeat a fuzz test using the exact same sequence of values for the fuzz
 target function, specify the same random seed as the original fuzz test
-using the mutator descriptor's optional last field. To avoid repeating the
-exact same fuzz test when using the random algorithm, and pass flag \p 't'
-in the mutator descriptor (field 3 in option \p -fuzz_mutator) to seed the
-random algorithm with the system clock time. The seed will be reported in
-the log and in the console output (when enabled) for future reference, e.g.,
-to repeat that fuzz test.
+using the mutator descriptor's optional last field; for example:
+
+    -fuzz_mutator "r|b|r|1|0x17a3cd8648a6ab1f"
+
+To avoid repeating the exact same fuzz test when using the random algorithm,
+and pass flag \p 't' in the mutator descriptor (field 3 in option
+\p -fuzz_mutator) to seed the random algorithm with the system clock time. The
+seed will be reported in the log and in the console output (when enabled) for
+future reference, e.g., to repeat that fuzz test.
 
 \section sec_mutator_proximity Mutator "Proximity" via Reset Option
 

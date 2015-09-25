@@ -679,7 +679,7 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
                          true/*original*/, (void **) &input_buffer);
     if (res != DRMF_SUCCESS) {
-        FUZZ_ERROR("Failed to obtain reference to the buffer arg for the fuzz target\n");
+        NOTIFY_ERROR("Failed to obtain reference to the buffer arg for the fuzz target"NL);
         ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
         fuzz_target.enabled = false;
         goto unlock;
@@ -688,7 +688,7 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
                          true/*original*/, (void **) &fuzz_state->input_size);
     if (res != DRMF_SUCCESS) {
-        FUZZ_ERROR("Failed to obtain the buffer size for the fuzz target\n");
+        NOTIFY_ERROR("Failed to obtain the buffer size for the fuzz target"NL);
         ASSERT(false, "Failed to obtain the buffer size");
         fuzz_target.enabled = false;
         goto unlock;
@@ -698,8 +698,8 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
      * reasonable. If not, exit with an error instead of crashing with alloc problems.
      */
     if (fuzz_state->input_size > MAX_BUFFER_SIZE) {
-        FUZZ_ERROR("Buffer size of the fuzz target is out of range: %d. "
-                   "Max allowed is %d.\n", fuzz_state->input_size, MAX_BUFFER_SIZE);
+        NOTIFY_ERROR("Buffer size of the fuzz target is out of range: %d. "
+                     "Max allowed is %d."NL, fuzz_state->input_size, MAX_BUFFER_SIZE);
         ASSERT(false, "Target's buffer size too large");
         fuzz_target.enabled = false;
         goto unlock;
