@@ -1,0 +1,87 @@
+# **********************************************************
+# Copyright (c) 2015 Google, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+Buffer: 0x00000001 0x00000102 0x00000003 0x00000004
+Buffer: 0x00000001 0x00010002 0x00000003 0x00000004
+Buffer: 0x00000001 0x01000002 0x00000003 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000002 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000103 0x00000004
+Buffer: 0x00000001 0x00000202 0x00000003 0x00000004
+Buffer: 0x00000001 0x00020002 0x00000003 0x00000004
+Buffer: 0x00000001 0x02000002 0x00000003 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000001 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000203 0x00000004
+Buffer: 0x00000001 0x00000402 0x00000003 0x00000004
+Buffer: 0x00000001 0x00040002 0x00000003 0x00000004
+Buffer: 0x00000001 0x04000002 0x00000003 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000007 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000403 0x00000004
+Buffer: 0x00000001 0x00000802 0x00000003 0x00000004
+Buffer: 0x00000001 0x00080002 0x00000003 0x00000004
+Buffer: 0x00000001 0x08000002 0x00000003 0x00000004
+Buffer: 0x00000001 0x00000002 0x0000000b 0x00000004
+Buffer: 0x00000001 0x00000002 0x00000803 0x00000004
+Buffer: 0x00000002 0x00000103 0x00000004
+Buffer: 0x00000002 0x00010003 0x00000004
+Buffer: 0x00000002 0x01000003 0x00000004
+Buffer: 0x00000002 0x00000003 0x00000005
+Buffer: 0x00000002 0x00000003 0x00000104
+Buffer: 0x00000002 0x00000203 0x00000004
+Buffer: 0x00000002 0x00020003 0x00000004
+Buffer: 0x00000002 0x02000003 0x00000004
+Buffer: 0x00000002 0x00000003 0x00000006
+Buffer: 0x00000002 0x00000003 0x00000204
+Buffer: 0x00000002 0x00000403 0x00000004
+Buffer: 0x00000002 0x00040003 0x00000004
+Buffer: 0x00000002 0x04000003 0x00000004
+Buffer: 0x00000002 0x00000003 0x00000000
+Buffer: 0x00000002 0x00000003 0x00000404
+Buffer: 0x00000002 0x00000803 0x00000004
+Buffer: 0x00000002 0x00080003 0x00000004
+Buffer: 0x00000002 0x08000003 0x00000004
+Buffer: 0x00000002 0x00000003 0x0000000c
+Buffer: 0x00000002 0x00000003 0x00000804
+Buffer: 0x00000003 0x00000104
+Buffer: 0x00000003 0x00010004
+Buffer: 0x00000003 0x01000004
+Buffer: 0x00000003 0x00000204
+Buffer: 0x00000003 0x00020004
+Buffer: 0x00000003 0x02000004
+Buffer: 0x00000003 0x00000404
+Buffer: 0x00000003 0x00040004
+Buffer: 0x00000003 0x04000004
+Buffer: 0x00000003 0x00000804
+Buffer: 0x00000003 0x00080004
+Buffer: 0x00000003 0x08000004
+Buffer: 0x00000003 0x00001004
+Buffer: 0x00000003 0x00100004
+Buffer: 0x00000003 0x10000004
+Buffer: 0x00000003 0x00002004
+Buffer: 0x00000003 0x00200004
+Buffer: 0x00000003 0x20000004
+Buffer: 0x00000003 0x00004004
+Buffer: 0x00000003 0x00400004
+done
+~~Dr.M~~ NO ERRORS FOUND:
+~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
+~~Dr.M~~       0 unique,     0 total warning(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

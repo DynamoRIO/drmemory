@@ -635,10 +635,10 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_one_input, "",
                      "Specify one fuzz input value to test."NL
                      "         The value is a hexadecimal byte sequence using the literal byte order (i.e., non-endian),"NL
                      "         for example '7f392a' represents byte array { 0x7f, 0x39, 0x2a }.",
-                     "Specify one fuzz input value to test. The value is a hexadecimal byte sequence using the printed byte order (i.e., non-endian), for example '7f392a' represents byte array { 0x7f, 0x39, 0x2a }.")
+                     "Specify one fuzz input value to test. The value is a hexadecimal byte sequence using the printed byte order (i.e., non-endian), for example '7f392a' represents byte array { 0x7f, 0x39, 0x2a }. If the value length does not match the fuzz target buffer length, it will be truncated or zero-padded to fit.")
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_buffer_fixed_size, uint, 0, 0, UINT_MAX,
                     "Set a fixed mutation span",
-                    "Use this option to ignore the size of the buffer argument and instead mutate a fixed span of bytes. If the actual buffer size is smaller than the specified fixed size, the actuals size will be used instead.")
+                    "Use this option to ignore the size of the buffer argument and instead mutate a fixed span of bytes. If the actual buffer size is smaller than the specified fixed size, the actual size will be used instead.")
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_buffer_offset, uint, 0, 0, UINT_MAX,
                     "Set an offset for the mutation span",
                     "Use this option to constrain mutation to a subset of buffer bytes starting at the specified offset from the buffer start.")

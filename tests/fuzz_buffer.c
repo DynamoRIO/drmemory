@@ -42,7 +42,6 @@
 # define EXPORT
 #endif
 
-#define BUFFER_ELEMENTS 4
 #define ELEMENT_SIZE (sizeof(unsigned int))
 
 typedef unsigned int uint;
@@ -74,7 +73,7 @@ repeatme(uint *buffer, size_t size)
         for (i = 0; i < elements; i++) {
             /* buffer value should have at most one bit set */
             if ((buffer[i] & (buffer[i] - 1)) != 0)
-                printf("Error!\n");
+                printf("Error: mutator flipped too many bits!\n");
         }
     } else {
         printf("Buffer:");
@@ -99,13 +98,16 @@ repeatme(uint *buffer, size_t size)
 int
 main(int argc, char **argv)
 {
-    uint i, j, size = BUFFER_ELEMENTS * ELEMENT_SIZE, *buffer = malloc(size);
+    uint i, j, elements = 4, size = elements * ELEMENT_SIZE, *buffer = malloc(size);
+    bool testing_uninit = false;
 
     if (argc > 1 && strcmp(argv[1], "initialize") == 0) {
-        for (i = 0; i < BUFFER_ELEMENTS; i++)
+        for (i = 0; i < elements; i++)
             buffer[i] = (i + 1);
-    } else
+    } else {
+        testing_uninit = true;
         deliberate_errors.uninit = true;
+    }
 
 
     if (argc > 2) {
@@ -123,14 +125,24 @@ main(int argc, char **argv)
 
     repeatme(buffer, size);
 
+    deliberate_errors.uninit = false;
+    if (!deliberate_errors.leak && !testing_uninit/*verify that init is detected */)
+        free(buffer);
+
     for (j = 1; j < 3; j++) {
-        for (i = 0; i < BUFFER_ELEMENTS; i++)
+        elements--;
+        size = elements * ELEMENT_SIZE;
+        if (!testing_uninit) /* verify that init is maintained for the whole fuzz pass */
+            buffer = malloc(size);
+        for (i = 0; i < elements; i++)
             buffer[i] = (i + j + 1);
         repeatme(buffer, size);
+        if (!testing_uninit) /* reusing the buffer for this test */
+            free(buffer);
     }
 
-    if (!deliberate_errors.leak)
-        free(buffer);
+    if (testing_uninit)
+        free(buffer); /* now free for the one test that kept the original buffer */
 
     printf("done\n");
     return 0;

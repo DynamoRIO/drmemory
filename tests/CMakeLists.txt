@@ -976,6 +976,16 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild_ex(fuzz_buffer.leak fuzz_buffer
       "initialize;leak" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
   endif (NOT X64)
+  set(fuzz_buffer_drmem_ops "-fuzz_target;<main>!repeatme|2|0|1|20")
+  set(fixed_size_drmem_ops "-fuzz_buffer_fixed_size;11")
+  newtest_nobuild_ex(fuzz_buffer.fixed_size fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${fixed_size_drmem_ops}" "" OFF "" 0 "")
+  set(offset_drmem_ops "-fuzz_buffer_offset;9")
+  newtest_nobuild_ex(fuzz_buffer.offset fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${offset_drmem_ops}" "" OFF "" 0 "")
+  set(fixed_with_offset_drmem_ops "-fuzz_buffer_fixed_size;5;-fuzz_buffer_offset;5")
+  newtest_nobuild_ex(fuzz_buffer.offset fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${fixed_with_offset_drmem_ops}" "" OFF "" 0 "")
   set(fuzz_buffer_drmem_ops "-fuzz_target;fuzz_buffer${app_extension}!repeatme|2|0|1|10")
   newtest_nobuild_ex(fuzz_buffer.module_name fuzz_buffer
     "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")

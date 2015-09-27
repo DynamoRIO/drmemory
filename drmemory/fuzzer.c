@@ -78,10 +78,12 @@ typedef struct _callconv_args_t callconv_args_t; /* defined under shadow banner 
 /* Maintains fuzzing data and state during a fuzz pass. One instance per thread. */
 typedef struct _fuzz_state_t {
     bool repeat;
+    bool mutator_span_empty; /* mutation span is empty for this fuzz pass */
     uint repeat_index;
     uint skip_initial;       /* number of target invocations remaining to skip */
     thread_id_t thread_id;   /* always safe to access without lock */
     byte *input_buffer;      /* reference to the fuzz target's buffer arg */
+    byte *mutation_start;    /* start of mutation region within the input_buffer */
     /* While these two fields are thread-local like the others, they may be accessed
      * by another thread at any time, e.g. during error reporting. Acquire the
      * fuzz_state_lock before accessing or updating them.
@@ -676,12 +678,12 @@ pattern_reset_redzone()
 static inline void
 apply_singleton_input(fuzz_state_t *fuzz_state)
 {
-    uint i, b, len = strlen(fuzz_target.singleton_input), byte_count = (len / 2);
+    uint len = MIN(fuzz_state->input_size * 2, strlen(fuzz_target.singleton_input));
+    uint i, b, singleton_byte_count = (len / 2);
 
     ASSERT(len % 2 == 0, "Singleton input must have 2 digits per byte");
-    ASSERT(fuzz_state->input_size == byte_count, "Singleton input has incorrect size");
 
-    for (i = 0; i < byte_count; i++) {
+    for (i = 0; i < singleton_byte_count; i++) {
         if (dr_sscanf(fuzz_target.singleton_input + (i * 2), "%02x", &b) != 1) {
             NOTIFY_ERROR("Failed to parse '%c%c' as a hexadecimal byte."NL,
                          fuzz_target.singleton_input[i * 2],
@@ -690,24 +692,17 @@ apply_singleton_input(fuzz_state_t *fuzz_state)
         }
         fuzz_state->input_buffer[i] = b;
     }
+    for (; i < fuzz_state->input_size; i++) /* fill remainder with zeros */
+        fuzz_state->input_buffer[i] = 0;
 }
 
-static inline void
+static inline bool
 find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
     byte *input_buffer;
     drmf_status_t res;
 
     dr_mutex_lock(fuzz_state_lock);
-
-    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
-                         true/*original*/, (void **) &input_buffer);
-    if (res != DRMF_SUCCESS) {
-        NOTIFY_ERROR("Failed to obtain reference to the buffer arg for the fuzz target"NL);
-        ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
-        fuzz_target.enabled = false;
-        goto unlock;
-    }
 
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
                          true/*original*/, (void **) &fuzz_state->input_size);
@@ -729,12 +724,28 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
         goto unlock;
     }
 
+    if (fuzz_target.buffer_offset >= fuzz_state->input_size) {
+        fuzz_state->mutator_span_empty = true;
+        goto unlock;
+    }
+
+    res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
+                         true/*original*/, (void **) &input_buffer);
+    if (res != DRMF_SUCCESS) {
+        NOTIFY_ERROR("Failed to obtain reference to the buffer arg for the fuzz target"
+                     NL);
+        ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
+        fuzz_target.enabled = false;
+        goto unlock;
+    }
+
     fuzz_state->input_buffer = input_buffer;
     fuzz_state->input_buffer_copy = global_alloc(fuzz_state->input_size, HEAPSTAT_MISC);
     memcpy(fuzz_state->input_buffer_copy, input_buffer, fuzz_state->input_size);
 
 unlock:
     dr_mutex_unlock(fuzz_state_lock);
+    return (fuzz_target.enabled && !fuzz_state->mutator_span_empty);
 }
 
 static inline void
@@ -760,8 +771,10 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     if (!fuzz_target.enabled || fuzz_state->skip_initial > 0)
         return;
 
-    if (is_fuzz_entry)
-        find_target_buffer(fuzz_state, fuzzcxt);
+    if (is_fuzz_entry) {
+        if (!find_target_buffer(fuzz_state, fuzzcxt))
+            return;
+    }
 
     if (shadow_config.save_restore_enabled) {
         if (is_fuzz_entry) {
@@ -795,9 +808,9 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 
     if (is_fuzz_entry) {
         const drfuzz_mutator_options_t *mutator_options;
-        byte *mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
         size_t mutation_size = fuzz_state->input_size - fuzz_target.buffer_offset;
 
+        fuzz_state->mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
         if (fuzz_target.buffer_fixed_size > 0 &&
             fuzz_target.buffer_fixed_size < mutation_size)
             mutation_size = fuzz_target.buffer_fixed_size;
@@ -821,7 +834,7 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             mutator_options = &DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
         else
             mutator_options = fuzz_target.mutator_options;
-        res = drfuzz_mutator_start(&fuzz_state->mutator, mutation_start,
+        res = drfuzz_mutator_start(&fuzz_state->mutator, fuzz_state->mutation_start,
                                    mutation_size, mutator_options);
         if (res != DRMF_SUCCESS) {
             NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
@@ -830,7 +843,7 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     }
 
     if (fuzz_target.singleton_input == NULL) {
-        drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->input_buffer);
+        drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->mutation_start);
         if (fuzz_target.repeat_count == 0) /* repeating until mutator exhausts */
             fuzz_state->repeat = drfuzz_mutator_has_next_value(fuzz_state->mutator);
     } else {
@@ -856,6 +869,10 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
 
     if (fuzz_state->skip_initial > 0) {
         fuzz_state->skip_initial--;
+        return false;
+    }
+    if (fuzz_state->mutator_span_empty) {
+        fuzz_state->mutator_span_empty = false; /* reset for the next pass */
         return false;
     }
 

@@ -18,13 +18,4 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Buffer: 0x04030201 0x08070605 0x0c0b0a09 0x100f0e0d
-Buffer: 0x04030201 0x08070605 0x0c0b0a09
-Buffer: 0x04030201 0x08070605
-done
-~~Dr.M~~ NO ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+# empty
