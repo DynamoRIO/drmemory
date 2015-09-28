@@ -505,6 +505,7 @@ if (UNIX)
   # i#1264: the name "pthreads" on an executable breaks 2.8.11 find_package(Threads)
   # so we use "pthread_test".  The compare files are still "pthreads.*".
   newtest_ex(pthread_test pthreads.c "" "" "" OFF "pthreads" 0)
+  append_test_compile_flags(pthread_test "-Wno-uninitialized")
   target_link_libraries(pthread_test pthread)
   if (APPLE)
     set(loaderlib_flags "-Wl,-U,_import_does_not_exist")
