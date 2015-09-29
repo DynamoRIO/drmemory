@@ -1238,14 +1238,12 @@ if (UNIX)
 else (UNIX)
   set(DISABLE_OPTS "/Od")
 endif (UNIX)
-# XXX: if we require cmake 2.8.6 we can use APPEND_STRING.
-# Or we could redo all our flags to be lists and use APPEND.
-get_source_file_property(cur_flags common/alloc_unopt.c COMPILE_FLAGS)
-if (NOT cur_flags)
-  set(cur_flags "")
-endif (NOT cur_flags)
-set_property(SOURCE common/alloc_unopt.c
-  PROPERTY COMPILE_FLAGS "${cur_flags} ${DISABLE_OPTS}")
+append_src_compile_flags(common/alloc_unopt.c "${DISABLE_OPTS}")
+if (UNIX)
+  # i#1776: avoid an infinite loop in replace_memset.
+  # We have no per-function optimization so we apply to the whole file.
+  append_src_compile_flags(drmemory/replace.c "${DISABLE_OPTS}")
+endif ()
 
 # symbol query tool
 set(symquery_srcs tools/symquery.c)
