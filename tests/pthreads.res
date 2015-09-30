@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,4 +21,5 @@
 #
 Error #1: UNADDRESSABLE ACCESS beyond top of stack: reading 4 byte(s)
 pthreads.c:80
-refers to 208 byte(s) beyond the top of the stack
+# The precise number of bytes can vary so we just match the tail:
+byte(s) beyond the top of the stack
