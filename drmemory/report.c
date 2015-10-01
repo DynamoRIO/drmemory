@@ -529,6 +529,7 @@ is_module_wildcard(suppress_spec_t *spec)
     return (spec->num_frames == 1 &&
             spec->instruction == NULL &&
             spec->frames[0].is_module &&
+            spec->frames[0].func != NULL &&
             spec->frames[0].func[0] == '*' &&
             spec->frames[0].func[1] == '\0');
 }
