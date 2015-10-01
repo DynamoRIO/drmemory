@@ -35,7 +35,6 @@ const char *
 strcasestr(const char *text, const char *pattern)
 {
     const char *cur_text, *cur_pattern, *root;
-    char ut, up; /* upper case letter of text and pattern */
     cur_text = text;
     root = text;
     cur_pattern = pattern;
@@ -44,16 +43,7 @@ strcasestr(const char *text, const char *pattern)
             return root;
         if (*cur_text == '\0')
             return NULL;
-        ut = *cur_text;
-        up = *cur_pattern;
-        /* We use upper case instead of lower case for int18n,
-         * xref https://msdn.microsoft.com/en-us/library/ms994325.aspx.
-         */
-        if (IF_WINDOWS(__isascii(ut) &&) islower(ut))
-            ut = (char)toupper(ut);
-        if (IF_WINDOWS(__isascii(up) &&) islower(up))
-            up = (char)toupper(up);
-        if (ut == up) {
+        if ((char)tolower(*cur_text) == (char)tolower(*cur_pattern)) {
             cur_text++;
             cur_pattern++;
         } else {
