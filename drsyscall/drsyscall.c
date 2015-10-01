@@ -248,9 +248,12 @@ drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
         return DRMF_ERROR_NOT_FOUND;
     }
 #ifdef DEBUG
-    ASSERT(stri_eq(sysinfo->name, name) ||
-           /* account for NtUser*, etc. prefix differences */
-           strcasestr(sysinfo->name, name) != NULL , "name<->num mismatch");
+    ASSERT(stri_eq(sysinfo->name, name)
+           IF_WINDOWS(||
+                      /* account for NtUser*, etc. prefix differences, but only on
+                       * Windows b/c strcasestr's tolower is undef on Linux
+                       */
+                      strcasestr(sysinfo->name, name) != NULL), "name<->num mismatch");
 #endif
     *syscall = (drsys_syscall_t *) sysinfo;
     return DRMF_SUCCESS;

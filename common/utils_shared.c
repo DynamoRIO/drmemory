@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -43,6 +43,11 @@ strcasestr(const char *text, const char *pattern)
             return root;
         if (*cur_text == '\0')
             return NULL;
+        /* XXX DRi#943: toupper is better, for int18n, and we need to call
+         * islower() first to be safe for all tolower() implementations.
+         * Even better would be switching to our own locale-independent case
+         * folding.
+         */
         if ((char)tolower(*cur_text) == (char)tolower(*cur_pattern)) {
             cur_text++;
             cur_pattern++;

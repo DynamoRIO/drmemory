@@ -583,6 +583,11 @@ text_matches_pattern(const char *text, const char *pattern,
         cmp_cur = *cur_text;
         cmp_pat = *pattern;
         if (ignore_case) {
+            /* XXX DRi#943: toupper is better, for int18n, and we need to call
+             * islower() first to be safe for all tolower() implementations.
+             * Even better would be switching to our own locale-independent case
+             * folding.
+             */
             cmp_cur = (char) tolower(cmp_cur);
             cmp_pat = (char) tolower(cmp_pat);
         }
