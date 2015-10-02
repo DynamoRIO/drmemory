@@ -96,6 +96,7 @@ add_library(drfuzz_static STATIC ${srcs_static} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 configure_DynamoRIO_client(drfuzz_static)
 configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static" "drsyms_static")
+add_static_lib_debug_info(drfuzz_static ${DRMF_INSTALL_BIN})
 export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 
 # We build a separate static target for internal use that has our

@@ -138,6 +138,7 @@ configure_DynamoRIO_client(drsyscall_static)
 use_DynamoRIO_extension(drsyscall_static drmgr_static)
 use_DynamoRIO_extension(drsyscall_static drcontainers)
 configure_drsyscall_target(drsyscall_static)
+add_static_lib_debug_info(drsyscall_static ${DRMF_INSTALL_BIN})
 export_drsyscall_target(drsyscall_static "drmgr_static")
 
 # We build a separate static target for internal use that has our

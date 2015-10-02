@@ -106,6 +106,7 @@ configure_DynamoRIO_client(umbra_static)
 use_DynamoRIO_extension(umbra_static drmgr_static)
 use_DynamoRIO_extension(umbra_static drcontainers)
 configure_umbra_target(umbra_static)
+add_static_lib_debug_info(umbra_static ${DRMF_INSTALL_BIN})
 export_umbra_target(umbra_static "drmgr_static")
 
 # We build a separate static target for internal use that has our

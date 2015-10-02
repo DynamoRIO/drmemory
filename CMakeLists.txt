@@ -277,6 +277,21 @@ endif ()
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
 
+# i#1781: cmake 2.8.12+ fails to create static lib pdb by default
+# XXX: we should share this with DR's copy
+macro(add_static_lib_debug_info target dest_dir)
+  if (WIN32)
+    if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
+        "${CMAKE_VERSION}" VERSION_GREATER "3.1")
+      append_property_string(TARGET ${target}
+        COMPILE_PDB_NAME${location_suffix} "${target}"
+        COMPILE_PDB_OUTPUT_DIRECTORY{location_suffix} "${dest_dir}")
+    else ()
+      # We just don't support it for < 3.1
+    endif ()
+  endif ()
+endmacro()
+
 if (UNIX)
   # there's no cmake warning control so we hardcode it
   # disabling strict aliasing since giving weird warning I'm not sure how to fix:

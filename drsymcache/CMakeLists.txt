@@ -99,6 +99,7 @@ install(FILES drsymcache.h DESTINATION ${DRMF_INSTALL_INC})
 add_library(drsymcache_static STATIC ${srcs_static} ${external_srcs})
 configure_DynamoRIO_client(drsymcache_static)
 configure_drsymcache_target(drsymcache_static "drmgr_static" "drsyms_static")
+add_static_lib_debug_info(drsymcache_static ${DRMF_INSTALL_BIN})
 export_drsymcache_target(drsymcache_static "drmgr_static" "drsyms_static")
 
 # We build a separate static target for internal use that has our
