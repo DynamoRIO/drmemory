@@ -174,7 +174,7 @@ if (APPLE)
   math(EXPR VERSION_NUMBER_PATCHLEVEL "(${VERSION_NUMBER_PATCHLEVEL} % 200) + 56")
 endif (APPLE)
 
-set(VERSION_NUMBER_DEFAULT "1.8.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "1.9.${VERSION_NUMBER_PATCHLEVEL}")
 # do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # avoid "VERSION_NUMBER" name since conflics w/ DR's var

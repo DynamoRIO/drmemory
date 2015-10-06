@@ -60,7 +60,9 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.8.0 include:
+The changes between \TOOL_VERSION and version 1.9.0 include:
+
+The changes between version 1.9.0 and version 1.8.0 include:
  - Added support for Mac OSX Yosemite.
  - Added Dr. Fuzz, a fuzz testing framework that facilitates repeated
    execution of any program function while mutating the arguments.
