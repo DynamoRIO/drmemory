@@ -56,6 +56,7 @@ class DeliberateErrors {
         DeliberateErrors(const char *deliberate_error);
 
     private:
+        bool uninit;
         bool overread;
         bool underread;
         bool overwrite;
@@ -95,10 +96,18 @@ BufferPrinter::repeatme(uint *buffer, size_t size)
 {
     uint i = 0, elements = (size / ELEMENT_SIZE);
 
-    printf("Buffer:");
-    for (i = 0; i < elements; i++)
-        printf(" 0x%08x", buffer[i]);
-    printf("\n");
+    if (deliberate_errors->uninit) {
+        for (i = 0; i < elements; i++) {
+            /* buffer value should have at most one bit set */
+            if ((buffer[i] & (buffer[i] - 1)) != 0)
+                printf("Error!\n");
+        }
+    } else {
+        printf("Buffer:");
+        for (i = 0; i < elements; i++)
+            printf(" 0x%08x", buffer[i]);
+        printf("\n");
+    }
 
     if ((++deliberate_errors->fuzz_iteration % 2) == 0) {
         if (deliberate_errors->overread)
@@ -114,6 +123,7 @@ BufferPrinter::repeatme(uint *buffer, size_t size)
 
 DeliberateErrors::DeliberateErrors(const char *deliberate_error)
 {
+    this->uninit = (strcmp(deliberate_error, "uninit") == 0);
     this->overread = (strcmp(deliberate_error, "overread") == 0);
     this->underread = (strcmp(deliberate_error, "underread") == 0);
     this->overwrite = (strcmp(deliberate_error, "overwrite") == 0);
@@ -126,10 +136,14 @@ int
 main(int argc, char **argv)
 {
     uint i, size = BUFFER_ELEMENTS * ELEMENT_SIZE, *buffer = new uint[BUFFER_ELEMENTS];
-    const char *deliberate_error = (argc > 2 ? argv[2] : "");
+    /* assuming argv[1] must be "initialize" if exists */
+    const char *deliberate_error = (argc > 2 ? argv[2] : (argc > 1 ? "" : "uninit"));
     BufferPrinter bp(deliberate_error);
 
-    if (argc > 1 && strcmp(argv[1], "initialize") == 0) {
+    if (argc > 1) {
+        /* argv[1] must be "initialize" */
+        if (strcmp(argv[1], "initialize") != 0)
+            return 1;
         for (i = 0; i < BUFFER_ELEMENTS; i++)
             buffer[i] = (i + 1);
     }

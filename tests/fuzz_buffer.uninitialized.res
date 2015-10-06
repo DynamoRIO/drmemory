@@ -21,8 +21,3 @@
 Error #1: UNINITIALIZED READ:
 The error thread was executing the fuzz target with input value:
 01000000 00000000 00000000 00000000
-%if UNIX
-Error #2: UNINITIALIZED READ:
-The error thread was executing the fuzz target with input value:
-01000000 00000000 00000000 00000000
-%endif

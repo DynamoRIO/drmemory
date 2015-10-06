@@ -58,6 +58,7 @@ typedef struct _deliberate_errors_t {
     bool overwrite;
     bool underwrite;
     bool leak;
+    bool uninit;
     uint fuzz_iteration;
 } deliberate_errors_t;
 
@@ -69,10 +70,18 @@ repeatme(uint *buffer, size_t size)
 {
     uint i, elements = (size / ELEMENT_SIZE);
 
-    printf("Buffer:");
-    for (i = 0; i < elements; i++)
-        printf(" 0x%08x", buffer[i]);
-    printf("\n");
+    if (deliberate_errors.uninit) {
+        for (i = 0; i < elements; i++) {
+            /* buffer value should have at most one bit set */
+            if ((buffer[i] & (buffer[i] - 1)) != 0)
+                printf("Error!\n");
+        }
+    } else {
+        printf("Buffer:");
+        for (i = 0; i < elements; i++)
+            printf(" 0x%08x", buffer[i]);
+        printf("\n");
+    }
 
     if ((++deliberate_errors.fuzz_iteration % 2) == 0) {
         if (deliberate_errors.overread)
@@ -95,7 +104,9 @@ main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "initialize") == 0) {
         for (i = 0; i < BUFFER_ELEMENTS; i++)
             buffer[i] = (i + 1);
-    }
+    } else
+        deliberate_errors.uninit = true;
+
 
     if (argc > 2) {
         if (strcmp(argv[2], "overread") == 0)
