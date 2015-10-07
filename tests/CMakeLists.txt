@@ -959,6 +959,9 @@ if (TOOL_DR_MEMORY)
   set(fuzz_one_input_drmem_ops "-fuzz_one_input;0102030405060708090a0b0c0d0e0f10")
   newtest_nobuild_ex(fuzz_buffer.one-input fuzz_buffer
     "initialize" "${fuzz_buffer_drmem_ops};${fuzz_one_input_drmem_ops}" "" OFF "" 0 "")
+  set(skip_initial_drmem_ops "-fuzz_skip_initial;2")
+  newtest_nobuild_ex(fuzz_buffer.skip_initial fuzz_buffer
+    "initialize" "${fuzz_buffer_drmem_ops};${skip_initial_drmem_ops}" "" OFF "" 0 "")
   if (NOT X64) # test detection of errors that requires shadow-memory
     newtest_nobuild_ex(fuzz_buffer.uninitialized fuzz_buffer
       "" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")

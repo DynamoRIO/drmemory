@@ -31,13 +31,17 @@
 
 /* Initialize the fuzzer. */
 void
-fuzzer_init(client_id_t client_id, bool shadow_memory_enabled, uint pattern,
-            uint redzone_size, bool check_uninitialized
-            _IF_WINDOWS(bool fuzz_mangled_names));
+fuzzer_init(client_id_t client_id);
 
 /* Exit the fuzzer. */
 void
 fuzzer_exit();
+
+/* Fuzz the target specified by the user in the command line options, including all
+ * fuzzing qualifiers such as the mutator descriptor, singleton input, etc.
+ */
+void
+fuzzer_fuzz_option_target();
 
 /* Set up fuzzing as specified by the target_descriptor, which has the form:
  *

@@ -90,7 +90,7 @@ repeatme(uint *buffer, size_t size)
 int
 main(int argc, char **argv)
 {
-    uint i, size = BUFFER_ELEMENTS * ELEMENT_SIZE, *buffer = malloc(size);
+    uint i, j, size = BUFFER_ELEMENTS * ELEMENT_SIZE, *buffer = malloc(size);
 
     if (argc > 1 && strcmp(argv[1], "initialize") == 0) {
         for (i = 0; i < BUFFER_ELEMENTS; i++)
@@ -111,6 +111,12 @@ main(int argc, char **argv)
     }
 
     repeatme(buffer, size);
+
+    for (j = 1; j < 3; j++) {
+        for (i = 0; i < BUFFER_ELEMENTS; i++)
+            buffer[i] = (i + j + 1);
+        repeatme(buffer, size);
+    }
 
     if (!deliberate_errors.leak)
         free(buffer);

@@ -1888,20 +1888,8 @@ dr_init(client_id_t id)
     }
 
     if (option_specified.fuzz_target) {
-        fuzzer_init(client_id, options.shadowing, options.redzone_size, options.pattern,
-                    options.check_uninitialized
-                    _IF_WINDOWS(option_specified.fuzz_mangled_names));
-        fuzzer_fuzz_target(options.fuzz_target);
-        if (option_specified.fuzz_mutator) {
-            if (option_specified.fuzz_one_input) {
-                NOTIFY_ERROR("Cannot specify both a mutator configuration and a single "
-                             "input to fuzz"NL);
-                dr_abort();
-            }
-            fuzzer_set_mutator_descriptor(options.fuzz_mutator);
-        }
-        if (option_specified.fuzz_one_input)
-            fuzzer_set_singleton_input(options.fuzz_one_input);
+        fuzzer_init(client_id);
+        fuzzer_fuzz_option_target();
     }
 
     if (options.pattern != 0)
