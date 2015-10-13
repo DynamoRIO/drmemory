@@ -19,7 +19,11 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required (VERSION 2.4)
+cmake_minimum_required (VERSION 2.6)
+
+# The pre-commit suite is a short suite.
+# Automated testing machines should pass the "long" parameter to enable
+# the long suite.
 
 # custom args beyond the base runsuite_common_pre.cmake:
 # arguments are a ;-separated list (must escape as \; from ctest_run_script())
@@ -170,14 +174,15 @@ if (NOT arg_drmemory_only)
   set(tools ${tools} "TOOL_DR_HEAPSTAT:BOOL=ON")
 endif ()
 if (NOT arg_drheapstat_only)
-  # this var is ignored but easier to read than having ""
   set(tools ${tools} "TOOL_DR_MEMORY:BOOL=ON")
 endif ()
 foreach (tool ${tools})
   if ("${tool}" MATCHES "HEAPSTAT")
-     set(name "drheapstat")
+    set(name "drheapstat")
+    set(dbg_tests_only_in_long ON)
   else ("${tool}" MATCHES "HEAPSTAT")
-     set(name "drmemory")
+    set(name "drmemory")
+    set(dbg_tests_only_in_long OFF)
   endif ("${tool}" MATCHES "HEAPSTAT")
 
   if (NOT arg_vmk_only)
@@ -186,13 +191,13 @@ foreach (tool ${tools})
       ${tool}
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Debug
-      " OFF ON "")
+      " ${dbg_tests_only_in_long} ON "")
     testbuild_ex("${name}-rel-32" OFF "
       ${base_cache}
       ${tool}
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
-      " OFF ON "") # we do run some release tests in short suite
+      " ON ON "") # no release tests in short suite
     # DRi#58: core DR does not yet support 64-bit Mac
     if ("${tool}" MATCHES "MEMORY" AND NOT APPLE)
       testbuild_ex("${name}-dbg-64" ON "
@@ -206,7 +211,7 @@ foreach (tool ${tools})
          ${tool}
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Release
-         " OFF ON "")
+         " ON ON "") # no release tests in short suite
     endif ()
   endif (NOT arg_vmk_only)
   if (UNIX)
