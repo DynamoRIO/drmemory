@@ -49,13 +49,16 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
 
-cmake_minimum_required (VERSION 2.6)
+# We need 2.8.2 for ctest_update() to update git submodules
+cmake_minimum_required (VERSION 2.8.2)
 
 # Instructions to set up a machine to run nightly regression tests:
 #
 # 1) Pick a directory $nightly.  Create $nightly/run.
 # 2) Check out the sources (read-only):
-#    cd $nightly; git clone https://github.com/DynamoRIO/drmemory.git src
+#    cd $nightly
+#    git clone https://github.com/DynamoRIO/drmemory.git src
+#    git submodule update --init
 # 3) To keep the sources pristine, copy this file from
 #    $nightly/src/tests/nightly.cmake to $nightly/nightly.cmake.  Pick a site
 #    name and change the site= string below in $nightly/nightly.cmake.  The
