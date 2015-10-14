@@ -47,6 +47,15 @@
 # define _stricmp strcasecmp
 #endif
 
+#if defined(MACOS) && !defined(X64)
+/* size_t is unsigned long */
+# define SIZE_FMT "%lx"
+# define SIZE_FMTX "0x%lx"
+#else
+# define SIZE_FMT PIFMT
+# define SIZE_FMTX PIFX
+#endif
+
 /* forward decls */
 static void symquery_lookup_address(const char *dllpath, size_t modoffs);
 static void symquery_lookup_symbol(const char *dllpath, const char *sym);
@@ -208,7 +217,7 @@ _tmain(int argc, TCHAR *targv[])
             /* kind of a hack: assumes i hasn't changed and that -s/-a is last option */
             for (; i < argc; i++) {
                 if (addr2sym) {
-                    if (sscanf(argv[i], PIFMT, &modoffs) == 1)
+                    if (sscanf(argv[i], SIZE_FMT, &modoffs) == 1)
                         symquery_lookup_address(dll, modoffs);
                     else
                         printf("ERROR: unknown input %s\n", argv[i]);
@@ -230,7 +239,7 @@ _tmain(int argc, TCHAR *targv[])
             /* Ensure we support spaces in paths by using ; to split.
              * Since ; separates PATH, no Windows dll will have ; in its name.
              */
-            if (sscanf(line, "%"MAX_PATH_STR"[^;];"PIFMT, (char *)&modpath,
+            if (sscanf(line, "%"MAX_PATH_STR"[^;];"SIZE_FMT, (char *)&modpath,
                        &modoffs) == 2) {
                 symquery_lookup_address(modpath, modoffs);
                 fflush(stdout); /* ensure flush in case piped */
@@ -361,12 +370,12 @@ symquery_lookup_address(const char *dllpath, size_t modoffs)
         if (sym.name_available_size >= sym.name_size)
             printf("WARNING: function name longer than max: %s\n", sym.name);
         if (show_func)
-            printf("%s+"PIFX"\n", sym.name, (modoffs - sym.start_offs));
+            printf("%s+"SIZE_FMTX"\n", sym.name, (modoffs - sym.start_offs));
 
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
             printf("??:0\n");
         } else {
-            printf("%s:%"INT64_FORMAT"u+"PIFX"\n", sym.file, sym.line,
+            printf("%s:%"INT64_FORMAT"u+"SIZE_FMTX"\n", sym.file, sym.line,
                    sym.line_offs);
         }
     } else {
@@ -386,7 +395,7 @@ symquery_lookup_symbol(const char *dllpath, const char *sym)
         get_and_print_debug_kind(dllpath);
     symres = drsym_lookup_symbol(dllpath, sym, &modoffs, demangle_flags);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-        printf("+"PIFX"\n", modoffs);
+        printf("+"SIZE_FMTX"\n", modoffs);
     } else {
         if (verbose)
             printf("drsym error %d looking up \"%s\" in \"%s\"\n", symres, sym, dllpath);
@@ -400,7 +409,7 @@ search_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     const char *match = (const char *) data;
     if (match == NULL || strcmp(info->name, match) == 0)
-        printf("%s +"PIFX"-"PIFX"\n", info->name, info->start_offs,
+        printf("%s +"SIZE_FMTX"-"SIZE_FMTX"\n", info->name, info->start_offs,
                info->end_offs);
     return true; /* keep iterating */
 }
