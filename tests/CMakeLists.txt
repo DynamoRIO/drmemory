@@ -602,7 +602,9 @@ if (TOOL_DR_MEMORY)
     "" OFF "registers.blacklist" 0 "")
 
   # -replace_malloc is now the default, so test wrapping
-  newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+  if (WIN32) # i#1781: fails on many Linux machines so disabling there
+    newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+  endif ()
   if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
     # this test crashes on win8 so we only run it on older Windows
     if (cs2bug_flags STREQUAL "")

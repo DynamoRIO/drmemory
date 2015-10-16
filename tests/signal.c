@@ -294,7 +294,7 @@ int main(int argc, char *argv[])
     rc = sigaltstack(&sigstack, NULL);
     ASSERT_NOERR(rc);
     /* Although "man sigaltstack" claims ss_sp and ss_size are ignored when
-     * SS_DISABLE is set, on Mac we get ENOMEM if we clear ss_sp beforehand.
+     * SS_DISABLE is set, on Mac we get ENOMEM if we clear ss_size beforehand.
      */
     free(sigstack.ss_sp);
     sigstack.ss_sp = 0;
