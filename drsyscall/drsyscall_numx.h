@@ -128,7 +128,7 @@ USER32(NtDCompositionSubmitDWMBatch                      ,   NONE,   NONE,   NON
 USER32(NtDCompositionSynchronize                         ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE, 0x1146,   NONE,       NONE, 0x1151, 0x141d, 0x0000115b, 0x115b)
 USER32(NtDCompositionTelemetryAnimationScenarioBegin     ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE, 0x1152, 0x1407, 0x0000115c, 0x115c)
 USER32(NtDCompositionTelemetryAnimationScenarioReference ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE, 0x1153, 0x1408, 0x0000115d, 0x115d)
-USER32(NtDCompositionTelemetryAnimationScenarioUnreference,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE, 0x1154, 0x140e, 0x0000115e, 0x1159)
+USER32(NtDCompositionTelemetryAnimationScenarioUnreference,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE, 0x1154, 0x1409, 0x0000115e, 0x1159)
 USER32(NtDCompositionTelemetrySetApplicationId           ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE, 0x1155, 0x1406, 0x0000115f, 0x115f)
 USER32(NtDCompositionTelemetryTouchInteractionBegin      ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE, 0x1147,   NONE,       NONE, 0x1156, 0x1403, 0x00001160, 0x1160)
 USER32(NtDCompositionTelemetryTouchInteractionEnd        ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE, 0x1148,   NONE,       NONE, 0x1157, 0x1405, 0x00001161, 0x1161)
