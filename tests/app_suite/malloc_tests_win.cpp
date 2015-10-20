@@ -29,7 +29,7 @@ TEST(MallocTests, HeapCompact) {
     HANDLE heap = GetProcessHeap();
     ASSERT_NE(heap, (HANDLE)NULL);
     SIZE_T largest = HeapCompact(heap, 0);
-    ASSERT_GT(largest, 1024);
+    ASSERT_GT(largest, 64);
 }
 
 TEST(MallocTests, HeapInformation) {
