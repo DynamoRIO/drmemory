@@ -39,6 +39,8 @@ my %name_map = (
     'NtUserPrivateSetRipFlags' => 'NtUserSetRipFlags',
     'NtUserRealEnableScrollBar' => 'NtUserEnableScrollBar',
 
+    'RtlGetCurrentProcessorNumber' => 'NtGetCurrentProcessorNumber',
+
     # win8
     'NtUserSkipPointerFrameMessages' => 'NtUserDiscardPointerFrameMessages',
     'NtUserSetCoalescableTimer' => 'NtUserSetTimer',
@@ -47,7 +49,7 @@ my %name_map = (
 
     # win8.1
     'NtUserPhysicalToLogicalPointForPerMonitorDPI' => 'NtUserPerMonitorDPIPhysicalToLogicalPoint',
-     'NtUserLogicalToPhysicalPointForPerMonitorDPI' => 'NtUserLogicalToPerMonitorDPIPhysicalPoint',
+    'NtUserLogicalToPhysicalPointForPerMonitorDPI' => 'NtUserLogicalToPerMonitorDPIPhysicalPoint',
 
     # win10
     "NtUserGetDpiSystemMetrics" => "NtUserGetDpiMetrics",
@@ -135,7 +137,7 @@ shift;
 my $new_os = @ARGV;
 my $old_os = 0;
 
-my @big;
+my @maxlen;
 
 open(IN,"<$existing") || die"Error opening $existing\n";
 while (<IN>) {
@@ -155,7 +157,8 @@ while (<IN>) {
         for (my $m = 0; $m < @matches; $m++) {
             # we append to the end, so old OS entries go first
             $nums{$name}[$m] = $matches[$m];
-            $big[$m] = (length($matches[$m]) > 6);
+            $maxlen[$m] = length($matches[$m])
+                unless (length($matches[$m]) < $maxlen[$m]);
         }
     }
 }
@@ -170,19 +173,21 @@ if ($prefix =~ /USER32/ || $prefix =~ /IMM32/) {
 $os = $old_os;
 while ($#ARGV >= 0) {
     open(IN,"<$ARGV[0]") || die"Error opening $ARGV[0]\n";
+    $maxlen[$os] = 0;
     while (<IN>) {
         if (/(0x\w+) .*= (\w+)/) {
             my $sysnum = $1;
             my $name = $2;
 
-            # only wow64 needs more than 4 digits
-            if (length($sysnum) > 6 && $ARGV[0] !~ /wow64/) {
-                die "non-wow64 has upper digits: $_" if ($sysnum !~ /^0x0000/);
-                $sysnum =~ s/^0x0000/0x/;
-                $big[$os] = 0;
-            } else {
-                $big[$os] = (length($sysnum) > 6);
+            # only wow64 needs more than 4 digits, and only for later OS versions
+            if (length($sysnum) > 6 && $sysnum !~ /^0x0000/) {
+                die "non-wow64 has upper digits: $_" if ($ARGV[0] !~ /wow64/);
             }
+            # We want all columns to be minimal length for max digits so we remove
+            # leading zeroes here and re-add later to match max.
+            $sysnum =~ s/0x0*/0x/;
+            $maxlen[$os] = length($sysnum)
+                unless (length($sysnum) < $maxlen[$os]);
 
             # normalize the names
             $name =~ s/^Zw/Nt/;
@@ -231,13 +236,18 @@ foreach my $n (sort (keys %nums)) {
     printf "%s(%-50s", $prefix, $n;
     for (my $i = 0; $i < $os; $i++) {
         if (defined($nums{$n}[$i])) {
-            printf ", %s", $nums{$n}[$i];
-        } else {
-            if ($big[$i]) {
-                printf ",       NONE";
-            } else {
-                printf ",   NONE";
+            # Add leading zeroes to match max length of this column
+            for (my $l = length($nums{$n}[$i]); $l < $maxlen[$i]; $l++) {
+                $nums{$n}[$i] =~ s/0x/0x0/;
             }
+            printf ",%s", $nums{$n}[$i];
+        } else {
+            # Start w/ max padding and remove to match max length for this column
+            my $s = ",      NONE";
+            for (my $l = 10; $l > $maxlen[$i]; $l--) {
+                $s =~ s/, /,/;
+            }
+            printf "$s";
         }
     }
     print ")\n";
