@@ -70,12 +70,12 @@ typedef struct _AFD_HANDLE_ {
 typedef struct _AFD_POLL_INFO {
     LARGE_INTEGER		        Timeout;
     ULONG				HandleCount;
-    ULONG_PTR                               Exclusive;
+    BOOLEAN                             Exclusive;
     AFD_HANDLE			        Handles[1];
 } AFD_POLL_INFO, *PAFD_POLL_INFO;
 
 typedef struct _AFD_ACCEPT_DATA {
-    ULONG				UseSAN;
+    BOOLEAN				UseSAN;
     ULONG				SequenceNumber;
     HANDLE				ListenHandle;
 } AFD_ACCEPT_DATA, *PAFD_ACCEPT_DATA;

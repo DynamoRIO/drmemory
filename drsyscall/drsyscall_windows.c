@@ -2284,10 +2284,14 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     case AFD_SELECT: { /* 9 == 0x12024 */
         AFD_POLL_INFO info;
         uint i;
-        AFD_POLL_INFO *ptr = NULL;
+        AFD_POLL_INFO *ptr = (AFD_POLL_INFO *) inbuf;
         if (ii->arg->pre) {
-            CHECK_DEF(ii, inbuf, offsetof(AFD_POLL_INFO, Handles),
-                      "AFD_POLL_INFO pre-Handles");
+            /* Have to separate the Boolean since padding after it */
+            CHECK_DEF(ii, ptr, sizeof(ptr->Timeout), "AFD_POLL_INFO.Timeout");
+            CHECK_DEF(ii, &ptr->HandleCount, sizeof(ptr->HandleCount),
+                      "AFD_POLL_INFO.HandleCount");
+            CHECK_DEF(ii, &ptr->Exclusive, sizeof(ptr->Exclusive),
+                      "AFD_POLL_INFO.Exclusive");
         }
 
         if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info) ||
@@ -2297,7 +2301,6 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
             break;
         }
 
-        ptr = (AFD_POLL_INFO *) inbuf;
         for (i = 0; i < info.HandleCount; i++) {
             /* I'm assuming Status is an output field */
             if (ii->arg->pre ) {
@@ -2578,7 +2581,15 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
         break;
     }
     case AFD_ACCEPT: { /* 4 == 0x12010 */
-        CHECK_DEF(ii, inbuf, insz, "AFD_ACCEPT_DATA");
+        AFD_ACCEPT_DATA *info = (AFD_ACCEPT_DATA *) inbuf;
+        if (insz != sizeof(AFD_ACCEPT_DATA))
+            WARN("WARNING: invalid size for AFD_ACCEPT_DATA\n");
+        /* Have to separate the Booleans since padding after */
+        CHECK_DEF(ii, inbuf, sizeof(info->UseSAN), "AFD_LISTEN_DATA.UseSAN");
+        CHECK_DEF(ii, &info->SequenceNumber, sizeof(info->SequenceNumber),
+                  "AFD_ACCEPT_DATA.SequenceNumber");
+        CHECK_DEF(ii, &info->ListenHandle, sizeof(info->ListenHandle),
+                  "AFD_ACCEPT_DATA.ListenHandle");
         break;
     }
     default: {
