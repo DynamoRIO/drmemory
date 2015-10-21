@@ -976,17 +976,16 @@ handle_context_access(sysarg_iter_info_t *ii,
                       const sysinfo_arg_t *arg_info,
                       app_pc start, uint size)
 {
-#if !defined(_X86_) || defined(X64)
+#if !defined(X86)
     ASSERT_NOT_IMPLEMENTED();
-    return true;
-#else /* defined(_X86_) */
+#endif
     /* The 'cxt' pointer will only be used for retrieving pointers
      * for the CONTEXT fields, hence we can do without safe_read.
      */
     const CONTEXT *cxt = (CONTEXT *)start;
     DWORD context_flags;
-    if (!report_memarg(ii, arg_info, start, sizeof(context_flags),
-                       "CONTEXT.ContextFlags"))
+    if (!report_memarg(ii, arg_info, (app_pc)&cxt->ContextFlags,
+                       sizeof(cxt->ContextFlags), "CONTEXT.ContextFlags"))
         return true;
     if (!safe_read((void*)&cxt->ContextFlags, sizeof(context_flags),
                    &context_flags)) {
@@ -996,34 +995,11 @@ handle_context_access(sysarg_iter_info_t *ii,
          */
         return true;
     }
-
-    ASSERT(TEST(CONTEXT_i486, context_flags),
-           "ContextFlags doesn't have CONTEXT_i486 bit set");
-
-    /* CONTEXT structure on x86 consists of the following sections:
-     * a) DWORD ContextFlags
-     *
-     * The following fields should be defined if the corresponding
-     * flags are set:
-     * b) DWORD Dr{0...3, 6, 7}        - CONTEXT_DEBUG_REGISTERS,
-     * c) FLOATING_SAVE_AREA FloatSave - CONTEXT_FLOATING_POINT,
-     * d) DWORD Seg{G,F,E,D}s          - CONTEXT_SEGMENTS,
-     * e) DWORD E{di,si,bx,dx,cx,ax}   - CONTEXT_INTEGER,
-     * f) DWORD Ebp, Eip, SegCs, EFlags, Esp, SegSs - CONTEXT_CONTROL,
-     * g) BYTE ExtendedRegisters[...]  - CONTEXT_EXTENDED_REGISTERS.
-     */
-
     if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
 #define CONTEXT_NUM_DEBUG_REGS 6
         if (!report_memarg(ii, arg_info,
                            (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
                            "CONTEXT.DrX"))
-            return true;
-    }
-    if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
-        if (!report_memarg(ii, arg_info,
-                           (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
-                           "CONTEXT.FloatSave"))
             return true;
     }
     /* Segment registers are 16-bits each but stored with 16-bit gaps
@@ -1044,12 +1020,79 @@ handle_context_access(sysarg_iter_info_t *ii,
                            (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, "CONTEXT.SegDs"))
             return true;
     }
+#ifdef X64
+    /* For x64:
+     * CONTEXT_CONTROL         = SegSs, Rsp, SegCs, Rip, and EFlags.
+     * CONTEXT_INTEGER         = Rax, Rcx, Rdx, Rbx, Rbp, Rsi, Rdi, and R8-R15.
+     * CONTEXT_SEGMENTS        = SegDs, SegEs, SegFs, and SegGs.
+     * CONTEXT_FLOATING_POINT  = Xmm0-Xmm15.
+     * CONTEXT_DEBUG_REGISTERS = Dr0-Dr3 and Dr6-Dr7.
+     */
+    if (TESTALL(CONTEXT_CONTROL, context_flags)) {
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, "CONTEXT.SegSs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Rsp, sizeof(cxt->Rsp), "CONTEXT.Rsp"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, "CONTEXT.SegCs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Rip, sizeof(cxt->Rip), "CONTEXT.Rip"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), "CONTEXT.Eflags"))
+            return true;
+    }
+    if (TESTALL(CONTEXT_INTEGER, context_flags)) {
+        /* Rax through Rbx */
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Rax, (byte*)&cxt->Rsp - (byte*)&cxt->Rax,
+                           "CONTEXT.Rax-Rbx"))
+            return true;
+        /* Rbp through R15 */
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Rbp, (byte*)&cxt->Rip - (byte*)&cxt->Rbp,
+                           "CONTEXT.Rbp-R15"))
+            return true;
+    }
+    if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Xmm0,
+                           (byte*)&cxt->Xmm15+sizeof(cxt->Xmm15)-(byte*)&cxt->Xmm0,
+                           "CONTEXT.XmmX"))
+            return true;
+    }
+#else /* 32-bit X86 */
+    ASSERT(TEST(CONTEXT_i486, context_flags),
+           "ContextFlags doesn't have CONTEXT_i486 bit set");
+
+    /* CONTEXT structure on x86 consists of the following sections:
+     * a) DWORD ContextFlags
+     *
+     * The following fields should be defined if the corresponding
+     * flags are set:
+     * b) DWORD Dr{0...3, 6, 7}        - CONTEXT_DEBUG_REGISTERS,
+     * c) FLOATING_SAVE_AREA FloatSave - CONTEXT_FLOATING_POINT,
+     * d) DWORD Seg{G,F,E,D}s          - CONTEXT_SEGMENTS,
+     * e) DWORD E{di,si,bx,dx,cx,ax}   - CONTEXT_INTEGER,
+     * f) DWORD Ebp, Eip, SegCs, EFlags, Esp, SegSs - CONTEXT_CONTROL,
+     * g) BYTE ExtendedRegisters[...]  - CONTEXT_EXTENDED_REGISTERS.
+     */
+
+    if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
+                           "CONTEXT.FloatSave"))
+            return true;
+    }
     if (TESTALL(CONTEXT_INTEGER, context_flags) &&
         ii->arg->sysnum.number != sysnum_CreateThread.number) {
         /* For some reason, cxt->Edi...Eax are not initialized when calling
          * NtCreateThread though CONTEXT_INTEGER flag is set
          */
-#define CONTEXT_NUM_INT_REGS 6
+# define CONTEXT_NUM_INT_REGS 6
         if (!report_memarg(ii, arg_info,
                            (app_pc)&cxt->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
                            "CONTEXT.Exx"))
@@ -1085,8 +1128,9 @@ handle_context_access(sysarg_iter_info_t *ii,
                            sizeof(cxt->ExtendedRegisters), "CONTEXT.ExtendedRegisters"))
             return true;
     }
+#endif /* X64/X86 */
+    /* XXX: handle AVX state too */
     return true;
-#endif
 }
 
 static bool
