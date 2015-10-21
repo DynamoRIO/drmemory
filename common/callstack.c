@@ -543,7 +543,8 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
             STATS_INC(symbol_names_truncated);
         }
         frame->has_symbols = TEST(DRSYM_SYMBOLS, sym.debug_kind);
-        dr_snprintf(frame->func, MAX_FUNC_LEN, sym.name);
+        /* sym.name could be something like "BigInteger::operator%" */
+        dr_snprintf(frame->func, MAX_FUNC_LEN, "%s", sym.name);
         NULL_TERMINATE_BUFFER(frame->func);
         frame->funcoffs = (modoffs - sym.start_offs);
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
