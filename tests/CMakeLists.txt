@@ -920,6 +920,10 @@ else (NOT X64)
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
+  if (LINUX)
+    get_relative_location(hello hello_path)
+    newtest_ex(nonaslr nonaslr.c "${hello_path}" "" "" OFF "hello" 0)
+  endif (LINUX)
 endif (NOT X64)
 
 if (TOOL_DR_MEMORY)

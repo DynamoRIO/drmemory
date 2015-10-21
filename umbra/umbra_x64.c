@@ -47,7 +47,7 @@
  *   app2: [0x000007F0'00000000, 0x00000800'00000000): lib ...
  * or on Win8.1
  *   app2: [0x00007FF0'00000000, 0x00008000'00000000): lib ...
- * 1B-2-1B mapping:
+ * 1B-to-1B mapping:
  *   SHDW(app) = (app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000)
  * and the result:
  * shdw1 = SHDW(app1): [0x00000020'00000000, 0x00000030'00000000)
@@ -62,18 +62,22 @@
  *
  * Linux:
  * app1: [0x00000000'00000000, 0x00000100'00000000): exec, heap, data
- * app2: [0x00007F00'00000000, 0x00007FFF'F0000000): lib, map, stack, vdso
- * app3: [0xFFFFFFFF'FF600000, 0xFFFFFFFF'FF601000]: vsyscall
- * 1B-2-1B mapping:
- *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000200'00000000)
+ * app2: [0x00005500'00000000, 0x00005600'00000000): pie
+ * app3: [0x00007F00'00000000, 0x00008000'00000000): lib, map, stack, vdso
+ * app4: [0xFFFFFFFF'FF600000, 0xFFFFFFFF'FF601000]: vsyscall
+ *
+ * 1B-to-1B mapping:
+ *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00001200'00000000)
  * and the result:
- * shdw1 = SHDW(app1): [0x00000200'00000000, 0x00000300'00000000)
- * shdw2 = SHDW(app2): [0x00001100'00000000, 0x000011FF'F0000000)
- * shdw3 = SHDW(app3): [0x000011FF'F0000000, 0x000011FF'FF601000]
+ * shdw1 = SHDW(app1): [0x00001200'00000000, 0x00001300'00000000)
+ * shdw2 = SHDW(app2): [0x00001700'00000000, 0x00001800'00000000)
+ * shdw3 = SHDW(app3): [0x00002100'00000000, 0x00002200'00000000)
+ * shdw4 = SHDW(app4): [0x000021FF'F0000000, 0x000021FF'FF601000]
  * and
- * shdw1'= SHDW(shdw1): [0x00000400'00000000, 0x00000500'00000000)
- * shdw2'= SHDW(shdw2): [0x00000300'00000000, 0x000003FF'F0000000)
- * shdw3'= SHDW(shdw3): [0x000003FF'F0000000, 0x000003FF'FF601000]
+ * shdw1'= SHDW(shdw1): [0x00001400'00000000, 0x00001500'00000000)
+ * shdw2'= SHDW(shdw2): [0x00001900'00000000, 0x00001A00'00000000)
+ * shdw3'= SHDW(shdw3): [0x00001300'00000000, 0x00001400'00000000]
+ * shdw4'= SHDW(shdw4): [0x000013FF'F0000000, 0x000013FF'FF601000]
  *
  * Here we call [0x00000000'00000000, 0x00001000'00000000) a unit, and each
  * unit has 16 segments with size of 0x100'00000000.
@@ -118,17 +122,17 @@
  *   SHDW(shdw1): [0x00000090'00000000, 0x000000D0'00000000)
  *   SHDW(shdw2): [0x00000050'00000000, 0x00000090'00000000)
  *
- * Similar for Linux:
+ * Similar for Linux: xref i#1782 about the disp value
  * For scale down 2X:
- *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000400'00000000) >> 1
+ *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00002400'00000000) >> 1
  * For scale down 4X:
- *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000800'00000000) >> 2
+ *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00004c00'00000000) >> 2
  * For scale down 8X:
- *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00001000'00000000) >> 3
+ *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00009000'00000000) >> 3
  * For scale up 2X:
- *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000180'00000000) << 1
+ *  SHDW(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000480'00000000) << 1
  *
- * We used 6 segments of a unit in total for 1B-2-1B mapping,
+ * We used 6 segments of a unit in total for 1B-to-1B mapping,
  * fewer segments for scale down mapping,
  * and 14 segments for scale up: app: 2, shdw: 4, shdw2: 8,
  * so we can host at most two app segments without conflicts.
@@ -142,40 +146,71 @@
  *
  * For multiple maps:
  *  We only need put them into different units.
+ *  If only one unit apart, there might be conflict for supporting
+ *  different scale mappings, so at least 2 units apart is necessary.
  *  For example, on Windows:
- *  Two 1B-2-1B mapping:
+ *  Two 1B-to-1B mapping:
  *    SHDW1(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000)
- *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000120'00000000)
- *  Two 8B-2-1B mapping:
+ *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000220'00000000)
+ *  Two 8B-to-1B mapping:
  *    SHDW1(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000100'00000000) >> 3
- *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000900'00000000) >> 3
- *  Two 4B-2-1B mapping:
+ *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00001100'00000000) >> 3
+ *  Two 4B-to-1B mapping:
  *    SHDW1(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000080'00000000) >> 2
- *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000480'00000000) >> 2
- *  Two 2B-2-1B mapping:
+ *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000880'00000000) >> 2
+ *  Two 2B-to-1B mapping:
  *    SHDW1(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000040'00000000) >> 1
- *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000240'00000000) >> 1
- *  Two 1B-2-2B mapping:
+ *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000440'00000000) >> 1
+ *  Two 1B-to-2B mapping:
  *    SHDW1(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000018'00000000) << 1
- *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000098'00000000) << 1
+ *    SHDW2(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000118'00000000) << 1
  *
  *  Similarly, on Linux:
- *  Two 1B-2-1B mapping:
- *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000200'00000000)
- *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00001200'00000000)
- *  Two 8B-2-1B mapping:
- *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00001000'00000000) >> 3
- *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00009000'00000000) >> 3
- *  Two 4B-2-1B mapping:
- *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000800'00000000) >> 2
- *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00004800'00000000) >> 2
- *  Two 2B-2-1B mapping:
- *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000400'00000000) >> 1
- *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00002400'00000000) >> 1
- *  Two 1B-2-2B mapping:
- *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000180'00000000) << 1
- *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000980'00000000) << 1
- *
+ *  Two 1B-to-1B mapping:
+ *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00001200'00000000)
+ *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00003200'00000000)
+ *    app1: [000, 100)   => [1200, 1300) => [1400, 1500)
+ *                          [3200, 3300) => [3400, 3500)
+ *    app2: [500, 600)   => [1700, 1800) => [1900, 1A00)
+ *                          [3700, 3800) => [3900, 3A00)
+ *    app3: [7F00, 8000) => [2100, 2200) => [1300, 1400)
+ *                          [4100, 4200) => [4300, 4400)
+ *  Two 8B-to-1B mapping:
+ *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00009000'00000000) >> 3
+ *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00019000'00000000) >> 3
+ *    app1: [000, 100)   => [1200, 1220) => [1240, 1244)
+ *                          [3200, 3220) => [3240, 3244)
+ *    app2: [500, 600)   => [12A0, 12C0) => [1254, 1258)
+ *                          [32A0, 32C0) => [3254, 3258)
+ *    app3: [7F00, 8000) => [13E0, 1400) => [127C, 1280)
+ *                          [33E0, 3400) => [327C, 3280)
+ *  Two 4B-to-1B mapping:
+ *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00004c00'00000000) >> 2
+ *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x0000cc00'00000000) >> 2
+ *    app1: [000, 100)   => [1300, 1340) => [13C0, 13D0)
+ *                          [3300, 3340) => [33C0, 33D0)
+ *    app2: [500, 600)   => [1440, 1480) => [1410, 1420)
+ *                          [3440, 3480) => [3410, 3420)
+ *    app3: [7F00, 8000) => [16C0, 1700) => [14B0, 14C0)
+ *                          [36C0, 3700) => [34B0, 34C0)
+ *  Two 2B-to-1B mapping:
+ *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00002400'00000000) >> 1
+ *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00006400'00000000) >> 1
+ *    app1: [000, 100)   => [1200, 1280) => [1300, 1340)
+ *                          [3200, 3280) => [3300, 3340)
+ *    app2: [500, 600)   => [1480, 1500) => [1440, 1480)
+ *                          [3480, 3500) => [3440, 3480)
+ *    app3: [7F00, 8000) => [1980, 1a00) => [16C0, 1700)
+ *                          [3980, 3a00) => [36C0, 3700)
+ *  Two 1B-to-2B mapping:
+ *    SHDW1(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00000480'00000000) << 1
+ *    SHDW2(app) = ((app & 0x00000FFF'FFFFFFFF) + 0x00001480'00000000) << 1
+ *    app1: [000, 100)   => [ 900,  B00) => [1B00, 1F00)
+ *                          [2900, 2B00) => [3B00, 3F00)
+ *    app2: [500, 600)   => [1300, 1500) => [ F00, 1300)
+ *                          [3300, 3500) => [2F00, 3300)
+ *    app3: [7F00, 8000) => [2700, 2900) => [1700, 1B00)
+ *                          [4700, 4900) => [3700, 3B00)
  */
 
 /***************************************************************************
@@ -183,7 +218,7 @@
  */
 
 #ifdef UNIX
-/* For SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000200'00000000),
+/* For SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00001200'00000000),
  * the segment size is: 0x100'00000000, i.e., 40 bits,
  * and there are 16 (0x1000'00000000/0x100'00000000) segments per unit.
  */
@@ -234,33 +269,56 @@ typedef struct _app_segment_t {
     umbra_map_t *map[MAX_NUM_MAPS];
 } app_segment_t;
 
+static ptr_uint_t map_disp[] = {
+#ifdef WINDOWS
+    (2*SEGMENT_SIZE)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
+    (2*SEGMENT_SIZE)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
+    (2*SEGMENT_SIZE)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
+    (2*SEGMENT_SIZE),    /* UMBRA_MAP_SCALE_SAME_1X */
+    (3*SEGMENT_SIZE)>>1, /* UMBRA_MAP_SCALE_UP_2X */
+#else /* UNIX */
+    0x0000900000000000, /* UMBRA_MAP_SCALE_DOWN_8X */
+    0x00004C0000000000, /* UMBRA_MAP_SCALE_DOWN_4X */
+    0x0000240000000000, /* UMBRA_MAP_SCALE_DOWN_2X */
+    0x0000120000000000, /* UMBRA_MAP_SCALE_SAME_1X */
+    0x0000048000000000, /* UMBRA_MAP_SCALE_UP_2X */
+#endif
+};
+
 /* List all the mappings we support, no other app segment is allowed.
  * We check conflicts later when creating shadow memory.
  */
 static app_segment_t app_segments[] = {
-    /* for all mappings */
-#ifdef WINDOWS
-    /* app1: [0x00000000'00000000, 0x00000010'00000000) */
-    { (app_pc)(0x0 *SEGMENT_SIZE), (app_pc)(0x1 *SEGMENT_SIZE), 0},
-    /* we support up to 3 additional segments on Windows */
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-#else
-    /* app1: [0x00000000'00000000, 0x00000100'00000000) */
-    { (app_pc)(0x0 *SEGMENT_SIZE), (app_pc)(0x1 *SEGMENT_SIZE), 0},
-    /* app2: [0x00007F00'00000000, 0x00007FFF'F0000000) */
-    { (app_pc)0x00007F0000000000,  (app_pc)0x00007FFFFF000000, 0},
-    /* app3: [0xFFFFFFFF'F0000000, 0xFFFFFFFF'FFF00000) */
-    { (app_pc)0xFFFFFFFFFF000000,  (app_pc)0xFFFFFFFFFFF00000, 0},
-    /* newer kernels may load pie binaries at 0x555555550000, still work for
-     * scale down or 1B-2-1B mapping with:
-     * app4: [0x5500'00000000, 0x5600'00000000)
+#ifdef LINUX
+    /* We split app3 [0x7F0000000000, 0x800000000000) into two parts:
+     * [0x7F0000000000, 0x7FFFFF400000) and [0x7FFFFF800000, 0x800000000000).
+     * And we skip [0x7FFFFF400000-0x7FFFFF800000)
+     * for app4 [0xFFFFFFFFFF400000,  0xFFFFFFFFFF800000) because current
+     * mapping schema maps app3 and app4 to the same segment.
+     * We cannot use smaller size due to the block allocation size
+     * (ALLOC_UNIT_SIZE) and the correspoinding bitmap for the shadow memory
+     * allocation tracking.
+     *
+     * We assume [0x7FFFFF400000-0x7FFFFF800000) will not be used by app.
+     * If app allocates memory from that region, umbra_add_app_segment
+     * will fail because umbra_add_shadow_segment fails to add corresponding
+     * shadow memory segment.
+     * FIXME i#1782, i#1798: we can proactively track memory allocation and
+     * use more expensive instrumentation when necessary to get rid of the
+     * assumption and segment split.
      */
-    /* support up to 2 extra segments: e.g., one for app4 */
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
+    /* app3: part 1 */
+    {(app_pc)0x00007F0000000000,  (app_pc)0x00007FFFFF400000, 0},
+    /* app4: [0xFFFFFFFF'FF600000, 0xFFFFFFFF'FF601000] */
+    {(app_pc)0xFFFFFFFFFF400000,  (app_pc)0xFFFFFFFFFF800000, 0},
+    /* app3: part 2 */
+    {(app_pc)0x00007FFFFF800000,  (app_pc)0x0000800000000000, 0},
 #endif
+    /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
 };
 #define MAX_NUM_APP_SEGMENTS sizeof(app_segments)/sizeof(app_segments[0])
 
@@ -387,6 +445,10 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                 return false;
         }
     }
+    LOG(UMBRA_VERBOSE, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
+        "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
+        seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
+        seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
     return true;
 }
 
@@ -531,45 +593,10 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
            map->app_block_size    >= ALLOC_UNIT_SIZE,
            "block size too small");
     map->mask = SEGMENT_MASK | SEG_INDEX_MASK;
-    if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
-        /* from app1:  [0x00000000'00000000, 0x00000010'00000000)
-         * to   shdw1: [0x00000030'00000000, 0x00000050'00000000)
-         * 3X SEGMENTS apart
-         */
-        map->disp = umbra_map_scale_shadow_to_app(map,
-                                                  3*SEGMENT_SIZE);
-    } else {
-        /* from app1:  [0x00000000'00000000, 0x00000010'00000000)
-         * to   shdw1: [0x00000020'00000000, 0x00000030'00000000)
-         * 2X SEGMENTS apart
-         */
-        map->disp = umbra_map_scale_shadow_to_app(map,
-                                                  2*SEGMENT_SIZE);
-    }
+    map->disp = map_disp[map->options.scale];
     if (map->index > 0) {
-        /* We put two units apart between two mappings.
-         *
-         * If only one unit apart, there might be conflict for supporting
-         * different scale mappings.
-         * For map1 SCALE_UP_2X, disp is ((3*0x10'00000000) >> 1)
-         * SHDW(app) = ((app & & 0x000000FF'FFFFFFFF) + 0x18'00000000) << 1
-         *       app2: [0x000007F0'00000000, 0x00000800'00000000)
-         * map1-shdw2: [0x00000210'00000000, 0x00000230'00000000)
-         * For map2 SCALE_SAME_1X, disp is ((2+16)*0x10'00000000)
-         * SHDW(app) = ((app & & 0x000000FF'FFFFFFFF) + 0x120'00000000)
-         * from app2:  [0x000007F0'00000000, 0x00000800'00000000)
-         * to  shdw2: [0x00000210'00000000, 0x00000220'00000000)
-         * conflict!
-         *
-         * Thus, 2 units apart is necessary.
-         * Double check for two SCALE_UP_2X:
-         *       app1: [0x00000000'00000000, 0x00000010'00000000)
-         * map1-shdw1: [0x00000030'00000000, 0x00000050'00000000)
-         * map2-shdw1: [0x00000230'00000000, 0x00000250'00000000)
-         *       app2: [0x000007F0'00000000, 0x00000800'00000000)
-         * map1-shdw1: [0x00000210'00000000, 0x00000230'00000000)
-         * map2-shdw2: [0x00000410'00000000, 0x00000430'00000000)
-         * no conflict.
+        /* 2 units apart from two mappings, xref comment at top about
+         * multiple maps.
          */
         map->disp += umbra_map_scale_shadow_to_app(map,
                                                    map->index *

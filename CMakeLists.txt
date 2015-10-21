@@ -27,6 +27,13 @@ cmake_minimum_required(VERSION 2.8.10.1)
 
 include(make/policies.cmake NO_POLICY_SCOPE)
 
+# The target OS:
+if (APPLE)
+  set(MACOS 1)
+elseif (UNIX)
+  set(LINUX 1)
+endif (APPLE)
+
 # like DR, we collapse VS generator into one config since
 # we don't have enough control over output dirs
 # in build rules (until cmake 2.8.4).
