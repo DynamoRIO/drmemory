@@ -835,7 +835,7 @@ shadow_next_dword(app_pc start, app_pc end, uint expect)
                                      end - app_addr,
                                      expect_dword, 1,
                                      &found) != DRMF_SUCCESS)
-        ASSERT(false, "fail to check value in shadow mmeory");
+        ASSERT(false, "failed to check value in shadow memory");
     if (found)
         return app_addr;
     return NULL;
@@ -898,7 +898,7 @@ shadow_next_ptrsz(app_pc start, app_pc end, uint expect)
                                      end - app_addr,
                                      expect_val, sizeof(void*)/SHADOW_GRANULARITY,
                                      &found) != DRMF_SUCCESS)
-        ASSERT(false, "fail to check value in shadow mmeory");
+        ASSERT(false, "failed to check value in shadow memory");
     if (found)
         return app_addr;
     return NULL;

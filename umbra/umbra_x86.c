@@ -780,7 +780,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
 
     if (value > USHRT_MAX || value_size != 1)
         return DRMF_ERROR_NOT_IMPLEMENTED;
-    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+    if (POINTER_OVERFLOW_ON_ADD(*app_addr, app_size-1)) /* just hitting top is ok */
         return DRMF_ERROR_INVALID_SIZE;
 
     *found  = false;

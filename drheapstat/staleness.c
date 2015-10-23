@@ -191,7 +191,7 @@ shadow_val_in_range(byte *start, byte *end, byte val)
                                      val,
                                      SHADOW_DEFAULT_VALUE_SIZE,
                                      &found) != DRMF_SUCCESS)
-        ASSERT(false, "fail to check value in shadow mmeory");
+        ASSERT(false, "failed to check value in shadow memory");
     return found;
 }
 
