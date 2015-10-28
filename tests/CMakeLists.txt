@@ -162,7 +162,7 @@ if (WIN32)
   target_link_libraries(run_in_bg_tgt ${ntimp_lib})
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     # for parallel build correctness we need a target dependence
-    add_dependencies(run_in_bg_tgt ntimp_tgt)
+    add_dependencies(run_in_bg_tgt ntdll_imports)
   endif ()
 endif (WIN32)
 
@@ -698,7 +698,7 @@ if (TOOL_DR_MEMORY)
     #target_link_libraries(rtl_memory_zones ${ntimp_lib})
     #if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     #  # for parallel build correctness we need a target dependence
-    #  add_dependencies(rtl_memory_zones ntimp_tgt)
+    #  add_dependencies(rtl_memory_zones ntdll_imports)
     #endif ()
 
     if (USE_DRSYMS) # cygwin build can't see static malloc routines

@@ -98,7 +98,7 @@ macro(configure_drsyscall_target target)
   set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
   target_link_libraries(${target} ${ntimp_lib})
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-    add_dependencies(${target} ntimp_tgt)
+    add_dependencies(${target} ntdll_imports)
   endif ()
 endmacro(configure_drsyscall_target)
 

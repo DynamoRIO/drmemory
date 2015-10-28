@@ -1216,7 +1216,7 @@ if (WIN32)
     set(dbghelp_lib "${PROJECT_BINARY_DIR}/dynamorio/ext/drsyms/dbghelp_imports.lib")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # for parallel build correctness we need a target dependence
-      add_dependencies(${client_target} ntimp_tgt)
+      add_dependencies(${client_target} ntdll_imports)
       if (TOOL_DR_MEMORY)
         add_dependencies(${toolname} dbghelp_tgt)
       endif ()
