@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # **********************************************************
-# Copyright (c) 2014 Google, Inc.    All rights reserved.
+# Copyright (c) 2014-2015 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,12 @@
 #                 for 1st patchset)
 #  -t = prepends "TBR" to the review title
 #  -b = base git ref to diff against
+#
+# If $HOME/.codereview_dr_token exists, its contents are passed as the
+# oauth2 token to the code review site.  The file should contain the text
+# string obtained from https://codereview.appspot.com/get-access-token.
+# If the file does not exist, a browser window will be auto-launched
+# for oauth2 authentication.
 
 # Send email by default
 email="--send_mail --cc=drmemory-devs@googlegroups.com"
@@ -48,6 +54,7 @@ script=dynamorio/make/upload.py
 # We use HEAD^ instead of origin/master to avoid messing up code review diff
 # after we sync on the master branch.
 base="HEAD^"
+tokfile=$HOME/.codereview_dr_token
 
 while getopts ":ucqtr:s:b:" opt; do
   case $opt in
@@ -88,6 +95,11 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
+if test -e "$tokfile"; then
+    echo "Using oauth2 token from $tokfile"
+    token="--oauth2_token `cat $tokfile`"
+fi
+
 branch=$(git symbolic-ref -q HEAD)
 branch=${branch##*/}
 issue=$(git config branch.${branch}.rietveldissue)
@@ -126,9 +138,15 @@ if [ "$mode" = "upload" ]; then
     fi
     msg=$(echo -e "Commit log for ${label}:\n---------------\n${log}\n---------------")
     echo "Uploading the review..."
-    output=$(python ${root}/${script} -y -e "${user}" ${reviewer} ${issue} \
-        -t "${subject}" -m "${msg}" ${email} "${base}"..)
-    echo "${output}"
+    # For re-authentication, upload.py prompts on stdout, so we need to tee it.
+    # We assume all devs have tee and cat, or that git's built-in shell has them.
+    exec 9>&1
+    # Pass -u to avoid python's buffering from preventing any output while
+    # python script sits there waiting for input.
+    output=$(python -u ${root}/${script} -y -e "${user}" ${reviewer} ${issue} \
+        --oauth2 ${token} -t "${subject}" -m "${msg}" ${email} "${base}".. \
+        | tee >(cat - >&9))
+    exec 9>&-
     if test -z "$issue"; then
         number=$(echo "$output" | grep http://)
         number=${number##*/}
@@ -144,17 +162,16 @@ if [ "$mode" = "upload" ]; then
     fi
 elif [ "$mode" = "commit" ]; then
     if test -n "$issue"; then
-        # Remove the issue marker
-        git config --unset branch.${branch}.rietveldissue
         # Upload the committed diff, for easy viewing of final changes.
         echo "Finalizing existing code review request #${issue}."
         subject="Committed"
         hash=$(git log -n 1 --format=%H)
         msg=$(echo -e "Committed as ${hashurl}${hash}\n\nFinal commit log:" \
             "\n---------------\n${log}\n---------------")
-        output=$(python ${root}/${script} -y -e "${user}" -i ${issue} \
-            -t "${subject}" -m "${msg}" ${email} HEAD^)
-        echo "${output}"
+        python -u ${root}/${script} -y -e "${user}" -i ${issue} \
+            --oauth2 ${token} -t "${subject}" -m "${msg}" ${email} HEAD^
+        # Remove the issue marker
+        git config --unset branch.${branch}.rietveldissue
     else
         echo "WARNING: this branch is not associated with any review."
         # Keep exit status 0
