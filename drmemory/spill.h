@@ -62,17 +62,11 @@ restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
 opnd_t
 spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
 
-bool
-is_spill_slot_opnd(void *drcontext, opnd_t op);
-
 byte *
 get_own_seg_base(void);
 
 uint
 num_own_spill_slots(void);
-
-opnd_t
-opnd_create_own_spill_slot(uint index);
 
 ptr_uint_t
 get_own_tls_value(uint index);

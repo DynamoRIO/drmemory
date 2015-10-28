@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "utils.h"
 #include "client_per_thread.h"
 #include "options.h"
@@ -50,14 +51,15 @@
 typedef struct _tls_instru_t {
     byte *dr_tls_base;
 } tls_instru_t;
-/* followed by reg spill slots */
+/* followed by reg spill slots for non-pattern mode */
 # define NUM_INSTRU_TLS_SLOTS (sizeof(tls_instru_t)/sizeof(byte *))
 #else
 # define NUM_INSTRU_TLS_SLOTS 0
-/* just reg spill slots */
 #endif
 
-#define NUM_TLS_SLOTS (NUM_INSTRU_TLS_SLOTS + options.num_spill_slots)
+/* drreg allocates our reg spill slots in pattern mode */
+#define NUM_TLS_SLOTS \
+    (NUM_INSTRU_TLS_SLOTS + (options.pattern == 0 ? options.num_spill_slots : 0))
 
 reg_id_t seg_tls;
 
@@ -96,26 +98,53 @@ get_own_seg_base(void)
     return seg_base;
 }
 
+static bool
+handle_drreg_error(drreg_status_t status)
+{
+    ASSERT(false, "drreg bb event failure");
+    /* XXX: can we share the tool crash message? */
+    NOTIFY_ERROR("FATAL ERROR: internal register failure %d: please report this", status);
+    dr_abort();
+    return true; /* we handled it */
+}
+
 void
 instru_tls_init(void)
 {
-    IF_DEBUG(bool ok =)
-        dr_raw_tls_calloc(&seg_tls, &tls_instru_base, NUM_TLS_SLOTS, 0);
-    LOG(2, "TLS spill base: "PIFX"\n", tls_instru_base);
-    tls_idx_instru = drmgr_register_tls_field();
-    ASSERT(NUM_TLS_SLOTS > 0, "NUM_TLS_SLOTS should be > 0");
-    ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
-    ASSERT(ok, "fatal error: unable to reserve tls slots");
-    ASSERT(seg_tls == EXPECTED_SEG_TLS, "unexpected tls segment");
-}
+    if (options.pattern != 0) {
+        drreg_options_t ops = {
+            sizeof(ops), options.num_spill_slots, options.conservative,
+            handle_drreg_error,
+        };
+        IF_DEBUG(drreg_status_t res =)
+            drreg_init(&ops);
+        ASSERT(res == DRREG_SUCCESS, "fatal error: failed to initialize drreg");
+    }
+    if (NUM_TLS_SLOTS > 0) {
+        IF_DEBUG(bool ok =)
+            dr_raw_tls_calloc(&seg_tls, &tls_instru_base, NUM_TLS_SLOTS, 0);
+        ASSERT(ok, "fatal error: unable to reserve tls slots");
+        LOG(2, "TLS spill base: "PIFX"\n", tls_instru_base);
+        tls_idx_instru = drmgr_register_tls_field();
+        ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
+        ASSERT(seg_tls == EXPECTED_SEG_TLS, "unexpected tls segment");
+    }
+ }
 
 void
 instru_tls_exit(void)
 {
-    IF_DEBUG(bool ok =)
-        dr_raw_tls_cfree(tls_instru_base, NUM_TLS_SLOTS);
-    ASSERT(ok, "WARNING: unable to free tls slots");
-    drmgr_unregister_tls_field(tls_idx_instru);
+    if (NUM_TLS_SLOTS > 0) {
+        IF_DEBUG(bool ok =)
+            dr_raw_tls_cfree(tls_instru_base, NUM_TLS_SLOTS);
+        ASSERT(ok, "WARNING: unable to free tls slots");
+        drmgr_unregister_tls_field(tls_idx_instru);
+    }
+    if (options.pattern != 0) {
+        IF_DEBUG(drreg_status_t res =)
+            drreg_exit();
+        ASSERT(res == DRREG_SUCCESS, "WARNING: drreg failed on exit");
+    }
 }
 
 void
@@ -138,16 +167,19 @@ instru_tls_thread_init(void *drcontext)
     /* store in per-thread data struct so we can access from another thread */
     drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
 #else
-    /* store in per-thread data struct so we can access from another thread */
-    drmgr_set_tls_field(drcontext, tls_idx_instru, (void *)
-                        (get_own_seg_base() + tls_instru_base));
+    if (NUM_TLS_SLOTS > 0) {
+        /* store in per-thread data struct so we can access from another thread */
+        drmgr_set_tls_field(drcontext, tls_idx_instru, (void *)
+                            (get_own_seg_base() + tls_instru_base));
+    }
 #endif
 }
 
 void
 instru_tls_thread_exit(void *drcontext)
 {
-    drmgr_set_tls_field(drcontext, tls_idx_instru, NULL);
+    if (NUM_TLS_SLOTS > 0)
+        drmgr_set_tls_field(drcontext, tls_idx_instru, NULL);
 }
 
 uint
@@ -156,7 +188,7 @@ num_own_spill_slots(void)
     return options.num_spill_slots;
 }
 
-opnd_t
+static opnd_t
 opnd_create_own_spill_slot(uint index)
 {
     ASSERT(index < options.num_spill_slots, "spill slot index overflow");
@@ -173,6 +205,7 @@ opnd_create_own_spill_slot(uint index)
 ptr_uint_t
 get_own_tls_value(uint index)
 {
+    ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
         byte *seg_base = get_own_seg_base();
         return *(ptr_uint_t *) (seg_base + tls_instru_base +
@@ -186,6 +219,7 @@ get_own_tls_value(uint index)
 void
 set_own_tls_value(uint index, ptr_uint_t val)
 {
+    ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
         byte *seg_base = get_own_seg_base();
         *(ptr_uint_t *)(seg_base + tls_instru_base +
@@ -199,6 +233,7 @@ set_own_tls_value(uint index, ptr_uint_t val)
 ptr_uint_t
 get_thread_tls_value(void *drcontext, uint index)
 {
+    ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
         byte *tls = (byte *) drmgr_get_tls_field(drcontext, tls_idx_instru);
         return *(ptr_uint_t *)
@@ -212,6 +247,7 @@ get_thread_tls_value(void *drcontext, uint index)
 void
 set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
 {
+    ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
         byte *tls = (byte *) drmgr_get_tls_field(drcontext, tls_idx_instru);
         *(ptr_uint_t *)
@@ -263,6 +299,7 @@ void
 spill_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
           dr_spill_slot_t slot)
 {
+    ASSERT(options.pattern == 0, "not converted to drreg yet");
     if (slot < options.num_spill_slots) {
         STATS_INC(reg_spill_own);
         PRE(ilist, where,
@@ -282,6 +319,7 @@ void
 restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
             dr_spill_slot_t slot)
 {
+    ASSERT(options.pattern == 0, "not converted to drreg yet");
     if (slot < options.num_spill_slots) {
         PRE(ilist, where,
             XINST_CREATE_load(drcontext, opnd_create_reg(reg),
@@ -295,6 +333,7 @@ restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
 opnd_t
 spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
 {
+    ASSERT(options.pattern == 0, "not converted to drreg yet");
     if (slot < options.num_spill_slots) {
         return opnd_create_own_spill_slot(slot);
     } else {
@@ -303,7 +342,7 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
     }
 }
 
-bool
+static bool
 is_spill_slot_opnd(void *drcontext, opnd_t op)
 {
     static uint offs_min_own, offs_max_own, offs_min_DR, offs_max_DR;
@@ -930,6 +969,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool eax_dead = bi->eax_dead ||
         (bi->reg1.reg == DR_REG_XAX && scratch_reg1_is_avail(inst, mi, bi)) ||
         (bi->reg2.reg == DR_REG_XAX && scratch_reg2_is_avail(inst, mi, bi));
+    ASSERT(options.pattern == 0, "pattern is using drreg");
     if (!bi->eflags_used)
         return;
     if (bi->aflags != EFLAGS_WRITE_ARITH) {
@@ -1035,6 +1075,7 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(bi->aflags_where == AFLAGS_IN_TLS ||
            bi->aflags_where == AFLAGS_IN_EAX,
            "bi->aflags_where is not set");
+    ASSERT(options.pattern == 0, "pattern is using drreg");
     si.reg  = DR_REG_XAX;
     si.xchg = REG_NULL;
     si.slot = SPILL_SLOT_EFLAGS_EAX;
@@ -1281,7 +1322,7 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
     }
 #endif
     if (inst == NULL || !whole_bb_spills_enabled() ||
-        /* pattern mode only uses whole-bb for eflags, so no scratch reg picks */
+        /* pattern is using drreg */
         options.pattern != 0) {
         bi->eflags_used = false;
         bi->reg1.reg = REG_NULL;
@@ -1314,6 +1355,8 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
     }
 
     if (!whole_bb_spills_enabled())
+        return;
+    if (options.pattern != 0) /* pattern is using drreg */
         return;
     /* Haven't instrumented below here yet, so forward analysis should
      * see only app instrs
@@ -1447,6 +1490,8 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool restored_for_read = false;
 
     if (!whole_bb_spills_enabled())
+        return;
+    if (options.pattern != 0) /* pattern is using drreg */
         return;
     /* If this is the last instr, the end-of-bb restore will restore for any read,
      * and everything is dead so we can ignore writes
@@ -1652,6 +1697,8 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         bb_save_add_entry(tag, save);
         hashtable_unlock(&bb_table);
     }
+    if (options.pattern != 0) /* pattern is using drreg */
+        return;
 
     /* We do this *after* recording what to restore, b/c this can change the used
      * fields (i#1458).

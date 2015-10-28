@@ -24,6 +24,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "drmemory.h"
 #include "readwrite.h"
 #include "spill.h"
@@ -46,8 +47,6 @@
 
 #define MAX_NUM_CHECKS_PER_REF 4
 #define MAX_REFS_PER_INSTR 3
-#define PATTERN_SLOT_XAX    SPILL_SLOT_1
-#define PATTERN_SLOT_AFLAGS SPILL_SLOT_2
 #define SWAP_BYTE(x)  ((0x0ff & ((x) >> 8)) | ((0x0ff & (x)) << 8))
 #define PATTERN_REVERSE(x) (SWAP_BYTE(x) | (SWAP_BYTE(x) << 16))
 
@@ -58,27 +57,7 @@ static uint  pattern_reverse;
 static bool  pattern_4byte_check_only = false;
 static void *flush_lock;
 
-static ptr_uint_t note_base;
 static int num_2byte_faults = 0;
-
-/* For the flags, we're forced to use eax on x86.
- * For symmetry we use r0 on ARM.
- * XXX: we should use any dead register.
- */
-#ifdef X86
-# define FLAGS_REG DR_REG_XAX
-#else
-# define FLAGS_REG DR_REG_R0
-#endif
-
-enum {
-    NOTE_NULL = 0,
-    NOTE_SAVE_AFLAGS,
-    NOTE_SAVE_AFLAGS_WITH_REG,    /* need restore app's eax/r0 after */
-    NOTE_RESTORE_AFLAGS,
-    NOTE_RESTORE_AFLAGS_WITH_REG, /* need restore aflags to eax/r0 first */
-    NOTE_MAX_VALUE,
-};
 
 /* check if the opnd should be instrumented for checks */
 bool
@@ -104,31 +83,28 @@ pattern_opnd_needs_check(opnd_t opnd)
 static void
 pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
 {
-    /* xlat accesses memory (xbx, al), which is not a legeal memory operand,
+    /* xlat accesses memory (xbx, al), which is not a legal memory operand,
      * and we use (xbx, xax) to emulate (xbx, al) instead:
      * save xax; movzx xax, al; ...; restore xax; ...; xlat
      */
+    IF_DEBUG(drreg_status_t res);
     if (pre) {
-        /* we do not rely on whole_bb_spills_enabled to save eax!
-         * for cases like:
-         * aflags save; mov 0 => [mem], mov 1 => eax; xlat;
-         * the value in spill_slot_5 is out-of-date!
-         */
-        spill_reg(drcontext, ilist, app, DR_REG_XAX,
-                  whole_bb_spills_enabled() ?
-                  /* when whole_bb_spills_enabled, app's xax value is stored
-                   * in SPILL_SLOT_5 in save_aflags_if_live, so are we here
-                   * for consistency.
-                   */
-                  SPILL_SLOT_5 : PATTERN_SLOT_XAX);
+        drvector_t allowed;
+        reg_id_t scratch;
+        drreg_init_and_fill_vector(&allowed, false);
+        drreg_set_vector_entry(&allowed, DR_REG_XAX, true);
+        IF_DEBUG(res =)
+            drreg_reserve_register(drcontext, ilist, app, &allowed, &scratch);
+        ASSERT(res == DRREG_SUCCESS && scratch == DR_REG_XAX, "failed to reserve eax");
+        drvector_delete(&allowed);
         PRE(ilist, app, INSTR_CREATE_movzx(drcontext,
                                            opnd_create_reg(DR_REG_XAX),
                                            opnd_create_reg(DR_REG_AL)));
     } else {
         /* restore xax */
-        restore_reg(drcontext, ilist, app, DR_REG_XAX,
-                    whole_bb_spills_enabled() ?
-                    SPILL_SLOT_5 : PATTERN_SLOT_XAX);
+        IF_DEBUG(res =)
+            drreg_unreserve_register(drcontext, ilist, app, DR_REG_XAX);
+        ASSERT(res == DRREG_SUCCESS, "reg unreserve should work");
     }
 }
 #endif
@@ -140,6 +116,7 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
  * - ill_instr_is_instrumented and
  * - segv_instr_is_instrumented
  * must be updated too.
+ * The caller is responsible for preserving aflags.
  */
 static void
 pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
@@ -271,13 +248,20 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
     return -1;
 }
 
+/* If not called during drmgr's insert phase, the caller must preserve aflags */
 static void
 pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
                           instr_t *app, opnd_t ref, bb_info_t *bi)
 {
     opnd_t refs[MAX_NUM_CHECKS_PER_REF], opnds[MAX_NUM_CHECKS_PER_REF];
     int num_checks, i;
+    IF_DEBUG(drreg_status_t res);
 
+    if (drmgr_current_bb_phase(drcontext) == DRMGR_PHASE_INSERTION) {
+        IF_DEBUG(res =)
+            drreg_reserve_aflags(drcontext, ilist, app);
+        ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+    }
     ASSERT(opnd_uses_nonignorable_memory(ref),
            "non-memory-ref opnd is instrumented");
 #ifdef X86
@@ -298,34 +282,16 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     if (instr_get_opcode(app) == OP_xlat)
         pattern_handle_xlat(drcontext, ilist, app, false /* post */);
 #endif
-}
 
-static void
-pattern_insert_aflags_label(void *drcontext, instrlist_t *ilist, instr_t *where,
-                            bool save, bool with_eax)
-
-{
-    instr_t *label = INSTR_CREATE_label(drcontext);
-    ptr_uint_t note = note_base;
-
-    if (save) {
-        if (with_eax)
-            note = note_base + NOTE_SAVE_AFLAGS_WITH_REG;
-        else
-            note = note_base + NOTE_SAVE_AFLAGS;
-    } else {
-        if (with_eax)
-            note = note_base + NOTE_RESTORE_AFLAGS_WITH_REG;
-        else
-            note = note_base + NOTE_RESTORE_AFLAGS;
+    if (drmgr_current_bb_phase(drcontext) == DRMGR_PHASE_INSERTION) {
+        IF_DEBUG(res =)
+            drreg_unreserve_aflags(drcontext, ilist, app);
+        ASSERT(res == DRREG_SUCCESS, "unreserve of aflags should work");
     }
-    instr_set_note(label, (void *)note);
-    PRE(ilist, where, label);
 }
 
 static int
-pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
-                     _IF_DEBUG(int max_num_refs))
+pattern_extract_refs(instr_t *app, opnd_t *refs _IF_DEBUG(int max_num_refs))
 {
     int i, j, num_refs = 0;
     opnd_t opnd;
@@ -334,7 +300,6 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
     if (instr_get_opcode(app) == OP_xlat) {
         /* we use (%xbx, %xax) to emulate xlat's (%xbx, %al) */
         refs[0] = opnd_create_base_disp(DR_REG_XBX, DR_REG_XAX, 1, 0, OPSZ_1);
-        *use_eax = true;
         return 1;
     }
 #endif
@@ -346,8 +311,6 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
             ASSERT(num_refs < max_num_refs, "too many refs per instr");
             refs[num_refs] = opnd;
             num_refs++;
-            if (opnd_uses_reg(opnd, FLAGS_REG))
-                *use_eax = true;
         }
     }
     for (i = 0; i < instr_num_dsts(app); i++) {
@@ -363,8 +326,6 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
             ASSERT(num_refs < max_num_refs, "too many refs per instr");
             refs[num_refs] = opnd;
             num_refs++;
-            if (opnd_uses_reg(opnd, FLAGS_REG))
-                *use_eax = true;
         }
     }
     return num_refs;
@@ -561,13 +522,13 @@ pattern_opt_elide_overlap_update_checks(void *drcontext, bb_info_t *bi,
     return NULL;
 }
 
+/* If not called during drmgr's insert phase, the caller must preserve aflags */
 instr_t *
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                          bb_info_t *bi, bool translating)
 {
     int num_refs, i;
     opnd_t refs[MAX_REFS_PER_INSTR];
-    bool use_eax = false;
     instr_t *label;
     elide_ref_check_info_t *check = NULL;
 
@@ -580,8 +541,7 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
         instr_is_nop(app))
         return NULL;
 
-    num_refs = pattern_extract_refs(app, &use_eax, refs
-                                    _IF_DEBUG(MAX_REFS_PER_INSTR));
+    num_refs = pattern_extract_refs(app, refs _IF_DEBUG(MAX_REFS_PER_INSTR));
     if (num_refs == 0)
         return NULL;
     if (!translating)
@@ -596,12 +556,7 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
         check = pattern_opt_elide_overlap_update_checks
             (drcontext, bi, ilist, num_refs, refs);
     }
-    mark_eflags_used(drcontext, ilist, bi);
     bi->added_instru = true;
-    if (!whole_bb_spills_enabled()) {
-        /* aflags save label */
-        pattern_insert_aflags_label(drcontext, ilist, app, true, use_eax);
-    }
     /* pattern check code */
     label = INSTR_CREATE_label(drcontext);
     PRE(ilist, app, label);
@@ -615,10 +570,6 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
             check->end = INSTR_CREATE_label(drcontext);
             PRE(ilist, app, check->end);
         }
-    }
-    if (!whole_bb_spills_enabled()) {
-        /* aflags restore label */
-        pattern_insert_aflags_label(drcontext, ilist, app, false, use_eax);
     }
     return label;
 }
@@ -682,7 +633,6 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     instr_t *stringop = NULL, *loop = NULL, *post_loop, *instr, *jmp;
     instr_t *check = NULL;
     app_pc next_pc;
-    int live[NUM_LIVENESS_REGS];
 
     ASSERT(bi->is_repstr_to_loop && options.pattern_opt_repstr,
            "should not be here");
@@ -743,8 +693,13 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     post_loop = INSTR_CREATE_label(drcontext);
     instr_set_target(jmp_skip, opnd_create_instr(post_loop));
     /* insert checks */
-    bi->aflags = get_aflags_and_reg_liveness(stringop, live, true);
-    bi->spill_after = instr_get_prev(stringop);
+    /* the pattern checks will suspend their own aflags saves b/c it's not insert phase */
+    /* XXX DRi#511: drmem's own aflags code was superior as it would keep aflags
+     * in eax, vs drreg which today spills aflags to TLS.  We'd want to add a
+     * drreg API for instru2instru that takes in both the save and restore
+     * points at once.
+     */
+    drreg_reserve_aflags(drcontext, ilist, stringop);
     check = pattern_instrument_check
         (drcontext, ilist, stringop, bi, translating);
     ASSERT(check != NULL, "check label must not be NULL");
@@ -756,224 +711,13 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     next_pc = instr_get_app_pc(stringop) +
         instr_length(drcontext, stringop) + 1 /* rep prefix */;
     /* restore aflags before post_loop if necessary */
-    restore_aflags_if_live(drcontext, ilist, post_loop, NULL, bi);
+    drreg_unreserve_aflags(drcontext, ilist, post_loop);
     /* jmp next_pc */
     jmp = INSTR_XL8(INSTR_CREATE_jmp(drcontext, opnd_create_pc(next_pc)),
                     instr_get_app_pc(loop));
     PREXL8(ilist, NULL, jmp);
 }
 #endif /* X86 */
-
-/* Update the arith flag's liveness in a backward scan. */
-static int
-pattern_aflags_liveness_update_on_reverse_scan(instr_t *instr, int liveness)
-{
-    uint flags;
-    if (instr_is_cti(instr))
-        return LIVE_LIVE;
-    if (instr_is_interrupt(instr) || instr_is_syscall(instr))
-        return LIVE_LIVE;
-    flags = instr_get_arith_flags(instr, DR_QUERY_DEFAULT);
-    if (TESTANY(EFLAGS_READ_ARITH, flags))
-        return LIVE_LIVE;
-    if (TESTALL(EFLAGS_WRITE_ARITH, flags))
-        return LIVE_DEAD;
-    /* XXX: we can also track whether OF is live, to avoid seto/add
-     * in aflags save/restore.
-     * We need refactor the existing code for easier reuse.
-     */
-    return liveness;
-}
-
-/* Update the reg's liveness in a backward scan */
-static int
-pattern_reg_liveness_update_on_reverse_scan(instr_t *instr, reg_id_t reg,
-                                            int liveness)
-{
-    if (instr_is_cti(instr))
-        return LIVE_LIVE;
-    if (instr_is_interrupt(instr) || instr_is_syscall(instr))
-        return LIVE_LIVE;
-    if (instr_reads_from_reg(instr, reg, DR_QUERY_DEFAULT))
-        return LIVE_LIVE;
-    if (instr_writes_to_exact_reg(instr, reg, DR_QUERY_DEFAULT))
-        return LIVE_DEAD;
-    return liveness;
-}
-
-static instr_t *
-pattern_find_aflags_save_label(instr_t *restore, ptr_uint_t note_restore,
-                               ptr_uint_t *note_save)
-{
-    ptr_uint_t note;
-    instr_t *save;
-    for (save  = instr_get_prev(restore);
-         save != NULL;
-         save  = instr_get_prev(save)) {
-        if (!instr_is_label(save))
-            continue;
-        note = (ptr_uint_t)instr_get_note(save);
-        if (note != (note_base + NOTE_SAVE_AFLAGS) &&
-            note != (note_base + NOTE_SAVE_AFLAGS_WITH_REG))
-            continue;
-        ASSERT((note         == (note_base + NOTE_SAVE_AFLAGS) &&
-                note_restore == (note_base + NOTE_RESTORE_AFLAGS)) ||
-               (note         == (note_base + NOTE_SAVE_AFLAGS_WITH_REG) &&
-                note_restore == (note_base + NOTE_RESTORE_AFLAGS_WITH_REG)),
-               "Mis-match on eax save/restore");
-        *note_save = note;
-        return save;
-    }
-    return NULL;
-}
-
-/* remove aflags save/restore pair if aflags is dead,
- * returns the prev instr of the aflag save label instr.
- */
-static instr_t *
-pattern_remove_aflags_pair(void *drcontext, instrlist_t *ilist,
-                           instr_t *restore, ptr_uint_t note_restore)
-{
-    instr_t *save, *prev;
-    ptr_uint_t note_save;
-    save = pattern_find_aflags_save_label(restore, note_restore, &note_save);
-    ASSERT(save != NULL, "Mis-match on aflags save/restore");
-    prev = instr_get_prev(save);
-    instrlist_remove(ilist, restore);
-    instr_destroy(drcontext, restore);
-    instrlist_remove(ilist, save);
-    instr_destroy(drcontext, save);
-    return prev;
-}
-
-/* XXX: we should use the utility code in fastpath instead,
- * which requires scratch_reg_info to be constructed.
- */
-static void
-pattern_insert_save_aflags(void *drcontext, instrlist_t *ilist, instr_t *save,
-                           bool save_app_xax, bool restore_app_xax)
-{
-    IF_DEBUG(ptr_uint_t note = (ptr_uint_t)instr_get_note(save);)
-    ASSERT(note != 0 && instr_is_label(save), "wrong aflags save label");
-    if (save_app_xax) {
-        /* save app xax */
-        spill_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_XAX);
-    }
-    /* save aflags,
-     * XXX: we can track oflag usage to avoid saving oflag for some cases.
-     * FIXME i#1726: need to pass in which reg to use for ARM.
-     */
-    insert_save_aflags_nospill(drcontext, ilist, save, true /* save oflag */);
-    if (restore_app_xax) {
-        /* FIXME: this needs to store where it's keeping things, for
-         * event_restore_state()
-         */
-        /* save aflags into tls slot */
-        spill_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_AFLAGS);
-        /* restore app xax */
-        restore_reg(drcontext, ilist, save, FLAGS_REG, PATTERN_SLOT_XAX);
-    }
-}
-
-/* XXX: we should use the utility code in fastpath instead,
- * which requires scratch_reg_info to be constructed.
- */
-static void
-pattern_insert_restore_aflags(void *drcontext, instrlist_t *ilist,
-                              instr_t *restore,
-                              bool load_aflags, bool restore_app_xax)
-{
-    IF_DEBUG(ptr_uint_t note = (ptr_uint_t)instr_get_note(restore);)
-    ASSERT(note != 0 && instr_is_label(restore), "wrong aflags restore label");
-    if (load_aflags) {
-        /* restore aflags from tls slot to xax */
-        restore_reg(drcontext, ilist, restore, FLAGS_REG, PATTERN_SLOT_AFLAGS);
-    }
-    /* restore aflags
-     * XXX: we can track oflag usage to avoid restsoring oflag for some cases.
-     */
-    insert_restore_aflags_nospill(drcontext, ilist, restore, true);
-    if (restore_app_xax) {
-        /* restore app xax */
-        restore_reg(drcontext, ilist, restore, FLAGS_REG, PATTERN_SLOT_XAX);
-    }
-}
-
-/* insert the aflags save/restore pair, return the prev instr of aflags save */
-static instr_t *
-pattern_insert_aflags_pair(void *drcontext, instrlist_t *ilist,
-                           instr_t *restore,
-                           ptr_uint_t note_restore, int eax_live)
-{
-    instr_t *save, *prev;
-    ptr_uint_t note_save = (note_base + NOTE_NULL);
-    save = pattern_find_aflags_save_label(restore, note_restore, &note_save);
-    ASSERT(save != NULL, "Mis-match on aflags save/restore");
-    prev = instr_get_prev(save);
-    pattern_insert_save_aflags(drcontext, ilist, save, eax_live != LIVE_DEAD,
-                               note_save == (note_base + NOTE_SAVE_AFLAGS_WITH_REG));
-    pattern_insert_restore_aflags(drcontext, ilist, restore,
-                                  note_restore == (note_base +
-                                                   NOTE_RESTORE_AFLAGS_WITH_REG),
-                                  eax_live != LIVE_DEAD);
-    instrlist_remove(ilist, restore);
-    instr_destroy(drcontext, restore);
-    instrlist_remove(ilist, save);
-    instr_destroy(drcontext, save);
-    return prev;
-}
-
-/* reverse scan for aflags save/restore instrumentation and other optimization.
- * To minimize the runtime overhead, we perform the reverse scan to update the
- * register and aflag's liveness. In forward scan, the instruction list has to be
- * traversed multiple passes for liveness analysis.
- * XXX: we might have to let reverse scan pass go away w/ drmgr, which supports
- * forward per-instr instrumentation only.
- */
-void
-pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
-{
-    instr_t *instr, *prev;
-    ptr_uint_t note;
-    int eax_live    = LIVE_LIVE;
-    int aflags_live = LIVE_LIVE;
-
-    for (instr  = instrlist_last(ilist);
-         instr != NULL;
-         instr  = prev) {
-        prev = instr_get_prev(instr);
-        if (instr_is_app(instr)) {
-            eax_live = pattern_reg_liveness_update_on_reverse_scan
-                (instr, FLAGS_REG, eax_live);
-            aflags_live = pattern_aflags_liveness_update_on_reverse_scan
-                (instr, aflags_live);
-        }
-        if (!instr_is_label(instr))
-            continue;
-        note = (ptr_uint_t)instr_get_note(instr);
-        if (note == (note_base + NOTE_NULL))
-            continue;
-        /* XXX: i#776
-         * instead of blindly insert aflags save and restore, we
-         * have some possible optimizations:
-         * 1. DONE: only save/restore aflags when necessary
-         * 2. DONE: only save/restore eax when necessary
-         * 3. TODO: fine tune the aflags liveness, i.e. overflow flags
-         * 3. TODO: group aflags save/restore if aflags and eax not touched
-         *    (can be relaxed later)
-         */
-        if (note == (note_base + NOTE_RESTORE_AFLAGS) ||
-            note == (note_base + NOTE_RESTORE_AFLAGS_WITH_REG)) {
-            if (aflags_live == LIVE_DEAD) {
-                /* aflags is dead, we do not need to save them, remove  */
-                prev = pattern_remove_aflags_pair(drcontext, ilist, instr, note);
-            } else {
-                prev = pattern_insert_aflags_pair(drcontext, ilist, instr, note,
-                                                  eax_live);
-            }
-        }
-    }
-}
 
 static bool
 pattern_ill_instr_is_instrumented(byte *pc)
@@ -1578,8 +1322,6 @@ pattern_init(void)
         pattern_malloc_tree = rb_tree_create(NULL);
         pattern_malloc_tree_rwlock = dr_rwlock_create();
     }
-    note_base = drmgr_reserve_note_range(NOTE_MAX_VALUE);
-    ASSERT(note_base != DRMGR_NOTE_NONE, "failed to get note value");
 
     /* reverse the byte order for unaligned checks:
      * for example, if the pattern is 0x43214321, the reversed pattern is

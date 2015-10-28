@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "drutil.h"
 #include "drmemory.h"
 #include "readwrite.h"
@@ -1053,12 +1054,21 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          */
         if (whole_bb_spills_enabled() &&
             !(options.pattern != 0 && options.pattern_opt_repstr)) {
-            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
-            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
-            mark_eflags_used(drcontext, bb, bi);
-            /* eflag saving may have clobbered xcx, which we need for jecxz, but
-             * jecxz is an app instr now so we should naturally restore it
-             */
+            if (options.pattern != 0) { /* pattern uses drreg */
+                IF_DEBUG(drreg_status_t res =)
+                    drreg_reserve_aflags(drcontext, bb, inst);
+                ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+                IF_DEBUG(res =)
+                    drreg_unreserve_aflags(drcontext, bb, inst);
+                ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+            } else {
+                mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
+                mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
+                mark_eflags_used(drcontext, bb, bi);
+                /* eflag saving may have clobbered xcx, which we need for jecxz, but
+                 * jecxz is an app instr now so we should naturally restore it
+                 */
+            }
         }
     }
 
@@ -1158,7 +1168,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (options.pattern != 0) {
         if (!(bi->is_repstr_to_loop && options.pattern_opt_repstr)) {
             /* aggressive optimization of repstr for pattern mode will
-             * be handled separatly in pattern_instrument_repstr
+             * be handled separately in pattern_instrument_repstr
              */
             pattern_instrument_check(drcontext, bb, inst, bi, translating);
         }
@@ -1300,9 +1310,6 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
         return DR_EMIT_GO_NATIVE;
 
 #ifdef TOOL_DR_MEMORY
-    /* XXX i#777: should do reverse scan during analysis and store info */
-    if (options.pattern != 0 && !whole_bb_spills_enabled())
-        pattern_instrument_reverse_scan(drcontext, bb);
 # ifdef X86
     if (options.pattern != 0 && options.pattern_opt_repstr &&
         bi->is_repstr_to_loop)

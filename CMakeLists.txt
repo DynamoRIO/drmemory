@@ -748,7 +748,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "5.0.16707")
+set(DynamoRIO_VERSION_REQUIRED "6.0.16743")
 
 set(DR_install_dir "dynamorio")
 
@@ -1143,6 +1143,7 @@ use_DynamoRIO_extension(${client_target} drmgr_static)
 use_DynamoRIO_extension(${client_target} drx_static)
 use_DynamoRIO_extension(${client_target} drutil_static)
 use_DynamoRIO_extension(${client_target} drwrap_static)
+use_DynamoRIO_extension(${client_target} drreg_static)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")

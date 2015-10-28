@@ -265,6 +265,19 @@ GLOBAL_LABEL(FUNCNAME:)
         /* XXX: add more conversion tests */
 
         /***************************************************
+         * Test xlat, w/ live flags
+         */
+        jmp      xlat_test
+    xlat_test:
+        push     REG_XBX
+        mov      REG_XBX, REG_XAX /* preserve */
+        xlat
+        mov      REG_XAX, REG_XBX
+        pop      REG_XBX
+        jmp      post_xlat_test
+    post_xlat_test:
+
+        /***************************************************
          * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or
          * edx (holds def mem).  Do not place AVX instructions here: put them
          * into asm_test_avx().
