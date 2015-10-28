@@ -715,7 +715,7 @@ replace_wcsstr(const wchar_t *haystack, const wchar_t *needle)
     if (*n == '\0')
         return (wchar_t *) haystack;
     while (*hs != '\0') {
-        if (*hs != *n) {
+        if (*hs != *n && n > needle) {
             hs -= n - 1 - needle; /* backtrack */
             n = needle;
         }

@@ -130,6 +130,7 @@ TEST(StringTests, wcsstr) {
     ASSERT_STREQ(wcsstr(L"xxxA", L"xxA"), L"xxA");
     ASSERT_STREQ(wcsstr(L"PREFIXxxxxxASUFFIX", L"xxxxA"), L"xxxxASUFFIX");
     ASSERT_EQ(wcsstr(L"xxxAxABxxxA", L"xxAB"), (wchar_t *)NULL);
+    ASSERT_STREQ(wcsstr(L"xxx", L"a"), (wchar_t *)NULL);
 
     /* Test i#350 where VS2012 wcsstr is optimized */
     std::wstring s2(L"foo\r\nbar");
