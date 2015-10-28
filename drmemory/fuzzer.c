@@ -533,7 +533,8 @@ map_callconv_args(drwrap_callconv_t callconv)
     }
 }
 
-#define MAX_BUFFER_SIZE 0x1000 /* heuristic to detect incorrect buffer arg index */
+/* simple heuristic to detect incorrect buffer arg index */
+#define MAX_EXPECTED_BUFFER_SIZE (64*1024*1024) /* 64MB */
 
 /* stores shadow memory state for an instance of the fuzz target (per thread) */
 typedef struct _shadow_state_t {
@@ -716,12 +717,8 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
     /* Validate that the arg index for the buffer size given by the user appears to be
      * reasonable. If not, exit with an error instead of crashing with alloc problems.
      */
-    if (fuzz_state->input_size > MAX_BUFFER_SIZE) {
-        NOTIFY_ERROR("Buffer size of the fuzz target is out of range: %d. "
-                     "Max allowed is %d."NL, fuzz_state->input_size, MAX_BUFFER_SIZE);
-        ASSERT(false, "Target's buffer size too large");
-        fuzz_target.enabled = false;
-        goto unlock;
+    if (fuzz_state->input_size > MAX_EXPECTED_BUFFER_SIZE) {
+        FUZZ_WARN("buffer size is too large: %d"NL, fuzz_state->input_size);
     }
 
     if (fuzz_target.buffer_offset >= fuzz_state->input_size) {
