@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # **********************************************************
-# Copyright (c) 2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -52,7 +52,15 @@ $filename =~ s/dll/pdb/;
 if ($data =~ s/(RSDS)(.{20})($filename)/RSDS$guid\WinTypes.pdb/s) {
     seek $FH, 0, SEEK_SET or die "Cannot seek on '$filepath' $!\n";
     print $FH $data;
-    print 'all_done'
+    print "GUID replacement successful\n";
+} elsif ($data =~ /RSDS(.*)WinTypes.pdb/) {
+    # Already replaced
+    $val = $1;
+    print "GUID already replaced: ";
+    for ($i=0; $i<length $val; $i++) {
+        printf "%02x ", ord(substr($val, $i, 1));
+    }
+    print "\n";
 } else {
-    die 'Can\'t match regular expression\n'
+    die "Can't match regular expression\n";
 }

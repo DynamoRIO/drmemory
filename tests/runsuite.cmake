@@ -186,20 +186,10 @@ foreach (tool ${tools})
   endif ("${tool}" MATCHES "HEAPSTAT")
 
   if (NOT arg_vmk_only)
-    testbuild_ex("${name}-dbg-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Debug
-      " ${dbg_tests_only_in_long} ON "")
-    testbuild_ex("${name}-rel-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Release
-      " ON ON "") # no release tests in short suite
     # DRi#58: core DR does not yet support 64-bit Mac
     if ("${tool}" MATCHES "MEMORY" AND NOT APPLE)
+      # 64-bit builds cannot be last as that messes up the package build
+      # for Ninja (i#1763).
       testbuild_ex("${name}-dbg-64" ON "
         ${base_cache}
          ${tool}
@@ -213,6 +203,18 @@ foreach (tool ${tools})
          CMAKE_BUILD_TYPE:STRING=Release
          " ON ON "") # no release tests in short suite
     endif ()
+    testbuild_ex("${name}-dbg-32" OFF "
+      ${base_cache}
+      ${tool}
+      ${DR_entry}
+      CMAKE_BUILD_TYPE:STRING=Debug
+      " ${dbg_tests_only_in_long} ON "")
+    testbuild_ex("${name}-rel-32" OFF "
+      ${base_cache}
+      ${tool}
+      ${DR_entry}
+      CMAKE_BUILD_TYPE:STRING=Release
+      " ON ON "") # no release tests in short suite
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
