@@ -350,17 +350,26 @@ print_target_buffer(fuzz_state_t *state, char *buffer, size_t buffer_size,
     uint i;
 
     BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s"NL"%s", prefix, prefix);
+#define MAX_DWORD_PER_LINE 8
+#define MAX_PRINT_PER_LINE \
+    (strlen(prefix) + (8/*char*/+1/*space*/)*MAX_DWORD_PER_LINE + 2/*NL*/)
+    ASSERT(state->input_size < (4/*byte*/*MAX_DWORD_PER_LINE) /* small input */||
+           (buffer_size - *sofar) > MAX_PRINT_PER_LINE,
+           "buffer too small");
     for (i = 0; i < state->input_size; i++) { /* print in lexical byte order */
-        BUFPRINT(buffer, buffer_size, *sofar, *len,
-                 "%02x", state->input_buffer[i]);
-        if ((buffer_size - *sofar) <= (TARGET_BUFFER_TRUNC_LEN + 1/*null-term*/)) {
-            BUFPRINT(buffer, buffer_size, *sofar, *len, TARGET_BUFFER_TRUNC);
-            break;
-        }
-        if ((i % 32) == 31 &&            /* 8 dwords on each line, and             */
-            i < (state->input_size - 1)) /* avoid extra newline when it ends flush */
-            BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s", prefix);
-        else if ((i % 4) == 3)
+        BUFPRINT(buffer, buffer_size, *sofar, *len, "%02x", state->input_buffer[i]);
+        if ((i % (4*MAX_DWORD_PER_LINE)) == (4*MAX_DWORD_PER_LINE-1) &&
+            i < (state->input_size - 1)) /* avoid extra newline when it ends flush */ {
+            if (buffer_size - *sofar > MAX_PRINT_PER_LINE) {
+                /* start a new line */
+                BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s", prefix);
+            } else {
+                /* not enough to print a new line, backtrack and print "..." */
+                *sofar -= TARGET_BUFFER_TRUNC_LEN + 1/*NULL TERM*/;
+                BUFPRINT(buffer, buffer_size, *sofar, *len, TARGET_BUFFER_TRUNC);
+                break;
+            }
+        } else if ((i % 4) == 3)
             BUFPRINT(buffer, buffer_size, *sofar, *len, " "); /* space between dwords */
     }
     BUFPRINT(buffer, buffer_size, *sofar, *len, NL"%s"NL, prefix);
