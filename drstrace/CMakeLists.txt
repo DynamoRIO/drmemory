@@ -161,9 +161,14 @@ if (WIN32)
   use_DynamoRIO_extension(drstrace_unit_tests drmgr_static)
   use_DynamoRIO_extension(drstrace_unit_tests drx_static)
   use_DynamoRIO_extension(drstrace_unit_tests drsyms_static)
-  # XXX DRi#1409/DRi#1503: we get link errors about dup symbols dr_get_stderr_file()
-  # in drdecode and dynamorio libs unless we link w/ drinjectlib.
-  target_link_libraries(drstrace_unit_tests drinjectlib drfrontendlib)
+  # XXX DRi#1409/DRi#1503/i#1805: we get link errors about dup symbols
+  # dr_get_stderr_file() in drdecode and dynamorio libs unless we link w/
+  # drinjectlib, and if we link w/ drinjectlib we get duplicate IR link errors
+  # w/ drdecode (i#1805).  We solve by moving drfrontendlib earlier via the link
+  # flags.
+  get_target_property(drfront_path drfrontendlib LOCATION${location_suffix})
+  append_property_string(TARGET drstrace_unit_tests LINK_FLAGS ${drfront_path})
+  add_dependencies(drstrace_unit_tests drfrontendlib)
   add_dependencies(drstrace_unit_tests drsyscall)
   add_test(drstrace_unit_tests
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
