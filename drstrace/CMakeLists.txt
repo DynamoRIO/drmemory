@@ -73,6 +73,13 @@ use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
 add_dependencies(drstracelib drsyscall)
 
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  # i#1805: to avoid strtol dup symbol errors (libcmt vs ntdll_imports) we just
+  # force the link.  Alternatives include splitting ntdll_imports into Nt+Rtl vs
+  # libc, dropping support for cmake < 3, or dropping non-Ninja support.
+  append_property_string(TARGET drstracelib LINK_FLAGS "/force:multiple")
+endif ()
+
 install(TARGETS drstracelib
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
