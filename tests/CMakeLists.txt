@@ -882,13 +882,15 @@ if (NOT APPLE)
     "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
     # i#1309: turn off some DR debug checking to speed up the test, as it times out
     # on Dr. Heapstat w/ online symbolization.
-    "-checklevel 1" OFF "")
+    # i#1809: turn off ldmps from false pos curiosity
+    "-checklevel 1 -dumpcore_mask 0x877d" OFF "")
   # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
   set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
   if (TOOL_DR_MEMORY)
     newtest_nobuild(app_suite.pattern app_suite_tests ""
       "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-      "" OFF "")
+      # i#1809: turn off ldmps from false pos curiosity
+      "-dumpcore_mask 0x877d" OFF "")
   endif ()
 endif ()
 
