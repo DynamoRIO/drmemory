@@ -164,7 +164,7 @@ typedef struct _saved_region_t {
 
 /* extend size to uint boundary if the exact required size is not already aligned */
 #define SIZEOF_SAVED_BUFFER_SHADOW(size) \
-    (ALIGN_FORWARD(((size) / SHADOW_GRANULARITY), SHADOW_GRANULARITY))
+    (ALIGN_FORWARD((size), SHADOW_GRANULARITY) / SHADOW_GRANULARITY)
 
 /* single allocation for saved_region_t and its shadow buffer */
 #define SIZEOF_SAVED_BUFFER(size) \
