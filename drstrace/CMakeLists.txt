@@ -181,6 +181,11 @@ if (WIN32)
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
   # We increase test timeout in case of slow Internet connection
   set_tests_properties(drstrace_unit_tests PROPERTIES TIMEOUT 120)
+
+  if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    # i#1805: avoid tolower dup symbol errors
+    append_property_string(TARGET drstrace_unit_tests LINK_FLAGS "/force:multiple")
+  endif ()
 endif (WIN32)
 
 ##################################################
