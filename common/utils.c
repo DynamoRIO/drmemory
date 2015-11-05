@@ -249,7 +249,9 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     drsym_error_t symres;
     char *fname = NULL, *c, *fend;
 
-    if (mod->full_path == NULL || mod->full_path[0] == '\0')
+    if (mod->full_path == NULL || mod->full_path[0] == '\0'
+        /* i#1803: handle special cases like "[vdso]" */
+        IF_LINUX(|| mod->full_path[0] == '['))
         return NULL;
     if (callback == NULL) {
         if (op_use_symcache) {
