@@ -413,7 +413,7 @@ event_exit(void)
     heap_region_exit();
     if (options.pattern != 0)
         pattern_exit();
-    if (option_specified.fuzz_target)
+    if (options.fuzz)
         fuzzer_exit();
     if (options.shadowing) {
         shadow_exit();
@@ -1887,10 +1887,8 @@ dr_init(client_id_t id)
         shadow_init();
     }
 
-    if (option_specified.fuzz_target) {
+    if (options.fuzz)
         fuzzer_init(client_id);
-        fuzzer_fuzz_option_target();
-    }
 
     if (options.pattern != 0)
         pattern_init();

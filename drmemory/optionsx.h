@@ -593,6 +593,31 @@ OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
 OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
                    "Ensure external processes terminated by this one exit cleanly",
                    "Ensure external processes terminated by this one exit cleanly.  Often applications forcibly terminate child processes, which can prevent proper leak checking and error and suppression summarization as well as generation of symbol and code cache files needed for performance.  When this option is enabled, every termination call to another process will be replaced with a directive to the Dr. Memory running in that process to perform a clean shutdown.  If there is no DynamoRIO-based tool in the target process, the regular termination call will be carried out.")
+OPTION_CLIENT_BOOL(drmemscope, fuzz, false,
+                   "Enable fuzzing by Dr. Memory",
+                   "Enable fuzzing by Dr. Memory.")
+OPTION_CLIENT_STRING(drmemscope, fuzz_module, "",
+                     "The fuzz target module name. The application main executable is used by default.",
+                     "The fuzz target module name. The application main executable is used by default.")
+# define FUZZ_FUNC_DEFAULT_NAME "DrMemFuzzFunc"
+OPTION_CLIENT_STRING(drmemscope, fuzz_function, FUZZ_FUNC_DEFAULT_NAME,
+                     "The fuzz target function symbol name. "FUZZ_FUNC_DEFAULT_NAME" is used by default.",
+                     "The fuzz target function symbol name. "FUZZ_FUNC_DEFAULT_NAME" is used by default.")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_offset, uint, 0, 0, UINT_MAX,
+                     "The fuzz target function offset in the module.",
+                     "The fuzz target function offset in the module.")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_num_args, uint, 2, 0, 32,
+                    "The number of arguments (2 by default) passed to the fuzz target function.",
+                    "The number of arguments (2 by default) passed to the fuzz target function.  For vararg functions this must match the actual number of arguments passed by the caller.")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_data_idx, uint, 0, 0, 31,
+                    "The fuzz data argument index (0 by default).",
+                    "The fuzz data argument index (0 by default).")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_size_idx, uint, 1, 0, 31,
+                    "The fuzz data size argument index (1 by default).",
+                    "The fuzz data size argument index (1 by default).")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_num_iters, int, 100, 0, INT_MAX,
+                    "The number of times (100 by default) to repeat executing the target function.",
+                    "The number of times (100 by default) to repeat executing the target function.  Use 0 to repeat until the mutator is exhausted.")
 /* long comment includes HTML escape characters (http://www.doxygen.nl/htmlcmds.html) */
 OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
                      "Fuzz test the target program according to the specified descriptor"NL

@@ -37,12 +37,6 @@ fuzzer_init(client_id_t client_id);
 void
 fuzzer_exit();
 
-/* Fuzz the target specified by the user in the command line options, including all
- * fuzzing qualifiers such as the mutator descriptor, singleton input, etc.
- */
-void
-fuzzer_fuzz_option_target();
-
 /* Set up fuzzing as specified by the target_descriptor, which has the form:
  *
  *     <target>|<arg-count>|<buffer-index>|<size-index>|<repeat-count>[|<call-conv>]

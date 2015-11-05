@@ -183,6 +183,12 @@ thread_init(void *dcontext);
 static void
 thread_exit(void *dcontext);
 
+static bool
+fuzzer_fuzz_target_callconv_arg_init();
+
+static void
+fuzzer_option_init();
+
 void
 fuzzer_init(client_id_t client_id)
 {
@@ -226,6 +232,7 @@ fuzzer_init(client_id_t client_id)
 #endif
 
     fuzzer_initialized = true;
+    fuzzer_option_init();
 }
 
 void
@@ -240,10 +247,43 @@ fuzzer_exit()
     drmgr_exit();
 }
 
-void
-fuzzer_fuzz_option_target()
+static void
+fuzzer_fuzz_target_init()
 {
-    fuzzer_fuzz_target(options.fuzz_target);
+    module_data_t *module;
+    /* module */
+    if (!option_specified.fuzz_module) {
+        module = dr_get_main_module();
+        fuzz_target.module_name = drmem_strdup(dr_module_preferred_name(module),
+                                               HEAPSTAT_MISC);
+        dr_free_module_data(module);
+    } else {
+        fuzz_target.module_name = drmem_strdup(options.fuzz_module, HEAPSTAT_MISC);
+    }
+    /* function/offset */
+    if (option_specified.fuzz_offset) {
+        fuzz_target.type = FUZZ_TARGET_OFFSET;
+        fuzz_target.offset = options.fuzz_offset;
+    } else {
+        fuzz_target.type = FUZZ_TARGET_SYMBOL;
+        fuzz_target.symbol = drmem_strdup(options.fuzz_function, HEAPSTAT_MISC);
+    }
+    /* args */
+    fuzz_target.arg_count    = options.fuzz_num_args;
+    fuzz_target.buffer_arg   = options.fuzz_data_idx;
+    fuzz_target.size_arg     = options.fuzz_size_idx;
+    fuzz_target.repeat_count = options.fuzz_num_iters;
+    fuzz_target.callconv     = DRWRAP_CALLCONV_DEFAULT;
+    fuzzer_fuzz_target_callconv_arg_init();
+}
+
+static void
+fuzzer_option_init()
+{
+    if (option_specified.fuzz_target)
+        fuzzer_fuzz_target(options.fuzz_target);
+    else
+        fuzzer_fuzz_target_init();
     if (option_specified.fuzz_mutator) {
         if (option_specified.fuzz_one_input) {
             NOTIFY_ERROR("Cannot specify both a mutator configuration and a single "
@@ -540,6 +580,27 @@ map_callconv_args(drwrap_callconv_t callconv)
 #endif
     default: return NULL;
     }
+}
+
+static bool
+fuzzer_fuzz_target_callconv_arg_init()
+{
+    fuzz_target.callconv_args = map_callconv_args(fuzz_target.callconv);
+    if (fuzz_target.callconv_args == NULL) {
+        NOTIFY_ERROR("Descriptor specifies unknown calling convention id %d"NL,
+                     fuzz_target.callconv);
+        FUZZ_ERROR("Descriptor specifies unknown calling convention id %d\n",
+                   fuzz_target.callconv);
+        return false;
+    }
+    fuzz_target.arg_count_regs = MIN(fuzz_target.arg_count,
+                                     fuzz_target.callconv_args->reg_count);
+    fuzz_target.arg_count_stack = fuzz_target.arg_count - fuzz_target.arg_count_regs;
+    IF_DEBUG({
+        if (fuzz_target.callconv_args->regs != NULL)
+            ASSERT_NOT_TESTED("Save and restore shadow registers");
+    });
+    return true;
 }
 
 /* simple heuristic to detect incorrect buffer arg index */
@@ -1410,21 +1471,8 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor)
     } else {
         fuzz_target.callconv = DRWRAP_CALLCONV_DEFAULT;
     }
-    fuzz_target.callconv_args = map_callconv_args(fuzz_target.callconv);
-    if (fuzz_target.callconv_args == NULL) {
-        NOTIFY_ERROR("Descriptor specifies unknown calling convention id %d"NL,
-                     fuzz_target.callconv);
-        FUZZ_ERROR("Descriptor specifies unknown calling convention id %d\n",
-                   fuzz_target.callconv);
+    if (!fuzzer_fuzz_target_callconv_arg_init())
         tokenizer_exit_with_usage_error();
-    }
-    fuzz_target.arg_count_regs = MIN(fuzz_target.arg_count,
-                                     fuzz_target.callconv_args->reg_count);
-    fuzz_target.arg_count_stack = fuzz_target.arg_count - fuzz_target.arg_count_regs;
-    IF_DEBUG({
-        if (fuzz_target.callconv_args->regs != NULL)
-            ASSERT_NOT_TESTED("Save and restore shadow registers");
-    });
 
     return true;
 }

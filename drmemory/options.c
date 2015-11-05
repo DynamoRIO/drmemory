@@ -504,6 +504,24 @@ options_init(const char *opstr)
             usage_error("-handle_leaks_only cannot be used with pattern mode", "");
 # endif
     }
+    if (option_specified.fuzz ||
+        option_specified.fuzz_module ||
+        option_specified.fuzz_function ||
+        option_specified.fuzz_offset ||
+        option_specified.fuzz_num_args ||
+        option_specified.fuzz_data_idx ||
+        option_specified.fuzz_size_idx ||
+        option_specified.fuzz_num_iters ||
+        option_specified.fuzz_target ||
+        option_specified.fuzz_mutator ||
+        option_specified.fuzz_one_input ||
+        option_specified.fuzz_buffer_fixed_size ||
+        option_specified.fuzz_buffer_offset ||
+        option_specified.fuzz_skip_initial ||
+        IF_WINDOWS(option_specified.fuzz_mangled_names ||)
+        option_specified.fuzz_stat_freq)
+        options.fuzz = true;
+
     if (options.replace_malloc) {
         options.replace_realloc = false; /* no need for it */
         /* whole header is in redzone, but supports redzone being smaller than header */

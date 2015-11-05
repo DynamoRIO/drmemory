@@ -47,9 +47,9 @@ else (UNIX)
 endif (UNIX)
 
 # fuzz the c target
-set(fuzz_buffer_drmem_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
 newtest_ex(fuzz_buffer fuzz_buffer.c
-  "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0)
+  "initialize" "-fuzz_function;repeatme;-fuzz_num_iters;10" "" OFF "" 0)
+set(fuzz_buffer_drmem_ops "-fuzz_target;<main>!repeatme|2|0|1|10")
 set(mutator_drmem_ops "-fuzz_mutator;o|b|r|3")
 newtest_nobuild_ex(fuzz_buffer.mutator.o-b-s-3 fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
