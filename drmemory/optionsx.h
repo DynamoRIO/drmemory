@@ -579,7 +579,9 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, unaddr_only, false,
                    "Enables a lightweight mode that detects only unaddressable errors",
                    "This option enables a lightweight mode that only detects critical errors of unaddressable accesses on heap data.  This option cannot be used with 'light' or 'check_uninitialized'.")
-OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, 0, 0, USHRT_MAX,
+/* XXX i#111/i#1810: until 64-bit shadow is fully ported, pattern is the x64 default */
+OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, IF_X64_ELSE(DEFAULT_PATTERN, 0),
+                    0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")
 OPTION_CLIENT_BOOL(drmemscope, persist_code, false,

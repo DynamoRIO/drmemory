@@ -897,8 +897,20 @@ endif ()
 # framework subdir is added at top level b/c wants DR cflags
 
 else (NOT X64)
-  # pattern mode testing.
-  newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly" 0)
+  # XXX i#111: we'll eliminate this duplication once we have full mode working --
+  # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
+
+  # default mode == pattern + leaks
+  newtest(hello hello.c)
+  newtest(free free.c)
+  newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+  newtest(patterns patterns.c)
+  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
+  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
+    OFF "" 0)
+
+  # pattern mode testing w/o leaks
+  newtest_nobuild_ex(free.pattern free "" "-unaddr_only" "" OFF "addronly" 0 "")
   newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
   newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF "registers.pattern" 0)
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
@@ -912,19 +924,12 @@ else (NOT X64)
   endif (WIN32)
 
   # shadow light testing
-  # XXX i#111: we'll eliminate this duplication once we have full mode working --
-  # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
-  newtest(hello hello.c)
-  newtest(free free.c)
-  newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
-  newtest(patterns patterns.c)
-  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
-  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
-  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
-    OFF "" 0)
+  newtest_nobuild_ex(hello.shadow hello "" "-pattern;0" "" OFF "hello" 0 "")
+  newtest_nobuild_ex(free.shadow free "" "-pattern;0" "" OFF "free" 0 "")
+  newtest_nobuild_ex(patterns.shadow patterns "" "-pattern;0" "" OFF "patterns" 0 "")
   if (LINUX)
     get_relative_location(hello hello_path)
-    newtest_ex(nonaslr nonaslr.c "${hello_path}" "" "" OFF "hello" 0)
+    newtest_ex(nonaslr nonaslr.c "${hello_path}" "-pattern;0" "" OFF "hello" 0)
   endif (LINUX)
 endif (NOT X64)
 
