@@ -1185,6 +1185,7 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
                      bool image)
 {
     bool shrink = (new_size < old_size);
+    bool found;
     if (options.shadowing) {
         shadow_copy_range(old_base, new_base, shrink ? new_size : old_size);
         if (shrink) {
@@ -1195,10 +1196,11 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
                              image ? SHADOW_DEFINED : SHADOW_UNDEFINED);
         }
     }
-    IF_DEBUG(bool found =)
-        mmap_tree_remove(old_base, old_size);
-    ASSERT(found, "for now assuming mremap is of anon regions only");
-    mmap_tree_add(new_base, new_size);
+    found = mmap_tree_remove(old_base, old_size);
+    if (found) {
+        /* an anon region */
+        mmap_tree_add(new_base, new_size);
+    }
 }
 #endif
 
