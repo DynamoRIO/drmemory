@@ -71,6 +71,19 @@ pattern_opnd_needs_check(opnd_t opnd)
      */
     if (opnd_is_abs_addr(opnd))
         return false;
+#if defined(UNIX) && defined(X86)
+    /* FIXME i#1812: check app TLS accesses.
+     * DynamoRIO steals both TLS segment registers and mangles all app TLS accesses.
+     * To check an app TLS access, we need extra instrumentation to steal a
+     * register for holding app TLS segment base.
+     */
+    /* Assuming all non-TLS segment bases are 0, we can check those memory
+     * accesses without special handling.
+     */
+    if (opnd_is_far_base_disp(opnd) &&
+        (opnd_get_segment(opnd) == SEG_GS || opnd_get_segment(opnd) == SEG_FS))
+        return false;
+#endif
 #ifdef X64
     if (opnd_is_rel_addr(opnd))
         return false;
