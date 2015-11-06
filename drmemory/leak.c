@@ -723,7 +723,7 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
     }
     /* PR 535344: remove std::string instances from possible leak category */
     if (op_midchunk_string_ok) {
-        /* A std::string object points at a heap-allocate instance of its internal
+        /* A std::string object points at a heap-allocated instance of its internal
          * representation where the stored pointer is to the char array after 3
          * header fields (length, capacity, refcount).
          */
@@ -734,8 +734,11 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
             LOG(4, "\tstring length="PIFX", capacity="PIFX", alloc="PIFX"\n",
                 length, capacity, chunk_end - chunk_start);
             if (length <= capacity &&
-                (capacity + 1/*null-terminated*/ + 3*sizeof(size_t)/*3 header fields*/
-                 == (chunk_end - chunk_start))) {
+                ((capacity + 1/*null-terminated*/ + 3*sizeof(size_t)/*3 header fields*/
+                  == (chunk_end - chunk_start)) ||
+                 /* Wide 2-byte characters (i#1814) */
+                 ((capacity + 1/*null*/)*2 + 3*sizeof(size_t)/*3 header fields*/
+                  == (chunk_end - chunk_start)))) {
                 /* could also check for no nulls in char[] until length */
                 LOG(3, "\tmid-chunk "PFX" is std::string => ok\n", pointer);
                 STATS_INC(midchunk_string_ptrs);
