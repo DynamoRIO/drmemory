@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -30,6 +30,16 @@
 // For InitCommonControlsEx
 #include <commctrl.h>
 #pragma comment(lib, "comctl32.lib")
+
+// For BuildPropList test
+#include <shobjidl.h>
+#include <propkey.h>
+#include <propvarutil.h>
+#include <propidl.h>
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "ole32.lib")
 
 // A potentially externally visible global.  Useful if you want to make a
 // statement the compiler can't delete.
@@ -335,4 +345,37 @@ TEST(NtUserTests, ScrollDC) {
     BOOL res = ScrollDC(hdc, 3, -4, NULL, &rect, NULL, &bound);
     ASSERT_EQ(res, TRUE);
     DeleteDC(hdc);
+}
+
+TEST(NtUserTests, BuildPropList) {
+    /* i#1816: test NtUserBuildPropList */
+    static const char *myclass = "BuildPropList";
+    WNDCLASS wc = {0,};
+    wc.lpfnWndProc = DefWindowProc;
+    wc.lpszClassName = myclass;
+    RegisterClass(&wc);
+    HWND window = CreateWindow(myclass, "Test Window", WS_OVERLAPPEDWINDOW,
+                               CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                               (HWND)NULL, (HMENU)NULL, (HINSTANCE)NULL, NULL);
+    HRESULT hr;
+    IPropertyStore *pps;
+    hr = SHGetPropertyStoreForWindow(window, IID_PPV_ARGS(&pps));
+    EXPECT_TRUE(SUCCEEDED(hr));
+    /* Add a 2nd property to better test the syscall: */
+    PROPVARIANT prop;
+    hr = InitPropVariantFromString(L"Example property", &prop);
+    EXPECT_TRUE(SUCCEEDED(hr));
+    hr = pps->SetValue(PKEY_Search_HitCount, prop);
+    EXPECT_TRUE(SUCCEEDED(hr));
+    pps->Commit();
+    DWORD num;
+    /* This is the call that ends up invoking NtUserBuildPropList: */
+    hr = pps->GetCount(&num);
+    EXPECT_TRUE(SUCCEEDED(hr));
+    if (num > 0) {
+        PROPERTYKEY pkey;
+        pps->GetAt(0, &pkey);
+    }
+    PropVariantClear(&prop);
+    pps->Release();
 }

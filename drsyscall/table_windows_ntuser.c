@@ -33,6 +33,7 @@
 #include "../wininc/ndk_extypes.h" /* required by ntuser.h */
 #include "../wininc/ntuser.h"
 #include "../wininc/ntuser_win8.h"
+#include "../wininc/ntuser_ex.h"
 
 /***************************************************************************/
 /* System calls with wrappers in user32.dll.
@@ -183,9 +184,9 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserBuildPropList", OK, RNTST, 4,
      {
          {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
-         {1, -3, WI|HT, DRSYS_TYPE_STRUCT},
-         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -1, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(USER_PROP_LIST_ENTRY)},
+         {2, -3, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(USER_PROP_LIST_ENTRY)},
          {3, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
