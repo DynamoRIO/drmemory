@@ -110,6 +110,7 @@ fuzzer_set_singleton_input(const char *input_value);
  * true if any thread was fuzzing; i.e., if anything was written to user_message.
  */
 size_t
-fuzzer_error_report(IN void *dcontext, OUT char *user_message, IN size_t size);
+fuzzer_error_report(IN void *dcontext, OUT char *user_message, IN size_t size,
+                    int error_id);
 
 #endif /* _FUZZER_H_ */

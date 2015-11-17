@@ -618,6 +618,9 @@ OPTION_CLIENT_SCOPE(drmemscope, fuzz_size_idx, uint, 1, 0, 31,
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_num_iters, int, 100, 0, INT_MAX,
                     "The number of times (100 by default) to repeat executing the target function.",
                     "The number of times (100 by default) to repeat executing the target function.  Use 0 to repeat until the mutator is exhausted.")
+OPTION_CLIENT_BOOL(drmemscope, fuzz_dump_on_error, true,
+                   "Dump the current fuzz input to current log directory on an error report.",
+                   "Dump the current fuzz input to current log directory on an error report.  The file name can be found in the error report summary.")
 /* long comment includes HTML escape characters (http://www.doxygen.nl/htmlcmds.html) */
 OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
                      "Fuzz test the target program according to the specified descriptor"NL

@@ -2815,11 +2815,6 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
         }
     }
 
-    if (fuzzer_error_report(drcontext, fuzzer_buf, FUZZER_MSG_SZ) > 0)
-        etp->fuzzer_msg = fuzzer_buf;
-    else
-        etp->fuzzer_msg = NULL;
-
     /* i#838: If we have a wildcard suppression covering this module for this
      * error type, don't bother taking the stack trace, unless we need to log
      * it.
@@ -2890,6 +2885,11 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
         }
     }
     dr_mutex_unlock(error_lock);
+
+    if (fuzzer_error_report(drcontext, fuzzer_buf, FUZZER_MSG_SZ, err->id) > 0)
+        etp->fuzzer_msg = fuzzer_buf;
+    else
+        etp->fuzzer_msg = NULL;
 
     errbuf = report_alloc_buf(drcontext, &errbufsz);
     print_error_report(drcontext, errbuf, errbufsz, reporting, etp, err, &ecs);

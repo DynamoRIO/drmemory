@@ -27,8 +27,10 @@
 #include "shadow.h"
 #include "report.h"
 #include "drwrap.h"
+#include "drx.h"
 #include "drfuzz_mutator.h"
 #include "fuzzer.h"
+#include "drmemory.h"
 
 #ifdef WINDOWS
 # include "dbghelp.h"
@@ -383,9 +385,40 @@ fuzzer_set_singleton_input(const char *input_value)
     fuzz_target.singleton_input = input_value;
 }
 
+static bool
+dump_fuzz_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
+                size_t *sofar, ssize_t *len, char *prefix, int eid)
+{
+    char buf[MAXIMUM_PATH];
+    char suffix[32];
+    file_t data;
+    dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), "error.%d.dat", eid);
+    NULL_TERMINATE_BUFFER(suffix);
+
+    data = drx_open_unique_appid_file(logsubdir,
+                                      dr_get_process_id(),
+                                      "fuzz", suffix,
+                                      DR_FILE_ALLOW_LARGE,
+                                      buf, BUFFER_SIZE_ELEMENTS(buf));
+    if (data == INVALID_FILE) {
+        ELOG(1, "Failed to create/dump fuzz input to file");
+        return false;
+    }
+    if (dr_write_file(data, state->input_buffer, state->input_size) !=
+        state->input_size) {
+        ELOG(1, "Partial fuzz input is dumped to file");
+    }
+    dr_close_file(data);
+
+    BUFPRINT(buffer, buffer_size, *sofar, *len,
+             "%sfuzz input for error #%d is stored in file %s\n",
+             prefix, eid, buf);
+    return true;
+}
+
 static void
-print_target_buffer(fuzz_state_t *state, char *buffer, size_t buffer_size,
-                    size_t *sofar, ssize_t *len, const char *prefix)
+print_fuzz_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
+                 size_t *sofar, ssize_t *len, const char *prefix)
 {
     uint i;
 
@@ -427,7 +460,7 @@ log_target_buffer(void *dcontext, uint loglevel, fuzz_state_t *thread)
                   ((thread->input_size / 32) * sizeof(NL)) /*internal newline*/ +
                   (sizeof(NL) * 4) /*newlines top and bottom*/ + 1 /*null-term*/;
     buffer = thread_alloc(dcontext, buffer_size, HEAPSTAT_MISC);
-    print_target_buffer(thread, buffer, buffer_size, &sofar, &len, ""/*no prefix*/);
+    print_fuzz_input(thread, buffer, buffer_size, &sofar, &len, ""/*no prefix*/);
     ASSERT(sofar <= buffer_size, "buffer overflowed the expected size");
     if (loglevel == LOG_LEVEL_ELOG)
         ELOG(1, buffer);
@@ -437,7 +470,7 @@ log_target_buffer(void *dcontext, uint loglevel, fuzz_state_t *thread)
 }
 
 size_t
-fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size)
+fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size, int eid)
 {
     ssize_t len = 0;
     size_t sofar = 0;
@@ -476,20 +509,25 @@ fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size)
     }
 
     if (fuzzing_thread_count > 0) {
-        BUFPRINT(notify, notify_size, sofar, len,
-                 INFO_PFX"%d threads were executing fuzz targets."NL""INFO_PFX,
-                 fuzzing_thread_count);
-        if (report_thread == this_thread || fuzzing_thread_count == 1) {
-            if (report_thread == this_thread) {
-                BUFPRINT(notify, notify_size, sofar, len, "The error thread");
-            } else { /* XXX i#1734: would like to have a test for this case */
-                BUFPRINT(notify, notify_size, sofar, len,
-                         "Thread id %d", report_thread->thread_id);
-            }
+        if (options.fuzz_dump_on_error) {
+            dump_fuzz_input(this_thread, notify, notify_size, &sofar,
+                            &len, INFO_PFX, eid);
+        } else {
             BUFPRINT(notify, notify_size, sofar, len,
-                     " was executing the fuzz target with input value:");
-            print_target_buffer(this_thread, notify, notify_size, &sofar, &len, INFO_PFX);
-            ASSERT(sofar <= notify_size, "buffer overflowed the expected size");
+                     INFO_PFX"%d threads were executing fuzz targets."NL""INFO_PFX,
+                     fuzzing_thread_count);
+            if (report_thread == this_thread || fuzzing_thread_count == 1) {
+                if (report_thread == this_thread) {
+                    BUFPRINT(notify, notify_size, sofar, len, "The error thread");
+                } else { /* XXX i#1734: would like to have a test for this case */
+                    BUFPRINT(notify, notify_size, sofar, len,
+                             "Thread id %d", report_thread->thread_id);
+                }
+                BUFPRINT(notify, notify_size, sofar, len,
+                         " was executing the fuzz target with input value:");
+                print_fuzz_input(this_thread, notify, notify_size, &sofar, &len, INFO_PFX);
+                ASSERT(sofar <= notify_size, "buffer overflowed the expected size");
+            }
         }
     }
 
