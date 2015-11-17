@@ -141,9 +141,7 @@ static fuzz_target_t fuzz_target;
 /* Global configuration of the shadow memory and related handling options. */
 typedef struct _shadow_config_t {
     bool save_restore_enabled;
-    uint redzone_size;
     bool pattern_enabled;
-    uint pattern;
 } shadow_config_t;
 
 static shadow_config_t shadow_config;
@@ -195,8 +193,6 @@ void
 fuzzer_init(client_id_t client_id)
 {
     shadow_config.save_restore_enabled = options.shadowing && options.check_uninitialized;
-    shadow_config.pattern = options.pattern;
-    shadow_config.redzone_size = options.redzone_size;
 #ifdef X64
     if (shadow_config.save_restore_enabled) {
         ASSERT_NOT_IMPLEMENTED(); /* XXX i#1734: NYI */
@@ -204,8 +200,6 @@ fuzzer_init(client_id_t client_id)
         tokenizer_exit_with_usage_error();
     }
 #endif
-    if (options.pattern != 0 && !shadow_config.save_restore_enabled)
-        FUZZ_WARN("pattern mode not fully supported--redzone will not be reset\n");
 
     fuzz_state_lock = dr_mutex_create();
 
@@ -675,16 +669,6 @@ shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
     }
 }
 
-static inline void
-shadow_state_reset_redzone(fuzz_state_t *fuzz_state, shadow_state_t *shadow)
-{
-    byte *tail = fuzz_state->input_buffer + fuzz_state->input_size;
-
-    shadow_set_range(fuzz_state->input_buffer - shadow_config.redzone_size,
-                     fuzz_state->input_buffer, SHADOW_UNADDRESSABLE);
-    shadow_set_range(tail, tail + shadow_config.redzone_size, SHADOW_UNADDRESSABLE);
-}
-
 /* Restore shadow state for the arg registers and stack frame. */
 static inline void
 shadow_state_restore_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
@@ -772,12 +756,6 @@ init_thread_shadow_state(OUT shadow_state_t **shadow_out)
 
     *shadow_out = shadow;
     return true;
-}
-
-static inline void
-pattern_reset_redzone()
-{
-    /* XXX i#1734: NYI */
 }
 
 /***************************************************************************************
@@ -904,12 +882,9 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 return;
             }
             shadow_restore_region(shadow->buffer_shadow);
-            shadow_state_reset_redzone(fuzz_state, shadow);
+            /* We do not reset redzone because the shadow state would not be changed. */
         }
-    } else if (shadow_config.pattern != 0) {
-        pattern_reset_redzone();
     }
-    /* XXX i#1734: May want to consider an option to not reset redzone state.  */
 
     if (is_fuzz_entry) {
         const drfuzz_mutator_options_t *mutator_options;
