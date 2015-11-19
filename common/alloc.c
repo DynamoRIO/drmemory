@@ -3033,6 +3033,9 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     }
 #endif
 
+    if (!alloc_ops.track_allocs)
+        return;
+
     /* set up the per-malloc API */
     if (alloc_ops.replace_malloc)
         alloc_replace_init();
@@ -3049,11 +3052,11 @@ alloc_exit(void)
         dr_mutex_destroy(alloc_routine_lock);
     }
 
-    if (alloc_ops.replace_malloc)
-        alloc_replace_exit();
-
     if (!alloc_ops.track_allocs)
         return;
+
+    if (alloc_ops.replace_malloc)
+        alloc_replace_exit();
 
     if (alloc_ops.track_allocs) {
         if (!alloc_ops.replace_malloc)
