@@ -3056,6 +3056,13 @@ replace_operator_combined_delete(void *ptr)
  * Windows RTL Heap API
  */
 
+/* i#1572: Rtl*Heap return BOOLEAN up through win7, but BOOL on win8+.
+ * There's no downside to returning BOOL instead of BOOLEAN if our value
+ * is either 0 or 1 (i.e., no weird != 1 true values) so we always do that.
+ * Our code either uses A) TRUE or FALSE constants or B) !!bool.
+ */
+typedef BOOL RTL_HEAP_BOOL_TYPE;
+
 /* Table mapping a module base to arena_header_t, for post-us libc Heaps (i#960).
  * This stores the default Heap for the module and thus we assume the
  * lifetime of the arena matches the module lifetime.
@@ -3480,11 +3487,19 @@ typedef struct _cls_replace_t {
 typedef NTSYSAPI PVOID (NTAPI *RtlAllocateHeap_t)(HANDLE, ULONG, SIZE_T);
 static RtlAllocateHeap_t native_RtlAllocateHeap;
 
+typedef NTSYSAPI RTL_HEAP_BOOL_TYPE (NTAPI *RtlFreeHeap_t)(HANDLE, ULONG, PVOID);
+static RtlFreeHeap_t native_RtlFreeHeap;
+
 static app_pc addr_RtlGetThreadPreferredUILanguages;
-static app_pc addr_RtlFreeHeap;
+/* i#1822: we also need to make allocs in the Set routine native */
+static app_pc addr_RtlSetThreadPreferredUILanguages;
 
 static app_pc ntdll_base;
 static app_pc ntdll_end;
+
+/* We avoid invalid heap arg complaints on free by remembering the native allocs */
+#define NOSY_TABLE_HASH_BITS 8
+static hashtable_t nosy_table;
 
 static void
 replace_context_init(void *drcontext, bool new_depth)
@@ -3542,7 +3557,10 @@ replace_nosy_init(void)
 
     addr_RtlGetThreadPreferredUILanguages = (app_pc)
         dr_get_proc_address(ntdll->handle, "RtlGetThreadPreferredUILanguages");
-    ASSERT(addr_RtlGetThreadPreferredUILanguages != NULL ||
+    addr_RtlSetThreadPreferredUILanguages = (app_pc)
+        dr_get_proc_address(ntdll->handle, "RtlSetThreadPreferredUILanguages");
+    ASSERT((addr_RtlGetThreadPreferredUILanguages != NULL &&
+            addr_RtlSetThreadPreferredUILanguages != NULL) ||
            get_windows_version() < DR_WINDOWS_VERSION_VISTA,
            "failed to find RtlGetThreadPreferredUILanguages");
     if (addr_RtlGetThreadPreferredUILanguages != NULL) {
@@ -3550,13 +3568,21 @@ replace_nosy_init(void)
                          replace_start_nosy_sequence, replace_stop_nosy_sequence))
             ASSERT(false, "failed to wrap");
     }
-    addr_RtlFreeHeap = (app_pc) dr_get_proc_address(ntdll->handle, "RtlFreeHeap");
-    ASSERT(addr_RtlFreeHeap != NULL, "failed to find RtlFreeHeap");
+    if (addr_RtlSetThreadPreferredUILanguages != NULL) {
+        if (!drwrap_wrap(addr_RtlSetThreadPreferredUILanguages,
+                         replace_start_nosy_sequence, replace_stop_nosy_sequence))
+            ASSERT(false, "failed to wrap");
+    }
+    native_RtlFreeHeap = (RtlFreeHeap_t)
+        dr_get_proc_address(ntdll->handle, "RtlFreeHeap");
+    ASSERT(native_RtlFreeHeap != NULL, "failed to find RtlFreeHeap");
     dr_free_module_data(ntdll);
 
     cls_idx_replace =
         drmgr_register_cls_field(replace_context_init, replace_context_exit);
     ASSERT(cls_idx_replace > -1, "unable to reserve CLS field");
+
+    hashtable_init(&nosy_table, NOSY_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 }
 
 static void
@@ -3567,8 +3593,14 @@ replace_nosy_exit(void)
                            replace_start_nosy_sequence, replace_stop_nosy_sequence))
             ASSERT(false, "failed to unwrap");
     }
+    if (addr_RtlSetThreadPreferredUILanguages != NULL) {
+        if (!drwrap_unwrap(addr_RtlSetThreadPreferredUILanguages,
+                           replace_start_nosy_sequence, replace_stop_nosy_sequence))
+            ASSERT(false, "failed to unwrap");
+    }
     drmgr_unregister_cls_field(replace_context_init, replace_context_exit,
                                cls_idx_replace);
+    hashtable_delete_with_stats(&nosy_table, "nosy");
 }
 
 /* Returns whether an RtlAllocateHeap call should go native */
@@ -3614,7 +3646,8 @@ replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
             for (pc = app_caller; pc < app_caller + NOSY_MAX_DECODE; ) {
                 pc = decode(drcontext, pc, &inst);
                 if (instr_valid(&inst) && instr_is_call(&inst)) {
-                    if (opnd_get_pc(instr_get_target(&inst)) == addr_RtlFreeHeap) {
+                    if (opnd_get_pc(instr_get_target(&inst)) ==
+                        (app_pc)native_RtlFreeHeap) {
                         LOG(3, "%s: found call to RtlFreeHeap => not a native alloc\n",
                             __FUNCTION__);
                         DOLOG(3, {
@@ -3649,13 +3682,6 @@ replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
 /***************************************************************************
  * Continue RtlHeap API replacement routines:
  */
-
-/* i#1572: Rtl*Heap return BOOLEAN up through win7, but BOOL on win8+.
- * There's no downside to returning BOOL instead of BOOLEAN if our value
- * is either 0 or 1 (i.e., no weird != 1 true values) so we always do that.
- * Our code either uses A) TRUE or FALSE constants or B) !!bool.
- */
-typedef BOOL RTL_HEAP_BOOL_TYPE;
 
 static void
 handle_Rtl_alloc_failure(void *drcontext, arena_header_t *arena, ULONG flags)
@@ -3692,8 +3718,12 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
         /* We can't directly invoke RtlAllocateHeap as DR's private loader
          * will redirect it.
          */
+        IF_DEBUG(void *existing;)
         res = (*native_RtlAllocateHeap)(heap, flags, size);
-        LOG(2, "\tnative alloc => "PFX"\n",  res);
+        IF_DEBUG(existing =)
+            hashtable_add_replace(&nosy_table, (void *)res, (void *)res);
+        LOG(2, "\tnative alloc => "PFX" (%s)\n",  res,
+            existing == NULL ? "new" : "replacing -- likely missed RtlpFreeHeap");
     }
 # endif
     else {
@@ -3765,6 +3795,16 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
         res = TRUE;
     } else if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlFreeHeap);
+#ifdef X64
+    else if (hashtable_lookup(&nosy_table, (void *)ptr) != NULL) {
+        IF_DEBUG(bool found;)
+        res = (*native_RtlFreeHeap)(heap, flags, ptr);
+        IF_DEBUG(found =)
+            hashtable_remove(&nosy_table, (void *)ptr);
+        LOG(2, "\tnative free "PFX" => %d\n",  ptr, res);
+        ASSERT(found, "could this be an app race?");
+    }
+#endif
     else {
         bool ok = (bool)(ptr_uint_t) ONDSTACK_REPLACE_FREE_COMMON
             (arena, ptr,
