@@ -138,14 +138,6 @@ typedef struct _fuzz_target_t {
 
 static fuzz_target_t fuzz_target;
 
-/* Global configuration of the shadow memory and related handling options. */
-typedef struct _shadow_config_t {
-    bool save_restore_enabled;
-    bool pattern_enabled;
-} shadow_config_t;
-
-static shadow_config_t shadow_config;
-
 static bool fuzzer_initialized;
 
 /* Protects the fuzz_state_t fields input_buffer_copy and input_size for access from
@@ -192,15 +184,6 @@ fuzzer_option_init();
 void
 fuzzer_init(client_id_t client_id)
 {
-    shadow_config.save_restore_enabled = options.shadowing && options.check_uninitialized;
-#ifdef X64
-    if (shadow_config.save_restore_enabled) {
-        ASSERT_NOT_IMPLEMENTED(); /* XXX i#1734: NYI */
-        NOTIFY_ERROR("Shadow memory save/restore is not implemented in x64."NL);
-        tokenizer_exit_with_usage_error();
-    }
-#endif
-
     fuzz_state_lock = dr_mutex_create();
 
     drmgr_init();
@@ -640,7 +623,6 @@ fuzzer_fuzz_target_callconv_arg_init()
 
 /* stores shadow memory state for an instance of the fuzz target (per thread) */
 typedef struct _shadow_state_t {
-    reg_t xsp;        /* stack pointer, saved when first entering a fuzz target */
     uint *reg_args;   /* saved shadow memory state of the register args */
     byte *app_start;  /* reference to the fuzz target's buffer arg */
     size_t app_size;  /* size of the fuzz target's buffer arg */
@@ -657,15 +639,14 @@ shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
 {
     uint i;
 
-    shadow->xsp = mc->xsp;
-
     for (i = 0; i < fuzz_target.arg_count_regs; i++)
         shadow->reg_args[i] = get_shadow_register(fuzz_target.callconv_args->regs[i]);
     if (fuzz_target.arg_count > fuzz_target.callconv_args->reg_count) {
-        size_t stack_arg_offset = fuzz_target.callconv_args->stack_offset * sizeof(reg_t);
-        app_pc stack_arg_start = (app_pc) (mc->xsp + stack_arg_offset);
+        size_t stack_ret_size = fuzz_target.callconv_args->stack_offset * sizeof(reg_t);
         size_t stack_arg_size = (fuzz_target.arg_count_stack * sizeof(reg_t));
-        shadow->stack_shadow = shadow_save_region(stack_arg_start, stack_arg_size);
+        /* save shadow state for arg and return addr */
+        shadow->stack_shadow = shadow_save_region((app_pc)(mc->xsp),
+                                                  stack_ret_size + stack_arg_size);
     }
 }
 
@@ -675,12 +656,10 @@ shadow_state_restore_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
 {
     uint i;
 
-    ASSERT((app_pc)(shadow->xsp) != NULL, "stack pointer was not saved");
-    shadow_set_range((app_pc)shadow->xsp, (app_pc)mc->xsp, SHADOW_DEFINED);
-
-    for (i = 0; i < fuzz_target.arg_count_regs; i++)
+    for (i = 0; i < fuzz_target.arg_count_regs; i++) {
         register_shadow_set_dword(fuzz_target.callconv_args->regs[i],
                                   shadow->reg_args[i]);
+    }
     shadow_restore_region(shadow->stack_shadow);
 }
 
@@ -756,6 +735,80 @@ init_thread_shadow_state(OUT shadow_state_t **shadow_out)
 
     *shadow_out = shadow;
     return true;
+}
+
+static void
+shadow_state_init(void *dcontext, fuzz_state_t *fuzz_state, dr_mcontext_t *mc)
+{
+    shadow_state_t *shadow;
+    /* We only need to save shadow state for uninit check. */
+    if (!options.check_uninitialized)
+        return;
+    ASSERT(options.shadowing, "shadow is disabled");
+
+    if (!init_thread_shadow_state(&shadow)) {
+        FUZZ_ERROR("Failed to initialize the shadow memory state for target "PIFX
+                   "on thread 0x%x. Disabling the fuzz target."NL,
+                   fuzz_target.pc, fuzz_state->thread_id);
+        fuzz_target.enabled = false;
+        return;
+    }
+
+    /* We save shadow state for arguments, arg/ret on stack, and input buffers.
+     * We do not save shadow state for the redzone because the redzone shadow state
+     * should not be changed.
+     */
+    shadow_state_save_stack_frame(mc, shadow);
+    shadow->buffer_shadow = shadow_save_region(fuzz_state->input_buffer,
+                                               fuzz_state->input_size);
+ }
+
+static void
+shadow_state_restore(void *dcontext, void *fuzzcxt, dr_mcontext_t *mc)
+{
+    drmf_status_t res;
+    shadow_state_t *shadow;
+
+    /* We only need to restore shadow state for uninit check. */
+    if (!options.check_uninitialized)
+        return;
+    ASSERT(options.shadowing, "shadow is disabled");
+
+    res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
+                                                 (void **) &shadow);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to acquire the shadow memory state for target "PIFX
+                   "on thread 0x%x. Disabling the fuzz target."NL,
+                   fuzz_target.pc, dr_get_thread_id(dcontext));
+        fuzz_target.enabled = false;
+        return;
+    }
+    shadow_state_restore_stack_frame(mc, shadow);
+    shadow_restore_region(shadow->buffer_shadow);
+}
+
+static void
+shadow_state_exit(void *dcontext, void *fuzzcxt)
+{
+    drmf_status_t res;
+    shadow_state_t *shadow;
+
+    /* We only need to save shadow state for uninit check. */
+    if (!options.check_uninitialized)
+        return;
+    ASSERT(options.shadowing, "shadow is disabled");
+
+    res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
+                                                 (void **) &shadow);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to acquire the shadow memory state for target "PIFX
+                   "on thread 0x%x. Disabling the fuzz target."NL,
+                   fuzz_target.pc, dr_get_thread_id(dcontext));
+        fuzz_target.enabled = false;
+        return;
+    }
+
+    free_shadow_buffers(shadow);
 }
 
 /***************************************************************************************
@@ -841,87 +894,47 @@ free_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 }
 
 static void
-pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
+fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
 {
     drmf_status_t res;
-    shadow_state_t *shadow;
-    void *dcontext = drfuzz_get_drcontext(fuzzcxt);
-    fuzz_state_t *fuzz_state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
-    bool is_fuzz_entry = !fuzz_state->repeat;
+    const drfuzz_mutator_options_t *mutator_options;
+    size_t mutation_size = fuzz_state->input_size - fuzz_target.buffer_offset;
 
-    LOG(4, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
+    fuzz_state->mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
+    if (fuzz_target.buffer_fixed_size > 0 &&
+        fuzz_target.buffer_fixed_size < mutation_size)
+        mutation_size = fuzz_target.buffer_fixed_size;
 
-    if (!fuzz_target.enabled || fuzz_state->skip_initial > 0)
-        return;
+    fuzz_state->repeat_index = 0;
+    if (fuzz_target.repeat_count == 0)
+        LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
 
-    if (is_fuzz_entry) {
-        if (!find_target_buffer(fuzz_state, fuzzcxt))
-            return;
+    DOLOG(1, {
+        LOG(1, "Initializing mutator with buffer:\n\n");
+        log_target_buffer(dcontext, 1, fuzz_state);
+        LOG(1, "\n\n");
+    });
+
+    if (fuzz_state->mutator != NULL) {
+        drfuzz_mutator_stop(fuzz_state->mutator); /* in case a target was aborted */
+        fuzz_state->mutator = NULL;
     }
 
-    if (shadow_config.save_restore_enabled) {
-        if (is_fuzz_entry) {
-            if (!init_thread_shadow_state(&shadow)) {
-                FUZZ_ERROR("Failed to initialize the shadow memory state for target "PIFX
-                           "on thread 0x%x. Disabling the fuzz target."NL,
-                           fuzz_target.pc, fuzz_state->thread_id);
-                fuzz_target.enabled = false;
-                return;
-            }
-            shadow->buffer_shadow = shadow_save_region(fuzz_state->input_buffer,
-                                                       fuzz_state->input_size);
-            shadow_state_save_stack_frame(mc, shadow);
-        } else {
-            res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
-                                                         (void **) &shadow);
-            if (res != DRMF_SUCCESS) {
-                FUZZ_ERROR("Failed to acquire the shadow memory state for target "PIFX
-                           "on thread 0x%x. Disabling the fuzz target."NL,
-                           fuzz_target.pc, fuzz_state->thread_id);
-                fuzz_target.enabled = false;
-                return;
-            }
-            shadow_restore_region(shadow->buffer_shadow);
-            /* We do not reset redzone because the shadow state would not be changed. */
-        }
+    if (fuzz_target.mutator_options == NULL)
+        mutator_options = &DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
+    else
+        mutator_options = fuzz_target.mutator_options;
+    res = drfuzz_mutator_start(&fuzz_state->mutator, fuzz_state->mutation_start,
+                               mutation_size, mutator_options);
+    if (res != DRMF_SUCCESS) {
+        NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
+        dr_abort();
     }
+}
 
-    if (is_fuzz_entry) {
-        const drfuzz_mutator_options_t *mutator_options;
-        size_t mutation_size = fuzz_state->input_size - fuzz_target.buffer_offset;
-
-        fuzz_state->mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
-        if (fuzz_target.buffer_fixed_size > 0 &&
-            fuzz_target.buffer_fixed_size < mutation_size)
-            mutation_size = fuzz_target.buffer_fixed_size;
-
-        fuzz_state->repeat_index = 0;
-        if (fuzz_target.repeat_count == 0)
-            LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
-
-        DOLOG(1, {
-            LOG(1, "Initializing mutator with buffer:\n\n");
-            log_target_buffer(dcontext, 1, fuzz_state);
-            LOG(1, "\n\n");
-        });
-
-        if (fuzz_state->mutator != NULL) {
-            drfuzz_mutator_stop(fuzz_state->mutator); /* in case a target was aborted */
-            fuzz_state->mutator = NULL;
-        }
-
-        if (fuzz_target.mutator_options == NULL)
-            mutator_options = &DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
-        else
-            mutator_options = fuzz_target.mutator_options;
-        res = drfuzz_mutator_start(&fuzz_state->mutator, fuzz_state->mutation_start,
-                                   mutation_size, mutator_options);
-        if (res != DRMF_SUCCESS) {
-            NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
-            dr_abort();
-        }
-    }
-
+static void
+fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
+{
     if (fuzz_target.singleton_input == NULL) {
         drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->mutation_start);
         if (fuzz_target.repeat_count == 0) /* repeating until mutator exhausts */
@@ -930,11 +943,40 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         apply_singleton_input(fuzz_state);
         fuzz_state->repeat = false;
     }
-
     DOLOG(3, {
         LOG(3, "\n"LOG_PREFIX" Executing target with mutated buffer:\n");
         log_target_buffer(dcontext, 3, fuzz_state);
     });
+}
+
+static void
+fuzzer_mutator_exit(fuzz_state_t *fuzz_state)
+{
+    if (fuzz_state->mutator != NULL) {
+        drfuzz_mutator_stop(fuzz_state->mutator);
+        fuzz_state->mutator = NULL;
+    }
+}
+
+static void
+pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
+{
+    void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    fuzz_state_t *fuzz_state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+
+    LOG(2, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
+
+    if (!fuzz_target.enabled || fuzz_state->skip_initial > 0)
+        return;
+
+    if (!fuzz_state->repeat) {
+        if (!find_target_buffer(fuzz_state, fuzzcxt))
+            return;
+        shadow_state_init(dcontext, fuzz_state, mc);
+        fuzzer_mutator_init(dcontext, fuzz_state);
+    } else
+        shadow_state_restore(dcontext, fuzzcxt, mc);
+    fuzzer_mutator_next(dcontext, fuzz_state);
 }
 
 static bool
@@ -946,7 +988,6 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
 
     if (!fuzz_target.enabled)
         return false; /* in case someone unfuzzed while a target was looping */
-
     if (fuzz_state->skip_initial > 0) {
         fuzz_state->skip_initial--;
         return false;
@@ -966,41 +1007,14 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     if (fuzz_target.repeat_count > 0 && fuzz_target.singleton_input == NULL)
         fuzz_state->repeat = (fuzz_state->repeat_index < fuzz_target.repeat_count);
 
-    if (shadow_config.save_restore_enabled) {
-        drmf_status_t res;
-        shadow_state_t *shadow;
-        void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    if (fuzz_state->repeat)
+        return true;
 
-        res = drfuzz_get_target_per_thread_user_data(fuzzcxt, fuzz_target.pc,
-                                                     (void **) &shadow);
-        if (res != DRMF_SUCCESS) {
-            FUZZ_ERROR("Failed to acquire the shadow memory state for target "PIFX
-                       "on thread 0x%x. Disabling the fuzz target."NL,
-                       fuzz_target.pc, fuzz_state->thread_id);
-            fuzz_target.enabled = false;
-            return false;
-        }
-
-        if (fuzz_state->repeat) {
-            dr_mcontext_t mc;
-
-            mc.size = sizeof(dr_mcontext_t);
-            mc.flags = DR_MC_INTEGER | DR_MC_CONTROL;
-            dr_get_mcontext(dcontext, &mc);
-            shadow_state_restore_stack_frame(&mc, shadow);
-        } else {
-            free_shadow_buffers(shadow);
-        }
-    }
-
-    if (!fuzz_state->repeat) {
-        if (fuzz_state->mutator != NULL) {
-            drfuzz_mutator_stop(fuzz_state->mutator);
-            fuzz_state->mutator = NULL;
-        }
-        free_target_buffer(fuzz_state, fuzzcxt);
-    }
-    return fuzz_state->repeat;
+    /* do not repeat, clean-up */
+    shadow_state_exit(dcontext, fuzzcxt);
+    fuzzer_mutator_exit(fuzz_state);
+    free_target_buffer(fuzz_state, fuzzcxt);
+    return false;
 }
 
 static void
