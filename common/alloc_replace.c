@@ -946,7 +946,9 @@ header_to_info(chunk_header_t *head, malloc_info_t *info, byte *pre_us_base,
     info->client_data = head->user_data;
 }
 
-/* assumes caller initialized commit_end and reserve_end fields */
+/* Assumes caller zeroed the full struct and initialized the commit_end and
+ * reserve_end fields.
+ */
 static void
 arena_init(arena_header_t *arena, arena_header_t *parent)
 {
@@ -3182,6 +3184,8 @@ pre_existing_heap_init(HANDLE heap)
         ASSERT(alloc_end < (byte *)heap + mbi.RegionSize,
                "pre-us mapped heap has no room left");
         arena = (arena_header_t *) alloc_end;
+        /* Be sure to initialize everything as there could be stale data here (i#1823) */
+        memset(arena, 0, sizeof(*arena) + sizeof(*arena->free_list));
         arena->commit_end = (byte *)heap + mbi.RegionSize;
 
         /* i#1282: we may need to extend the committed part of the heap */
@@ -3722,6 +3726,9 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
         res = (*native_RtlAllocateHeap)(heap, flags, size);
         IF_DEBUG(existing =)
             hashtable_add_replace(&nosy_table, (void *)res, (void *)res);
+        /* This better not touch an mmapped heap as that could corrupt our data */
+        ASSERT(!TEST(ARENA_PRE_US_MAPPED, arena->flags),
+               "native alloc in mmapped heap is not supported");
         LOG(2, "\tnative alloc => "PFX" (%s)\n",  res,
             existing == NULL ? "new" : "replacing -- likely missed RtlpFreeHeap");
     }
@@ -3801,6 +3808,9 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
         res = (*native_RtlFreeHeap)(heap, flags, ptr);
         IF_DEBUG(found =)
             hashtable_remove(&nosy_table, (void *)ptr);
+        /* This better not touch an mmapped heap as that could corrupt our data */
+        ASSERT(!TEST(ARENA_PRE_US_MAPPED, arena->flags),
+               "native free in mmapped heap is not supported");
         LOG(2, "\tnative free "PFX" => %d\n",  ptr, res);
         ASSERT(found, "could this be an app race?");
     }
