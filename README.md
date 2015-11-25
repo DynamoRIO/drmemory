@@ -13,7 +13,7 @@ Dr. Memory operates on unmodified application binaries running on Windows,
 Linux, or Mac on commodity IA-32 and AMD64 hardware. Dr. Memory currently
 targets 32-bit applications only.
 
-[New 1.8.0 release](https://github.com/DynamoRIO/drmemory/wiki/Downloads)
+[New 1.9.0 release](https://github.com/DynamoRIO/drmemory/wiki/Downloads)
 includes a [Beta release for
 Mac](https://bintray.com/bruening/DrMemory/DrMemory-MacOS/view).
 
