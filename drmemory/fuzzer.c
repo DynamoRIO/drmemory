@@ -127,7 +127,7 @@ typedef struct _fuzz_target_t {
     uint size_arg;
     uint buffer_fixed_size; /* constrains mutation to a fixed number of bytes */
     uint buffer_offset;     /* constrains mutation to start at an offset in the buffer */
-    uint repeat_count;      /* number of times to fuzz the target (0 means indefinite) */
+     int repeat_count;      /* number of times to fuzz the target (-1 means indefinite) */
     uint skip_initial;      /* number of target invocations each thread should skip */
     uint stat_freq;
     const char *singleton_input;
@@ -396,6 +396,26 @@ void
 fuzzer_set_singleton_input(const char *input_value)
 {
     fuzz_target.singleton_input = input_value;
+}
+
+static ssize_t
+load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
+{
+    file_t data;
+    ssize_t size;
+    data = dr_open_file(fname, DR_FILE_READ);
+    if (data == INVALID_FILE) {
+        FUZZ_ERROR("Failed to open fuzz input file");
+        return 0;
+    }
+    /* read at most input_size */
+    size = dr_read_file(data, state->input_buffer, state->input_size);
+    if (size <= 0) {
+        FUZZ_ERROR("Failed to read input file");
+        return 0;
+    }
+    /* FIXME i#1734: we may need to update shadow state for loaded data */
+    return size;
 }
 
 static bool
@@ -942,7 +962,7 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
         mutation_size = fuzz_target.buffer_fixed_size;
 
     fuzz_state->repeat_index = 0;
-    if (fuzz_target.repeat_count == 0)
+    if (fuzz_target.repeat_count < 0)
         LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
 
     DOLOG(1, {
@@ -973,7 +993,7 @@ fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
 {
     if (fuzz_target.singleton_input == NULL) {
         drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->mutation_start);
-        if (fuzz_target.repeat_count == 0) /* repeating until mutator exhausts */
+        if (fuzz_target.repeat_count < 0) /* repeating until mutator exhausts */
             fuzz_state->repeat = drfuzz_mutator_has_next_value(fuzz_state->mutator);
     } else {
         apply_singleton_input(fuzz_state);
@@ -1008,8 +1028,20 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     if (!fuzz_state->repeat) {
         if (!find_target_buffer(fuzz_state, fuzzcxt))
             return;
+        if (option_specified.fuzz_input_file) {
+            if (load_fuzz_input(dcontext, options.fuzz_input_file, fuzz_state) == 0) {
+                /* fail to load input, do not fuzz */
+                NOTIFY_ERROR("Failed to load input data from %s."NL,
+                             options.fuzz_input_file);
+                fuzz_target.enabled = false;
+                free_target_buffer(fuzz_state, fuzzcxt);
+                return;
+            }
+        }
         shadow_state_init(dcontext, fuzz_state, mc);
         fuzzer_mutator_init(dcontext, fuzz_state);
+        if (fuzz_target.repeat_count == 0)
+            return;
     } else
         shadow_state_restore(dcontext, fuzzcxt, mc);
     fuzzer_mutator_next(dcontext, fuzz_state);
@@ -1348,8 +1380,8 @@ tokenizer_next_char(IN tokenizer_t *t, OUT char *c, IN char delimiter,
 }
 
 static bool
-tokenizer_next_uint(IN tokenizer_t *t, OUT byte *dst, IN char delimiter,
-                    IN bool hex, IN bool is_64, IN const char *field_name)
+tokenizer_next_int(IN tokenizer_t *t, OUT byte *dst, IN char delimiter,
+                   IN bool hex, IN bool is_64, IN const char *field_name)
 {
     size_t len;
     char *src;
@@ -1504,22 +1536,22 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor)
         replace_char(fuzz_target.symbol, TEMP_SPACE_CHAR, ' '); /* put the spaces back */
     } /* end of obligation for `function`: it's either parked on fuzz_target or freed */
 
-    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.arg_count,
-                             '|', false, false, "buffer arg"))
+    if (!tokenizer_next_int(&tokens, (byte *) &fuzz_target.arg_count,
+                            '|', false, false, "number of args"))
         return false;
-    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.buffer_arg,
-                             '|', false, false, "size arg"))
+    if (!tokenizer_next_int(&tokens, (byte *) &fuzz_target.buffer_arg,
+                            '|', false, false, "buffer arg"))
         return false;
-    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.size_arg,
-                             '|', false, false, "repeat count"))
+    if (!tokenizer_next_int(&tokens, (byte *) &fuzz_target.size_arg,
+                            '|', false, false, "size arg"))
         return false;
-    if (!tokenizer_next_uint(&tokens, (byte *) &fuzz_target.repeat_count,
-                             '|', false, false, "repeat count"))
+    if (!tokenizer_next_int(&tokens, (byte *) &fuzz_target.repeat_count,
+                            '|', false, false, "repeat count"))
         return false;
     if (tokenizer_has_next(&tokens, '|')) {
         uint callconv;
-        if (!tokenizer_next_uint(&tokens, (byte *) &callconv,
-                                 '|', false, false, "calling convention"))
+        if (!tokenizer_next_int(&tokens, (byte *) &callconv,
+                                '|', false, false, "calling convention"))
             return false;
         fuzz_target.callconv = (callconv << CALLCONV_FLAG_SHIFT);
     } else {
@@ -1617,8 +1649,8 @@ user_input_parse_mutator(char *descriptor, const char *raw_descriptor)
     }
     log_flag(options, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, "seed-centric");
 
-    if (!tokenizer_next_uint(&tokens, (byte *) &options->sparsity,
-                             '|', false, false, "mutator sparsity"))
+    if (!tokenizer_next_int(&tokens, (byte *) &options->sparsity,
+                            '|', false, false, "mutator sparsity"))
         return false;
 
     if (tokenizer_peek_next(&tokens) != '\0') { /* optional mutator random seed */
@@ -1631,8 +1663,8 @@ user_input_parse_mutator(char *descriptor, const char *raw_descriptor)
             tokenizer_exit_with_usage_error();
             return false;
         }
-        if (!tokenizer_next_uint(&tokens, (byte *) &options->random_seed,
-                                 '|', true, true, "mutator random seed")) {
+        if (!tokenizer_next_int(&tokens, (byte *) &options->random_seed,
+                                '|', true, true, "mutator random seed")) {
             NOTIFY_ERROR("Failed to parse the mutator random seed."NL);
             FUZZ_ERROR("Failed to parse the mutator random seed."NL);
             global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);

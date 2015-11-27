@@ -65,9 +65,18 @@ newtest_nobuild_ex(fuzz_buffer.mutator.r-n fuzz_buffer
 set(mutator_drmem_ops "-fuzz_mutator;r|n||0|0x123456789abcdef0")
 newtest_nobuild_ex(fuzz_buffer.mutator.random_seed fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
-set(fuzz_one_input_drmem_ops "-fuzz_one_input;0102030405060708090a0b0c0d0e0f10")
+set(fuzz_one_input_drmem_ops "-fuzz_one_input;01020304050607080f0a0b0c0d0e0f10")
 newtest_nobuild_ex(fuzz_buffer.one-input fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${fuzz_one_input_drmem_ops}" "" OFF "" 0 "")
+find_file(INPUT_DATA input.dat HINT "${PROJECT_SOURCE_DIR}/tests/fuzz/")
+if (INPUT_DATA-NOTFOUND)
+  message(FATAL "Did not find input.dat for fuzz_buffer.load_input test")
+endif ()
+set(fuzz_load_input_drmem_ops
+  "-fuzz_function;repeatme;-fuzz_input_file;${INPUT_DATA};-fuzz_num_iters;0")
+newtest_nobuild_ex(fuzz_buffer.load_input fuzz_buffer
+  "initialize" "${fuzz_load_input_drmem_ops}" "" OFF
+  "fuzz_buffer.one-input" 0 "")
 set(skip_initial_drmem_ops "-fuzz_skip_initial;2")
 newtest_nobuild_ex(fuzz_buffer.skip_initial fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${skip_initial_drmem_ops}" "" OFF "" 0 "")

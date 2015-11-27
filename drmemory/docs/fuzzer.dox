@@ -244,6 +244,16 @@ degree of bit flipping is greatly reduced:
 This second approach balances the diversity of input values with the
 proximity of each generated input to the app's original argument value.
 
+\section sec_dump_load Dumping and Loading Fuzz Input Data
+
+On reporting an error during fuzzing, Dr. Memory dumps the fuzz input
+data to a file in the log directory.  The dumped file can be used
+for reproducing the error later with the option \p -fuzz_input_file.
+For example, to load input.dat for reproducing an error, you would
+specify the following command-line option to \p drmemory:
+
+    -fuzz_input_file input.dat -fuzz_num_iters 0
+
 ****************************************************************************
 ****************************************************************************
 */

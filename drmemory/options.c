@@ -514,6 +514,7 @@ options_init(const char *opstr)
         option_specified.fuzz_num_iters ||
         option_specified.fuzz_call_convention ||
         option_specified.fuzz_dump_on_error ||
+        option_specified.fuzz_input_file ||
         option_specified.fuzz_target ||
         option_specified.fuzz_mutator ||
         option_specified.fuzz_one_input ||
