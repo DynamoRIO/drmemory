@@ -13,9 +13,9 @@ Dr. Memory operates on unmodified application binaries running on Windows,
 Linux, or Mac on commodity IA-32 and AMD64 hardware. Dr. Memory currently
 targets 32-bit applications only.
 
-[New 1.9.0 release](https://github.com/DynamoRIO/drmemory/wiki/Downloads)
-includes a [Beta release for
-Mac](https://bintray.com/bruening/DrMemory/DrMemory-MacOS/view).
+Dr. Memory is released under an LGPL license and binary packages are
+[available for
+download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).
 
 Dr. Memory is built on the [DynamoRIO dynamic instrumentation tool
 plaform](http://dynamorio.org).
