@@ -1404,6 +1404,42 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
     return consider_giving_back_memory(arena, tofree);
 }
 
+static bool
+shift_from_delay_list_to_free_list(arena_header_t *arena)
+{
+    free_header_t *cur = arena->free_list->delay_front;
+    if (cur == NULL)
+        return false;
+    LOG(3, "%s: shifting "PFX" to regular free list\n", __FUNCTION__, cur);
+    cur->head.flags &= ~CHUNK_DELAY_FREE;
+    arena->free_list->delay_front = cur->next;
+    if (cur == arena->free_list->delay_last)
+        arena->free_list->delay_last = NULL;
+    ASSERT(arena->free_list->delayed_chunks > 0, "delay counter off");
+    arena->free_list->delayed_chunks--;
+    ASSERT(arena->free_list->delayed_bytes >= cur->head.alloc_size,
+           "delay bytes counter off");
+    arena->free_list->delayed_bytes -= cur->head.alloc_size;
+    LOG(3, "%s: updated delayed chunks=%d, bytes="PIFX"\n", __FUNCTION__,
+        arena->free_list->delayed_chunks, arena->free_list->delayed_bytes);
+
+    /* We coalesce here, rather than on initial free, b/c only now
+     * can we throw away the user_data
+     */
+    cur = coalesce_adjacent_frees(arena, cur);
+    if (cur != NULL) {
+        set_prev_size_field(arena, &cur->head);
+        add_to_free_list(arena, &cur->head);
+        ASSERT(!TEST(CHUNK_PREV_FREE, cur->head.flags), "no adjacent frees");
+        DOLOG(2, {
+            chunk_header_t *next = next_chunk_forward(arena, &cur->head, NULL);
+            ASSERT(next == NULL || TEST(CHUNK_PREV_FREE, next->flags),
+                   "missing prev free pointer");
+        });
+    }
+    return true;
+}
+
 static void
 add_to_delay_list(arena_header_t *arena, chunk_header_t *head)
 {
@@ -1427,36 +1463,8 @@ add_to_delay_list(arena_header_t *arena, chunk_header_t *head)
         /* Keep shifting first delayed entry to the free lists, until we're
          * below both thresholds.
          */
-        cur = arena->free_list->delay_front;
-        if (cur == NULL)
+        if (!shift_from_delay_list_to_free_list(arena))
             break;
-        LOG(3, "%s: shifting "PFX" to regular free list\n", __FUNCTION__, cur);
-        cur->head.flags &= ~CHUNK_DELAY_FREE;
-        arena->free_list->delay_front = cur->next;
-        if (cur == arena->free_list->delay_last)
-            arena->free_list->delay_last = NULL;
-        ASSERT(arena->free_list->delayed_chunks > 0, "delay counter off");
-        arena->free_list->delayed_chunks--;
-        ASSERT(arena->free_list->delayed_bytes >= cur->head.alloc_size,
-               "delay bytes counter off");
-        arena->free_list->delayed_bytes -= cur->head.alloc_size;
-        LOG(3, "%s: updated delayed chunks=%d, bytes="PIFX"\n", __FUNCTION__,
-            arena->free_list->delayed_chunks, arena->free_list->delayed_bytes);
-
-        /* We coalesce here, rather than on initial free, b/c only now
-         * can we throw away the user_data
-         */
-        cur = coalesce_adjacent_frees(arena, cur);
-        if (cur != NULL) {
-            set_prev_size_field(arena, &cur->head);
-            add_to_free_list(arena, &cur->head);
-            ASSERT(!TEST(CHUNK_PREV_FREE, cur->head.flags), "no adjacent frees");
-            DOLOG(2, {
-                chunk_header_t *next = next_chunk_forward(arena, &cur->head, NULL);
-                ASSERT(next == NULL || TEST(CHUNK_PREV_FREE, next->flags),
-                       "missing prev free pointer");
-            });
-        }
     }
 }
 
@@ -1760,30 +1768,49 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, size_t alignmen
         if (arena == NULL)
             arena = arena_extend(last_arena, add_size);
         if (arena == NULL) {  /* ignore ALLOC_INVOKE_CLIENT */
-            client_handle_alloc_failure(request_size, caller, mc);
-            arena = last_arena; /* for cleanup */
-            goto replace_alloc_common_done;
+            /* i#1829: better to abandon the delayed frees (yes, all of them) to
+             * avoid OOM in the app.  This is rare so we can afford the simple
+             * solution of re-checking the free list after each shift, so we'll
+             * be able to use a coalesced pair rather than searching the delay
+             * list for a singleton that's large enough.
+             */
+            arena = last_arena;
+            while (arena->free_list->delayed_bytes >= aligned_size) {
+                if (!shift_from_delay_list_to_free_list(arena))
+                    break;
+                head = find_free_list_entry(arena, request_size, aligned_size);
+                if (head != NULL)
+                    break;
+            }
+            if (head == NULL) {
+                client_handle_alloc_failure(request_size, caller, mc);
+                goto replace_alloc_common_done;
+            }
         }
-        /* remember that arena->next_chunk always has a redzone preceding it */
-        head = (chunk_header_t *)
-            (arena->next_chunk - redzone_beyond_header - header_size);
-        head->alloc_size = aligned_size;
-        head->magic = HEADER_MAGIC;
-        head->user_data = NULL; /* b/c we pass the old to client */
-        head->flags = 0;
-        LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
-            arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
-        orig_next_chunk = arena->next_chunk;
-        arena->next_chunk += add_size;
-        if (arena->prev_free_sz != 0) {
-            /* there's a prior free so we need to mark this new chunk w/ prev-free info */
-            byte *prev_ptr = orig_next_chunk - inter_chunk_space() -
-                arena->prev_free_sz;
-            chunk_header_t *prev = header_from_ptr(prev_ptr);
-            ASSERT(is_valid_chunk(prev_ptr, prev), "arena prev free corrupted");
-            ASSERT(TEST(CHUNK_FREED, prev->flags), "arena prev free inconsistent");
-            set_prev_size_field(arena, prev);
-            arena->prev_free_sz = 0;
+        if (head == NULL) {
+            /* remember that arena->next_chunk always has a redzone preceding it */
+            head = (chunk_header_t *)
+                (arena->next_chunk - redzone_beyond_header - header_size);
+            head->alloc_size = aligned_size;
+            head->magic = HEADER_MAGIC;
+            head->user_data = NULL; /* b/c we pass the old to client */
+            head->flags = 0;
+            LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
+                arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
+            orig_next_chunk = arena->next_chunk;
+            arena->next_chunk += add_size;
+            if (arena->prev_free_sz != 0) {
+                /* There's a prior free, so we need to mark this new chunk with
+                 * prev-free info.
+                 */
+                byte *prev_ptr = orig_next_chunk - inter_chunk_space() -
+                    arena->prev_free_sz;
+                chunk_header_t *prev = header_from_ptr(prev_ptr);
+                ASSERT(is_valid_chunk(prev_ptr, prev), "arena prev free corrupted");
+                ASSERT(TEST(CHUNK_FREED, prev->flags), "arena prev free inconsistent");
+                set_prev_size_field(arena, prev);
+                arena->prev_free_sz = 0;
+            }
         }
     }
 
