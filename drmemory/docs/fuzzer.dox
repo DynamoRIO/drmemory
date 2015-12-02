@@ -26,10 +26,13 @@
 
 Dr. Memory provides a fuzz testing mode that repeatedly executes one function
 in the target application, mutating the value of one argument before each
-iteration. Fuzz mode is configured using the runtime option \p -fuzz_target,
-and the mutator is configured using the option \p -fuzz_mutator. Both of
+iteration. Fuzz mode is configured using a set of runtime options
+that all share a \p -fuzz_ prefix.
+For example, \p -fuzz_function specifies the function name for fuzzing.
+Aggregate runtime options \p -fuzz_target and \p -fuzz_mutator can
+also be used to configure the fuzz target and mutator. Both of
 these options require the user to supply a descriptor to define the behavior
-of the feature. An overview of each descriptor format is provided in the
+of the feature. An overview of each option and descriptor format is provided in the
 \ref page_options (and the command line help text). Many of these options
 require a more complete explanation, which is provided in the following
 sections.
@@ -37,28 +40,44 @@ sections.
 \section sec_fuzzer_target Fuzzer Target
 
 The fuzzer is capable of testing one target function on potentially multiple
-concurrent threads. Specify the target function on the Dr. Memory command
-line using the value of option \p -fuzz_target (see \ref page_options).
-To find the target function at runtime, the fuzzer needs to know either its
-symbol name, or its offset from the start of the module. In addition, to
-repeatedly execute the target function, the fuzzer needs to know (a) how
-many arguments it has, (b) which argument should be fuzzed, and (c) which
-argument specifies the size of the fuzzed argument. For example, to fuzz
-the following C function in the "munger" module:
+concurrent threads.
 
-    void munge_buffer(uint8_t *buffer, size_t size);
+The fuzzer can locate the target function via either its symbol name
+or its offset from the start of the module with the following options:
+  - \p -fuzz_module: the module name that refers to a single binary
+  image file such as a library (.so or .dll) or an application
+  executable (.exe on Windows);
+  - \p -fuzz_function or \p -fuzz_offset
+    - \p -fuzz_function: the target function name;
+    - \p -fuzz_offset: the offset from the module base.
+
+In addition, to repeatedly execute the target function, the fuzzer
+needs to know
+  - \p -fuzz_num_args: how many arguments are passed to the function;
+  - \p -fuzz_data_idx: the ordinal number of the argument that should be fuzzed;
+  - \p -fuzz_size_idx: the ordinal number of the argument that
+    specifies the size of the fuzzed argument;
+  - \p -fuzz_num_iters: how many iterations the function is to be repeated.
+
+For example, to fuzz the following C function in the "a.out" executable:
+
+    void DrMemFuzzFunc(unsigned char *buffer, size_t size);
 
 you would specify the following command-line option to \p drmemory:
 
-    -fuzz_target 'munger!munge_buffer|2|0|1|0'
+    -fuzz_module a.out -fuzz_function DrMemFuzzFunc -fuzz_num_args 2 -fuzz_data_idx 0 -fuzz_size_idx 1 -fuzz_num_iters 100
 
-where the final "0" indicates to fuzz the target indefinitely (or until the
-mutator is exhausted, which is rarely possible). Note that in Windows the
-module name must be include its extension (optional on linux):
+Alternatively, users can specify the target function on the Dr. Memory command
+line using the aggregate option \p -fuzz_target:
 
-    -fuzz_target 'munger.exe!munge_buffer|2|0|1|0'
+    -fuzz_target 'a.out!DrMemFuzzFunc|2|0|1|100'
 
 In bash, use single-quotes to avoid special behaviors of the '!' and '|' characters.
+
+Users can skip an option if its value is the same as its default value.
+For the example above, the shortest command-line option is:
+
+    -fuzz
 
 \section sec_cpp_targets C++ Targets
 
