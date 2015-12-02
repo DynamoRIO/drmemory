@@ -748,6 +748,13 @@ MSVCP*.dll!*
 ...
 MSVCR*.dll!exit
 
+# Variant seen in i#1831
+INVALID HEAP ARGUMENT
+name=default i#960 CRT mismatch C
+MSVCP*.dll!*
+...
+MSVCR*.dll!initterm_e
+
 ##################################################
 # i#1240: real mismatches in VS2010 CRT
 # We can rely on symbols here as without them we wouldn't see the operator stubs.
