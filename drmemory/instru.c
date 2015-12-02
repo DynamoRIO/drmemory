@@ -40,6 +40,7 @@
 #include "alloc.h"
 #include "alloc_drmem.h"
 #include "pattern.h"
+#include "heap.h"
 
 /* State restoration: need to record which bbs have eflags-save-at-top.
  * We store the app pc of the last instr in the bb.
@@ -777,6 +778,44 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
     }
 }
 
+/* i#1412: raise an error on executing invalid memory.  We check every instr to
+ * handle page boundaries, at the risk of raising errors on instrs that are
+ * never reached due to prior faults and other corner cases.
+ *
+ * The pc param should equal the result of instr_get_app_pc(inst).
+ */
+static void
+check_program_counter(void *drcontext, app_pc pc, instr_t *inst)
+{
+    umbra_shadow_memory_info_t info;
+    if (!options.check_pc || !options.shadowing)
+        return;
+    umbra_shadow_memory_info_init(&info);
+    if (shadow_get_byte(&info, pc) == SHADOW_UNADDRESSABLE &&
+        !is_in_realloc_gencode(pc) &&
+        !in_replace_routine(pc)
+        /* on Linux replace_* routines call into PIC routines elsewhere in the library */
+        IF_LINUX(&& !is_in_client_or_DR_lib(pc))) {
+        size_t sz = instr_length(drcontext, inst);
+        app_loc_t loc;
+        dr_mcontext_t mc;
+        pc_to_loc(&loc, pc);
+        mc.size = sizeof(mc);
+        mc.flags = DR_MC_INTEGER | DR_MC_CONTROL;
+        dr_get_mcontext(drcontext, &mc);
+        report_unaddressable_access(&loc, pc, sz, DR_MEMPROT_EXEC, pc, pc + sz, &mc);
+        /* XXX: unlike data accesses, legitimate execution from memory we consider
+         * unaddressable would likely involve many instrs in a row and could result
+         * in many error reports.  Avoiding that is complex, however, as marking
+         * unaddr memory (likely via shadow_set_non_matching_range() to undef if
+         * !def) as valid for the whole page or the whole region has downsides, and
+         * we certainly don't want to do that for redzones on the heap or beyond TOS.
+         * We do nothing today: users can always turn off -check_pc, and it seems very
+         * unlikely for a legitimate case to occur in an app.
+         */
+    }
+}
+
 /* PR 580123: add fastpath for rep string instrs by converting to normal loop */
 static void
 convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
@@ -1027,6 +1066,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 
     if (instr_is_meta(inst))
         goto instru_event_bb_insert_done;
+
+    if (!translating && !for_trace && options.check_pc)
+        check_program_counter(drcontext, pc, inst);
 
     memset(&mi, 0, sizeof(mi));
 

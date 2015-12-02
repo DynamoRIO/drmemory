@@ -1187,6 +1187,13 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     return;
 }
 
+bool
+is_in_realloc_gencode(app_pc pc)
+{
+    return (gencode_start != NULL &&
+            pc >= gencode_start && pc < gencode_start + GENCODE_SIZE);
+}
+
 /***************************************************************************
  * MALLOC WRAPPING
  */

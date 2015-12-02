@@ -3946,7 +3946,8 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                                     bad_end + 1 - bad_addr >= MEMREF_ABORT_AFTER_SIZE)) {
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
-                                 is_write, addr, addr + sz, mc);
+                                 is_write ? DR_MEMPROT_WRITE : DR_MEMPROT_READ,
+                                 addr, addr + sz, mc);
                             if (TEST(MEMREF_ABORT_AFTER_UNADDR, flags)) {
                                 found_bad_addr = false; /* avoid double-report */
                                 break;
@@ -3996,7 +3997,8 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                                    "internal report error");
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
-                                 is_write, addr, addr + sz, mc);
+                                 is_write ? DR_MEMPROT_WRITE : DR_MEMPROT_READ,
+                                 addr, addr + sz, mc);
                             if (TEST(MEMREF_ABORT_AFTER_UNADDR, flags)) {
                                 found_bad_addr = false; /* avoid double-report */
                                 break;
@@ -4122,7 +4124,8 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
         else {
             ASSERT(bad_type == SHADOW_UNADDRESSABLE, "internal report error");
             report_unaddressable_access
-                (loc, bad_addr, bad_end + 1 - bad_addr, is_write, addr, addr + sz, mc);
+                (loc, bad_addr, bad_end + 1 - bad_addr,
+                 is_write ? DR_MEMPROT_WRITE : DR_MEMPROT_READ, addr, addr + sz, mc);
         }
     }
     return allgood;

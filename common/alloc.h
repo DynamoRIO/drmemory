@@ -256,6 +256,9 @@ alloc_in_create(void *drcontext);
 bool
 alloc_in_heap_routine(void *drcontext);
 
+bool
+is_in_realloc_gencode(app_pc pc);
+
 /***************************************************************************
  * ALLOC REPLACEMENT
  */

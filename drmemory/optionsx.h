@@ -419,6 +419,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_uninit_all, false,
 OPTION_CLIENT_BOOL(drmemscope, strict_bitops, false,
                    "Fully check definedness of bit operations",
                    "Currently, Dr. Memory's definedness granularity is per-byte.  This can lead to false positives on code that uses bitfields.  By default, Dr. Memory relaxes its uninitialized checking on certain bit operations that are typically only used with bitfields, to avoid these false positives.  However, this can lead to false negatives.  Turning this option on will eliminate all false negatives (at the cost of potential false positives).  Eventually Dr. Memory will have bit-level granularity and this option will go away.")
+OPTION_CLIENT_BOOL(drmemscope, check_pc, true,
+                   "Check the program counter for unaddressable execution",
+                   "Check the program counter on each instruction to ensure it is executing from valid memory.")
 OPTION_CLIENT_SCOPE(drmemscope, stack_swap_threshold, int, 0x9000, 256, INT_MAX,
                     "Stack change amount to consider a swap",
                     "Stack change amount to consider a swap instead of an allocation or de-allocation on the same stack.  "TOOLNAME" attempts to dynamically tune this value unless it is changed from its default.")

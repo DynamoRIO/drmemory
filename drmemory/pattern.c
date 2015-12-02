@@ -903,7 +903,9 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
                         instr_get_dst(&inst, pos) : instr_get_src(&inst, pos);
                     size = opnd_size_in_bytes(opnd_get_size(opnd));
                     pc_to_loc(&loc, mc->pc);
-                    report_unaddressable_access(&loc, addr, size, is_write,
+                    report_unaddressable_access(&loc, addr, size,
+                                                is_write ? DR_MEMPROT_WRITE :
+                                                DR_MEMPROT_READ,
                                                 addr, addr + size, mc);
                 } else if (is_write && options.report_write_to_read_only &&
                            !TEST(DR_MEMPROT_WRITE, info.prot)) {
@@ -1300,7 +1302,8 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          */
         if (!check_unaddressable_exceptions(is_write, loc, addr, size,
                                             false, mc)) {
-            report_unaddressable_access(loc, addr, size, is_write,
+            report_unaddressable_access(loc, addr, size,
+                                        is_write ? DR_MEMPROT_WRITE : DR_MEMPROT_READ,
                                         addr, addr + size, mc);
         }
         /* clobber the pattern to avoid duplicate reports for this same addr

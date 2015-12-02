@@ -416,6 +416,7 @@ newtest(malloc malloc.c)
 newtest(free free.c)
 newtest(registers registers.c)
 newtest(asmtest asmtest.c)
+newtest(badjmp badjmp.c)
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
   newtest(multierror multierror.cpp)

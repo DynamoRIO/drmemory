@@ -3433,7 +3433,7 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
 }
 
 /* i#1015: report write-to-read-only as an unaddressable warning */
-static void
+static bool
 handle_possible_write_to_read_only(void *drcontext,
                                    dr_mcontext_t *raw_mc,
                                    dr_mcontext_t *mc)
@@ -3446,12 +3446,14 @@ handle_possible_write_to_read_only(void *drcontext,
     size_t size;
     dr_mem_info_t info;
     instr_t inst;
-    ASSERT(options.shadowing, "shadowing disabled");
+    bool res = false;
 
+    /* XXX: we could try to merge some code w/ pattern_handle_segv_fault() */
+    ASSERT(options.pattern == 0, "already handled in pattern_handle_segv_fault()");
     instr_init(drcontext, &inst);
     if (!safe_decode(drcontext, raw_mc->pc, &inst, NULL)) {
         instr_free(drcontext, &inst);
-        return;
+        return false;
     }
     /* someone could send a SIGSEGV signal, so we iterate instr opnds
      * to check possible write-to-read-only errors
@@ -3475,8 +3477,10 @@ handle_possible_write_to_read_only(void *drcontext,
          * read-only region.
          */
         report_unaddr_warning(&loc, mc, "writing to readonly memory", addr, size, true);
+        res = true;
     }
     instr_free(drcontext, &inst);
+    return res;
 }
 #endif /* TOOL_DR_MEMORY */
 
@@ -3495,18 +3499,15 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
          */
         LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
             info->raw_mcontext->xip, info->mcontext->xip, target);
-        if (options.pattern != 0) {
-            if (pattern_handle_segv_fault(drcontext, info->raw_mcontext,
-                                          info->mcontext))
-                return DR_SIGNAL_SUPPRESS;
-            return DR_SIGNAL_DELIVER;
+        if (options.pattern != 0 &&
+            pattern_handle_segv_fault(drcontext, info->raw_mcontext, info->mcontext)) {
+            return DR_SIGNAL_SUPPRESS;
         } else if (ZERO_STACK() &&
                    handle_zeroing_fault(drcontext, target, info->raw_mcontext,
                                         info->mcontext)) {
             return DR_SIGNAL_SUPPRESS;
-        } else if (!options.shadowing) {
-            return DR_SIGNAL_DELIVER;
-        } else if (is_in_special_shadow_block(target)) {
+        } else if (options.shadowing &&
+                   is_in_special_shadow_block(target)) {
             ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
             handle_special_shadow_fault(drcontext, target, info->raw_mcontext,
                                         info->mcontext, info->fault_fragment_info.tag);
@@ -3515,9 +3516,19 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
              * write for sub-dword.
              */
             return DR_SIGNAL_SUPPRESS;
-        } else if (options.report_write_to_read_only) {
-            handle_possible_write_to_read_only(drcontext, info->raw_mcontext,
-                                               info->mcontext);
+        } else if (options.report_write_to_read_only &&
+                   options.pattern == 0 && /* vs pattern_handle_segv_fault() */
+                   handle_possible_write_to_read_only(drcontext, info->raw_mcontext,
+                                                      info->mcontext)) {
+            /* fall through to DR_SIGNAL_DELIVER */
+        } else if (options.check_pc &&
+                   /* If the pc is the target, it's an exec fault */
+                   info->mcontext->xip == target) {
+            /* i#1412: raise an error on executing invalid memory */
+            app_loc_t loc;
+            pc_to_loc(&loc, target);
+            report_unaddressable_access(&loc, target, 1, DR_MEMPROT_EXEC,
+                                        target, target + 1, info->mcontext);
         }
     } else if (info->sig == SIGILL) {
         LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
@@ -3550,20 +3561,19 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
          * the guard page.
          */
         guard = excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION;
-        return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext,
-                                          excpt->mcontext
-                                          _IF_WINDOWS(target)
-                                          _IF_WINDOWS(guard));
-    } else if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+        if (pattern_handle_segv_fault(drcontext, excpt->raw_mcontext, excpt->mcontext
+                                      _IF_WINDOWS(target) _IF_WINDOWS(guard)))
+            return false;
+    }
+    if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
         if (ZERO_STACK() &&
             excpt->record->ExceptionInformation[0] == 1 /* write */ &&
             handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
                                  excpt->mcontext)) {
             return false;
-        } else if (!options.shadowing) {
-            return true;
-        } else if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+        } else if (options.shadowing &&
+                   excpt->record->ExceptionInformation[0] == 1 /* write */ &&
                    is_in_special_shadow_block(target)) {
             handle_special_shadow_fault(drcontext, target, excpt->raw_mcontext,
                                         excpt->mcontext, excpt->fault_fragment_info.tag);
@@ -3573,9 +3583,19 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
              */
             return false;
         } else if (options.report_write_to_read_only &&
-                   excpt->record->ExceptionCode != STATUS_GUARD_PAGE_VIOLATION) {
-            handle_possible_write_to_read_only(drcontext, excpt->raw_mcontext,
-                                               excpt->mcontext);
+                   options.pattern == 0 && /* vs pattern_handle_segv_fault() */
+                   excpt->record->ExceptionCode != STATUS_GUARD_PAGE_VIOLATION &&
+                   handle_possible_write_to_read_only(drcontext, excpt->raw_mcontext,
+                                                      excpt->mcontext)) {
+            return false;
+        } else if (options.check_pc &&
+                   /* If the pc is the target, it's an exec fault */
+                   excpt->mcontext->pc == target) {
+            /* i#1412: raise an error on executing invalid memory */
+            app_loc_t loc;
+            pc_to_loc(&loc, target);
+            report_unaddressable_access(&loc, target, 1, DR_MEMPROT_EXEC,
+                                        target, target + 1, excpt->mcontext);
         }
     } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
         if (options.pattern != 0) {

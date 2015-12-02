@@ -188,7 +188,7 @@ typedef struct _error_toprint_t {
     size_t sz;                  /* Access size or alloc size. */
 
     /* For unaddrs: */
-    bool write;                 /* Access was a write. */
+    uint access_type;           /* DR_MEMPROT_* flag describing the access. */
 
     /* For unaddrs, uninits, and warnings: */
     bool report_instruction;    /* Whether to report instr. */
@@ -2966,7 +2966,8 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
             subtitle = " beyond heap bounds";
         BUFPRINT(buf, bufsz, sofar, len,
                  "UNADDRESSABLE ACCESS%s: %s", subtitle,
-                 etp->write ? "writing " : "reading ");
+                 etp->access_type == DR_MEMPROT_WRITE ? "writing " :
+                 (etp->access_type == DR_MEMPROT_EXEC ? "executing " : "reading "));
         if (!options.brief)
             BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr_end);
         BUFPRINT(buf, bufsz, sofar, len, "%d byte(s)", etp->sz);
@@ -3117,7 +3118,8 @@ report_unaddr_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
 }
 
 void
-report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
+report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz,
+                            uint access_type, /* DR_MEMPROT_ flag */
                             app_pc container_start, app_pc container_end,
                             dr_mcontext_t *mc)
 {
@@ -3128,7 +3130,7 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
     etp.loc = loc;
     etp.addr = addr;
     etp.sz = sz;
-    etp.write = write;
+    etp.access_type = access_type;
     etp.container_start = container_start;
     etp.container_end = container_end;
     etp.report_instruction = true;

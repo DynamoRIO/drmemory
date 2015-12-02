@@ -61,6 +61,8 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.9.0 include:
+ - Added checking that the program counter points to valid memory,
+   controlled by the on-by-default -check_pc option.
 
 The changes between version 1.9.0 and version 1.8.0 include:
  - Added support for Mac OSX Yosemite.
