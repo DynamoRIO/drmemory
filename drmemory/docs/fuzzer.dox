@@ -99,7 +99,23 @@ you would specify the following option to \p drmemory:
 
 The fuzzer's default calling convention is \p cdecl on 32-bit x86 platforms,
 \p AMD64 on 64-bit *nix, and \p Microsoft \p x64 for Visual Studio 64-bit
-applications. Use the optional last field of option \p -fuzz_target to
+applications.  Use the option \p -fuzz_call_convention to specify a
+different calling convention for fuzz target functions. For example,
+to fuzz a C++ non-static member function, you would specify the following
+command-line option to \p drmemory:
+
+    -fuzz_call_convention \p thiscall
+
+Possible -fuzz_call_convention value includes:
+  - amd64: AMD64
+  - arm32: ARM32
+  - fastcall: fastcall
+  - ms64: Microsoft x64 (Visual Studio)
+  - stdcall: cdecl or stdcall
+  - thiscall: thiscall
+
+It is also possible to
+use the optional last field of option \p -fuzz_target to
 specify a different calling convention. For example, to fuzz the following
 function on Windows (compiling the app with Visual Studio):
 
@@ -109,7 +125,8 @@ you would specify:
 
     -fuzz_target 'crypto.exe!?MungeBuffer-CryptoMagic--QAEXPAII-Z|3|1|2|0|6'
 
-The calling convention \p 6 specifies \p thiscall (as defined by the enum
+The value \p 6 at the last field specifies the calling convention '\p thiscall'
+(as defined by the enum
 \p drwrap_callconv_t in the DynamoRIO header file \p drwrap.h). Since the
 \p MungeBuffer() method is a non-static class member, the first argument
 is reserved by the compiler for the \p this pointer. Accordingly, the

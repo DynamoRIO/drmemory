@@ -181,6 +181,15 @@ fuzzer_fuzz_target_callconv_arg_init();
 static void
 fuzzer_option_init();
 
+static inline void
+replace_char(char *dst, char old, char new)
+{
+    char *next_old = strchr(dst, old);
+
+    for (; next_old != NULL; next_old = strchr(next_old + 1, old))
+        *next_old = new;
+}
+
 void
 fuzzer_init(client_id_t client_id)
 {
@@ -246,13 +255,40 @@ fuzzer_fuzz_target_init()
     } else {
         fuzz_target.type = FUZZ_TARGET_SYMBOL;
         fuzz_target.symbol = drmem_strdup(options.fuzz_function, HEAPSTAT_MISC);
+        /* We replaced '@' with '-' in MSVC symbol for testing, now replace it back. */
+        if (fuzz_target.symbol[0] == '?') /* for MSVC symbol */
+            replace_char(fuzz_target.symbol, AT_ESCAPE, '@'); /* restore escaped '@' */
     }
     /* args */
     fuzz_target.arg_count    = options.fuzz_num_args;
     fuzz_target.buffer_arg   = options.fuzz_data_idx;
     fuzz_target.size_arg     = options.fuzz_size_idx;
     fuzz_target.repeat_count = options.fuzz_num_iters;
-    fuzz_target.callconv     = DRWRAP_CALLCONV_DEFAULT;
+    if (!option_specified.fuzz_call_convention)
+        fuzz_target.callconv = DRWRAP_CALLCONV_DEFAULT;
+    else {
+        if (strcmp(options.fuzz_call_convention, "stdcall") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_CDECL;
+        else if (strcmp(options.fuzz_call_convention, "fastcall") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_FASTCALL;
+        else if (strcmp(options.fuzz_call_convention, "thiscall") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_THISCALL;
+#ifdef X64
+# ifdef UNIX
+        else if (strcmp(options.fuzz_call_convention, "amd64") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_AMD64;
+# else
+        else if (strcmp(options.fuzz_call_convention, "ms64") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_MICROSOFT_X64;
+# endif /* UNIX/WINDOWS */
+#endif
+#ifdef ARM
+        else if (strcmp(options.fuzz_call_convention, "arm32") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_ARM;
+#endif
+        else
+            FUZZ_WARN("Unknown calling convention, using default value instead.\n");
+    }
     fuzzer_fuzz_target_callconv_arg_init();
 }
 
@@ -1369,15 +1405,6 @@ is_module_extension(const char *str)
 #else
     return strcasecmp(str, ".so") == 0;
 #endif
-}
-
-static inline void
-replace_char(char *dst, char old, char new)
-{
-    char *next_old = strchr(dst, old);
-
-    for (; next_old != NULL; next_old = strchr(next_old + 1, old))
-        *next_old = new;
 }
 
 static bool

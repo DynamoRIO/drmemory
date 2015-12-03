@@ -102,12 +102,14 @@ newtest_nobuild_ex(fuzz_buffer.module_name fuzz_buffer
 # fuzz the cpp target
 if (NOT UNIX AND NOT X64)
   set(cpp_callconv "|6") # on Windows x86 the target uses thiscall
+  set(fuzz_callconv ";-fuzz_call_convention;thiscall")
 endif (NOT UNIX AND NOT X64)
 set(fuzz_buffer_symbol "fuzz_buffer.cpp${app_extension}!${fuzz_buffer_cpp_symbol}")
+newtest_ex(fuzz_buffer.cpp fuzz_buffer.cpp "initialize"
+  "-no_fuzz_dump_on_error;-fuzz_function;${fuzz_buffer_cpp_symbol};-fuzz_num_args;3;-fuzz_data_idx;1;-fuzz_size_idx;2;-fuzz_num_iters;10${fuzz_callconv}${enable_mangled_names}"
+  "" OFF "" 0)
 set(fuzz_buffer_drmem_ops
   "-no_fuzz_dump_on_error;-fuzz_target;${fuzz_buffer_symbol}|3|1|2|10${cpp_callconv}${enable_mangled_names}")
-newtest_ex(fuzz_buffer.cpp fuzz_buffer.cpp "initialize"
-  "${fuzz_buffer_drmem_ops}" "" OFF "" 0)
 if (NOT X64) # test detection of errors that requires shadow-memory
   newtest_nobuild_ex(fuzz_buffer.uninitialized.cpp fuzz_buffer.cpp
     "" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")

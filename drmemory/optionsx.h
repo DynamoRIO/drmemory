@@ -621,6 +621,32 @@ OPTION_CLIENT_SCOPE(drmemscope, fuzz_size_idx, uint, 1, 0, 31,
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_num_iters, int, 100, 0, INT_MAX,
                     "The number of times (100 by default) to repeat executing the target function.",
                     "The number of times (100 by default) to repeat executing the target function.  Use 0 to repeat until the mutator is exhausted.")
+OPTION_CLIENT_STRING(drmemscope, fuzz_call_convention, "",
+                     "The calling convention used by the fuzz target function."NL
+                     "        The possible calling convention codes are:"NL
+                     "             arm32    = ARM32"NL
+                     "             amd64    = AMD64"NL
+                     "             fastcall = fastcall"NL
+                     "             ms64     = Microsoft x64 (Visual Studio)"NL
+                     "             stdcall  = cdecl or stdcall"NL
+                     "             thiscall = thiscall",
+                     "The calling convention used by the fuzz target function. It can be specified using one of the following codes:"
+                     "<pre>"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>arm32    = ARM32</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>amd64    = AMD64</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>fastcall = fastcall</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>ms64     = Microsoft x64 (Visual Studio)</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>stdcall  = cdecl or stdcall</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>thiscall = thiscall</code>"
+                     "</pre>"
+                     "If no calling convention is specified, the most common calling convention on the platform is used:"
+                     "<pre>"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>32-bit ARM:     arm32</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>32-bit Unix:    stdcall</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>32-bit Windows: stdcall</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>64-bit Unix:    amd64</code>\n"
+                     "&nbsp;&nbsp;&nbsp;&nbsp;<code>64-bit Windows: ms64</code>\n"
+                     "</pre>")
 OPTION_CLIENT_BOOL(drmemscope, fuzz_dump_on_error, true,
                    "Dump the current fuzz input to current log directory on an error report.",
                    "Dump the current fuzz input to current log directory on an error report.  The file name can be found in the error report summary.")
@@ -640,11 +666,11 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
                      "        The calling convention codes are:"NL
                      "             1 = AMD64"NL
                      "             2 = Microsoft x64 (Visual Studio)"NL
-                     "             3 = ARM"NL
+                     "             3 = ARM32"NL
                      "             4 = cdecl or stdcall"NL
                      "             5 = fastcall"NL
                      "             6 = thiscall"NL,
-                     "Fuzz test the target program according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;target&gt;|&lt;arg-count&gt;|&lt;buffer-index&gt;|&lt;size-index&gt;|&lt;repeat-count&gt;[|&lt;calling-convention&gt;]</code></pre>where <code>&lt;target&gt;</code> has one of two formats:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;!&lt;symbol&gt;</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;+&lt;offset&gt;</code></pre>Here, <code>&lt;module&gt;</code> refers to a single binary image file such as a library (.so or .dll) or an application executable (.exe on Windows). The <code>&lt;offset&gt;</code> specifies the entry point of the target function as a hexadecimal offset (e.g. '0xf7d4') from the start of the module that contains it (i.e., the library or executable image). The <code>&lt;symbol&gt;</code> may be either a plain C function name, a mangled C++ symbol, or (Windows only) a de-mangled C++ symbol of the form returned by the \\ref page_symquery. The option <code>-fuzz_mangled_names</code> is required for using mangled names in Windows, and the mangled name must have every '@' character escaped by substituting a '-' in its place. The module alias &lt;main&gt; may be used to refer to the main module of the process, which is the program executable.<br/><br/>The &lt;arg-count&gt; specifies the number of arguments to the function (for vararg functions this must match the actual number of arguments passed by the app). The &lt;*-index&gt; arguments specify the index of the corresponding parameter in the target function. The &lt;repeat-count&gt; indicates the number of times to repeat the target function (use 0 to repeat until the mutator is exhuasted). The optional &lt;calling-convention&gt; can be specified using one of the following codes:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>1 = AMD64</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>2 = Microsoft x64 (Visual Studio)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>3 = ARM</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>4 = cdecl or stdcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>5 = fastcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>6 = thiscall</code></pre>")
+                     "Fuzz test the target program according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;target&gt;|&lt;arg-count&gt;|&lt;buffer-index&gt;|&lt;size-index&gt;|&lt;repeat-count&gt;[|&lt;calling-convention&gt;]</code></pre>where <code>&lt;target&gt;</code> has one of two formats:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;!&lt;symbol&gt;</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;+&lt;offset&gt;</code></pre>Here, <code>&lt;module&gt;</code> refers to a single binary image file such as a library (.so or .dll) or an application executable (.exe on Windows). The <code>&lt;offset&gt;</code> specifies the entry point of the target function as a hexadecimal offset (e.g. '0xf7d4') from the start of the module that contains it (i.e., the library or executable image). The <code>&lt;symbol&gt;</code> may be either a plain C function name, a mangled C++ symbol, or (Windows only) a de-mangled C++ symbol of the form returned by the \\ref page_symquery. The option <code>-fuzz_mangled_names</code> is required for using mangled names in Windows, and the mangled name must have every '@' character escaped by substituting a '-' in its place. The module alias &lt;main&gt; may be used to refer to the main module of the process, which is the program executable.<br/><br/>The &lt;arg-count&gt; specifies the number of arguments to the function (for vararg functions this must match the actual number of arguments passed by the app). The &lt;*-index&gt; arguments specify the index of the corresponding parameter in the target function. The &lt;repeat-count&gt; indicates the number of times to repeat the target function (use 0 to repeat until the mutator is exhuasted). The optional &lt;calling-convention&gt; can be specified using one of the following codes:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>1 = AMD64</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>2 = Microsoft x64 (Visual Studio)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>3 = ARM32</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>4 = cdecl or stdcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>5 = fastcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>6 = thiscall</code></pre>")
 OPTION_CLIENT_STRING(drmemscope, fuzz_mutator, "",
                      "Configure the fuzzer mutator according to the specified descriptor"NL
                      "         Mutator descriptor format: <algorithm>|<unit>|<flags>|<sparsity>[|<random_seed>]"NL
