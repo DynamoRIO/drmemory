@@ -510,7 +510,9 @@ options_init(const char *opstr)
             usage_error("redzone size must be pointer-size-aligned non-zero"
                         " in pattern mode", "");
         }
-        /* we use two-byte pattern */
+        /* we use a two-byte pattern */
+        if ((options.pattern & 0xffff0000) != 0)
+            usage_error("pattern must be a 2-byte value", "");
         options.pattern |= options.pattern << 16;
         /* no unknown syscalls analysis */
         options.analyze_unknown_syscalls = false;

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -29,7 +29,7 @@
 /* default pattern value if user does not specify any. */
 /* NOTE: the selection of pattern value may affect performance greatly.
  * A popular value used by a program (e.g. 0, ASCII) should not be used as
- * pattern value, as it may trigger a lot of illegal instruction exceptions
+ * a pattern value, as it may trigger a lot of illegal instruction exceptions
  * and expensive lookups.
  */
 #define DEFAULT_PATTERN 0xf1fd

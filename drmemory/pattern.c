@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -71,6 +71,10 @@ pattern_opnd_needs_check(opnd_t opnd)
      */
     if (opnd_is_abs_addr(opnd))
         return false;
+#if defined(X64) || defined(ARM)
+    if (opnd_is_rel_addr(opnd))
+        return false;
+#endif
 #if defined(UNIX) && defined(X86)
     /* FIXME i#1812: check app TLS accesses.
      * DynamoRIO steals both TLS segment registers and mangles all app TLS accesses.
@@ -82,10 +86,6 @@ pattern_opnd_needs_check(opnd_t opnd)
      */
     if (opnd_is_far_base_disp(opnd) &&
         (opnd_get_segment(opnd) == SEG_GS || opnd_get_segment(opnd) == SEG_FS))
-        return false;
-#endif
-#ifdef X64
-    if (opnd_is_rel_addr(opnd))
         return false;
 #endif
     ASSERT(opnd_is_base_disp(opnd), "not a base disp opnd");
@@ -137,23 +137,101 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
 {
     instr_t *label;
     app_pc pc = instr_get_app_pc(app);
+#ifdef ARM
+    drreg_status_t res;
+    reg_id_t scratch, scratch2;
+    dr_pred_type_t pred = instr_get_predicate(app);
+    instr_t *in;
+    uint val = opnd_get_immed_int(pattern);
+#endif
 
     label = INSTR_CREATE_label(drcontext);
     /* cmp ref, pattern */
-    /* FIXME i#1726: for ARM, we need to load into a reg first */
+#ifdef X86
     PREXL8M(ilist, app,
             INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, pattern), pc));
+#elif defined(ARM)
+    /* We use an inefficient but simple 2-scratch-reg scheme for now.
+     * XXX: if we limit the pattern value to a 1-byte value we can do a direct
+     * cmp in thumb mode via a repeated-4-times immed and avoid scratch2.
+     * XXX: we could try sub;cbnz in an IT block to avoid clobbering the
+     * flags, though cbnz requires r0-r7.
+     * XXX: for ARM, there are no multi-byte immediates, but subX4 is faster
+     * than movw,movt if there's no dead scratch2.
+     */
+    res = drreg_reserve_register(drcontext, ilist, app, NULL, &scratch);
+    ASSERT(res == DRREG_SUCCESS, "should always find scratch reg");
+    res = drreg_reserve_register(drcontext, ilist, app, NULL, &scratch2);
+    ASSERT(res == DRREG_SUCCESS, "should always find 2nd scratch reg");
+    /* To handle a predicated memref, because we can't predicate a conditional
+     * branch nor OP_udf, we need an explicit branch to skip the OP_udf if the
+     * app pred doesn't match.  We just skip all the instru and don't predicate.
+     */
+    if (pred != DR_PRED_NONE && pred != DR_PRED_AL) {
+        PRE(ilist, app, INSTR_PRED
+            (XINST_CREATE_jump_short(drcontext, opnd_create_instr(label)),
+             instr_invert_predicate(pred)));
+    }
+    /* ldr scratch, ref */
+    if (opnd_uses_reg(ref, scratch)) {
+        res = drreg_get_app_value(drcontext, ilist, app, scratch, scratch);
+        ASSERT(res == DRREG_SUCCESS, "should get app value");
+    }
+    if (opnd_uses_reg(ref, scratch2)) {
+        res = drreg_get_app_value(drcontext, ilist, app, scratch2, scratch2);
+        ASSERT(res == DRREG_SUCCESS, "should get app value");
+    }
+    /* XXX DRi#1834: sthg like drx_load_from_app_mem() would make this simpler if
+     * it handled the stolen reg plus pc-relative (and far refs on x86).
+     */
+    if (opnd_uses_reg(ref, dr_get_stolen_reg())) {
+        reg_id_t swap = opnd_uses_reg(ref, scratch) ? scratch2 : scratch;
+        bool ok;
+        ASSERT(!opnd_uses_reg(ref, swap), "opnd uses 3 different regs?!");
+        ok = dr_insert_get_stolen_reg_value(drcontext, ilist, app, swap);
+        ASSERT(ok, "failed to handle stolen register");
+        ok = opnd_replace_reg(&ref, dr_get_stolen_reg(), swap);
+        ASSERT(ok, "failed to replace reg");
+    }
+    if (opnd_get_size(ref) == OPSZ_1) {
+        in = INSTR_CREATE_ldrb(drcontext, opnd_create_reg(scratch), ref);
+    } else if (opnd_get_size(ref) == OPSZ_2) {
+        in = INSTR_CREATE_ldrh(drcontext, opnd_create_reg(scratch), ref);
+    } else {
+        ASSERT(opnd_get_size(ref) == OPSZ_4, "unsupported ARM memref size");
+        in = INSTR_CREATE_ldr(drcontext, opnd_create_reg(scratch), ref);
+    }
+    PREXL8M(ilist, app, INSTR_XL8(in, pc));
+    /* movw+movt pattern to scratch2 */
+    in = INSTR_CREATE_movw(drcontext, opnd_create_reg(scratch2),
+                           OPND_CREATE_INT(val & 0xffff));
+    PREXL8M(ilist, app, INSTR_XL8(in, pc));
+    if (opnd_get_size(ref) == OPSZ_4) {
+        in = INSTR_CREATE_movt(drcontext, opnd_create_reg(scratch2),
+                               OPND_CREATE_INT(val >> 16));
+        PREXL8M(ilist, app, INSTR_XL8(in, pc));
+    }
+    /* cmp scratch to scratch2 */
+    in = INSTR_CREATE_cmp(drcontext, opnd_create_reg(scratch),
+                          opnd_create_reg(scratch2));
+    PREXL8M(ilist, app, INSTR_XL8(in, pc));
+    res = drreg_unreserve_register(drcontext, ilist, app, scratch2);
+    ASSERT(res == DRREG_SUCCESS, "should always succeed");
+    res = drreg_unreserve_register(drcontext, ilist, app, scratch);
+    ASSERT(res == DRREG_SUCCESS, "should always succeed");
+#endif
+
     /* jne label */
     /* XXX: add XINST_CREATE_xxxx cross-platform cbr macro to DR */
 #ifdef X86
     PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
                                            opnd_create_instr(label)));
 #elif defined(ARM)
-    PRE(ilist, app, INSTR_PRED(INSTR_CREATE_b_short(drcontext, opnd_create_instr(label)),
-                               DR_PRED_NE));
+    PRE(ilist, app, INSTR_PRED
+        (XINST_CREATE_jump_short(drcontext, opnd_create_instr(label)), DR_PRED_NE));
 #endif
     /* we assume that the pattern seen is rare enough, so we use ud2a or udf to
-     * cause an illegal exception if match.
+     * cause an illegal exception on a match.
      */
 #ifdef X86
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
@@ -735,9 +813,9 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
 static bool
 pattern_ill_instr_is_instrumented(byte *pc)
 {
+#ifdef X86
     byte buf[6];
     /* check if our code sequence */
-    /* FIXME i#1726: update for ARM */
     if (!safe_read(pc - JNZ_SHORT_LENGTH - 2 /* 2 bytes of cmp immed value */,
                    BUFFER_SIZE_BYTES(buf), buf)   ||
         (buf[2] != JNZ_SHORT_OPCODE) ||
@@ -746,6 +824,9 @@ pattern_ill_instr_is_instrumented(byte *pc)
          (*(ushort *)&buf[0] != (ushort)pattern_reverse)) ||
         (*(ushort *)&buf[4] != (ushort)UD2A_OPCODE))
         return false;
+#elif defined(ARM)
+    /* FIXME i#1726: update for ARM */
+#endif
     return true;
 }
 

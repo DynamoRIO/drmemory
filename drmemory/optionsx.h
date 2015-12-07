@@ -593,7 +593,7 @@ OPTION_CLIENT_SCOPE(drmemscope, pattern, uint,
                     IF_ARM_ELSE(DEFAULT_PATTERN, IF_X64_ELSE(DEFAULT_PATTERN, 0)),
                     0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
-                    "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")
+                    "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.  The value passed as the pattern must be a non-zero 2-byte value.")
 OPTION_CLIENT_BOOL(drmemscope, persist_code, false,
                    "Cache instrumented code to speed up future runs (light mode only)",
                    "Cache instrumented code to speed up future runs.  For short-running applications, this can provide a performance boost.  It may not be worth enabling for long-running applications.  Currently, this option is only supported with -light or -no_check_uninitialized.  It also currently fails to re-use randomized libraries on Windows, resulting in less of a performance boost for applications that use many libraries with ASLR enabled.")

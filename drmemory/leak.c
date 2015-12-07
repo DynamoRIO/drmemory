@@ -1354,7 +1354,9 @@ leak_scan_for_leaks(bool at_exit)
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 
-#ifndef MACOS /* XXX: no private loader yet */
+    /* XXX: no MacOS private loader yet */
+    /* ARM is always in app state */
+#if !defined(MACOS) && !defined(ARM)
     /* i#1016: ensure the thread performing the leak scan is in DR state,
      * which should be the case regardless of whether at exit or a nudge.
      */
