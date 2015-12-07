@@ -68,13 +68,13 @@ is almost always the default. For C++ functions, the mangled or de-mangled name
 is required. On Unix the fuzzer only accepts mangled names, while on Windows it
 accepts both the mangled and de-mangled names (for the former, use Windows-only
 option \p -fuzz_mangled_names). To fuzz the following function on
-Unix (compiling the app with 32-bit gcc):
+Unix (compiling the app as 32-bit with gcc):
 
     void CryptoMagic::MungeBuffer(unsigned int *buffer, size_t size);
 
 you would specify the following option to \p drmemory:
 
-    -fuzz_target 'crypto!_ZN13CryptoMagic8MungeBufferEPjj|2|0|1|0'
+    -fuzz_target 'crypto!_ZN11CryptoMagic11MungeBufferEPjj|2|0|1|0'
 
 \section sec_calling_conventions Calling Conventions
 

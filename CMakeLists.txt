@@ -1698,13 +1698,7 @@ if (install_override)
     CACHE PATH "install path" FORCE)
 endif (install_override)
 
-macro(install_if_32bit)
-  if (NOT X64)
-    install(${ARGV})
-  endif ()
-endmacro(install_if_32bit)
-
-install_if_32bit(TARGETS ${client_target}
+install(TARGETS ${client_target}
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1761,11 +1755,11 @@ install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
   DESTINATION "${INSTALL_PREFIX}.")
 if (USE_DRSYMS)
-  install_if_32bit(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
+  install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 else (USE_DRSYMS)
-  install_if_32bit(FILES
+  install(FILES
     ${script_main}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1773,7 +1767,7 @@ else (USE_DRSYMS)
 endif (USE_DRSYMS)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
-  install_if_32bit(FILES
+  install(FILES
     ${script_aux}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1804,13 +1798,7 @@ set(install_pdb_exclude
   PATTERN symfetch.pdb EXCLUDE
   PATTERN drstrace_unit_tests.pdb EXCLUDE)
 if (X64)
-  set(install_pdb_exclude
-    ${install_pdb_exclude}
-    PATTERN "${toolname}lib.pdb" EXCLUDE
-    PATTERN "${toolname}lib.debug" EXCLUDE
-    PATTERN "${toolname}.pdb" EXCLUDE
-    PATTERN "${toolname}.debug" EXCLUDE)
-  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_BIN}/README.txt\" \"Dr. Memory does not yet support 64-bit applications.  The drstrace tool and the Dr. Syscall and Umbra libraries are available for 64-bit.\n\")")
+  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_BIN}/README.txt\" \"Dr. Memory has preliminary 64-bit support that does not yet include detecting uninitialized reads.  The drstrace tool and the Dr. Syscall and Umbra libraries are fully supported for 64-bit.\n\")")
 endif (X64)
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION "${INSTALL_LIB}"
@@ -1865,10 +1853,7 @@ if (BUILDING_SUB_PACKAGE)
 
 else (BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
-  # We don't need docs/, include/, or 64-bit.
-  # We do include 32-bit debug lib (and default DR log dir) for
-  # debugging in the field: it does take space but we'd probably regret
-  # not supplying it.
+  # We don't need docs/ or include/.
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}\")")
 
   if (UNIX)
@@ -2075,7 +2060,7 @@ if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
   # files due to cpack not preserving symlinks (filed as
   # http://www.itk.org/Bug/view.php?id=10096)
   # We don't need docs/, include/, or 64-bit.
-  # We do include 32-bit debug lib (and default DR log dir) for
+  # We do include the debug lib (and default DR log dir) for
   # debugging in the field: it does take space but we'd probably regret
   # not supplying it.
   if (NOT USER_SPECIFIED_DynamoRIO_DIR)

@@ -61,6 +61,9 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.9.0 include:
+ - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
+   not MacOS yet).  This does not yet include uninitialized read checking,
+   so we still recommend compiling your application as 32-bit.
  - Added checking that the program counter points to valid memory,
    controlled by the on-by-default -check_pc option.
 
@@ -372,7 +375,8 @@ some bugs.  The missing features include:
    the Windows API malloc which can lead to false negatives.
  - Definedness is tracked at the byte level, not at the bit level,
    which when bitfields are in use can lead to false positives.
- - 64-bit support: we plan to add this in the future.
+ - 64-bit uninitialized read support: we plan to add this in the future.
+   All other error types are detected in 64-bit applications.
  - 32-bit applications on 64-bit Windows have some limitations (these are
    actually limitations of the current version of the underlying DynamoRIO
    engine): if the app creates threads prior to image entry (as Cygwin apps

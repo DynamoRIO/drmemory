@@ -127,6 +127,7 @@ static void
 drmem_options_init(const char *opstr)
 {
     options_init(opstr);
+
     /* set globals */
     op_print_stderr = options.use_stderr && !options.quiet;
     op_verbose_level = options.verbose;
@@ -1816,6 +1817,12 @@ dr_init(client_id_t id)
 #ifdef MACOS
         NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
         NOTIFY("problems encountered to http://drmemory.org/issues."NL);
+#endif
+#ifdef X64
+        if (options.pattern == 0)
+            NOTIFY("WARNING: 64-bit non-pattern modes are experimental"NL);
+        else if (!option_specified.light)
+            NOTIFY("(64-bit uninitialized read checking is not yet supported)"NL);
 #endif
     }
 # ifdef WINDOWS

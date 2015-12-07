@@ -55,8 +55,9 @@ install using a standalone Dr. Memory package.
 ********************
 \section sec_linux_utils System Requirements
 
-Ensure your Linux installation is able to build 32-bit applications. On
-64-bit Ubuntu you will want these packages:
+For uninitialized read detection which is not yet supported by Dr. Memory
+for 64-bit applications, ensure your Linux installation is able to build
+32-bit applications. On 64-bit Ubuntu you will want these packages:
 
 \verbatim
 sudo apt-get install g++-multilib
@@ -168,8 +169,9 @@ These cross-platform steps apply to Linux, Mac, and Windows.
 ********************
 \subsection sec_prep_32bit 32-bit
 
-Currently, Dr. Memory only supports 32-bit applications, so be sure to
-compile your target application as 32-bit.
+Currently, Dr. Memory does not yet support uninitialized read detection for
+64-bit applications, so we recommend compiling your target application as
+32-bit.
 
 ********************
 \subsection sec_prep_debuginfo Debug Information
@@ -200,8 +202,8 @@ but should eliminate skipped frames.
 ********************
 \section sec_prep_linux Linux
 
-Ensure your Linux installation is able to build 32-bit applications.  On
-64-bit Ubuntu you will want these packages:
+For uninitialized read detection, ensure your Linux installation is able to
+build 32-bit applications.  On 64-bit Ubuntu you will want these packages:
 
 \verbatim
 sudo apt-get install g++-multilib
@@ -301,7 +303,7 @@ cl /Zi /MT /EHsc /Oy- /Ob0 /Femyapp.exe *.cpp
 ********************
 \section sec_prep_mingw Windows MinGW
 
-Dr. Memory supports 32-bit applications compiled with the MinGW gcc or g++
+Dr. Memory supports applications compiled with the MinGW gcc or g++
 compilers, but will only provide line number information if DWARF2
 debugging information is present.  The default for MinGW gcc prior to
 version 4.3 is to use the stabs format, which is not supported by

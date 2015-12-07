@@ -34,12 +34,11 @@ memory leaks, and (on Windows) handle leaks, GDI API usage errors, and
 accesses to un-reserved thread local storage slots.
 
 Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
-currently targets 32-bit programs on Windows (XP and higher) and Linux,
-with early Mac OSX support available as a Beta release.  64-bit application
-support is coming soon.
+has full support for Windows (XP and higher) and Linux, with early
+Mac OSX support (32-bit only) available as a Beta release.
 
 Dr. Memory also includes a system call tracing tool for Windows and a
-symbol query utility.  Those tools are available for both 32-bit and 64-bit.
+symbol query utility.
 
 ===========================================================================
 How do I use Dr. Memory?
