@@ -494,7 +494,9 @@ OPTION_CLIENT_BOOL(drmemscope, handle_leaks_only, false,
                    "Puts "TOOLNAME" into a handle-leak-check-only mode that has lower overhead but does not detect other types of errors other than handle leaks in Windows.")
 #endif /* WINDOWS */
 /* XXX i#111: re-enable once 64-bit full mode is supported */
-OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, IF_X64_ELSE(false, true),
+/* XXX i#1726: only pattern is currently supported on ARM */
+OPTION_CLIENT_BOOL(drmemscope, check_uninitialized,
+                   IF_ARM_ELSE(false, IF_X64_ELSE(false, true)),
                    "Check for uninitialized read errors",
                    "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
 OPTION_CLIENT_BOOL(drmemscope, check_stack_bounds, false,
@@ -583,7 +585,9 @@ OPTION_CLIENT_BOOL(drmemscope, unaddr_only, false,
                    "Enables a lightweight mode that detects only unaddressable errors",
                    "This option enables a lightweight mode that only detects critical errors of unaddressable accesses on heap data.  This option cannot be used with 'light' or 'check_uninitialized'.")
 /* XXX i#111/i#1810: until 64-bit shadow is fully ported, pattern is the x64 default */
-OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, IF_X64_ELSE(DEFAULT_PATTERN, 0),
+/* XXX i#1726: only pattern is currently supported on ARM */
+OPTION_CLIENT_SCOPE(drmemscope, pattern, uint,
+                    IF_ARM_ELSE(DEFAULT_PATTERN, IF_X64_ELSE(DEFAULT_PATTERN, 0)),
                     0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")

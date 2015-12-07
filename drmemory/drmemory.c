@@ -1821,10 +1821,15 @@ dr_init(client_id_t id)
         NOTIFY("problems encountered to http://drmemory.org/issues."NL);
 #endif
 #ifdef X64
+        /* i#111: full mode not ported yet to 64-bit */
         if (options.pattern == 0)
             NOTIFY("WARNING: 64-bit non-pattern modes are experimental"NL);
-        else if (!option_specified.light)
-            NOTIFY("(64-bit uninitialized read checking is not yet supported)"NL);
+#endif
+#if defined(X64) || defined(ARM)
+        /* i#111/i#1726: full mode not ported yet to 64-bit/ARM */
+        if (!option_specified.pattern && !option_specified.light)
+            NOTIFY("(Uninitialized read checking is not yet supported for "
+                   IF_X64_ELSE("64-bit","ARM") ")"NL);
 #endif
     }
 # ifdef WINDOWS

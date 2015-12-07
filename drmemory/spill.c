@@ -46,16 +46,11 @@
 /* Indirection to allow us to switch which TLS slots we use for spill slots */
 #define MAX_FAST_DR_SPILL_SLOT SPILL_SLOT_3
 
-#ifdef UNIX
-/* Data for which we need direct addressability access from instrumentation */
-typedef struct _tls_instru_t {
-    byte *dr_tls_base;
-} tls_instru_t;
-/* followed by reg spill slots for non-pattern mode */
-# define NUM_INSTRU_TLS_SLOTS (sizeof(tls_instru_t)/sizeof(byte *))
-#else
-# define NUM_INSTRU_TLS_SLOTS 0
-#endif
+/* We used to store segment bases in some TLS slots that were followed by the
+ * reg spill slots, but now that DR has API support for bases we don't need them
+ * anymore:
+ */
+#define NUM_INSTRU_TLS_SLOTS 0
 
 /* drreg allocates our reg spill slots in pattern mode */
 #define NUM_TLS_SLOTS \
@@ -69,33 +64,14 @@ static uint tls_instru_base;
 /* we store a pointer in regular tls for access to other threads' TLS */
 static int tls_idx_instru = -1;
 
-#ifdef UNIX
-static uint
-tls_base_offs(void)
-{
-    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
-    return tls_instru_base +
-        offsetof(tls_instru_t, dr_tls_base);
-}
-#endif
-
 byte *
 get_own_seg_base(void)
 {
-    byte *seg_base;
 #ifdef WINDOWS
-    seg_base = (byte *) get_TEB();
+    return (byte *) get_TEB();
 #else
-    uint offs = tls_base_offs();
-# ifdef X64
-    asm("movzbq %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
-# else
-    asm("movzbl %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
-# endif
-    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
-    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
+    return dr_get_dr_segment_base(seg_tls);
 #endif
-    return seg_base;
 }
 
 static bool
@@ -128,8 +104,30 @@ instru_tls_init(void)
         tls_idx_instru = drmgr_register_tls_field();
         ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
         ASSERT(seg_tls == EXPECTED_SEG_TLS, "unexpected tls segment");
+    } else {
+        /* We still need the seg base.
+         * XXX: DR should provide an API to retrieve it w/o allocating slots!
+         */
+        if (dr_raw_tls_calloc(&seg_tls, &tls_instru_base, 1, 0)) {
+            dr_raw_tls_cfree(tls_instru_base, 1);
+        } else {
+            /* Fall back to hardcoded defaults */
+#ifdef X86
+# ifdef X64
+            seg_tls = DR_SEG_GS;
+# else
+            seg_tls = DR_SEG_FS;
+# endif
+#elif defined(ARM)
+# ifdef X64
+            seg_tls = DR_REG_TPIDRURO;
+# else
+            seg_tls = DR_REG_TPIDRURW;
+# endif
+#endif
+        }
     }
- }
+}
 
 void
 instru_tls_exit(void)
@@ -151,28 +149,18 @@ void
 instru_tls_thread_init(void *drcontext)
 {
 #ifdef UNIX
-    tls_instru_t *tls;
-
-    /* bootstrap: can't call get_own_seg_base() until set up seg base fields */
-    byte *dr_tls_base = dr_get_dr_segment_base(seg_tls);
     /* We used to acquire the app's fs and gs bases (via opnd_compute address on
      * a synthetic far-base-disp opnd) but with early injection they aren't set
      * up yet, and we'd need to do work to handle changes: instead, now that
      * DR supplies dr_insert_get_seg_base(), we just use that.
      */
-    tls = (tls_instru_t *) (dr_tls_base + tls_instru_base);
-    ASSERT(tls != NULL, "TLS should not be NULL");
-    tls->dr_tls_base  = dr_tls_base;
-    LOG(1, "dr: TLS base="PFX"\n", dr_tls_base);
-    /* store in per-thread data struct so we can access from another thread */
-    drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
-#else
+    LOG(1, "dr: TLS base="PFX"\n", dr_get_dr_segment_base(seg_tls));
+#endif
     if (NUM_TLS_SLOTS > 0) {
         /* store in per-thread data struct so we can access from another thread */
         drmgr_set_tls_field(drcontext, tls_idx_instru, (void *)
                             (get_own_seg_base() + tls_instru_base));
     }
-#endif
 }
 
 void
@@ -261,19 +249,25 @@ set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
 ptr_uint_t
 get_raw_tls_value(uint offset)
 {
+#ifdef X86
     ptr_uint_t val;
-#ifdef WINDOWS
+# ifdef WINDOWS
     val = *(ptr_uint_t *)(((byte *)get_TEB()) + offset);
-#else
-# ifdef X64
-    asm("movzbq %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
 # else
+#  ifdef X64
+    asm("movzbq %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
+#  else
     asm("movzbl %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
-# endif
+#  endif
     asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
     asm("mov %%"ASM_XAX", %0" : "=m"(val) : : ASM_XAX);
-#endif
+# endif
     return val;
+#else
+    /* FIXME i#1726: port to ARM */
+    ASSERT_NOT_REACHED();
+    return 0;
+#endif
 }
 
 int
@@ -370,7 +364,8 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
  * STATE RESTORATION
  */
 
-/* Our state restoration model: Only whole-bb scratch regs and aflags
+/* Our state restoration model for non-pattern, until we transition
+ * them to use drreg as well (i#1795): only whole-bb scratch regs and aflags
  * need to be restored (i.e., all local scratch regs are restored
  * before any app instr).  For each such reg or aflags, we guarantee
  * that either the app value is in TLS at each app instr (where fault
@@ -378,6 +373,9 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
  * in TLS b/c the app will write it before reading (this is all modulo
  * the app's own fault handler going off on a different path (xref
  * DRi#400): so we're slightly risky here).
+ *
+ * We also perform a few other shadow-related restorations at the end
+ * of this routine.
  */
 bool
 event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_t *info)
@@ -390,11 +388,13 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     /* If always app_code_consistent could just re-analyze aflags, but not
      * the case so we have to store whether we've done eflags-at-top
      */
-    /* FIXME PR 485216: we should restore dead registers on a fault, but it
+#ifdef X86
+    /* XXX PR 485216: we should restore dead registers on a fault, but it
      * would be a perf hit to save them: for now we don't do anything.
      * It's doubtful an app will ever have a problem with that.
      */
     bb_saved_info_t *save;
+#endif
 
 #ifdef TOOL_DR_MEMORY
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
@@ -403,7 +403,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     if (!INSTRUMENT_MEMREFS())
         return true;
 
-    if (options.pattern != 0 && !whole_bb_spills_enabled())
+    if (options.pattern != 0) /* pattern is using drreg */
         return true;
 
     /* Are we asking DR to translate just pc?  Then return true and ignore regs */
@@ -414,9 +414,10 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     }
 #endif
 
+#ifdef X86 /* ARM uses drreg's state restoration */
     hashtable_lock(&bb_table);
     save = (bb_saved_info_t *) hashtable_lookup(&bb_table, info->fragment_info.tag);
-#ifdef TOOL_DR_MEMORY
+# ifdef TOOL_DR_MEMORY
     LOG(2, "%s: raw pc="PFX", xl8 pc="PFX", tag="PFX"\n",
         __FUNCTION__, info->raw_mcontext->pc, info->mcontext->pc,
         info->fragment_info.tag);
@@ -427,7 +428,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
         if (in_replace_routine(info->mcontext->pc))
             LOG(2, "fault in replace_ routine "PFX"\n", info->mcontext->pc);
     });
-#endif
+# endif
     if (save != NULL) {
         /* We save first thing and restore prior to last instr.
          * Our restore clobbers the eflags value in our tls slot, so
@@ -479,10 +480,13 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
         }
     }
     hashtable_unlock(&bb_table);
+#endif /* X86 */
+
 #ifndef TOOL_DR_MEMORY
     /* Dr. Heapstat has no fault paths */
     return true;
 #endif
+
     /* Note that although we now have non-meta instrumentation that
      * comes through here for PR 448701 we do not restore registers
      * here since no such fault will make it to the app.
@@ -550,7 +554,9 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
  * SCRATCH REGISTER SELECTION
  */
 
-#ifdef DEBUG
+#ifdef X86 /* ARM uses drreg's state restoration */
+
+# ifdef DEBUG
 static void
 print_scratch_reg(void *drcontext, scratch_reg_info_t *si, int num, file_t file)
 {
@@ -577,7 +583,7 @@ check_scratch_reg_no_overlap(scratch_reg_info_t *s1, scratch_reg_info_t *s2)
            s1->dead || s2->dead ||
            s1->slot != s2->slot, "scratch reg error");
 }
-#endif
+# endif /* DEBUG */
 
 /* It's up to the caller to ensure that fixed was not already chosen
  * for an earlier scratch reg
@@ -833,20 +839,22 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
         LOG(3, "\n");
     });
 
-#ifdef DEBUG
+# ifdef DEBUG
     check_scratch_reg_no_overlap(&mi->reg1, &mi->reg2);
     if (need3) {
         check_scratch_reg_no_overlap(&mi->reg1, &mi->reg3);
         check_scratch_reg_no_overlap(&mi->reg2, &mi->reg3);
     }
-#endif
+# endif
 }
+#endif /* X86 */
 
 static bool
 insert_spill_common(void *drcontext, instrlist_t *bb, instr_t *inst,
                     scratch_reg_info_t *si, bool spill,
                     bool just_xchg, bool do_global)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     /* No need to do a local spill/restore if globally spilled (PR 489221) */
     if (si->used && !si->dead && (!si->global || do_global)) {
         if (si->xchg != REG_NULL) {
@@ -868,6 +876,11 @@ insert_spill_common(void *drcontext, instrlist_t *bb, instr_t *inst,
         return true;
     }
     return false;
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+    return false;
+#endif
 }
 
 bool
@@ -889,11 +902,16 @@ void
 insert_save_aflags_nospill(void *drcontext, instrlist_t *ilist,
                            instr_t *inst, bool save_oflag)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     PRE(ilist, inst, INSTR_CREATE_lahf(drcontext));
     if (save_oflag) {
         PRE(ilist, inst,
             INSTR_CREATE_setcc(drcontext, OP_seto, opnd_create_reg(DR_REG_AL)));
     }
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 /* insert aflags restore code sequence w/o spill: add %al, 0x7f; sahf; */
@@ -901,34 +919,49 @@ void
 insert_restore_aflags_nospill(void *drcontext, instrlist_t *ilist,
                               instr_t *inst, bool restore_oflag)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     if (restore_oflag) {
         PRE(ilist, inst, INSTR_CREATE_add
             (drcontext, opnd_create_reg(REG_AL), OPND_CREATE_INT8(0x7f)));
     }
     PRE(ilist, inst, INSTR_CREATE_sahf(drcontext));
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 void
 insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                    scratch_reg_info_t *si, int aflags)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     if (si->reg != REG_NULL) {
         ASSERT(si->reg == DR_REG_XAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, true/*save*/, false);
     }
     insert_save_aflags_nospill(drcontext, bb, inst, aflags != EFLAGS_WRITE_OF);
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 void
 insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                       scratch_reg_info_t *si, int aflags)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     insert_restore_aflags_nospill(drcontext, bb, inst,
                                   aflags != EFLAGS_WRITE_OF);
     if (si->reg != REG_NULL) {
         ASSERT(si->reg == DR_REG_XAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, false/*restore*/, false);
     }
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 static inline bool
@@ -960,6 +993,7 @@ void
 save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi, bb_info_t *bi)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     scratch_reg_info_t si;
     /* We save aflags unless there's no read prior to the 1st write.
      * We clobber eax while doing so if eax is dead.
@@ -1008,7 +1042,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
          * However, this would make the state restore more complex.
          */
         if (bi->aflags_where == AFLAGS_UNKNOWN) {
-#ifdef TOOL_DR_MEMORY
+# ifdef TOOL_DR_MEMORY
             /* i#1466: remember where to start restore state for pattern mode.
              * In pattern mode, we only save eax if we save aflags. i#1466 is a bug
              * that tries to restore eax on a fault before we saving eax, so we use
@@ -1044,7 +1078,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                  */
                 bi->aflags_where = AFLAGS_IN_EAX;
             } else
-#endif
+# endif
                 bi->aflags_where = AFLAGS_IN_TLS;
         }
         if (bi->aflags_where == AFLAGS_IN_EAX)
@@ -1060,6 +1094,10 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
             insert_spill_or_restore(drcontext, bb, inst, &si, false/*restore*/, false);
         }
     }
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 /* Single eflags save per bb
@@ -1069,6 +1107,7 @@ void
 restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, bb_info_t *bi)
 {
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     scratch_reg_info_t si;
     if (!bi->eflags_used)
         return;
@@ -1112,12 +1151,17 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     insert_restore_aflags(drcontext, bb, inst, &si, bi->aflags);
     /* avoid re-restoring.  FIXME: do this for insert_spill_global too? */
     bi->eflags_used = false;
+#else
+    /* FIXME i#1795/i#1726: port shadow modes to use drreg */
+    ASSERT_NOT_REACHED();
+#endif
 }
 
 /***************************************************************************
  * Whole-bb spilling (PR 489221)
  */
 
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
 static void
 pick_bb_scratch_regs_helper(opnd_t opnd, int uses[NUM_LIVENESS_REGS])
 {
@@ -1275,6 +1319,7 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
         LOG(3, " x%d\n", uses_second);
     });
 }
+#endif /* X86 */
 
 bool
 whole_bb_spills_enabled(void)
@@ -1331,6 +1376,7 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
         bi->reg2.used = false;
         return;
     }
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     /* analyze bb and pick which scratch regs to use.  don't actually do
      * the spills until we know there's actual instrumentation in this bb.
      * we don't also delay the analysis b/c it's simpler to analyze the
@@ -1339,14 +1385,16 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
      * but will wait until analysis shows up as perf bottleneck.
      */
     pick_bb_scratch_regs(inst, bi);
+#endif
 }
 
 /* Invoked before the regular pre-app instrumentation */
 void
 fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
 {
+#ifdef X86
     int live[NUM_LIVENESS_REGS];
-
+#endif
     app_pc pc = instr_get_app_pc(inst);
     if (pc != NULL) {
         if (bi->first_app_pc == NULL)
@@ -1358,6 +1406,7 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
         return;
     if (options.pattern != 0) /* pattern is using drreg */
         return;
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     /* Haven't instrumented below here yet, so forward analysis should
      * see only app instrs
      * XXX i#777: should do reverse walk during analysis phase and store results
@@ -1371,6 +1420,7 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
         bi->reg2.dead = (live[bi->reg2.reg - REG_START] == LIVE_DEAD);
 
     bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
+#endif
 }
 
 bool
@@ -1485,14 +1535,18 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* XXX i#777: gets next instr, and below does liveness analysis w/ forward scan.
      * should use stored info from reverse scan done during analysis phase.
      */
+#ifdef X86
     instr_t *next = instr_get_next(inst);
     int live[NUM_LIVENESS_REGS];
     bool restored_for_read = false;
+#endif
 
     if (!whole_bb_spills_enabled())
         return;
     if (options.pattern != 0) /* pattern is using drreg */
         return;
+
+#ifdef X86 /* XXX i#1795: eliminate this and port to drreg */
     /* If this is the last instr, the end-of-bb restore will restore for any read,
      * and everything is dead so we can ignore writes
      */
@@ -1618,6 +1672,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             save_aflags_if_live(drcontext, bb, next, mi, bi);
         }
     }
+#endif /* X86 */
 }
 
 void
