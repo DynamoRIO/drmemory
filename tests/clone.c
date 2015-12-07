@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -90,18 +91,20 @@ extern int clone(int (*fn)(void *arg), void *child_stack,
 #define CLONE_THREAD	0x00010000	/* Same thread group? */
 #define CLONE_CHILD_CLEARTID 0x00200000      /* clear the TID in the child */
 
-#ifdef __i386__
-# define __NR_set_tid_address 258
-# define __NR_gettid 224
-# define __NR_exit 1
-#else
-# define __NR_set_tid_address 218
-# define __NR_gettid 186
-# define __NR_exit 60
+#ifdef X86
+# ifdef __i386__
+#  define __NR_set_tid_address 258
+#  define __NR_gettid 224
+#  define __NR_exit 1
+# else
+#  define __NR_set_tid_address 218
+#  define __NR_gettid 186
+#  define __NR_exit 60
+# endif
+# define SYS_set_tid_address __NR_set_tid_address
+# define SYS_gettid __NR_gettid
+# define SYS_exit __NR_exit
 #endif
-#define SYS_set_tid_address __NR_set_tid_address
-#define SYS_gettid __NR_gettid
-#define SYS_exit __NR_exit
 
 #define false (0)
 #define true (1)

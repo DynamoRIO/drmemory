@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -238,10 +238,15 @@ non_module_test(void)
      * We should mark it +x.
      * It works under DR b/c of a hole in DR where its code cache is +x (i#329).
      */
-    char buf[4] = { 0x83, 0xf8, 0x00, 0xc3 };
+#ifdef X86
+    char buf[] = { 0x83, 0xf8, 0x00, 0xc3 };
+#elif defined(ARM)
+    /* cmp r0, #0; bx lr */
+    int buf[] = { 0xe3500000, 0xe12fff1e };
+#endif
     int uninit[2];
     int x = 0; /* avoid compiler warning about uninit var use */
-    call_buf_asm(uninit[x], buf);
+    call_buf_asm(uninit[x], (void *)buf);
 }
 
 /* Function pointers to exports. */
@@ -405,6 +410,7 @@ START_FILE
 /* void call_buf_asm(int uninit, void *buf); */
         DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
+# ifdef X86
         mov      REG_XAX, ARG1
         mov      REG_XDX, ARG2
         push     REG_XBP
@@ -418,6 +424,11 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XSP, REG_XBP
         pop      REG_XBP
         ret
+# elif defined(ARM)
+        /* call ARG2 passing ARG1 in r0 */
+        blx      ARG2
+        bx       lr
+# endif
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
 

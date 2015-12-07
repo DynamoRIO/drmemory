@@ -254,6 +254,14 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/runtest.cmake" COPYONLY)
 set(cmd_script -P "${PROJECT_BINARY_DIR}/tests/runtest.cmake")
 
+# DrMem itself gets ARM from dr_api.h but tests need it on their own:
+if (ARM)
+  add_definitions(-DARM)
+endif ()
+if (X86)
+  add_definitions(-DX86)
+endif ()
+
 # test_ops and drmem_ops should have words separated by ; so they'll
 # be separate arguments on the cmdline, while dr_ops should be
 # separated by spaces and will remain a single arg.
@@ -414,19 +422,23 @@ if (NOT X64)
 newtest(hello hello.c)
 newtest(malloc malloc.c)
 newtest(free free.c)
-newtest(registers registers.c)
-newtest(asmtest asmtest.c)
 newtest(badjmp badjmp.c)
+if (NOT ARM) # XXX i#1726: port to ARM
+  newtest(registers registers.c)
+  newtest(asmtest asmtest.c)
+endif ()
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
   newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
-newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
-if (WIN32)
-  # i#489: building /GL results in a double-xor sequence
-  set(bitfieldGL_disable_asm ON)
-  newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
-endif (WIN32)
+if (NOT ARM) # XXX i#1726: port to ARM
+  newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+  if (WIN32)
+    # i#489: building /GL results in a double-xor sequence
+    set(bitfieldGL_disable_asm ON)
+    newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
+  endif (WIN32)
+endif ()
 
 if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
   set(cs2bug_res "cs2bug")
@@ -447,7 +459,9 @@ newtest_ex(operators operators.cpp "" "" "" OFF ""
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
-newtest_ex(state state.c "" "" "" OFF "" "ANY")
+if (NOT ARM) # XXX i#1726: port to ARM
+  newtest_ex(state state.c "" "" "" OFF "" "ANY")
+endif ()
 
 if (UNIX)
   newtest(signal signal.c)
@@ -572,22 +586,28 @@ if (WIN32)
 endif (WIN32)
 
 if (TOOL_DR_MEMORY)
-  # PR 525807: test malloc stacks
-  newtest(varstack varstack.c)
+  if (NOT ARM) # XXX i#1726: port to ARM
+    # PR 525807: test malloc stacks
+    newtest(varstack varstack.c)
+  endif ()
 
   # PR 464804: test runtime options
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
   newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
-  newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
-  newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
+    newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
+    newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
+  endif ()
   newtest_nobuild(addronly free "" "-light" "" OFF "")
-  newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF ${cs2bug_res})
   if (USE_DRSYMS)
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif (USE_DRSYMS)
-  newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
+  endif ()
   # test this option to exercise the realloc handling code.
   # note that we can't run the realloc test b/c the races will result in unaddrs.
   newtest_nobuild(noreplace_realloc malloc "" "-no_replace_realloc" "" OFF "malloc")
@@ -596,11 +616,13 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
-  newtest_nobuild_ex(blacklist_uninit.op registers ""
-    "-check_uninit_blacklist;registers*" "" OFF "registers.blacklist" 0 "")
-  newtest_nobuild_ex(blacklist_uninit.supp registers ""
-    "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
-    "" OFF "registers.blacklist" 0 "")
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_nobuild_ex(blacklist_uninit.op registers ""
+      "-check_uninit_blacklist;registers*" "" OFF "registers.blacklist" 0 "")
+    newtest_nobuild_ex(blacklist_uninit.supp registers ""
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
+      "" OFF "registers.blacklist" 0 "")
+  endif ()
 
   # -replace_malloc is now the default, so test wrapping
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
@@ -789,10 +811,15 @@ if (TOOL_DR_MEMORY)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
-  newtest_nobuild(registers.pattern registers "" "-unaddr_only" "" OFF "registers.pattern")
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_nobuild(registers.pattern registers "" "-unaddr_only" "" OFF
+      "registers.pattern")
+  endif ()
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
-  newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
+  endif ()
 else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity;100" "" OFF "" 0)
 
@@ -804,14 +831,16 @@ else (TOOL_DR_MEMORY)
   set(nudge_test_args "")
 endif (TOOL_DR_MEMORY)
 
-# nudge test: runs infloop in background and runtest.cmake nudges it
-tobuild(infloop infloop.c)
-get_relative_location(infloop infloop_path)
-# we have special support to put run_in_bg and its args first, so we put
-# the test to run as a final drmem arg
-newtest_nobuild(nudge run_in_bg_tgt
-  "-out;./nudge-out"
-  "${nudge_test_args}--;${infloop_path}" "" OFF "")
+if (NOT ARM) # XXX i#1726: port to ARM
+  # nudge test: runs infloop in background and runtest.cmake nudges it
+  tobuild(infloop infloop.c)
+  get_relative_location(infloop infloop_path)
+  # we have special support to put run_in_bg and its args first, so we put
+  # the test to run as a final drmem arg
+  newtest_nobuild(nudge run_in_bg_tgt
+    "-out;./nudge-out"
+    "${nudge_test_args}--;${infloop_path}" "" OFF "")
+endif ()
 if (TOOL_DR_MEMORY AND WIN32)
   # See above for why passing -lib_blacklist_frames 0.
   set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
