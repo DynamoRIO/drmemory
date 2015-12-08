@@ -3676,7 +3676,7 @@ replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
             for (pc = app_caller; pc < app_caller + NOSY_MAX_DECODE; ) {
                 pc = decode(drcontext, pc, &inst);
-                if (instr_valid(&inst) && instr_is_call(&inst)) {
+                if (instr_valid(&inst) && instr_is_call_direct(&inst)) {
                     if (opnd_get_pc(instr_get_target(&inst)) ==
                         (app_pc)native_RtlFreeHeap) {
                         LOG(3, "%s: found call to RtlFreeHeap => not a native alloc\n",
