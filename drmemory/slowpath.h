@@ -33,6 +33,12 @@
 /* there is no REG_EFLAGS so we use the REG_INVALID sentinel */
 #define REG_EFLAGS REG_INVALID
 
+#ifdef X86
+# define REG_FRAME_PTR DR_REG_XBP
+#elif defined(ARM)
+# define REG_FRAME_PTR DR_REG_FP
+#endif
+
 /* we only need a little over 2 pages for whole_bb_spills_enabled(): could get
  * onto 2 pages by not emitting SPILL_REG_NONE.
  * -no_single_arg_slowpath needs only 10 pages.
@@ -150,14 +156,18 @@ extern uint delayed_free_bytes;
 extern uint app_instrs_fastpath;
 extern uint app_instrs_no_dup;
 extern uint xl8_app_for_slowpath;
+extern uint num_bbs;
+
+# ifdef X86
 extern uint movs4_src_unaligned;
 extern uint movs4_dst_unaligned;
 extern uint movs4_src_undef;
 extern uint movs4_med_fast;
 extern uint cmps1_src_undef;
 extern uint cmps1_med_fast;
-extern uint num_bbs;
-#endif
+# endif
+
+#endif /* STATISTICS */
 
 extern hashtable_t bb_table;
 

@@ -1012,6 +1012,7 @@ if (TOOL_DR_HEAPSTAT)
     drmemory/instru.c
     drmemory/spill.c
     drmemory/slowpath.c
+    drmemory/slowpath_x86.c
     drmemory/fastpath.c
     drmemory/shadow.c
     drmemory/perturb.c)
@@ -1023,6 +1024,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/instru.c
     drmemory/spill.c
     drmemory/slowpath.c
+    drmemory/slowpath_x86.c
     drmemory/fastpath.c
     drmemory/stack.c
     drmemory/shadow.c
