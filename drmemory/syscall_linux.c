@@ -25,7 +25,7 @@
 #include "syscall.h"
 #include "syscall_os.h"
 #include "shadow.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "sysnum_linux.h"
 #include "alloc_drmem.h"
 #include "alloc.h"

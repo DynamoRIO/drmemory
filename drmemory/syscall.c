@@ -26,7 +26,7 @@
 #include "utils.h"
 #include "syscall.h"
 #include "shadow.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "syscall_os.h"
 #include "alloc.h"
 #include "perturb.h"

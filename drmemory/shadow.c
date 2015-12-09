@@ -33,7 +33,7 @@
 # include "../drheapstat/staleness.h"
 #endif
 
-#include "readwrite.h" /* get_own_seg_base */
+#include "slowpath.h" /* get_own_seg_base */
 
 #ifdef TOOL_DR_MEMORY /* around whole shadow table */
 

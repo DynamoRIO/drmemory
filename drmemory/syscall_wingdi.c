@@ -28,7 +28,7 @@
 #include "syscall.h"
 #include "syscall_os.h"
 #include "syscall_windows.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "shadow.h"
 #include "gdicheck.h"
 #include <stddef.h> /* offsetof */

@@ -30,7 +30,7 @@
 #endif
 #include "drmemory.h"
 #include "shadow.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "syscall.h"
 #include "alloc.h"
 #include "report.h"

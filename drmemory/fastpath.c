@@ -26,7 +26,7 @@
 
 #include "dr_api.h"
 #include "drmemory.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "spill.h"
 #include "fastpath.h"
 #include "shadow.h"

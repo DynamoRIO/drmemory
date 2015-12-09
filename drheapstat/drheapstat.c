@@ -39,7 +39,7 @@
 #include "../drmemory/stack.h"
 #include "../drmemory/shadow.h"
 #include "../drmemory/instru.h"
-#include "../drmemory/readwrite.h"
+#include "../drmemory/slowpath.h"
 #ifdef MACOS
 # error NYI i#1438
 #elif defined(LINUX)

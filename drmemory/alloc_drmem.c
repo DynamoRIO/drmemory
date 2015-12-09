@@ -22,7 +22,7 @@
 
 #include "dr_api.h"
 #include "drmemory.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "report.h"
 #include "shadow.h"
 #include "syscall.h"
@@ -1752,7 +1752,7 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
      * xref PR 485131: propagate partial-unaddr on loads?  but would still
      * complain on the jnb.
      *
-     * FIXME: share code w/ check_undefined_reg_exceptions() in readwrite.c.
+     * FIXME: share code w/ check_undefined_reg_exceptions() in slowpath.c.
      */
     instr_t next;
     app_pc dpc = next_pc;

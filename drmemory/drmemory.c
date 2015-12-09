@@ -57,7 +57,7 @@
 #include "drx.h"
 #include "drmemory.h"
 #include "instru.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "fastpath.h"
 #include "report.h"
 #include "shadow.h"
@@ -1675,7 +1675,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     alloc_module_load(drcontext, info, loaded);
     if (options.perturb_only)
         perturb_module_load(drcontext, info, loaded);
-    readwrite_module_load(drcontext, info, loaded);
+    slowpath_module_load(drcontext, info, loaded);
     leak_module_load(drcontext, info, loaded);
 #ifdef USE_DRSYMS
     /* Free resources.  Many modules will never need symbol queries again b/c
@@ -1695,7 +1695,7 @@ event_module_unload(void *drcontext, const module_data_t *info)
         dr_module_preferred_name(info) == NULL ? "<null>" :
         dr_module_preferred_name(info), info->start, info->end);
     leak_module_unload(drcontext, info);
-    readwrite_module_unload(drcontext, info);
+    slowpath_module_unload(drcontext, info);
     if (!options.perturb_only)
         callstack_module_unload(drcontext, info);
     if (INSTRUMENT_MEMREFS())

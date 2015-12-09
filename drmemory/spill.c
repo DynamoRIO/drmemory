@@ -31,7 +31,7 @@
 #include "options.h"
 #include "spill.h"
 #include "instru.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "replace.h"
 #include "shadow.h"
 #include "fastpath.h"

@@ -1003,7 +1003,7 @@ if (TOOL_DR_HEAPSTAT)
     common/redblack.c
     common/crypto.c
     # For leak checking we need stack.c but it pulls in the inter-dependent
-    # readwrite, fastpath, and shadow: we'll want those for staleness anyway.
+    # slowpath, fastpath, and shadow: we'll want those for staleness anyway.
     # Looking more and more like Dr. Memory!
     drmemory/annotations.c
     drmemory/leak.c
@@ -1011,7 +1011,7 @@ if (TOOL_DR_HEAPSTAT)
     drmemory/stack.c
     drmemory/instru.c
     drmemory/spill.c
-    drmemory/readwrite.c
+    drmemory/slowpath.c
     drmemory/fastpath.c
     drmemory/shadow.c
     drmemory/perturb.c)
@@ -1022,7 +1022,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/drmemory.c
     drmemory/instru.c
     drmemory/spill.c
-    drmemory/readwrite.c
+    drmemory/slowpath.c
     drmemory/fastpath.c
     drmemory/stack.c
     drmemory/shadow.c

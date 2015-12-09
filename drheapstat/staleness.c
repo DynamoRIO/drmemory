@@ -33,7 +33,7 @@
 #include "utils.h"
 #include "staleness.h"
 #include "alloc.h"
-#include "../drmemory/readwrite.h"
+#include "../drmemory/slowpath.h"
 #include "../drmemory/fastpath.h"
 #include "umbra.h"
 

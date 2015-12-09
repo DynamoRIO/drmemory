@@ -21,14 +21,14 @@
  */
 
 /***************************************************************************
- * readwrite.c: Dr. Memory memory read/write slowpath handling
+ * slowpath.c: Dr. Memory memory read/write slowpath handling
  */
 
 #include "dr_api.h"
 #include "drutil.h"
 #include "drmemory.h"
 #include "instru.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "spill.h"
 #include "fastpath.h"
 #include "stack.h"
@@ -4366,7 +4366,7 @@ static app_pc rsaenh_end = NULL;
 #endif /* WINDOWS */
 
 void
-readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded)
+slowpath_module_load(void *drcontext, const module_data_t *mod, bool loaded)
 {
 #ifdef WINDOWS
     if (_stricmp("rsaenh.dll", dr_module_preferred_name(mod)) == 0) {
@@ -4377,7 +4377,7 @@ readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded)
 }
 
 void
-readwrite_module_unload(void *drcontext, const module_data_t *mod)
+slowpath_module_unload(void *drcontext, const module_data_t *mod)
 {
 #ifdef WINDOWS
     if (_stricmp("rsaenh.dll", dr_module_preferred_name(mod)) == 0) {

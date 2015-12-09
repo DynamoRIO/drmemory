@@ -21,11 +21,11 @@
  */
 
 /***************************************************************************
- * readwrite.h: Dr. Memory read/write instrumentation
+ * slowpath.h: Dr. Memory read/write slowpath instrumentation
  */
 
-#ifndef _READWRITE_H_
-#define _READWRITE_H_ 1
+#ifndef _SLOWPATH_H_
+#define _SLOWPATH_H_ 1
 
 #include "fastpath.h"
 #include "callstack.h" /* for app_loc_t */
@@ -203,10 +203,10 @@ bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);
 
 void
-readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded);
+slowpath_module_load(void *drcontext, const module_data_t *mod, bool loaded);
 
 void
-readwrite_module_unload(void *drcontext, const module_data_t *mod);
+slowpath_module_unload(void *drcontext, const module_data_t *mod);
 
 /***************************************************************************
  * ISA UTILITY ROUTINES
@@ -321,4 +321,4 @@ num_true_srcs(instr_t *inst, dr_mcontext_t *mc);
 int
 num_true_dsts(instr_t *inst, dr_mcontext_t *mc);
 
-#endif /* _READWRITE_H_ */
+#endif /* _SLOWPATH_H_ */

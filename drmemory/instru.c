@@ -28,7 +28,7 @@
 #include "drreg.h"
 #include "drutil.h"
 #include "drmemory.h"
-#include "readwrite.h"
+#include "slowpath.h"
 #include "spill.h"
 #include "fastpath.h"
 #include "stack.h"
