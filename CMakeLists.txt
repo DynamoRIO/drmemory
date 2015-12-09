@@ -1062,8 +1062,10 @@ endif (TOOL_DR_HEAPSTAT)
 
 if (X86)
   set(srcs ${srcs} drmemory/slowpath_x86.c)
+  set(srcs ${srcs} drmemory/stack_x86.c)
 else ()
   set(srcs ${srcs} drmemory/slowpath_arm.c)
+  set(srcs ${srcs} drmemory/stack_arm.c)
 endif ()
 
 if (WIN32)
