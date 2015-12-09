@@ -645,7 +645,7 @@ atomic_add32_return_sum(volatile int *x, int val)
        "   bne   1b             \n\t"                       \
        "   cmp   r2, #0" /* for possible SET_FLAG use */    \
        : "=Q" (x) /* no offset for ARM mode */              \
-       : : "cc", "memory", "r2", "r3");
+       : : "cc", "memory", "r2", "r3")
 #  define ATOMIC_DEC32(x)                                   \
      __asm__ __volatile__(                                  \
        "1: ldrex r2, %0         \n\t"                       \
@@ -655,7 +655,7 @@ atomic_add32_return_sum(volatile int *x, int val)
        "   bne   1b             \n\t"                       \
        "   cmp   r2, #0" /* for possible SET_FLAG use */    \
        : "=Q" (x) /* no offset for ARM mode */              \
-       : : "cc", "memory", "r2", "r3");
+       : : "cc", "memory", "r2", "r3")
 #  define ATOMIC_ADD32(x, val)                              \
      __asm__ __volatile__(                                  \
        "1: ldrex r2, %0         \n\t"                       \
@@ -666,7 +666,7 @@ atomic_add32_return_sum(volatile int *x, int val)
        "   cmp   r2, #0" /* for possible SET_FLAG use */    \
        : "=Q" (x) /* no offset for ARM mode */              \
        : "r"  (val)                                         \
-       : "cc", "memory", "r2", "r3");
+       : "cc", "memory", "r2", "r3")
 #  define ATOMIC_ADD_EXCHANGE32(x, val, result)             \
      __asm__ __volatile__(                                  \
        "1: ldrex r2, %0         \n\t"                       \
@@ -678,7 +678,7 @@ atomic_add32_return_sum(volatile int *x, int val)
        "   str   r2, %1"                                    \
        : "=Q" (*x), "=m" (result)                           \
        : "r"  (val)                                         \
-       : "cc", "memory", "r2", "r3");
+       : "cc", "memory", "r2", "r3")
 
 static inline int
 atomic_add32_return_sum(volatile int *x, int val)

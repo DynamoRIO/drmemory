@@ -1012,7 +1012,6 @@ if (TOOL_DR_HEAPSTAT)
     drmemory/instru.c
     drmemory/spill.c
     drmemory/slowpath.c
-    drmemory/slowpath_x86.c
     drmemory/fastpath.c
     drmemory/shadow.c
     drmemory/perturb.c)
@@ -1024,7 +1023,6 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/instru.c
     drmemory/spill.c
     drmemory/slowpath.c
-    drmemory/slowpath_x86.c
     drmemory/fastpath.c
     drmemory/stack.c
     drmemory/shadow.c
@@ -1061,6 +1059,12 @@ else (TOOL_DR_HEAPSTAT)
   endif (UNIX)
   set(scripts ${toolname}.pl)
 endif (TOOL_DR_HEAPSTAT)
+
+if (X86)
+  set(srcs ${srcs} drmemory/slowpath_x86.c)
+else ()
+  set(srcs ${srcs} drmemory/slowpath_arm.c)
+endif ()
 
 if (WIN32)
   set(srcs ${srcs} make/resources.rc)

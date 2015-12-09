@@ -238,8 +238,9 @@ opc_is_gpr_shift(uint opc)
 }
 
 bool
-opc_is_jcc(uint opc)
+instr_is_jcc(instr_t *inst)
 {
+    uint opc = instr_get_opcode(inst);
     return ((opc >= OP_jo && opc <= OP_jnle) ||
             (opc >= OP_jo_short && opc <= OP_jnle_short));
 }
@@ -2615,19 +2616,14 @@ test_pinsr(void *dc)
     instr_destroy(dc, inst);
 }
 
-int
-main(int argc, char *argv[])
+void
+slowpath_unit_tests_arch(void *drcontext)
 {
-    void *drcontext = dr_standalone_init();
-
     test_punpck();
 
     test_pinsr(drcontext);
 
     /* add more tests here */
-
-    dr_printf("success\n");
-    return 0;
 }
 #endif
 

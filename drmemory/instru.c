@@ -1169,7 +1169,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         if (has_mem && opnd_uses_nonignorable_memory(opnd))
             has_noignorable_mem = true;
 #endif
-        if (opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd))) {
+        if (options.shadowing && opnd_is_reg(opnd) &&
+            reg_is_shadowed(opc, opnd_get_reg(opnd))) {
             has_shadowed_reg = true;
             if (reg_is_gpr(opnd_get_reg(opnd))) {
                 /* written to => no longer known to be addressable,
@@ -1192,7 +1193,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             if (has_mem && opnd_uses_nonignorable_memory(opnd))
                 has_noignorable_mem = true;
 #endif
-            if (opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd)))
+            if (options.shadowing && opnd_is_reg(opnd) &&
+                reg_is_shadowed(opc, opnd_get_reg(opnd)))
                 has_shadowed_reg = true;
         }
     }
@@ -1204,7 +1206,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */
     if ((options.pattern != 0 ||
          (options.shadowing && bi->eflags_defined)) &&
-        opc_is_jcc(opc))
+        instr_is_jcc(inst))
         goto instru_event_bb_insert_done;
 
     if (options.pattern != 0) {

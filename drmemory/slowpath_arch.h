@@ -174,4 +174,9 @@ bool
 check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
                                dr_mcontext_t *mc, instr_t *inst);
 
+#if defined(TOOL_DR_MEMORY) && defined(BUILD_UNIT_TESTS)
+void
+slowpath_unit_tests_arch(void *drcontext);
+#endif
+
 #endif /* _SLOWPATH_ARCH_H_ */

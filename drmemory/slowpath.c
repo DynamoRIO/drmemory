@@ -1068,7 +1068,9 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 {
     opnd_t decode_pc_opnd;
     ASSERT(options.pattern == 0, "No slow path for pattern mode");
-    if (instr_shared_slowpath_decode_pc(inst, mi, &decode_pc_opnd)) {
+    if (instr_shared_slowpath_decode_pc(inst, mi, &decode_pc_opnd)
+        IF_ARM(&& false/*NYI: see below*/)) {
+#ifdef X86
         /* Since the clean call instr sequence is quite long we share
          * it among all bbs.  Rather than switch to a clean stack we jmp
          * there and jmp back.  Since we don't nest we can get away
@@ -1098,7 +1100,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  spill_slot_opnd(drcontext, SPILL_SLOT_2),
                                  opnd_create_instr(appinst));
             PRE(bb, inst,
-                INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_slowpath_entry)));
+                XINST_CREATE_jump(drcontext, opnd_create_pc(shared_slowpath_entry)));
         } else {
             /* Don't restore, and put consts into registers if we can, to save space */
             scratch_reg_info_t *s1, *s2, *s3;
@@ -1139,7 +1141,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                       SPILL_REG3_NOSPILL : SPILL_REG3_SPILL);
                 spill_eax = (mi->eax.used && !mi->eax.dead && mi->eax.xchg == REG_NULL);
                 ef = ((whole_bb_spills_enabled() ||
-                       mi->aflags == EFLAGS_WRITE_6) ? SPILL_EFLAGS_NOSPILL :
+                       mi->aflags == EFLAGS_WRITE_ARITH) ? SPILL_EFLAGS_NOSPILL :
                       ((mi->aflags == EFLAGS_WRITE_OF) ?
                        (spill_eax ? SPILL_EFLAGS_5_EAX : SPILL_EFLAGS_5_NOEAX) :
                        (spill_eax ? SPILL_EFLAGS_6_EAX : SPILL_EFLAGS_6_NOEAX)));
@@ -1163,7 +1165,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                 mi->slow_store_dst,
                                                 bb, inst, &mi->slow_store_retaddr,
                                                 &mi->slow_store_retaddr2);
-                mi->slow_jmp = INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt));
+                mi->slow_jmp = XINST_CREATE_jump(drcontext, opnd_create_pc(tgt));
                 PRE(bb, inst, mi->slow_jmp);
                 instr_set_meta(mi->appclone);
                 instr_set_translation(mi->appclone, NULL);
@@ -1179,10 +1181,17 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                      spill_slot_opnd(drcontext, SPILL_SLOT_2) :
                                      opnd_create_reg(s2->reg),
                                      opnd_create_instr(appinst));
-                PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt)));
+                PRE(bb, inst, XINST_CREATE_jump(drcontext, opnd_create_pc(tgt)));
             }
         }
         PRE(bb, inst, appinst);
+#else
+        /* FIXME i#1726: add ARM port.  Some of the above code was
+         * made cross-platform, but the per-scratch-reg code and some
+         * of the generated instrs are x86-specific still.
+         */
+        ASSERT_NOT_IMPLEMENTED();
+#endif
     } else {
         app_pc pc = instr_get_app_pc(inst);
         if (mi != NULL) {
@@ -1208,10 +1217,10 @@ is_in_gencode(byte *pc)
             pc < shared_slowpath_region + SHARED_SLOWPATH_SIZE);
 }
 
+#ifdef X86 /* XXX i#1726: update for ARM */
 static void
 shared_slowpath_spill(void *drcontext, instrlist_t *ilist, int type, int slot)
 {
-#ifdef X86 /* XXX i#1726: update for ARM */
     if (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) {
         PRE(ilist, NULL, INSTR_CREATE_xchg
             (drcontext, spill_slot_opnd(drcontext, slot),
@@ -1221,12 +1230,13 @@ shared_slowpath_spill(void *drcontext, instrlist_t *ilist, int type, int slot)
             (drcontext, spill_slot_opnd(drcontext, slot),
              opnd_create_reg(DR_REG_XAX + (type - SPILL_REG_EAX_DEAD))));
     } /* else param was put straight in tls slot */
-#endif
 }
+#endif
 
 byte *
 generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
 {
+#ifdef X86
     int r1, r2, r3, ef;
 
     /* Create our shared slowpath.  To save space at the "call" site, we
@@ -1248,7 +1258,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                          spill_slot_opnd(drcontext, SPILL_SLOT_1),
                          spill_slot_opnd(drcontext, SPILL_SLOT_1));
     PRE(ilist, NULL,
-        INSTR_CREATE_jmp_ind(drcontext, spill_slot_opnd
+        XINST_CREATE_jump_mem(drcontext, spill_slot_opnd
                              (drcontext, whole_bb_spills_enabled() ?
                               /* for whole-bb spills we need two-step return */
                               SPILL_SLOT_5 : SPILL_SLOT_2)));
@@ -1330,8 +1340,8 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                                              opnd_create_instr(return_point));
                     }
                     PRE(ilist, NULL,
-                        INSTR_CREATE_jmp(drcontext,
-                                         opnd_create_pc(shared_slowpath_entry)));
+                        XINST_CREATE_jump(drcontext,
+                                          opnd_create_pc(shared_slowpath_entry)));
                     if (whole_bb_spills_enabled()) {
                         bool tgt_in_reg;
                         reg_id_t regtgt = REG_NULL;
@@ -1364,7 +1374,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                              * should we split up if many bbs don't need this?
                              */
                             PRE(ilist, NULL,
-                                INSTR_CREATE_mov_ld
+                                XINST_CREATE_load
                                 (drcontext,
                                  opnd_create_reg(DR_REG_XAX +
                                                  (r1 - SPILL_REG_EAX_DEAD)),
@@ -1372,10 +1382,10 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                         }
                         if (tgt_in_reg) {
                             PRE(ilist, NULL,
-                                INSTR_CREATE_jmp_ind(drcontext, opnd_create_reg(regtgt)));
+                                XINST_CREATE_jump_reg(drcontext, opnd_create_reg(regtgt)));
                         } else {
                             PRE(ilist, NULL,
-                                INSTR_CREATE_jmp_ind
+                                XINST_CREATE_jump_mem
                                 (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_2)));
                         }
                     }
@@ -1391,6 +1401,14 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
         }
     }
     return pc;
+#else
+    /* FIXME i#1726: add ARM port.  Some of the above code was made cross-platform, but
+     * the per-scratch-reg code and some of the generated instrs are x86-specific still.
+     * We may want to start with just a regular clean call for ARM.
+     */
+    ASSERT_NOT_IMPLEMENTED();
+    return pc;
+#endif
 }
 
 void
@@ -1961,5 +1979,24 @@ should_mark_stack_frames_defined(app_pc pc)
     return false;
 #endif
 }
+
+/***************************************************************************
+ * Unit tests
+ */
+
+#ifdef BUILD_UNIT_TESTS
+int
+main(int argc, char *argv[])
+{
+    void *drcontext = dr_standalone_init();
+
+    slowpath_unit_tests_arch(drcontext);
+
+    /* add more tests here */
+
+    dr_printf("success\n");
+    return 0;
+}
+#endif
 
 #endif /* TOOL_DR_MEMORY */

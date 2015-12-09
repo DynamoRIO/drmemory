@@ -1610,7 +1610,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
                 instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)) &&
         bi->aflags != EFLAGS_WRITE_ARITH) {
         /* Optimization: no need if next is jcc and we just checked definedness */
-        if (IF_DRMEM(bi->eflags_defined && ) opc_is_jcc(instr_get_opcode(next))) {
+        if (IF_DRMEM(bi->eflags_defined && ) instr_is_jcc(next)) {
             /* We just wrote to real eflags register, so don't restore at end */
             LOG(4, "next instr is jcc so not saving eflags\n");
             bi->eflags_used = false;

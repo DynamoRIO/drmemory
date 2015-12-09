@@ -283,7 +283,7 @@ bool
 opc_is_gpr_shift(uint opc);
 
 bool
-opc_is_jcc(uint opc);
+instr_is_jcc(instr_t *inst);
 
 bool
 opc_is_cmovcc(uint opc);
