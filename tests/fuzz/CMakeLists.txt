@@ -49,6 +49,10 @@ endif (UNIX)
 # fuzz the c target
 newtest_ex(fuzz_buffer fuzz_buffer.c
   "initialize" "-fuzz_function;repeatme;-fuzz_num_iters;10" "" OFF "" 0)
+newtest_nobuild_ex(fuzz_buffer.overflow fuzz_buffer
+  "initialize;overread"
+  "-light;-fuzz_function;repeatme;-fuzz_num_iters;10;-fuzz_replace_buffer"
+  "" OFF "" 0 "")
 set(fuzz_buffer_drmem_ops "-no_fuzz_dump_on_error;-fuzz_target;<main>!repeatme|2|0|1|10")
 set(mutator_drmem_ops "-fuzz_mutator_alg;ordered;-fuzz_mutator_unit;bits;-fuzz_mutator_flags;0x1;-fuzz_mutator_sparsity;3")
 newtest_nobuild_ex(fuzz_buffer.mutator.o-b-s-3 fuzz_buffer

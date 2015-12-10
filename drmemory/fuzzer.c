@@ -32,6 +32,7 @@
 #include "fuzzer.h"
 #include "drmemory.h"
 #include "drvector.h"
+#include "alloc.h"
 
 #ifdef WINDOWS
 # include "dbghelp.h"
@@ -81,27 +82,27 @@ typedef struct _callconv_args_t callconv_args_t; /* defined under shadow banner 
 /* Maintains fuzzing data and state during a fuzz pass. One instance per thread. */
 typedef struct _fuzz_state_t {
     bool repeat;
-    bool mutator_span_empty; /* mutation span is empty for this fuzz pass */
     uint repeat_index;
     uint skip_initial;       /* number of target invocations remaining to skip */
     thread_id_t thread_id;   /* always safe to access without lock */
-    byte *input_buffer;      /* reference to the fuzz target's buffer arg */
-    byte *mutation_start;    /* start of mutation region within the input_buffer */
-    /* While these two fields are thread-local like the others, they may be accessed
-     * by another thread at any time, e.g. during error reporting. Acquire the
-     * fuzz_state_lock before accessing or updating them.
+    /* While fields below are thread-local like the others, they may be read
+     * by another thread at any time, i.e., during error reporting.
+     * For error reporting code (e.g., fuzz_error_report) that may access other
+     * thread's fuzz_state, fuzz_state_lock must be acquired before accessing them.
+     * For code that accesses its own thread's fuzz_state, (e.g., pre_fuzz, post_fuzz,
+     * load_fuzz_input, shadow_state_init, etc.) fuzz_state_lock is only required
+     * before updating those fields.
      */
+    byte *input_buffer;      /* reference to the fuzz target's buffer arg */
     byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
+    byte *mutation_start;    /* start of mutation region within the input_buffer */
     size_t input_size;       /* size of the fuzz target's buffer arg */
     drfuzz_mutator_t *mutator;
     uint64 num_bbs;          /* number of basic blocks seen */
 } fuzz_state_t;
 
-/* List of the fuzz states for all process threads. Protected by fuzz_state_lock. It
- * is safe to access the input_buffer_copy and input_size fields of each state while
- * holding the fuzz_state_lock, and it is always safe to access the thread_id, but it
- * is only safe to access the repeat, repeat_index, and input_buffer fields when the
- * owning thread is known to be suspended (e.g., when all threads are suspended).
+/* List of the fuzz states for all process threads. Protected by fuzz_state_lock.
+ * Xref comment above about which fuzz_state fields are safe to access with/without lock.
  */
 typedef struct _fuzz_state_list_t {
     fuzz_state_t *state;
@@ -482,24 +483,69 @@ fuzzer_set_singleton_input(const char *input_value)
     fuzz_target.singleton_input = input_value;
 }
 
+static byte *
+drfuzz_reallocate_buffer(void *drcontext, size_t size, app_pc caller)
+{
+    void *ptr = client_app_malloc(drcontext, size, caller);
+    if (ptr == NULL)
+        FUZZ_ERROR("Failed to allocate fuzz input buffer."NL);
+    return (byte *)ptr;
+}
+
+static void
+drfuzz_free_reallocated_buffer(void *drcontext, void *ptr, app_pc caller)
+{
+    client_app_free(drcontext, ptr, caller);
+}
+
 static ssize_t
 load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
 {
     file_t data;
-    ssize_t size;
+    ssize_t read_size;
+    uint64 file_size;
+    byte *input_buffer = NULL, *to_free = NULL;
+
     data = dr_open_file(fname, DR_FILE_READ);
     if (data == INVALID_FILE) {
-        FUZZ_ERROR("Failed to open fuzz input file");
+        FUZZ_ERROR("Failed to open fuzz input file."NL);
         return 0;
     }
+
+    /* We need to hold fuzz_state_lock for updating input_buffer/input_size fields
+     * but cannot hold a lock when we alloc/free application memory, so we split
+     * the code and put the memory alloc/free code outside.
+     */
+    /* alloc if necessary */
+    if (options.fuzz_replace_buffer) {
+        if (!dr_file_size(data, &file_size)) {
+            FUZZ_ERROR("Failed to get input file size."NL);
+            file_size = (uint64)state->input_size;
+        } else if (state->input_size != (size_t)file_size) {
+            input_buffer = drfuzz_reallocate_buffer(dcontext, (size_t)file_size,
+                                                    (app_pc)fuzz_target.pc);
+        }
+    }
+    /* update input_buffer/input_size */
+    dr_mutex_lock(fuzz_state_lock);
+    if (options.fuzz_replace_buffer && input_buffer != NULL) {
+        to_free = state->input_buffer;
+        state->input_size = (size_t)file_size;
+        state->input_buffer = input_buffer;
+    }
     /* read at most input_size */
-    size = dr_read_file(data, state->input_buffer, state->input_size);
-    if (size <= 0) {
-        FUZZ_ERROR("Failed to read input file");
+    read_size = dr_read_file(data, state->input_buffer, state->input_size);
+    dr_mutex_unlock(fuzz_state_lock);
+    /* free if necessary */
+    if (to_free != NULL)
+        drfuzz_free_reallocated_buffer(dcontext, to_free, (app_pc)fuzz_target.pc);
+
+    if (read_size <= 0) {
+        FUZZ_ERROR("Failed to read fuzz input file."NL);
         return 0;
     }
     /* FIXME i#1734: we may need to update shadow state for loaded data */
-    return size;
+    return read_size;
 }
 
 static bool
@@ -509,6 +555,7 @@ dump_fuzz_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
     char buf[MAXIMUM_PATH];
     char suffix[32];
     file_t data;
+
     dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), "error.%d.dat", eid);
     NULL_TERMINATE_BUFFER(suffix);
 
@@ -593,7 +640,7 @@ fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size, 
     size_t sofar = 0;
     fuzz_state_t *this_thread, *report_thread = NULL;
     uint fuzzing_thread_count = 0;
-    fuzz_state_list_t *next = state_list;
+    fuzz_state_list_t *next;
 
     if (!fuzzer_initialized)
         return 0;
@@ -612,6 +659,7 @@ fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size, 
 
     if (this_thread->input_size > 0)
         report_thread = this_thread;
+    next = state_list;
     while (next != NULL) {
         if (next->state->input_size > 0) {
             fuzzing_thread_count++;
@@ -977,32 +1025,34 @@ apply_singleton_input(fuzz_state_t *fuzz_state)
 }
 
 static inline bool
-find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
+find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt, generic_func_t target_pc)
 {
     byte *input_buffer;
     drmf_status_t res;
+    size_t input_size;
 
-    dr_mutex_lock(fuzz_state_lock);
-
+    ASSERT(fuzz_target.pc == target_pc, "fuzz target pc miss match");
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.size_arg,
-                         true/*original*/, (void **) &fuzz_state->input_size);
+                         true/*original*/, (void **) &input_size);
     if (res != DRMF_SUCCESS) {
         NOTIFY_ERROR("Failed to obtain the buffer size for the fuzz target"NL);
         ASSERT(false, "Failed to obtain the buffer size");
         fuzz_target.enabled = false;
-        goto unlock;
+        return false;
     }
 
     /* Validate that the arg index for the buffer size given by the user appears to be
      * reasonable. If not, exit with an error instead of crashing with alloc problems.
      */
-    if (fuzz_state->input_size > MAX_EXPECTED_BUFFER_SIZE) {
-        FUZZ_WARN("buffer size is too large: %d"NL, fuzz_state->input_size);
+    if (input_size > MAX_EXPECTED_BUFFER_SIZE) {
+        FUZZ_WARN("buffer size is too large: %d"NL, input_size);
     }
 
-    if (fuzz_target.buffer_offset >= fuzz_state->input_size) {
-        fuzz_state->mutator_span_empty = true;
-        goto unlock;
+    if (fuzz_target.buffer_offset >= input_size) {
+        FUZZ_WARN("buffer offset is larger than input size: %d >= %d -> skip fuzzing"NL,
+                  fuzz_target.buffer_offset, input_size);
+        fuzz_state->skip_initial++;
+        return false;
     }
 
     res = drfuzz_get_arg(fuzzcxt, fuzz_target.pc, fuzz_target.buffer_arg,
@@ -1012,25 +1062,54 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
                      NL);
         ASSERT(false, "Failed to obtain reference to the original buffer arg\n");
         fuzz_target.enabled = false;
-        goto unlock;
+        return false;
     }
 
+    if (options.fuzz_replace_buffer) {
+        void *drcontext = drfuzz_get_drcontext(fuzzcxt);
+        byte *buffer;
+        /* We always replace buffer at beginning for simplicity, so that other code
+         * like load_fuzz_input can call free_fuzz_input_buffer when necessary.
+         */
+        buffer = drfuzz_reallocate_buffer(drcontext, input_size, (app_pc)target_pc);
+        if (buffer == NULL) {
+            NOTIFY_ERROR("Failed to allocate fuzz input buffer."NL);
+            ASSERT(false, "Failed to allocate fuzz input buffer\n");
+            fuzz_target.enabled = false;
+            return false;
+        }
+        memcpy(buffer, input_buffer, input_size);
+        /* XXX: we replace the original input_buffer with newly allocated memory,
+         * which may cause problems if other pointers pointing to the original buffer,
+         * or the replaced buffer is used after fuzzing iterations.
+         */
+        input_buffer = buffer;
+    }
+
+    dr_mutex_lock(fuzz_state_lock);
+    fuzz_state->input_size = input_size;
     fuzz_state->input_buffer = input_buffer;
     fuzz_state->input_buffer_copy = global_alloc(fuzz_state->input_size, HEAPSTAT_MISC);
     memcpy(fuzz_state->input_buffer_copy, input_buffer, fuzz_state->input_size);
-
-unlock:
     dr_mutex_unlock(fuzz_state_lock);
-    return (fuzz_target.enabled && !fuzz_state->mutator_span_empty);
+
+    return fuzz_target.enabled;
 }
 
 static inline void
 free_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
+    byte *buffer;
     dr_mutex_lock(fuzz_state_lock);
     global_free(fuzz_state->input_buffer_copy, fuzz_state->input_size, HEAPSTAT_MISC);
     fuzz_state->input_size = 0;
+    buffer = fuzz_state->input_buffer;
+    fuzz_state->input_buffer = NULL;
     dr_mutex_unlock(fuzz_state_lock);
+    if (options.fuzz_replace_buffer && buffer != NULL) {
+        drfuzz_free_reallocated_buffer(drfuzz_get_drcontext(fuzzcxt), buffer,
+                                       (app_pc)fuzz_target.pc);
+    }
 }
 
 static void
@@ -1125,7 +1204,7 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         return;
 
     if (!fuzz_state->repeat) {
-        if (!find_target_buffer(fuzz_state, fuzzcxt))
+        if (!find_target_buffer(fuzz_state, fuzzcxt, target_pc))
             return;
         if (option_specified.fuzz_input_file) {
             if (load_fuzz_input(dcontext, options.fuzz_input_file, fuzz_state) == 0) {
@@ -1136,6 +1215,12 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 free_target_buffer(fuzz_state, fuzzcxt);
                 return;
             }
+        }
+        if (options.fuzz_replace_buffer) {
+            ASSERT(fuzz_state->input_buffer != NULL,
+                   "fuzz input buffer must not be NULL");
+            drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, fuzz_state->input_buffer);
+            drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)fuzz_state->input_size);
         }
         shadow_state_init(dcontext, fuzz_state, mc);
         fuzzer_mutator_init(dcontext, fuzz_state);
@@ -1161,10 +1246,6 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
         return false; /* in case someone unfuzzed while a target was looping */
     if (fuzz_state->skip_initial > 0) {
         fuzz_state->skip_initial--;
-        return false;
-    }
-    if (fuzz_state->mutator_span_empty) {
-        fuzz_state->mutator_span_empty = false; /* reset for the next pass */
         return false;
     }
 

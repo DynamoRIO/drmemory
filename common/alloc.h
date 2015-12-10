@@ -284,6 +284,20 @@ bool
 alloc_replace_overlaps_malloc(byte *start, byte *end,
                               malloc_info_t *info INOUT);
 
+/* Allocate application memory for clients.
+ * This function can only be used with -replace_malloc and
+ * does not work with malloc wrapping mode.
+ */
+byte *
+client_app_malloc(void *drcontext, size_t size, app_pc caller);
+
+/* Free application memory allocated from client_app_malloc.
+ * This function can only be used with -replace_malloc and
+ * does not work with malloc wrapping mode.
+ */
+void
+client_app_free(void *drcontext, void *ptr, app_pc caller);
+
 /***************************************************************************
  * CLIENT CALLBACKS
  */

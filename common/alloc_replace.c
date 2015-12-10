@@ -5419,3 +5419,48 @@ alloc_replace_exit(void)
     hashtable_delete_with_stats(&crtheap_handle_table, "crtheap handles");
 #endif
 }
+
+/* Allocate application memory for clients.
+ * This function can only be used with -replace_malloc and
+ * does not work with malloc wrapping mode.
+ */
+byte *
+client_app_malloc(void *drcontext, size_t size, app_pc caller)
+{
+    void *res;
+    arena_header_t *arena = cur_arena;
+    dr_mcontext_t mc;
+    ASSERT(alloc_ops.replace_malloc, "-replace_malloc is not enabled");
+    /* FIXME i#1837: provide better callstack */
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL | DR_MC_INTEGER; /* xsp and xbp */
+    dr_get_mcontext(drcontext, &mc);
+    LOG(2, "client_app_malloc %d\n", size);
+    /* we are on clean call stack already */
+    res = replace_alloc_common(arena, size, 0, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                               drcontext, &mc, caller,
+                               MALLOC_ALLOCATOR_MALLOC);
+    LOG(2, "client_app_malloc %d => "PFX"\n", size, res);
+    return res;
+}
+
+/* Free application memory allocated from client_app_malloc.
+ * This function can only be used with -replace_malloc and
+ * does not work with malloc wrapping mode.
+ */
+void
+client_app_free(void *drcontext, void *ptr, app_pc caller)
+{
+    arena_header_t *arena = cur_arena;
+    dr_mcontext_t mc;
+    ASSERT(alloc_ops.replace_malloc, "-replace_malloc is not enabled");
+    /* FIXME i#1837: provide better callstack */
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL | DR_MC_INTEGER; /* xsp and xbp */
+    dr_get_mcontext(drcontext, &mc);
+    LOG(2, "client_app_free "PFX"\n", ptr);
+    /* we are on clean call stack already */
+    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
+                        drcontext, &mc, caller,
+                        MALLOC_ALLOCATOR_MALLOC);
+}

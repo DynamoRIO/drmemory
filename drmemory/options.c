@@ -536,6 +536,7 @@ options_init(const char *opstr)
         option_specified.fuzz_data_idx ||
         option_specified.fuzz_size_idx ||
         option_specified.fuzz_num_iters ||
+        option_specified.fuzz_replace_buffer ||
         option_specified.fuzz_call_convention ||
         option_specified.fuzz_dump_on_error ||
         option_specified.fuzz_input_file ||
@@ -554,8 +555,13 @@ options_init(const char *opstr)
         option_specified.fuzz_buffer_offset ||
         option_specified.fuzz_skip_initial ||
         IF_WINDOWS(option_specified.fuzz_mangled_names ||)
-        option_specified.fuzz_stat_freq)
+        option_specified.fuzz_stat_freq) {
         options.fuzz = true;
+        if (options.fuzz_replace_buffer && !options.replace_malloc) {
+            usage_error("-fuzz_replace_buffer cannot be used with -no_replace_malloc",
+                        "");
+        }
+    }
 
     if (options.replace_malloc) {
         options.replace_realloc = false; /* no need for it */
