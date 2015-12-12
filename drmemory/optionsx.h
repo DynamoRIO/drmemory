@@ -835,7 +835,8 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
                    "Disable debug CRT checks")
 #endif
 
-OPTION_CLIENT_BOOL(internal, zero_stack, true,
+/* XXX i#1726: port the zeroing loop to ARM */
+OPTION_CLIENT_BOOL(internal, zero_stack, IF_ARM_ELSE(false, true),
                    "When detecting leaks but not keeping definedness info, zero old stack frames",
                    "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values.  This is potentially unsafe.")
 OPTION_CLIENT_BOOL(internal, zero_retaddr, true,

@@ -28,6 +28,7 @@
 #include "slowpath.h"
 #include "spill.h"
 #include "fastpath.h"
+#include "fastpath_arch.h"
 #include "shadow.h"
 #include "stack.h"
 #ifdef TOOL_DR_MEMORY
@@ -62,14 +63,27 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
 }
 
-#ifdef UNIX
-dr_signal_action_t
-event_signal_instrument(void *drcontext, dr_siginfo_t *info)
+/***************************************************************************
+ * Fault handling
+ */
+
+#ifdef TOOL_DR_MEMORY
+
+instr_t *
+restore_mcontext_on_shadow_fault(void *drcontext,
+                                 dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                                 byte *pc_post_fault, bb_saved_info_t *save)
 {
     ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
-    /* Probably a lot of code can be shared with fastpath_x86.c: it
-     * needs further refactoring.
-     */
-    return DR_SIGNAL_DELIVER;
+    return NULL;
 }
-#endif
+
+bool
+handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                      void *tag)
+{
+    ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
+    return false;
+}
+
+#endif /* TOOL_DR_MEMORY */

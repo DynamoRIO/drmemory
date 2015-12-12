@@ -28,6 +28,7 @@
 #include "slowpath.h"
 #include "spill.h"
 #include "fastpath.h"
+#include "fastpath_arch.h"
 #include "shadow.h"
 #include "stack.h"
 #ifdef TOOL_DR_MEMORY
@@ -170,7 +171,310 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
     }
 }
 
-/* used for PR 578892: fastpath heap routine unaddr accesses */
+/***************************************************************************
+ * Fault handling
+ */
+
+#ifdef TOOL_DR_MEMORY
+
+/* PR 448701: handle fault on write to a special shadow block */
+static byte *
+compute_app_address_on_shadow_fault(void *drcontext, byte *target,
+                                    dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                                    byte *pc_post_fault, bb_saved_info_t *save)
+{
+    app_pc addr;
+    uint memopidx;
+    bool write;
+    instr_t *app_inst = restore_mcontext_on_shadow_fault(drcontext, raw_mc,
+                                                         mc, pc_post_fault, save);
+    for (memopidx = 0;
+         instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
+         memopidx++) {
+        LOG(3, "considering emulated target %s "PFX" => shadow "PFX" vs fault "PFX"\n",
+            write ? "write" : "read", addr, shadow_translation_addr(addr), target);
+        if (shadow_translation_addr(addr) == target)
+            break;
+    }
+    ASSERT(shadow_translation_addr(addr) == target,
+           "unable to compute original address on shadow fault");
+    instr_destroy(drcontext, app_inst);
+
+    return addr;
+}
+
+static void
+handle_special_shadow_fault(void *drcontext, byte *target,
+                            dr_mcontext_t *raw_mc, dr_mcontext_t *mc, void *tag)
+{
+    /* Re-execute the faulting instruction.  We have to shift the instruction's
+     * base register from the special block to the new block.  An alternative is
+     * to restore the app context and then re-direct execution to a new bb: but
+     * that's more complex (have to decode forward and emulate all xchg +
+     * restore-from-tls until next cti) and less efficient (new bb, and we'd
+     * have to change two-part sub-dword dst write to get final value in reg
+     * before committing).  Actually we do have to restore app state to get app
+     * address -- but the other arguments still apply so sticking w/ re-execute.
+     */
+    app_pc pc;
+    app_pc addr;
+    instr_t fault_inst;
+    byte *new_shadow;
+    opnd_t shadowop;
+    bb_saved_info_t *save;
+#ifdef DEBUG
+    tls_util_t *pt = PT_GET(drcontext);
+#endif
+
+    LOG(2, "write fault to special shadow @"PFX"\n", target);
+    STATS_INC(num_faults);
+#ifdef TOOL_DR_HEAPSTAT
+    ASSERT(false, "should not get here");
+#endif
+
+    if (is_in_gencode(raw_mc->pc)) {
+        /* PR 503778: the esp_adjust fastpath now touches more than just the 64K
+         * region containing the app esp.  We could calculate its exact address
+         * by locating the precise routine and then use the count from tls and
+         * remaining count, and then below adjust the stored boundary, but
+         * simpler to bail to slowpath.
+         */
+        byte *nxt_pc;
+        instr_t inst;
+        pc = raw_mc->pc;
+        instr_init(drcontext, &inst);
+        nxt_pc = decode(drcontext, pc, &inst);
+        do {
+            /* Look for the start of slowpath inside esp_adjust fastpath.
+             * For simplicity we insert a nop there.
+             */
+            if (instr_get_opcode(&inst) == OP_nop) {
+                LOG(3, "write fault in gencode "PFX" => xl8 to slowpath "PFX"\n",
+                    raw_mc->pc, pc);
+                raw_mc->pc = pc;
+                instr_free(drcontext, &inst);
+                return;
+            }
+            instr_reset(drcontext, &inst);
+            pc = nxt_pc;
+            nxt_pc = decode(drcontext, pc, &inst);
+        } while (pc - raw_mc->pc < PAGE_SIZE);
+        ASSERT(false, "cannot find slowpath sequence in esp fastpath!");
+    }
+
+    instr_init(drcontext, &fault_inst);
+    pc = decode(drcontext, raw_mc->pc, &fault_inst);
+
+    hashtable_lock(&bb_table);
+    save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
+    addr = compute_app_address_on_shadow_fault(drcontext, target, raw_mc, mc, pc,
+                                               save);
+    hashtable_unlock(&bb_table);
+
+    /* Create a non-special shadow block */
+    new_shadow = shadow_replace_special(addr);
+    /* Change base register to point at it */
+    shadowop = instr_get_dst(&fault_inst, 0);
+    ASSERT(opnd_is_base_disp(shadowop) && opnd_get_index(shadowop) == REG_NULL,
+           "emulation error");
+    ASSERT(opnd_compute_address(shadowop, raw_mc) == target, "emulation error");
+    reg_set_value(opnd_get_base(shadowop), raw_mc, (reg_t)new_shadow);
+    DOLOG(3, {
+        LOG(3, "changed base reg in ");
+        opnd_disassemble(drcontext, shadowop, pt->f);
+        LOG(3, " to new non-special translation "PFX"\n", new_shadow);
+    });
+
+    instr_free(drcontext, &fault_inst);
+}
+
+/* i#1015: report write-to-read-only as an unaddressable warning */
+static bool
+handle_possible_write_to_read_only(void *drcontext,
+                                   dr_mcontext_t *raw_mc,
+                                   dr_mcontext_t *mc)
+{
+    app_pc addr;
+    bool is_write;
+    uint pos;
+    int  memopidx;
+    app_loc_t loc;
+    size_t size;
+    dr_mem_info_t info;
+    instr_t inst;
+    bool res = false;
+
+    /* XXX: we could try to merge some code w/ pattern_handle_segv_fault() */
+    ASSERT(options.pattern == 0, "already handled in pattern_handle_segv_fault()");
+    instr_init(drcontext, &inst);
+    if (!safe_decode(drcontext, raw_mc->pc, &inst, NULL)) {
+        instr_free(drcontext, &inst);
+        return false;
+    }
+    /* someone could send a SIGSEGV signal, so we iterate instr opnds
+     * to check possible write-to-read-only errors
+     */
+    for (memopidx = 0;
+         instr_compute_address_ex_pos(&inst, mc, memopidx,
+                                      &addr, &is_write, &pos);
+         memopidx++) {
+        if (!is_write)
+            continue;
+        if (!dr_query_memory_ex(addr, &info) ||
+            info.type == DR_MEMTYPE_FREE ||
+            TEST(DR_MEMPROT_WRITE, info.prot) ||
+            TEST(info.prot, DR_MEMPROT_PRETEND_WRITE))
+            continue;
+        size = opnd_size_in_bytes(opnd_get_size(instr_get_dst(&inst, pos)));
+        pc_to_loc(&loc, mc->pc);
+        /* XXX: how to avoid double report on write-to-unaddressable,
+         * as the shadow have been updated by the first report?
+         * It should be ok since it is unlikely to have an unaddressable
+         * read-only region.
+         */
+        report_unaddr_warning(&loc, mc, "writing to readonly memory", addr, size, true);
+        res = true;
+    }
+    instr_free(drcontext, &inst);
+    return res;
+}
+
+#endif /* TOOL_DR_MEMORY */
+
+/* PR 448701: we fault if we write to a special block */
+#ifdef UNIX
+dr_signal_action_t
+event_signal_instrument(void *drcontext, dr_siginfo_t *info)
+{
+# ifdef TOOL_DR_MEMORY
+    /* Handle faults from writes to special shadow blocks */
+    /* i#1488: we sometimes get SIGBUS on Mac */
+    if (info->sig == SIGSEGV || info->sig == SIGBUS) {
+        byte *target = info->access_address;
+        /* We don't know whether a write since DR isn't providing that info but
+         * shouldn't matter enough to be worth our determining
+         */
+        LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
+            info->raw_mcontext->pc, info->mcontext->pc, target);
+        if (options.pattern != 0 &&
+            pattern_handle_segv_fault(drcontext, info->raw_mcontext, info->mcontext)) {
+            return DR_SIGNAL_SUPPRESS;
+        } else if (ZERO_STACK() &&
+                   handle_zeroing_fault(drcontext, target, info->raw_mcontext,
+                                        info->mcontext)) {
+            return DR_SIGNAL_SUPPRESS;
+        } else if (options.shadowing &&
+                   is_in_special_shadow_block(target)) {
+            ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
+            handle_special_shadow_fault(drcontext, target, info->raw_mcontext,
+                                        info->mcontext, info->fault_fragment_info.tag);
+            /* Re-execute the faulting cache instr.  If we ever change to redirect
+             * to a new bb at the app instr we must change our two-part shadow
+             * write for sub-dword.
+             */
+            return DR_SIGNAL_SUPPRESS;
+        } else if (options.report_write_to_read_only &&
+                   options.pattern == 0 && /* vs pattern_handle_segv_fault() */
+                   handle_possible_write_to_read_only(drcontext, info->raw_mcontext,
+                                                      info->mcontext)) {
+            /* fall through to DR_SIGNAL_DELIVER */
+        } else if (options.check_pc &&
+                   /* If the pc is the target, it's an exec fault */
+                   info->mcontext->pc == target) {
+            /* i#1412: raise an error on executing invalid memory */
+            app_loc_t loc;
+            pc_to_loc(&loc, target);
+            report_unaddressable_access(&loc, target, 1, DR_MEMPROT_EXEC,
+                                        target, target + 1, info->mcontext);
+        }
+    } else if (info->sig == SIGILL) {
+        LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
+            info->raw_mcontext->pc, info->mcontext->pc);
+        if (options.pattern != 0) {
+            if (pattern_handle_ill_fault(drcontext, info->raw_mcontext,
+                                         info->mcontext))
+                return DR_SIGNAL_SUPPRESS;
+            return DR_SIGNAL_DELIVER;
+        } else if (handle_slowpath_fault(drcontext, info->raw_mcontext,
+                                         info->mcontext,
+                                         info->fault_fragment_info.tag))
+            return DR_SIGNAL_SUPPRESS;
+    }
+# endif
+    return DR_SIGNAL_DELIVER;
+}
+#else
+bool
+event_exception_instrument(void *drcontext, dr_exception_t *excpt)
+{
+# ifdef TOOL_DR_MEMORY
+    if (options.pattern != 0 &&
+        (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION ||
+         excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)) {
+        bool guard;
+        app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
+        /* i#1070: pattern mode inserted code may cause one-shot alarm
+         * guard page violation, we need actual target for restoring
+         * the guard page.
+         */
+        guard = excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION;
+        if (pattern_handle_segv_fault(drcontext, excpt->raw_mcontext, excpt->mcontext
+                                      _IF_WINDOWS(target) _IF_WINDOWS(guard)))
+            return false;
+    }
+    if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+        app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
+        if (ZERO_STACK() &&
+            excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+            handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                 excpt->mcontext)) {
+            return false;
+        } else if (options.shadowing &&
+                   excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+                   is_in_special_shadow_block(target)) {
+            handle_special_shadow_fault(drcontext, target, excpt->raw_mcontext,
+                                        excpt->mcontext, excpt->fault_fragment_info.tag);
+            /* Re-execute the faulting cache instr.  If we ever change to redirect
+             * to a new bb at the app instr we must change our two-part shadow
+             * write for sub-dword.
+             */
+            return false;
+        } else if (options.report_write_to_read_only &&
+                   options.pattern == 0 && /* vs pattern_handle_segv_fault() */
+                   excpt->record->ExceptionCode != STATUS_GUARD_PAGE_VIOLATION &&
+                   handle_possible_write_to_read_only(drcontext, excpt->raw_mcontext,
+                                                      excpt->mcontext)) {
+            return false;
+        } else if (options.check_pc &&
+                   /* If the pc is the target, it's an exec fault */
+                   excpt->mcontext->pc == target) {
+            /* i#1412: raise an error on executing invalid memory */
+            app_loc_t loc;
+            pc_to_loc(&loc, target);
+            report_unaddressable_access(&loc, target, 1, DR_MEMPROT_EXEC,
+                                        target, target + 1, excpt->mcontext);
+        }
+    } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
+        if (options.pattern != 0) {
+            return !pattern_handle_ill_fault(drcontext, excpt->raw_mcontext,
+                                             excpt->mcontext);
+        } else if (handle_slowpath_fault(drcontext, excpt->raw_mcontext,
+                                         excpt->mcontext,
+                                         excpt->fault_fragment_info.tag)) {
+            return false;
+        }
+    }
+# endif
+    LOG(2, "application fault @"PFX" in module %s\n",
+        excpt->mcontext->pc, module_lookup_preferred_name(excpt->mcontext->pc));
+    return true;
+}
+#endif
+
+/***************************************************************************
+ * For PR 578892: fastpath heap routine unaddr accesses
+ */
+
 void
 client_entering_heap_routine(void)
 {
