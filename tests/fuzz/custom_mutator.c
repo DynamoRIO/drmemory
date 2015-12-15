@@ -121,3 +121,10 @@ drfuzz_mutator_stop(drfuzz_mutator_t *mutator_in)
     dr_global_free(mutator, sizeof(mutator_t));
     return DRMF_SUCCESS;
 }
+
+LIB_EXPORT drmf_status_t
+drfuzz_mutator_feedback(drfuzz_mutator_t *mutator_in, int feedback)
+{
+    /* do nothing */
+    return DRMF_SUCCESS;
+}

@@ -66,11 +66,14 @@ typedef bool drfuzz_fault_action_t;
 # define CRASH_CONTINUE true
 #endif
 
+static uint64 num_total_bbs;
+
 /* Represents one fuzz target together with the client's registered callbacks */
 typedef struct _fuzz_target_t {
     app_pc func_pc;
     uint arg_count;
     uint flags;
+    uint64 num_bbs;  /* number of basic blocks seen during fuzzing */
     void *user_data; /* see drfuzz_{g,s}et_target_user_data() */
     void (*delete_user_data_cb)(void *user_data);
     void (*pre_fuzz_cb)(void *, generic_func_t, dr_mcontext_t *);
@@ -195,6 +198,10 @@ thread_init(void *dcontext);
 static void
 thread_exit(void *dcontext);
 
+static dr_emit_flags_t
+bb_event(void *drcontext, void *tag, instrlist_t *bb,
+         bool for_trace, bool translating);
+
 static void
 pre_fuzz_handler(void *wrapcxt, INOUT void **user_data);
 
@@ -268,6 +275,7 @@ drfuzz_init(client_id_t client_id)
 #endif
     drmgr_register_thread_init_event(thread_init);
     drmgr_register_thread_exit_event(thread_exit);
+    drmgr_register_bb_app2app_event(bb_event, NULL);
 
     tls_idx_fuzzer = drmgr_register_tls_field();
     if (tls_idx_fuzzer < 0) {
@@ -337,6 +345,33 @@ thread_exit(void *dcontext)
     free_thread_state(fp);
     clear_pass_targets(fp);
     thread_free(dcontext, fp, sizeof(fuzz_pass_context_t), HEAPSTAT_MISC);
+}
+
+static dr_emit_flags_t
+bb_event(void *drcontext, void *tag, instrlist_t *bb,
+         bool for_trace, bool translating)
+{
+    fuzz_pass_context_t *fp;
+    pass_target_t *live;
+
+    if (for_trace || translating)
+        return DR_EMIT_DEFAULT;
+
+    /* It is ok to be racy, so hold no locks for updating. */
+    /* update global num_bbs */
+    num_total_bbs++;
+    /* update num_bbs for each live target */
+    fp = (fuzz_pass_context_t *) drmgr_get_tls_field(drcontext, tls_idx_fuzzer);
+    live = fp->live_targets;
+    if (live != NULL) {
+        /* XXX: the function entry basic block is not counted because the live target
+         * is only added on its first execution after bb_event.
+         */
+        live->target->num_bbs++;
+        DRFUZZ_LOG(3, "basic block "UINT64_FORMAT_STRING" @"PFX" during fuzzing "PFX"\n",
+                   live->target->num_bbs, tag, live->target->func_pc);
+    }
+    return DR_EMIT_DEFAULT;
 }
 
 DR_EXPORT drmf_status_t
@@ -495,6 +530,26 @@ DR_EXPORT void *
 drfuzz_get_drcontext(void *fuzzcxt)
 {
     return ((fuzz_pass_context_t *) fuzzcxt)->dcontext;
+}
+
+DR_EXPORT drmf_status_t
+drfuzz_get_target_num_bbs(generic_func_t func_pc, uint64 *num_bbs)
+{
+    fuzz_target_t *target;
+
+    if (num_bbs == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    if (func_pc == NULL) {
+        *num_bbs = num_total_bbs;
+        return DRMF_SUCCESS;
+    }
+
+    target = hashtable_lookup(&fuzz_target_htable, func_pc);
+    if (target == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *num_bbs = target->num_bbs;
+    return DRMF_SUCCESS;
 }
 
 DR_EXPORT drmf_status_t
@@ -1001,6 +1056,7 @@ static drfuzz_mutator_api_t default_mutator = {
     drfuzz_mutator_get_current_value,
     drfuzz_mutator_get_next_value,
     drfuzz_mutator_stop,
+    drfuzz_mutator_feedback,
 };
 
 DR_EXPORT drmf_status_t
@@ -1046,7 +1102,8 @@ drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api)
         BINDFUNC(api, func, drfuzz_mutator_has_next_value) == NULL ||
         BINDFUNC(api, func, drfuzz_mutator_get_current_value) == NULL ||
         BINDFUNC(api, func, drfuzz_mutator_get_next_value) == NULL ||
-        BINDFUNC(api, func, drfuzz_mutator_stop) == NULL) {
+        BINDFUNC(api, func, drfuzz_mutator_stop) == NULL ||
+        BINDFUNC(api, func, drfuzz_mutator_feedback) == NULL) {
         DRFUZZ_ERROR("Required export %s missing from mutator library %s"NL,
                      func, lib_path);
         dr_unload_aux_library(api->handle);

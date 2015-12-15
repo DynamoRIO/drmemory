@@ -135,6 +135,17 @@ LIB_EXPORT
 drmf_status_t
 LIBFUNC(drfuzz_mutator_stop)(drfuzz_mutator_t *mutator);
 
+LIB_EXPORT
+/**
+ * Provides feedback to the mutator about the effect of the last mutation.
+ * The meaning of \p feedback can be specified by custom mutators.
+ * If the meaning of \p feedback is not specified, 0 means neutral,
+ * and the greater the value of \p feedback is, the more effective the last
+ * mutation is.
+ */
+drmf_status_t
+LIBFUNC(drfuzz_mutator_feedback)(drfuzz_mutator_t *mutator, int feedback);
+
 /*@}*/ /* end doxygen group */
 
 #ifdef __cplusplus

@@ -94,6 +94,7 @@ typedef struct _fuzz_state_t {
     byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
     size_t input_size;       /* size of the fuzz target's buffer arg */
     drfuzz_mutator_t *mutator;
+    uint64 num_bbs;          /* number of basic blocks seen */
 } fuzz_state_t;
 
 /* List of the fuzz states for all process threads. Protected by fuzz_state_lock. It
@@ -134,6 +135,7 @@ typedef struct _fuzz_target_t {
     const char *singleton_input;
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
+    bool use_bbcov;         /* use basic block coverage info for mutation */
 } fuzz_target_t;
 
 static fuzz_target_t fuzz_target;
@@ -230,11 +232,15 @@ fuzzer_init(client_id_t client_id)
 void
 fuzzer_exit()
 {
+    uint64 num_bbs;
     fuzzer_mutator_option_exit();
 
     free_fuzz_target();
 
     dr_mutex_destroy(fuzz_state_lock);
+
+    drfuzz_get_target_num_bbs(NULL, &num_bbs);
+    LOG(1, LOG_PREFIX" "SZFMT" basic blocks seen during execution.\n", num_bbs);
 
     if (drfuzz_exit() != DRMF_SUCCESS)
         ASSERT(false, "fail to exit Dr. Fuzz");
@@ -402,6 +408,8 @@ fuzzer_option_init()
     if (option_specified.fuzz_one_input)
         fuzzer_set_singleton_input(options.fuzz_one_input);
 
+    if (options.fuzz_bbcov)
+        fuzz_target.use_bbcov = true;
     fuzz_target.buffer_fixed_size = options.fuzz_buffer_fixed_size;
     fuzz_target.buffer_offset = options.fuzz_buffer_offset;
     fuzz_target.skip_initial = options.fuzz_skip_initial;
@@ -1080,6 +1088,23 @@ fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
 }
 
 static void
+fuzzer_mutator_feedback(void *dcontext, generic_func_t target_pc,
+                        fuzz_state_t *fuzz_state)
+{
+    uint64 num_bbs;
+    if (!fuzz_target.use_bbcov ||
+        drfuzz_get_target_num_bbs(target_pc, &num_bbs) != DRMF_SUCCESS)
+        return;
+    if (fuzz_state->repeat && (num_bbs - fuzz_state->num_bbs) > 0) {
+        mutator_api.drfuzz_mutator_feedback(fuzz_state->mutator,
+                                            num_bbs - fuzz_state->num_bbs);
+    }
+    fuzz_state->num_bbs = num_bbs;
+    LOG(2, LOG_PREFIX" "UINT64_FORMAT_STRING" basic blocks seen during fuzzing.\n",
+        num_bbs);
+}
+
+static void
 fuzzer_mutator_exit(fuzz_state_t *fuzz_state)
 {
     if (fuzz_state->mutator != NULL) {
@@ -1116,6 +1141,10 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         fuzzer_mutator_init(dcontext, fuzz_state);
         if (fuzz_target.repeat_count == 0)
             return;
+        if (fuzz_target.use_bbcov) {
+            /* no mutation for the base input if using bbcov */
+            return;
+        }
     } else
         shadow_state_restore(dcontext, fuzzcxt, mc);
     fuzzer_mutator_next(dcontext, fuzz_state);
@@ -1140,6 +1169,8 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     }
 
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
+
+    fuzzer_mutator_feedback(dcontext, target_pc, fuzz_state);
 
     fuzz_state->repeat_index++;
     if (fuzz_target.stat_freq > 0 && fuzz_state->repeat_index % fuzz_target.stat_freq) {

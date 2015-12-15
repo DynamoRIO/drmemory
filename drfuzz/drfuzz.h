@@ -371,6 +371,26 @@ drfuzz_get_drcontext(void *fuzzcxt);
 
 DR_EXPORT
 /**
+ * Get the total number of basic blocks seen during \p target_pc fuzzing,
+ * i.e., from the first execution of the target function at \p target_pc
+ * to the last exit from that function.
+ *
+ * @param[in] target_pc   The target function. If \p target_pc is NULL, the total
+ *                        number of basic blocks seen during execution is returned.
+ * @param[out] num_bbs    Returns the number of basic blocks.
+ *
+ * \note: The number of basic blocks returned might not be the precise number
+ * of new blocks that are a direct result of the target function's execution.
+ * For example, a basic block might be counted multiple times due to code cache
+ * management; basic blocks executed by other threads are not be counted; basic
+ * blocks executed in the inner fuzzing function are not counted for the outer
+ * fuzzing function in the case of nested fuzzing.
+ */
+drmf_status_t
+drfuzz_get_target_num_bbs(IN generic_func_t target_pc, OUT uint64 *num_bbs);
+
+DR_EXPORT
+/**
  * Get the value of an argument to the fuzz target function at \p target_pc. May only be
  * called while fuzzing of this target is in progress. Will retrieve the arg value for
  * the current fuzz iteration on the current thread. Returns DRMF_SUCCESS on success.

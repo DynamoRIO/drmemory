@@ -459,6 +459,27 @@ drfuzz_mutator_stop(drfuzz_mutator_t *mutator_in)
     return DRMF_SUCCESS;
 }
 
+LIB_EXPORT drmf_status_t
+drfuzz_mutator_feedback(drfuzz_mutator_t *mutator_in, int feedback)
+{
+    mutator_t *mutator = (mutator_t *) mutator_in;
+    if (feedback <= 0) {
+        /* do nothing for negative or neutral feedback */
+        return DRMF_SUCCESS;
+    }
+
+    if (mutator->options.unit != MUTATOR_UNIT_BITS) {
+        /* do nothing for non-bitflip mutator */
+        return DRMF_SUCCESS;
+    }
+
+    /* FIXME i#1734: take actions on mutator feedback:
+     * 1. iterate through all values of the current byte
+     * 2. use current input as base for mutation
+     */
+    return DRMF_SUCCESS;
+}
+
 /***************************************************************************************
  * BIT FLIP ALGORITHM
  */

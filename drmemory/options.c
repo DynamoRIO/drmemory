@@ -539,6 +539,7 @@ options_init(const char *opstr)
         option_specified.fuzz_call_convention ||
         option_specified.fuzz_dump_on_error ||
         option_specified.fuzz_input_file ||
+        option_specified.fuzz_bbcov ||
         option_specified.fuzz_target ||
         option_specified.fuzz_mutator_lib ||
         option_specified.fuzz_mutator_ops ||
