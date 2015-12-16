@@ -64,6 +64,11 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
    not MacOS yet).  This does not yet include uninitialized read checking,
    so we still recommend compiling your application as 32-bit.
+ - Removed the -fuzz_mutator option and replaced it with separate options
+   for each component of the mutator.
+ - Added custom mutator support to Dr. Fuzz.
+ - Changed the mutator option passing scheme for Dr. Fuzz to take in
+   an argv-style array of parameters, to better support custom mutators.
  - Added checking that the program counter points to valid memory,
    controlled by the on-by-default -check_pc option.
 

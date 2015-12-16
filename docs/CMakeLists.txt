@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -62,6 +62,7 @@ set(headers
   ${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.h
   ${PROJECT_SOURCE_DIR}/umbra/umbra.h
   ${PROJECT_SOURCE_DIR}/drfuzz/drfuzz.h
+  ${PROJECT_SOURCE_DIR}/drfuzz/drfuzz_mutator.h
   ${PROJECT_SOURCE_DIR}/framework/public.h)
 
 # some defines are set by DR config files so we must add here

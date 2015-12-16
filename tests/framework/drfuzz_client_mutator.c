@@ -108,22 +108,8 @@ test_default_mutator()
 {
     drmf_status_t res;
     char string_buffer[16];
-    const drfuzz_mutator_options_t backward_compatibility_options = {
-        sizeof(drfuzz_mutator_options_t) + 1,
-        0
-    };
-
-    res = drfuzz_mutator_start(&mutator_rand, &string_buffer, 16,
-                               &DRFUZZ_MUTATOR_DEFAULT_OPTIONS);
+    res = drfuzz_mutator_start(&mutator_rand, &string_buffer, 16, 0, NULL);
     EXPECT(res == DRMF_SUCCESS, "failed to start a mutator with default options");
-    res = drfuzz_mutator_set_options(mutator_rand, &backward_compatibility_options);
-    EXPECT(res == DRMF_SUCCESS, "failed to set backward-compatible options");
-    res = drfuzz_mutator_stop(mutator_rand);
-    EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
-
-    res = drfuzz_mutator_start(&mutator_rand, &string_buffer, 16,
-                               &backward_compatibility_options);
-    EXPECT(res == DRMF_SUCCESS, "failed to start a backward-compatible mutator");
     res = drfuzz_mutator_stop(mutator_rand);
     EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
 }
@@ -134,25 +120,32 @@ test_random_scalar(size_t size, uint64 max)
     drmf_status_t res;
     uint64 i, step = 1;
     uint64 buffer_rand = 0, buffer_iter = 0;
-    drfuzz_mutator_options_t options = {
-        sizeof(drfuzz_mutator_options_t),
-        MUTATOR_ALG_RANDOM,
-        MUTATOR_UNIT_NUM,
-        0,
-        0,
-        max,
-        get_random_value()
+    char arg_max[16];
+    char arg_seed[16];
+    const char *argv_ran[] = {
+        "-alg", "random", "-unit", "num", "-flags", "0",
+        "-max_value", arg_max, "-random_seed", arg_seed
     };
+    int argc_ran = sizeof(argv_ran)/sizeof(argv_ran[0]);
+    const char *argv_iter[] = {
+        "-alg", "ordered", "-unit", "num", "-flags", "0",
+        "-max_value", arg_max, "-random_seed", arg_seed
+    };
+    int argc_iter = sizeof(argv_ran)/sizeof(argv_ran[0]);
+    dr_snprintf(arg_max, BUFFER_SIZE_ELEMENTS(arg_max), UINT64_FORMAT_STRING, max);
+    NULL_TERMINATE_BUFFER(arg_max);
+    dr_snprintf(arg_seed, BUFFER_SIZE_ELEMENTS(arg_seed), UINT64_FORMAT_STRING,
+                get_random_value());
+    NULL_TERMINATE_BUFFER(arg_seed);
 
     if (max > 1 && size > 2) /* reduce test time for large spans */
         step = (max >> 9ULL) - (1ULL << (((uint64) size - 1ULL) * 3ULL));
 
     /* interleave the mutator calls to test independent operation */
-    res = drfuzz_mutator_start(&mutator_rand, &buffer_rand, size, &options);
+    res = drfuzz_mutator_start(&mutator_rand, &buffer_rand, size, argc_ran, argv_ran);
     EXPECT(res == DRMF_SUCCESS, "failed to start the mutator");
 
-    options.alg = MUTATOR_ALG_ORDERED;
-    res = drfuzz_mutator_start(&mutator_iter, &buffer_iter, size, &options);
+    res = drfuzz_mutator_start(&mutator_iter, &buffer_iter, size, argc_iter, argv_iter);
     EXPECT(res == DRMF_SUCCESS, "failed to start the mutator");
 
     for (i = 0; i < max; i += step) {
@@ -197,18 +190,18 @@ test_random_buffer(size_t size)
     uint i;
     drmf_status_t res;
     char string_buffer[MAX_BUFFER_LENGTH] = {0};
-    drfuzz_mutator_options_t options = {
-        sizeof(drfuzz_mutator_options_t),
-        MUTATOR_ALG_RANDOM,
-        MUTATOR_UNIT_NUM,
-        0,
-        0,
-        0,
-        get_random_value()
+    char arg_seed[16];
+    const char *argv[] = {
+        "-alg", "random", "-unit", "num", "-flags", "0",
+        "-random_seed", arg_seed
     };
+    int argc = sizeof(argv)/sizeof(argv[0]);
+    dr_snprintf(arg_seed, BUFFER_SIZE_ELEMENTS(arg_seed), UINT64_FORMAT_STRING,
+                get_random_value());
+    NULL_TERMINATE_BUFFER(arg_seed);
 
-    res = drfuzz_mutator_start(&mutator_rand, &string_buffer, size, &options);
-    EXPECT(res == DRMF_SUCCESS, "failed to start the mutator with default options");
+    res = drfuzz_mutator_start(&mutator_rand, &string_buffer, size, argc, argv);
+    EXPECT(res == DRMF_SUCCESS, "failed to start the mutator with custom options");
     for (i = 0; i < 100000; i++) {
         EXPECT(drfuzz_mutator_has_next_value(mutator_rand),
                       "mutator should have next value");
@@ -289,25 +282,28 @@ count_flips(byte *buffer, size_t size)
 }
 
 static void
-test_bitflip_buffer(size_t size, uint sparsity, drfuzz_mutator_algorithm_t alg,
-                    uint flags)
+test_bitflip_buffer(size_t size, const char *arg_sparsity, const char *arg_alg,
+                    const char *arg_flags)
 {
     uint i = 0, flips, expected_flips = 1, expected_iterations;
     drmf_status_t res;
     byte byte_buffer[MAX_BUFFER_LENGTH] = {0}, last_buffer[MAX_BUFFER_LENGTH] = {0};
-    drfuzz_mutator_options_t options = DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
-    bool seed_centric = TEST(flags, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    bool seed_centric = strcmp(arg_flags, "1") == 0;
+    uint sparsity = atoi(arg_sparsity);
+    char arg_seed[16];
+    const char *argv[] = {
+        "-alg", arg_alg, "-sparsity", arg_sparsity,
+        "-random_seed", arg_seed, "-flags", arg_flags
+    };
+    int argc = sizeof(argv)/sizeof(argv[0]);
+    dr_snprintf(arg_seed, BUFFER_SIZE_ELEMENTS(arg_seed), UINT64_FORMAT_STRING,
+                get_random_value());
+    NULL_TERMINATE_BUFFER(arg_seed);
 
-    options.alg = alg;
-    options.sparsity = sparsity;
-    options.random_seed = get_random_value();
-    options.flags = flags;
+    dr_fprintf(STDERR, "\nFlipping %d bits (sparsity %s, %s, %s)\n\n", (size * 8),
+               arg_sparsity, seed_centric ? "seed-centric" : "progressive", arg_alg);
 
-    dr_fprintf(STDERR, "\nFlipping %d bits (sparsity %d, %s, %s)\n\n", (size * 8),
-               sparsity, seed_centric ? "seed-centric" : "progressive",
-               (alg == MUTATOR_ALG_ORDERED) ? "ordered" : "random");
-
-    res = drfuzz_mutator_start(&mutator_iter, &byte_buffer, size, &options);
+    res = drfuzz_mutator_start(&mutator_iter, &byte_buffer, size, argc, argv);
     EXPECT(res == DRMF_SUCCESS, "failed to start the mutator with default options");
     while (drfuzz_mutator_has_next_value(mutator_iter)) {
         res = drfuzz_mutator_get_next_value(mutator_iter, &byte_buffer);
@@ -359,18 +355,18 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
     test_default_mutator();
 
     /* test ordered, seed-centric flip */
-    test_bitflip_buffer(1, 1, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
-    test_bitflip_buffer(2, 1, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
-    test_bitflip_buffer(3, 1000, MUTATOR_ALG_ORDERED, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(1, "1", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(2, "1", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(3, "1000", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
 
     /* test random, seed-centric flip */
-    test_bitflip_buffer(1, 1, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
-    test_bitflip_buffer(2, 1, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
-    test_bitflip_buffer(3, 1000, MUTATOR_ALG_RANDOM, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC);
+    test_bitflip_buffer(1, "1", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(2, "1", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(3, "1000", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
 
     /* test progressive flip */
-    test_bitflip_buffer(1, 1, MUTATOR_ALG_ORDERED, 0);
-    test_bitflip_buffer(1, 1, MUTATOR_ALG_RANDOM, 0);
+    test_bitflip_buffer(1, "1", "ordered", "0");
+    test_bitflip_buffer(1, "1", "random", "0");
 
     for (i = 1; i <= 8; i++) {
         test_random_scalar(i, choose_max_value(i)); /* avoids edge cases */

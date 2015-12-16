@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.   All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.   All rights reserved.
  * **********************************************************/
 
 /*
@@ -40,6 +40,7 @@ The \p Dr. Fuzz DynamoRIO Extension provides fuzz testing features.
 
  - \ref sec_drfuzz_setup
  - \ref sec_drfuzz_API
+ - \ref sec_drfuzz_mutators Mutators
 
 \section sec_drfuzz_setup Setup
 
@@ -67,19 +68,69 @@ Your client must call \p drfuzz_init() prior to accessing any API
 routines in \p drfuzz, and should call \p drfuzz_exit() at process exit
 time.
 
+
 \section sec_drfuzz_API Dr. Fuzz API
 
 \p Dr. Fuzz provides the following key features:
- -# Repeat execution of the test target function with fuzzed arguments
- -# Mutate argument values using bit flipping or random number algorithms
- -# Schedule fuzz iterations for a target function and set of arguments
- -# Report state information on a crash caused by fuzz inputs
+ -# Repeat execution of the test target function with fuzzed arguments.
+ -# Mutate argument values using bit flipping, random number algorithms,
+    or custom user-provided mutators.
+ -# Schedule fuzz iterations for a target function and set of arguments.
+ -# Report state information on a crash caused by fuzz inputs.
 
 The client can use the provided Dr. Fuzz APIs to fuzz test the target application. The
-most flexible approach is to register fuzz target functions and directly control the
-fuzzing cycle using the callbacks. This approach also requires the most effort, so
-Dr. Fuzz additionally provides mutator and scheduler modules which can be leveraged
-to simplify the fuzzing procedure into a few higher level operations (pending completion
-of issue #1734).
+most flexible approach is to use Dr. Fuzz directly to control the
+fuzzing cycle using registered callbacks. This approach also requires the most effort, so
+users who wish to get going quickly may prefer to use Dr. Memory's fuzzing
+features, which leverage Dr. Fuzz.
+
+
+\section sec_drfuzz_mutators Dr. Fuzz Mutators
+
+To support custom mutators, mutation is performed by a libary separate from
+the main \p Dr. Fuzz control library.  \p Dr. Fuzz provides a default
+mutator library which contains several different mutator implementations.
+
+\subsection sec_drfuzz_mut_ops Default Mutator
+
+The default mutator built-in to \p Dr. Fuzz supports several mutation
+variations, controlled by the following options (which are passed to
+drfuzz_mutator_start()):
+
+ - -alg &lt;algorithm_name&gt;<br>
+   Specifies the algorithm for generating a new value.  The choices are:
+   - "random": Randomly search the domain of possible permutations.
+   - "ordered": Exhaustively search all possible permutations in an ordered
+     manner.  This is the default;
+
+ - -unit &lt;unit_name&gt;<br>
+   Specifies the unit of transformation for applying the mutation algorithm.
+   The choices are:
+   - "bits": Bitwise application of the mutation algorithm.  This is the default.
+   - "num": Numeric application of the mutation algorithm.
+
+ - -flags &lt;int&gt;<br>
+   Flags for the mutator. Some flags are specific to a particular algorithm and/or
+   mutation unit.  The choices are:
+   - 0x1: Reset the buffer contents to the input_seed after every bit-flip
+     mutation. Only valid for MUTATOR_UNIT_BITS. On by default.
+   - 0x2: Seed the mutator's random number generator with the current clock time.
+
+ - -sparsity &lt;int&gt;<br>
+   The degree of sparseness in the random coverage of the "random" algorithm
+   with unit "bits" (invalid for other configurations). Sparsity of n will yield on
+   average 1/n total values relative to the "ordered" algorithm in the same configuration.
+   If the sparsity is set to 0, the default value of 1 will be used instead.
+
+ - -max_value &lt;uint64&gt;<br>
+   For buffers of size 8 bytes or smaller, specifies the maximum mutation value. Use
+   value 0 to disable the maximum value (i.e., limit only by the buffer capacity).
+
+ - -random_seed &lt;uint64&gt;<br>
+   Set the randomization seed for algorithm "random".
+   The default random seed is 0x5a8390e9a31dc65fULL, which was selected to
+   have an equal number of 0 and 1 bits.
+
+The default options are for ordered, seed-centric bit-flipping.
 
 */

@@ -680,25 +680,46 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
                      "             5 = fastcall"NL
                      "             6 = thiscall"NL,
                      "Fuzz test the target program according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;target&gt;|&lt;arg-count&gt;|&lt;buffer-index&gt;|&lt;size-index&gt;|&lt;repeat-count&gt;[|&lt;calling-convention&gt;]</code></pre>where <code>&lt;target&gt;</code> has one of two formats:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;!&lt;symbol&gt;</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;module&gt;+&lt;offset&gt;</code></pre>Here, <code>&lt;module&gt;</code> refers to a single binary image file such as a library (.so or .dll) or an application executable (.exe on Windows). The <code>&lt;offset&gt;</code> specifies the entry point of the target function as a hexadecimal offset (e.g. '0xf7d4') from the start of the module that contains it (i.e., the library or executable image). The <code>&lt;symbol&gt;</code> may be either a plain C function name, a mangled C++ symbol, or (Windows only) a de-mangled C++ symbol of the form returned by the \\ref page_symquery. The option <code>-fuzz_mangled_names</code> is required for using mangled names in Windows, and the mangled name must have every '@' character escaped by substituting a '-' in its place. The module alias &lt;main&gt; may be used to refer to the main module of the process, which is the program executable.<br/><br/>The &lt;arg-count&gt; specifies the number of arguments to the function (for vararg functions this must match the actual number of arguments passed by the app). The &lt;*-index&gt; arguments specify the index of the corresponding parameter in the target function. The &lt;repeat-count&gt; indicates the number of times to repeat the target function (use 0 to repeat until the mutator is exhuasted). The optional &lt;calling-convention&gt; can be specified using one of the following codes:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>1 = AMD64</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>2 = Microsoft x64 (Visual Studio)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>3 = ARM32</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>4 = cdecl or stdcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>5 = fastcall</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>6 = thiscall</code></pre>")
-OPTION_CLIENT_STRING(drmemscope, fuzz_mutator, "",
-                     "Configure the fuzzer mutator according to the specified descriptor"NL
-                     "         Mutator descriptor format: <algorithm>|<unit>|<flags>|<sparsity>[|<random_seed>]"NL
-                     "         where <algorithm> is one of the drfuzz_mutator_algorithm_t:"NL
-                     "             r = random selection of bits or numbers (MUTATOR_ALG_RANDOM)"NL
-                     "             o = ordered sequence of bits or numbers (MUTATOR_ALG_ORDERED)"NL
-                     "         and <unit> is one of the drfuzz_mutator_unit_t:"NL
-                     "             b = mutation by bit flipping (MUTATOR_UNIT_BITS)"NL
-                     "             n = mutation by random number generation (MUTATOR_UNIT_NUM)"NL
-                     "         and <flags> are any combination of:"NL
-                     "             r = reset to the original buffer value passed by the app before each mutation"NL
-                     "                 (drfuzz_mutator_flags_t.MUTATOR_FLAG_BITFLIP_SEED_CENTRIC)"NL
-                     "             t = seed the mutator's random number generator with the current clock time"NL
-                     "                 (drfuzz_mutator_options_t.random_seed)"NL
-                     "         and <sparsity> is an integer specifying a number of values to skip between"NL
-                     "         mutations (drfuzz_mutator_options_t.sparsity),"NL
-                     "         and <random_seed> (optional) is used by the internal random number generator."NL
-                     "         See the HTML documentation for more details."NL,
-                     "Configure the input mutator of the fuzz tester according to the specified descriptor, which should have the format:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>&lt;algorithm&gt;|&lt;unit&gt;|&lt;flags&gt;|&lt;sparsity&gt;[|&lt;random_seed&gt;]</code></pre>where <code>&lt;algorithm&gt;</code> is one of the drfuzz_mutator_algorithm_t:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>r = random selection of bits or numbers (MUTATOR_ALG_RANDOM)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>o = ordered sequence of bits or numbers (MUTATOR_ALG_ORDERED)</code></pre>and <code>&lt;unit&gt;</code> is one of the drfuzz_mutator_unit_t:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>b = mutation by bit flipping (MUTATOR_UNIT_BITS)</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>n = mutation by random number generation (MUTATOR_UNIT_NUM)</code></pre>and <code>&lt;flags&gt;</code> are any combination of:<pre>&nbsp;&nbsp;&nbsp;&nbsp;<code>r = reset to the original buffer value passed by the app before each mutation</code>\n&nbsp;&nbsp;&nbsp;&nbsp;<code>t = seed the mutator's random number generator with the current clock time (drfuzz_mutator_options_t.random_seed)</code></pre>and the <code>&lt;sparsity&gt;</code> is an integer specifying a number of values to skip between mutations (<code>drfuzz_mutator_options_t.sparsity</code>). See \\ref page_fuzzer for more detailed information.")
+OPTION_CLIENT_STRING(drmemscope, fuzz_mutator_lib, "",
+                     "Specify a custom third-party mutator library",
+                     "Specify a custom third-party mutator library to use instead of the default mutator library provided by Dr. Fuzz.")
+OPTION_CLIENT_STRING_REPEATABLE(drmemscope, fuzz_mutator_ops, "",
+                     "Specify mutator options",
+                     "Specify options to pass to either the default mutator library or to the custom third-party mutator library named in -fuzz_mutator_lib.")
+
+/* XXX: these fuzz_mutator docs and options essentially duplicate drfuzz.dox and
+ * the default mutator options in drfuzz_mutator.c, but it may not be worth
+ * sharing code/docs via some new *x.h file unless we start adding more and more
+ * options.
+ */
+OPTION_CLIENT_STRING(drmemscope, fuzz_mutator_alg, "ordered",
+                     "Specify the mutator algorithm: 'random' or 'ordered'",
+                     "Specify the mutator algorithm as one of these strings:@@<ul>"
+                     "<li>random = random selection of bits or numbers.@@"
+                     "<li>ordered = ordered sequence of bits or numbers.@@"
+                     "</ul>@@See also \\ref sec_drfuzz_mutators.@@")
+OPTION_CLIENT_STRING(drmemscope, fuzz_mutator_unit, "bits",
+                     "Specify the mutator unit: 'bits' or 'num'",
+                     "Specify the mutator unit of operation as one of these strings:@@<ul>"
+                     "<li>bits = mutation by bit flipping.@@"
+                     "<li>num = mutation by random number generation.@@"
+                     "</ul>@@See also \\ref sec_drfuzz_mutators.@@")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_flags, uint, 1, 0, UINT_MAX,
+                    "Specify mutator flags",
+                    "Specify flags controlling mutator operation:@@<ul>"
+                    "<li>0x1 = reset to the original buffer value passed by the app before each mutation.@@"
+                    "<li>0x2 = seed the mutator's random number generator with the current clock time.@@"
+                    "</ul>@@See also \\ref sec_drfuzz_mutators.@@")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_sparsity, uint, 1, 0, UINT_MAX,
+                    "Values to skip between mutations",
+                    "Specifies a number of values to skip between mutations.  See also \\ref sec_drfuzz_mutators.")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_max_value, uint64, 0, 0, ULLONG_MAX,
+                    "Maximum mutation value for <8-byte buffers (0 is unlimited)",
+                    "For buffers of size 8 bytes or smaller, specifies the maximum mutation value. Use value 0 to disable the maximum value (i.e., limit only by the buffer capacity).  See also \\ref sec_drfuzz_mutators.")
+OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_random_seed, uint64, 0x5a8390e9a31dc65fULL, 0, ULLONG_MAX,
+                    "Randomization seed for the random algorithm",
+                    "Randomization seed for -fuzz_mutator_alg random.  The default random seed is arbitrary, selected to have an equal number of 0 and 1 bits.  See also \\ref sec_drfuzz_mutators.")
+
 OPTION_CLIENT_STRING(drmemscope, fuzz_one_input, "",
                      "Specify one fuzz input value to test."NL
                      "         The value is a hexadecimal byte sequence using the literal byte order (i.e., non-endian),"NL

@@ -29,10 +29,9 @@ in the target application, mutating the value of one argument before each
 iteration. Fuzz mode is configured using a set of runtime options
 that all share a \p -fuzz_ prefix.
 For example, \p -fuzz_function specifies the function name for fuzzing.
-Aggregate runtime options \p -fuzz_target and \p -fuzz_mutator can
-also be used to configure the fuzz target and mutator. Both of
-these options require the user to supply a descriptor to define the behavior
-of the feature. An overview of each option and descriptor format is provided in the
+The aggregate runtime option \p -fuzz_target can
+also be used to configure the fuzz target. An overview of each option and
+descriptor format is provided in the
 \ref page_options (and the command line help text). Many of these options
 require a more complete explanation, which is provided in the following
 sections.

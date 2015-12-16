@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -91,6 +91,10 @@
 #elif defined(RC_IS_DRSYSCALL)
 # define FILE_NAME "drsyscall.dll"
 # define FILE_DESCRIPTION "System call monitor"
+# define FILE_TYPE VFT_DLL
+#elif defined(RC_IS_DRFUZZ_MUTATOR)
+# define FILE_NAME "drfuzz_mutator.dll"
+# define FILE_DESCRIPTION "Fuzz testing library"
 # define FILE_TYPE VFT_DLL
 #elif defined(RC_IS_DRFUZZ)
 # define FILE_NAME "drfuzz.dll"

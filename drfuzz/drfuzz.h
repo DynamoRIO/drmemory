@@ -462,6 +462,42 @@ DR_EXPORT
 drmf_status_t
 drfuzz_target_iterator_stop(drfuzz_target_iterator_t *iter);
 
+/***************************************************************************
+ * Mutation
+ */
+
+typedef void * drfuzz_mutator_t;
+
+typedef struct _drfuzz_mutator_api_t {
+    size_t struct_size;
+    dr_auxlib_handle_t handle;
+
+#   define DYNAMIC_INTERFACE 1
+#   include "drfuzz_mutator.h"
+#   undef DYNAMIC_INTERFACE
+
+} drfuzz_mutator_api_t;
+
+DR_EXPORT
+/**
+ * Loads a mutator.  If \p lib_path is NULL, the default mutator built
+ * in to \p Dr. Fuzz is loaded.  Otherwise, the custom, third-party
+ * mutator library located at the file path \p lib_path is loaded.
+ * The mutator interface for the loaded mutator is returned in \p api.
+ * The caller must set \p api->struct_size before calling.  Returns
+ * DRMF_SUCCESS on success.
+ */
+drmf_status_t
+drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api);
+
+DR_EXPORT
+/**
+ * Unloads a custom mutator library.  Returns DRMF_SUCCESS on success.
+ */
+drmf_status_t
+drfuzz_mutator_unload(IN drfuzz_mutator_api_t *lib);
+
+
 /*@}*/ /* end doxygen group */
 
 #ifdef __cplusplus

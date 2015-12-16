@@ -540,7 +540,14 @@ options_init(const char *opstr)
         option_specified.fuzz_dump_on_error ||
         option_specified.fuzz_input_file ||
         option_specified.fuzz_target ||
-        option_specified.fuzz_mutator ||
+        option_specified.fuzz_mutator_lib ||
+        option_specified.fuzz_mutator_ops ||
+        option_specified.fuzz_mutator_alg ||
+        option_specified.fuzz_mutator_unit ||
+        option_specified.fuzz_mutator_flags ||
+        option_specified.fuzz_mutator_sparsity ||
+        option_specified.fuzz_mutator_max_value ||
+        option_specified.fuzz_mutator_random_seed ||
         option_specified.fuzz_one_input ||
         option_specified.fuzz_buffer_fixed_size ||
         option_specified.fuzz_buffer_offset ||

@@ -37,9 +37,9 @@ if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
 endif ()
 
 set(srcs
-    drfuzz.c
-    drfuzz_mutator.c
-    ../framework/version.c)
+  drfuzz.c
+  drfuzz_mutator.c
+  ../framework/version.c)
 
 # i#1594c#3: VS generators fail if static lib has resources
 set(srcs_static ${srcs})
@@ -89,7 +89,7 @@ configure_DynamoRIO_client(drfuzz)
 set_target_properties(drfuzz PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
 configure_drfuzz_target(drfuzz "drwrap" "drmgr" "drsyms")
 export_drfuzz_target(drfuzz "drwrap" "drmgr")
-install(FILES drfuzz.h DESTINATION ${DRMF_INSTALL_INC})
+install(FILES drfuzz.h drfuzz_mutator.h DESTINATION ${DRMF_INSTALL_INC})
 
 # Provide a static version for those who may want it
 add_library(drfuzz_static STATIC ${srcs_static} ${external_srcs})
@@ -104,3 +104,18 @@ export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 add_library(drfuzz_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drfuzz_int)
 configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static" "drsyms_static")
+
+# We build drfuzz_mutator.c as a separate shared library for users who
+# want to extend its mutator at the API level in their own custom
+# mutator library by loading and calling ours.
+add_library(drfuzz_mutator SHARED
+  drfuzz_mutator.c ${PROJECT_SOURCE_DIR}/make/resources.rc ${external_srcs})
+set(PREFERRED_BASE 0x79100000)
+configure_DynamoRIO_client(drfuzz_mutator)
+use_DynamoRIO_extension(drfuzz_mutator drmgr_static)
+# Not bothering to remove RC_IS_DRFUZZ: resources.rc has this one first:
+set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ_MUTATOR)
+set_property(TARGET drfuzz_mutator PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+# We treat as a regular lib for use as a dynamically loaded plugin
+# XXX: better to use export_drfuzz_target()?
+install(TARGETS drfuzz_mutator DESTINATION ${DRMF_INSTALL_BIN})

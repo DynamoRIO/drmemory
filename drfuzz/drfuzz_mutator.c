@@ -55,6 +55,61 @@
                                    false : \
                                    (x) > (1ULL << ((uint64) (size) * 8ULL)))
 
+typedef enum _drfuzz_mutator_algorithm_t {
+    /* Randomly search the domain of possible permutations. */
+    MUTATOR_ALG_RANDOM,
+    /* Exhaustively search all possible permutations in an ordered manner. */
+    MUTATOR_ALG_ORDERED,
+} drfuzz_mutator_algorithm_t;
+
+/* The unit of transformation for applying the mutation algorithm. */
+typedef enum _drfuzz_mutator_unit_t {
+    MUTATOR_UNIT_BITS, /* Bitwise application of the mutation algorithm. */
+    MUTATOR_UNIT_NUM,  /* Numeric application of the mutation algorithm. */
+} drfuzz_mutator_unit_t;
+
+/* Flags for the mutator. Some flags are specific to a particular algorithm and/or
+ * mutation unit. See comments on each flag for details.
+ */
+typedef enum _drfuzz_mutator_flags_t {
+    /* Reset the buffer contents to the input_seed after every bit-flip
+     * mutation. Only valid for MUTATOR_UNIT_BITS. On by default.
+     */
+    MUTATOR_FLAG_BITFLIP_SEED_CENTRIC = 0x0001,
+    /* Initialize the random seed for MUTATOR_ALG_RANDOM with the current clock time. */
+    MUTATOR_FLAG_SEED_WITH_CLOCK      = 0x0002,
+} drfuzz_mutator_flags_t;
+
+typedef struct _drfuzz_mutator_options_t {
+    drfuzz_mutator_algorithm_t alg;
+    drfuzz_mutator_unit_t unit;
+    uint flags; /* Flags for the mutator, composed of #drfuzz_mutator_flags_t. */
+    /* The degree of sparseness in the random coverage of MUTATOR_ALG_RANDOM with
+     * MUTATOR_UNIT_BITS (invalid for other configurations). Sparsity of n will yield on
+     * average 1/n total values relative to MUTATOR_ALG_ORDERED in the same configuration.
+     * If the sparsity is set to 0, the default value of 1 will be used instead.
+     */
+    uint sparsity;
+    /* For buffers of size 8 bytes or smaller, specifies the maximum mutation value. Use
+     * value 0 to disable the maximum value (i.e., limit only by the buffer capacity).
+     */
+    uint64 max_value;
+    /* Set the randomization seed for MUTATOR_ALG_RANDOM. */
+    uint64 random_seed;
+} drfuzz_mutator_options_t;
+
+/* Default options (ordered, seed-centric bit-flipping).
+ * The default random seed is arbitrary, selected to have an equal number of 0 and 1 bits.
+ */
+static const drfuzz_mutator_options_t default_options = {
+    MUTATOR_ALG_ORDERED,               /* alg */
+    MUTATOR_UNIT_BITS,                 /* unit */
+    MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, /* flags */
+    1,                                 /* sparsity */
+    0,                                 /* max_value */
+    0x5a8390e9a31dc65fULL              /* random_seed */
+};
+
 typedef struct _bitflip_t bitflip_t; /* bitflip defined under its own banner below */
 
 typedef struct _mutator_t  {
@@ -84,21 +139,127 @@ bitflip_shuffle_and_flip(mutator_t *mutator, void *buffer);
 static inline void
 bitflip_distribute_index_and_flip(mutator_t *mutator, void *buffer);
 
-DR_EXPORT drmf_status_t
+static drmf_status_t
+drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
+                           int argc, const char *argv[])
+{
+    mutator_t *mutator = (mutator_t *) mutator_in;
+    int i;
+    bool user_seed = false, user_sparsity = false;
+
+    mutator->options = default_options;
+
+    /* XXX: if we get many more options we may want to share the auto-parser
+     * and auto-docs generation that DrMem and DR use via optionsx.h files.
+     */
+    for (i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "-alg") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            ++i;
+            if (strcmp(argv[i], "random") == 0)
+                mutator->options.alg = MUTATOR_ALG_RANDOM;
+            else if (strcmp(argv[i], "ordered") == 0)
+                mutator->options.alg = MUTATOR_ALG_ORDERED;
+            else
+                return DRMF_ERROR_INVALID_PARAMETER;
+        } else if (strcmp(argv[i], "-unit") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            ++i;
+            if (strcmp(argv[i], "bits") == 0)
+                mutator->options.unit = MUTATOR_UNIT_BITS;
+            else if (strcmp(argv[i], "num") == 0)
+                mutator->options.unit = MUTATOR_UNIT_NUM;
+            else
+                return DRMF_ERROR_INVALID_PARAMETER;
+        } else if (strcmp(argv[i], "-flags") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            mutator->options.flags = strtoul(argv[++i], NULL, 0);
+        } else if (strcmp(argv[i], "-sparsity") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            mutator->options.sparsity = strtoul(argv[++i], NULL, 0);
+            user_sparsity = true;
+        } else if (strcmp(argv[i], "-max_value") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            /* strtoull is not available in ntdll */
+            ++i;
+            if (dr_sscanf(argv[i], "0x" HEX64_FORMAT_STRING,
+                          &mutator->options.max_value) != 1 &&
+                dr_sscanf(argv[i], UINT64_FORMAT_STRING,
+                          &mutator->options.max_value) != 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+        } else if (strcmp(argv[i], "-random_seed") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            /* strtoull is not available in ntdll */
+            ++i;
+            if (dr_sscanf(argv[i], "0x" HEX64_FORMAT_STRING,
+                          &mutator->options.random_seed) != 1 &&
+                dr_sscanf(argv[i], UINT64_FORMAT_STRING,
+                          &mutator->options.random_seed) != 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            user_seed = true;
+        } else
+            return DRMF_ERROR_INVALID_PARAMETER;
+    }
+
+    if (mutator->options.flags != 0 &&
+        !TESTANY(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC | MUTATOR_FLAG_SEED_WITH_CLOCK,
+                 mutator->options.flags))
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (TEST(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, mutator->options.flags) &&
+        mutator->options.unit != MUTATOR_UNIT_BITS) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify seed-centric"NL);
+        NOTIFY_ERROR("mutation together with the numeric mutation unit."NL);
+        return DRMF_ERROR_INVALID_PARAMETER;
+    }
+    if (TEST(MUTATOR_FLAG_SEED_WITH_CLOCK, mutator->options.flags)) {
+        mutator->options.random_seed = dr_get_milliseconds();
+        if (user_seed) {
+            NOTIFY_ERROR("Cannot specify both an initial value and a clock seed "
+                         "for the same mutator."NL);
+            return DRMF_ERROR_INVALID_PARAMETER;
+        }
+    }
+
+    if (user_sparsity && mutator->options.sparsity > 0 &&
+        mutator->options.unit == MUTATOR_UNIT_NUM) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify mutation"NL);
+        NOTIFY_ERROR("sparsity together with the numeric mutation unit."NL);
+        return DRMF_ERROR_INVALID_PARAMETER;
+    }
+    if (mutator->options.max_value > 0 && mutator->size > MAX_NUMERIC_SIZE) {
+        NOTIFY_ERROR("Invalid mutator configuration: cannot specify a max mutator"NL);
+        NOTIFY_ERROR("value together with a mutation buffer size larger than 8 bytes."NL);
+        return DRMF_ERROR_INVALID_PARAMETER;
+    }
+
+    if (EXCEEDS_CAPACITY(mutator->options.max_value, mutator->size))
+        mutator->options.max_value = 0; /* out of range: can allow all values */
+
+    return DRMF_SUCCESS;
+}
+
+LIB_EXPORT drmf_status_t
 drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
-                     IN size_t size, IN const drfuzz_mutator_options_t *options)
+                     IN size_t size, IN int argc, IN const char *argv[])
 {
     mutator_t *mutator;
     drmf_status_t res;
 
-    if (mutator_out == NULL || input_seed == NULL || size == 0 || options == NULL)
+    if (mutator_out == NULL || input_seed == NULL || size == 0 ||
+        (argv == NULL && argc > 0))
         return DRMF_ERROR_INVALID_PARAMETER;
 
     mutator = global_alloc(sizeof(mutator_t), HEAPSTAT_MISC);
     memset(mutator, 0, sizeof(mutator_t));
     mutator->size = size;
 
-    res = drfuzz_mutator_set_options((drfuzz_mutator_t *)mutator, options);
+    res = drfuzz_mutator_set_options((drfuzz_mutator_t *)mutator, argc, argv);
     if (res != DRMF_SUCCESS) {
         global_free(mutator, sizeof(mutator_t), HEAPSTAT_MISC);
         return res;
@@ -109,54 +270,14 @@ drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
     mutator->current_value = global_alloc(size, HEAPSTAT_MISC);
     memcpy(mutator->current_value, input_seed, size);
 
-    if (options->unit == MUTATOR_UNIT_BITS)
+    if (mutator->options.unit == MUTATOR_UNIT_BITS)
         mutator->bitflip = bitflip_create(mutator);
 
     *mutator_out = (drfuzz_mutator_t *) mutator;
     return DRMF_SUCCESS;
 }
 
-DR_EXPORT drmf_status_t
-drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
-                           const drfuzz_mutator_options_t *options)
-{
-    mutator_t *mutator = (mutator_t *) mutator_in;
-
-    if (options->struct_size < sizeof(drfuzz_mutator_options_t))
-        return DRMF_ERROR_INVALID_PARAMETER;
-
-    if (TEST(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, options->flags) &&
-        options->unit != MUTATOR_UNIT_BITS) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify seed-centric"NL);
-        NOTIFY_ERROR("mutation together with the numeric mutation unit."NL);
-        return DRMF_ERROR_INVALID_PARAMETER;
-    }
-    if (options->sparsity > 0 && options->unit == MUTATOR_UNIT_NUM) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify mutation"NL);
-        NOTIFY_ERROR("sparsity together with the numeric mutation unit."NL);
-        return DRMF_ERROR_INVALID_PARAMETER;
-    }
-    if (options->max_value > 0 && mutator->size > MAX_NUMERIC_SIZE) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify a max mutator"NL);
-        NOTIFY_ERROR("value together with a mutation buffer size larger than 8 bytes."NL);
-        return DRMF_ERROR_INVALID_PARAMETER;
-    }
-
-    if (mutator->index == 0) {
-        memcpy(&mutator->options, options, sizeof(drfuzz_mutator_options_t));
-    } else { /* copy everything from the flags down (can't change alg or unit anymore) */
-        size_t flags_offset = offsetof(drfuzz_mutator_options_t, flags);
-        memcpy(&mutator->options + flags_offset, options + flags_offset,
-               sizeof(drfuzz_mutator_options_t) - flags_offset);
-    }
-
-    if (EXCEEDS_CAPACITY(mutator->options.max_value, mutator->size))
-        mutator->options.max_value = 0; /* out of range: can allow all values */
-
-    return DRMF_SUCCESS;
-}
-
-DR_EXPORT bool
+LIB_EXPORT bool
 drfuzz_mutator_has_next_value(drfuzz_mutator_t *mutator_in)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
@@ -176,7 +297,7 @@ drfuzz_mutator_has_next_value(drfuzz_mutator_t *mutator_in)
     }
 }
 
-DR_EXPORT drmf_status_t
+LIB_EXPORT drmf_status_t
 drfuzz_mutator_get_current_value(IN drfuzz_mutator_t *mutator_in, OUT void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
@@ -300,7 +421,7 @@ get_next_random_value(mutator_t *mutator, void *buffer)
     return DRMF_ERROR;
 }
 
-DR_EXPORT drmf_status_t
+LIB_EXPORT drmf_status_t
 drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, IN void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
@@ -326,7 +447,7 @@ drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, IN void *buffer)
     return res;
 }
 
-DR_EXPORT drmf_status_t
+LIB_EXPORT drmf_status_t
 drfuzz_mutator_stop(drfuzz_mutator_t *mutator_in)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;

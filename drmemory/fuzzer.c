@@ -31,6 +31,7 @@
 #include "drfuzz_mutator.h"
 #include "fuzzer.h"
 #include "drmemory.h"
+#include "drvector.h"
 
 #ifdef WINDOWS
 # include "dbghelp.h"
@@ -133,10 +134,13 @@ typedef struct _fuzz_target_t {
     const char *singleton_input;
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
-    drfuzz_mutator_options_t *mutator_options;
 } fuzz_target_t;
 
 static fuzz_target_t fuzz_target;
+
+static drfuzz_mutator_api_t mutator_api = {sizeof(mutator_api),};
+static int mutator_argc;
+static char **mutator_argv;
 
 static bool fuzzer_initialized;
 
@@ -163,9 +167,6 @@ tokenizer_exit_with_usage_error();
 static bool
 user_input_parse_target(char *descriptor, const char *raw_descriptor);
 
-static bool
-user_input_parse_mutator(char *descriptor, const char *raw_descriptor);
-
 static void
 free_fuzz_target();
 
@@ -180,6 +181,9 @@ fuzzer_fuzz_target_callconv_arg_init();
 
 static void
 fuzzer_option_init();
+
+static void
+fuzzer_mutator_option_exit(void);
 
 static inline void
 replace_char(char *dst, char old, char new)
@@ -226,6 +230,8 @@ fuzzer_init(client_id_t client_id)
 void
 fuzzer_exit()
 {
+    fuzzer_mutator_option_exit();
+
     free_fuzz_target();
 
     dr_mutex_destroy(fuzz_state_lock);
@@ -292,6 +298,99 @@ fuzzer_fuzz_target_init()
     fuzzer_fuzz_target_callconv_arg_init();
 }
 
+static bool
+fuzzer_mutator_option_init(void)
+{
+    drvector_t vec;
+    int i;
+#   define MAX_TOKEN_SIZE 1024
+    char buf[MAX_TOKEN_SIZE];
+
+    if (option_specified.fuzz_mutator_lib) {
+        if (drfuzz_mutator_load(options.fuzz_mutator_lib, &mutator_api) !=
+            DRMF_SUCCESS) {
+            NOTIFY_ERROR("Failed to load mutator library '%s'"NL,
+                         options.fuzz_mutator_lib);
+            dr_abort();
+            return false; /* won't be reached */
+        }
+        NOTIFY("Using custom fuzz mutator '%s'"NL, options.fuzz_mutator_lib);
+    } else {
+        if (drfuzz_mutator_load(NULL, &mutator_api) != DRMF_SUCCESS) {
+            NOTIFY_ERROR("Failed to load default mutator library"NL);
+            dr_abort();
+            return false; /* won't be reached */
+        }
+    }
+
+    if (!drvector_init(&vec, 16, false/*!synch*/, NULL)) {
+        NOTIFY_ERROR("Failed to initialize vector"NL);
+        dr_abort();
+        return false; /* won't be reached */
+    }
+    if (option_specified.fuzz_mutator_ops) {
+        const char *s;
+        s = dr_get_token(options.fuzz_mutator_ops, buf, BUFFER_SIZE_ELEMENTS(buf));
+        do {
+            drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+            s = dr_get_token(s, buf, BUFFER_SIZE_ELEMENTS(buf));
+        } while (s != NULL);
+    }
+
+    if (option_specified.fuzz_mutator_alg) {
+        drvector_append(&vec, drmem_strdup("-alg", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(options.fuzz_mutator_alg, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_mutator_unit) {
+        drvector_append(&vec, drmem_strdup("-unit", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(options.fuzz_mutator_unit, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_mutator_flags) {
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "0x%x", options.fuzz_mutator_flags);
+        NULL_TERMINATE_BUFFER(buf);
+        drvector_append(&vec, drmem_strdup("-flags", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_mutator_sparsity) {
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%d", options.fuzz_mutator_sparsity);
+        NULL_TERMINATE_BUFFER(buf);
+        drvector_append(&vec, drmem_strdup("-sparsity", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_mutator_max_value) {
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), UINT64_FORMAT_STRING,
+                    options.fuzz_mutator_max_value);
+        NULL_TERMINATE_BUFFER(buf);
+        drvector_append(&vec, drmem_strdup("-max_value", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_mutator_random_seed) {
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), UINT64_FORMAT_STRING,
+                    options.fuzz_mutator_random_seed);
+        NULL_TERMINATE_BUFFER(buf);
+        drvector_append(&vec, drmem_strdup("-random_seed", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+    }
+
+    mutator_argc = vec.entries;
+    mutator_argv = (char **) global_alloc((mutator_argc+1) * sizeof(char*), HEAPSTAT_MISC);
+    for (i = 0; i < mutator_argc; i++)
+        mutator_argv[i] = (char *) drvector_get_entry(&vec, i);
+    mutator_argv[i] = NULL;
+    drvector_delete(&vec);
+
+    return true;
+}
+
+static void
+fuzzer_mutator_option_exit(void)
+{
+    int i;
+    for (i = 0; i < mutator_argc; i++)
+        global_free(mutator_argv[i], strlen(mutator_argv[i]) + 1, HEAPSTAT_MISC);
+    global_free(mutator_argv, (mutator_argc+1) * sizeof(char*), HEAPSTAT_MISC);
+}
+
 static void
 fuzzer_option_init()
 {
@@ -299,14 +398,7 @@ fuzzer_option_init()
         fuzzer_fuzz_target(options.fuzz_target);
     else
         fuzzer_fuzz_target_init();
-    if (option_specified.fuzz_mutator) {
-        if (option_specified.fuzz_one_input) {
-            NOTIFY_ERROR("Cannot specify both a mutator configuration and a single "
-                         "input to fuzz"NL);
-            dr_abort();
-        }
-        fuzzer_set_mutator_descriptor(options.fuzz_mutator);
-    }
+    fuzzer_mutator_option_init();
     if (option_specified.fuzz_one_input)
         fuzzer_set_singleton_input(options.fuzz_one_input);
 
@@ -374,22 +466,6 @@ fuzzer_unfuzz_target()
     }
 
     return success;
-}
-
-/* XXX i#1734: could define the mutator as a set of callbacks for extensibility */
-bool
-fuzzer_set_mutator_descriptor(const char *mutator_descriptor)
-{
-    bool res;
-    char *descriptor_copy;
-
-    if (fuzz_target.module_name == NULL)
-        return false;
-
-    descriptor_copy = drmem_strdup(mutator_descriptor, HEAPSTAT_MISC);
-    res = user_input_parse_mutator(descriptor_copy, mutator_descriptor);
-    global_free(descriptor_copy, strlen(descriptor_copy) + 1/*null-term*/, HEAPSTAT_MISC);
-    return res;
 }
 
 void
@@ -953,7 +1029,6 @@ static void
 fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
 {
     drmf_status_t res;
-    const drfuzz_mutator_options_t *mutator_options;
     size_t mutation_size = fuzz_state->input_size - fuzz_target.buffer_offset;
 
     fuzz_state->mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
@@ -976,12 +1051,9 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
         fuzz_state->mutator = NULL;
     }
 
-    if (fuzz_target.mutator_options == NULL)
-        mutator_options = &DRFUZZ_MUTATOR_DEFAULT_OPTIONS;
-    else
-        mutator_options = fuzz_target.mutator_options;
-    res = drfuzz_mutator_start(&fuzz_state->mutator, fuzz_state->mutation_start,
-                               mutation_size, mutator_options);
+    res = mutator_api.drfuzz_mutator_start
+        (&fuzz_state->mutator, fuzz_state->mutation_start,
+         mutation_size, mutator_argc, (const char **)mutator_argv);
     if (res != DRMF_SUCCESS) {
         NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
         dr_abort();
@@ -992,9 +1064,11 @@ static void
 fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
 {
     if (fuzz_target.singleton_input == NULL) {
-        drfuzz_mutator_get_next_value(fuzz_state->mutator, fuzz_state->mutation_start);
+        mutator_api.drfuzz_mutator_get_next_value
+            (fuzz_state->mutator, fuzz_state->mutation_start);
         if (fuzz_target.repeat_count < 0) /* repeating until mutator exhausts */
-            fuzz_state->repeat = drfuzz_mutator_has_next_value(fuzz_state->mutator);
+            fuzz_state->repeat = mutator_api.drfuzz_mutator_has_next_value
+                (fuzz_state->mutator);
     } else {
         apply_singleton_input(fuzz_state);
         fuzz_state->repeat = false;
@@ -1009,7 +1083,7 @@ static void
 fuzzer_mutator_exit(fuzz_state_t *fuzz_state)
 {
     if (fuzz_state->mutator != NULL) {
-        drfuzz_mutator_stop(fuzz_state->mutator);
+        mutator_api.drfuzz_mutator_stop(fuzz_state->mutator);
         fuzz_state->mutator = NULL;
     }
 }
@@ -1140,8 +1214,6 @@ module_loaded(void *drcontext, const module_data_t *module, bool loaded)
 {
     const char *name = dr_module_preferred_name(module);
 
-    ASSERT_NOT_TESTED("Registration of fuzz target on module load");
-
     if (fuzz_target.module_start == 0 && name != NULL &&
         fuzz_target.module_name != NULL && strcmp(name, fuzz_target.module_name) == 0)
         fuzz_target.enabled = register_fuzz_target(module);
@@ -1218,10 +1290,6 @@ free_fuzz_target()
     if (fuzz_target.type == FUZZ_TARGET_SYMBOL && fuzz_target.symbol != NULL) {
         global_free(fuzz_target.symbol, strlen(fuzz_target.symbol) + 1, HEAPSTAT_MISC);
     }
-    if (fuzz_target.mutator_options != NULL) {
-        global_free(fuzz_target.mutator_options, sizeof(drfuzz_mutator_options_t),
-                    HEAPSTAT_MISC);
-    }
     memset(&fuzz_target, 0, sizeof(fuzz_target_t));
 }
 
@@ -1291,15 +1359,6 @@ tokenizer_has_next(IN tokenizer_t *t, IN char delimiter)
     return (next_ptr != NULL || strlen(t->src) > 0); /* found delimiter or a tail */
 }
 
-static char
-tokenizer_peek_next(IN tokenizer_t *t)
-{
-    if (*t->src == '\0')
-        return '\0';
-    else
-        return *(t->start ? t->src : t->src + 1);
-}
-
 static bool
 tokenizer_find_next(IN tokenizer_t *t, OUT const char **src_ptr_out, IN char delim,
                     IN char raw_delim, IN const char *field_name)
@@ -1334,49 +1393,6 @@ tokenizer_copy_next(IN tokenizer_t *t, OUT size_t *len, OUT char **token,
         return tokenizer_copy_to(t, src_ptr, len, token);
     else
         return false;
-}
-
-static bool
-tokenizer_next_char(IN tokenizer_t *t, OUT char *c, IN char delimiter,
-                    IN const char *accepted_codes, IN const char *field_name,
-                    tokenizer_char_type_t char_type)
-{
-    size_t len;
-    const char *src_ptr = NULL;
-    bool valid = false;
-
-    if (tokenizer_find_next(t, &src_ptr, ' ', delimiter, field_name)) {
-        len = src_ptr - t->src;
-        if (len == 0) {
-            if (char_type == TOKENIZER_CHAR_SET)
-                return false; /* end of set */
-            *c = ' ';
-            valid = true;
-        } else if (char_type == TOKENIZER_CHAR_SET || len == 1) {
-            const char *next_code;
-
-            for (next_code = accepted_codes; *next_code != '\0'; next_code++) {
-                if (*next_code == *t->src) {
-                    valid = true;
-                    *c = *t->src;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!valid) {
-        NOTIFY_ERROR("Failed to understand '%.1s' as a %s."NL, t->src, field_name);
-        NOTIFY_ERROR("Expected one of '{%s}' at position %d in "RAW_SNIPPET_FORMAT"."NL,
-                     accepted_codes, t->src - t->src_head, RAW_SNIPPET_ARGS(t->raw_src));
-        tokenizer_exit_with_usage_error();
-        return false;
-    }
-
-    if (char_type == TOKENIZER_CHAR_SINGLETON)
-        t->src += len;
-    t->start = false;
-    return true;
 }
 
 static bool
@@ -1560,119 +1576,5 @@ user_input_parse_target(char *descriptor, const char *raw_descriptor)
     if (!fuzzer_fuzz_target_callconv_arg_init())
         tokenizer_exit_with_usage_error();
 
-    return true;
-}
-
-static void
-log_flag(drfuzz_mutator_options_t *options, drfuzz_mutator_flags_t flag,
-         const char *display_name)
-{
-    if (TEST(flag, options->flags))
-        LOG(1, LOG_PREFIX" Set mutator flag '%s'\n", display_name);
-    else
-        LOG(1, LOG_PREFIX" Cleared mutator flag '%s'\n", display_name);
-}
-
-static bool
-user_input_parse_mutator(char *descriptor, const char *raw_descriptor)
-{
-    char code;
-    uint64 time_millis;
-    bool user_specified_time_seed = false;
-    tokenizer_t tokens;
-    drfuzz_mutator_options_t *options;
-
-    if (fuzz_target.mutator_options == NULL)
-        options = global_alloc(sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-    else
-        options = fuzz_target.mutator_options; /* will overwrite all values */
-    memcpy(options, &DRFUZZ_MUTATOR_DEFAULT_OPTIONS, sizeof(drfuzz_mutator_options_t));
-    options->flags = 0; /* no default flags when user specifies a descriptor */
-
-    replace_char(descriptor, '|', ' '); /* replace pipes with spaces for dr_get_token() */
-    tokenizer_init(&tokens, (const char *) descriptor, raw_descriptor, HEAPSTAT_MISC);
-
-    if (!tokenizer_next_char(&tokens, &code, '|', "or\0", "mutator algorithm",
-                             TOKENIZER_CHAR_SINGLETON)) {
-        global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-        return false;
-    }
-    switch (code) {
-    case 'o':
-        options->alg = MUTATOR_ALG_ORDERED;
-        LOG(1, LOG_PREFIX" Set mutator algorithm to 'ordered'\n");
-        break;
-    case 'r':
-        options->alg = MUTATOR_ALG_RANDOM;
-        LOG(1, LOG_PREFIX" Set mutator algorithm to 'random'\n");
-        break;
-    default: break; /* use the default value */
-    }
-
-    if (!tokenizer_next_char(&tokens, &code, '|', "nb\0", "mutator unit",
-                             TOKENIZER_CHAR_SINGLETON)) {
-        global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-        return false;
-    }
-    switch (code) {
-    case 'n':
-        options->unit = MUTATOR_UNIT_NUM;
-        LOG(1, LOG_PREFIX" Set mutator unit to 'numeric'\n");
-        break;
-    case 'b':
-        options->unit = MUTATOR_UNIT_BITS;
-        LOG(1, LOG_PREFIX" Set mutator unit to 'bit-flip'\n");
-        break;
-    default: break; /* use the default value */
-    }
-
-    while (tokenizer_next_char(&tokens, &code, '|', "rt\0", "mutator flag",
-                               TOKENIZER_CHAR_SET)) {
-        switch (code) {
-        case 'r':
-            options->flags |= MUTATOR_FLAG_BITFLIP_SEED_CENTRIC;
-            break;
-        case 't': /* report the specific seed to stderr for release visibility */
-            time_millis = dr_get_milliseconds();
-            LOG(1, "Initialize mutator's random seed with time 0x%llx\n", time_millis);
-            NOTIFY("Dr. Fuzz mutator random seed: 0x%llx"NL, time_millis);
-            options->random_seed = time_millis;
-            user_specified_time_seed = true;
-            break;
-        default:
-            NOTIFY_ERROR("Unknown mutator flag '%c'"NL, code);
-            FUZZ_ERROR("Unknown mutator flag '%c'"NL, code);
-            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-            tokenizer_exit_with_usage_error();
-            return false;
-        }
-    }
-    log_flag(options, MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, "seed-centric");
-
-    if (!tokenizer_next_int(&tokens, (byte *) &options->sparsity,
-                            '|', false, false, "mutator sparsity"))
-        return false;
-
-    if (tokenizer_peek_next(&tokens) != '\0') { /* optional mutator random seed */
-        if (user_specified_time_seed) {
-            NOTIFY_ERROR("Cannot specify both a random seed and a randomized random seed "
-                         "for the same mutator."NL);
-            FUZZ_ERROR("Cannot specify both a random seed and a randomized random seed "
-                       "for the same mutator."NL);
-            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-            tokenizer_exit_with_usage_error();
-            return false;
-        }
-        if (!tokenizer_next_int(&tokens, (byte *) &options->random_seed,
-                                '|', true, true, "mutator random seed")) {
-            NOTIFY_ERROR("Failed to parse the mutator random seed."NL);
-            FUZZ_ERROR("Failed to parse the mutator random seed."NL);
-            global_free(options, sizeof(drfuzz_mutator_options_t), HEAPSTAT_MISC);
-            tokenizer_exit_with_usage_error();
-            return false;
-        }
-    }
-
-    fuzz_target.mutator_options = options;
     return true;
 }

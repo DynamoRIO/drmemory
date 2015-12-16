@@ -50,19 +50,19 @@ endif (UNIX)
 newtest_ex(fuzz_buffer fuzz_buffer.c
   "initialize" "-fuzz_function;repeatme;-fuzz_num_iters;10" "" OFF "" 0)
 set(fuzz_buffer_drmem_ops "-no_fuzz_dump_on_error;-fuzz_target;<main>!repeatme|2|0|1|10")
-set(mutator_drmem_ops "-fuzz_mutator;o|b|r|3")
+set(mutator_drmem_ops "-fuzz_mutator_alg;ordered;-fuzz_mutator_unit;bits;-fuzz_mutator_flags;0x1;-fuzz_mutator_sparsity;3")
 newtest_nobuild_ex(fuzz_buffer.mutator.o-b-s-3 fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
-set(mutator_drmem_ops "-fuzz_mutator;r|b|r|3")
+set(mutator_drmem_ops "-fuzz_mutator_alg;random;-fuzz_mutator_unit;bits;-fuzz_mutator_flags;0x1;-fuzz_mutator_sparsity;3")
 newtest_nobuild_ex(fuzz_buffer.mutator.r-b-s-3 fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
-set(mutator_drmem_ops "-fuzz_mutator;o|b||3")
+set(mutator_drmem_ops "-fuzz_mutator_alg;ordered;-fuzz_mutator_unit;bits;-fuzz_mutator_flags;0x0;-fuzz_mutator_sparsity;3")
 newtest_nobuild_ex(fuzz_buffer.mutator.o-b-3 fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
-set(mutator_drmem_ops "-fuzz_mutator;r|n||0")
+set(mutator_drmem_ops "-fuzz_mutator_alg;random;-fuzz_mutator_unit;num;-fuzz_mutator_flags;0x0;-fuzz_mutator_sparsity;0")
 newtest_nobuild_ex(fuzz_buffer.mutator.r-n fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
-set(mutator_drmem_ops "-fuzz_mutator;r|n||0|0x123456789abcdef0")
+set(mutator_drmem_ops "-fuzz_mutator_alg;random;-fuzz_mutator_unit;num;-fuzz_mutator_flags;0x0;-fuzz_mutator_sparsity;0;-fuzz_mutator_random_seed;0x123456789abcdef0")
 newtest_nobuild_ex(fuzz_buffer.mutator.random_seed fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops};${mutator_drmem_ops}" "" OFF "" 0 "")
 set(fuzz_one_input_drmem_ops "-fuzz_one_input;01020304050607080f0a0b0c0d0e0f10")

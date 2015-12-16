@@ -38,6 +38,7 @@
 #include "hashtable.h"
 #include "utils.h"
 #include "drfuzz.h"
+#include "drfuzz_mutator.h" /* default mutator */
 
 #ifdef UNIX
 # include <signal.h>
@@ -973,4 +974,98 @@ free_thread_state(fuzz_pass_context_t *fp)
                 HEAPSTAT_MISC);
     thread_free(fp->dcontext, fp->thread_state, sizeof(drfuzz_fault_thread_state_t),
                 HEAPSTAT_MISC);
+}
+
+/***************************************************************************
+ * Mutator
+ */
+
+#define DRFUZZLIB_MIN_VERSION_USED 1
+
+/* XXX: can we share this somehow with the auxlib in drmemory/syscall.c? */
+
+/* The "local" var is a char * for storing which bind failed */
+#define BINDFUNC(api, local, name) \
+    (local = #name, \
+     (api)->name = (void *) dr_lookup_aux_library_routine((api)->handle, #name))
+
+/* To avoid having to deploy and load a separate default library we link statically
+ * and point at the interface here:
+ */
+static drfuzz_mutator_api_t default_mutator = {
+    /* XXX: we could further macro-ify drfuzz_mutator.h to avoid duplication here */
+    sizeof(default_mutator),
+    NULL,
+    drfuzz_mutator_start,
+    drfuzz_mutator_has_next_value,
+    drfuzz_mutator_get_current_value,
+    drfuzz_mutator_get_next_value,
+    drfuzz_mutator_stop,
+};
+
+DR_EXPORT drmf_status_t
+drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api)
+{
+    int *ver_compat, *ver_cur;
+    char *func;
+
+    /* If we add new fields we'll need more struct_size checks */
+    if (api == NULL || api->struct_size != sizeof(*api))
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    if (lib_path == NULL) {
+        *api = default_mutator;
+        return DRMF_SUCCESS;
+    }
+
+    api->handle = dr_load_aux_library(lib_path, NULL, NULL);
+    if (api->handle == NULL) {
+        DRFUZZ_ERROR("Error loading mutator library %s"NL, lib_path);
+        return DRMF_ERROR;
+    }
+
+    /* version check */
+    ver_compat = (int *)
+        dr_lookup_aux_library_routine(api->handle, DRFUZZLIB_VERSION_COMPAT_NAME);
+    ver_cur = (int *)
+        dr_lookup_aux_library_routine(api->handle, DRFUZZLIB_VERSION_CUR_NAME);
+    if (ver_compat == NULL || ver_cur == NULL ||
+        *ver_compat > DRFUZZLIB_MIN_VERSION_USED ||
+        *ver_cur < DRFUZZLIB_MIN_VERSION_USED) {
+        DRFUZZ_ERROR("Version %d mismatch with mutator library %s version %d-%d"NL,
+                     DRFUZZLIB_MIN_VERSION_USED, lib_path,
+                     (ver_compat == NULL) ? -1 : *ver_cur,
+                     (ver_compat == NULL) ? -1 : *ver_cur);
+        dr_unload_aux_library(api->handle);
+        return DRMF_ERROR;
+    }
+    DRFUZZ_LOG(1, "Loaded mutator library %s ver=%d-%d\n",
+               lib_path, *ver_compat, *ver_cur);
+
+    if (BINDFUNC(api, func, drfuzz_mutator_start) == NULL ||
+        BINDFUNC(api, func, drfuzz_mutator_has_next_value) == NULL ||
+        BINDFUNC(api, func, drfuzz_mutator_get_current_value) == NULL ||
+        BINDFUNC(api, func, drfuzz_mutator_get_next_value) == NULL ||
+        BINDFUNC(api, func, drfuzz_mutator_stop) == NULL) {
+        DRFUZZ_ERROR("Required export %s missing from mutator library %s"NL,
+                     func, lib_path);
+        dr_unload_aux_library(api->handle);
+        return DRMF_ERROR;
+    }
+
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT drmf_status_t
+drfuzz_mutator_unload(IN drfuzz_mutator_api_t *api)
+{
+    if (api == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (api == &default_mutator)
+        return DRMF_SUCCESS;
+    if (!dr_unload_aux_library(api->handle)) {
+        DRFUZZ_ERROR("Failed to unload mutator library");
+        return DRMF_ERROR;
+    }
+    return DRMF_SUCCESS;
 }
