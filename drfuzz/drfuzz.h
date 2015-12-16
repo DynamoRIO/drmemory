@@ -39,6 +39,7 @@
 #include "drmemory_framework.h"
 #include "../framework/drmf.h"
 #include "drwrap.h"
+#include "drfuzz_mutator.h" /* for drfuzz_mutator_t */
 
 /**
  * @file drfuzz.h
@@ -465,8 +466,6 @@ drfuzz_target_iterator_stop(drfuzz_target_iterator_t *iter);
 /***************************************************************************
  * Mutation
  */
-
-typedef void * drfuzz_mutator_t;
 
 typedef struct _drfuzz_mutator_api_t {
     size_t struct_size;
