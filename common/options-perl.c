@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -46,6 +46,7 @@
 %typenm = ( 'bool' => '',
             'uint' => ' <int>', /* we have range so simplify as "int" */
             'int'  => ' <int>',
+            'uint64'  => ' <int64>',
             'opstring_t' => ' <string>',
             'multi_opstring_t' => ' <string>' );
 

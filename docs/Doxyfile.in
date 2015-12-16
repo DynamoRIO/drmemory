@@ -82,7 +82,7 @@ ENABLED_SECTIONS       = SCOPE_IS_PUBLIC_front SCOPE_IS_PUBLIC_side \
                          SCOPE_IS_PUBLIC_post SCOPE_IS_PUBLIC_script \
                          SCOPE_IS_PUBLIC_client TYPE_IS_BOOL_bool \
                          TYPE_IS_STRING_opstring_t TYPE_HAS_RANGE_uint \
-                         TYPE_HAS_RANGE_int \
+                         TYPE_HAS_RANGE_int TYPE_HAS_RANGE_uint64 \
                          TYPE_IS_STRING_multi_opstring_t
 MAX_INITIALIZER_LINES  = 30
 SHOW_USED_FILES        = YES

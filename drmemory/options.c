@@ -106,16 +106,19 @@ enum {
     TYPE_IS_BOOL_opstring_t = false,
     TYPE_IS_BOOL_multi_opstring_t = false,
     TYPE_IS_BOOL_uint       = false,
+    TYPE_IS_BOOL_uint64     = false,
     TYPE_IS_BOOL_int        = false,
     TYPE_IS_STRING_bool       = false,
     TYPE_IS_STRING_opstring_t = true,
     TYPE_IS_STRING_multi_opstring_t = false,
     TYPE_IS_STRING_uint       = false,
+    TYPE_IS_STRING_uint64     = false,
     TYPE_IS_STRING_int        = false,
     TYPE_HAS_RANGE_bool       = false,
     TYPE_HAS_RANGE_opstring_t = false,
     TYPE_HAS_RANGE_multi_opstring_t = false,
     TYPE_HAS_RANGE_uint       = true,
+    TYPE_HAS_RANGE_uint64     = true,
     TYPE_HAS_RANGE_int        = true,
 };
 
@@ -193,8 +196,29 @@ option_error(const char *whichop, const char *msg)
 }
 
 static inline const char *
+option_read_uint64(const char *s, char *word, void *var_in /* really uint64* */,
+                   const char *opname, uint64 minval, uint64 maxval)
+{
+    uint64 *var = (uint64 *) var_in;
+    ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
+    s = get_option_word(s, word);
+    if (s == NULL || word[0] == '\0')
+        option_error(opname, "missing value");
+    /* %u allows negative so we explicitly check */
+    if (word[0] == '-')
+        option_error(opname, "negative value not allowed");
+    /* allow hex: must read it first, else 0 in 0x will be taken */
+    if (dr_sscanf(word, "0x" HEX64_FORMAT_STRING, var) != 1 &&
+        dr_sscanf(word, UINT64_FORMAT_STRING, var) != 1)
+        option_error(opname, "invalid unsigned 64-bit integer");
+    if (*var < minval || *var > maxval)
+        option_error(opname, "value is outside allowed range");
+    return s;
+}
+
+static inline const char *
 option_read_uint(const char *s, char *word, void *var_in /* really uint* */,
-                 const char *opname, uint minval, uint maxval)
+                 const char *opname, uint minval, uint64 maxval)
 {
     uint *var = (uint *) var_in;
     ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
@@ -215,7 +239,7 @@ option_read_uint(const char *s, char *word, void *var_in /* really uint* */,
 
 static inline const char *
 option_read_int(const char *s, char *word, void *var_in /* really int* */,
-                const char *opname, int minval, int maxval)
+                const char *opname, int minval, int64 maxval)
 {
     int *var = (int *) var_in;
     ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
@@ -233,7 +257,7 @@ option_read_int(const char *s, char *word, void *var_in /* really int* */,
 
 static inline const char *
 option_read_opstring_t(const char *s, char *word, void *var_in /* really opstring_t* */,
-                       const char *opname, /*ignored: */int minval, int maxval)
+                       const char *opname, /*ignored: */int minval, uint64 maxval)
 {
     opstring_t *var = (opstring_t *) var_in;
     const char *pre_s = s;
@@ -255,7 +279,7 @@ option_read_opstring_t(const char *s, char *word, void *var_in /* really opstrin
 static inline const char *
 option_read_multi_opstring_t(const char *s, char *word,
                              void *var_in /* really multi_opstring_t* */,
-                             const char *opname, /*ignored: */int minval, int maxval)
+                             const char *opname, /*ignored: */int minval, uint64 maxval)
 {
     multi_opstring_t *var = (multi_opstring_t *) var_in;
     char *c;
@@ -275,7 +299,7 @@ option_read_multi_opstring_t(const char *s, char *word,
 
 static inline const char *
 option_read_bool(const char *s, char *word, void *var_in /* really bool* */,
-                 const char *opname, int minval/*really bool*/, int maxval/*ignored*/)
+                 const char *opname, int minval/*really bool*/, uint64 maxval/*ignored*/)
 {
     bool *var = (bool *) var_in;
     *var = (bool) minval;
@@ -307,12 +331,12 @@ options_init(const char *opstr)
             if (stri_eq(word, "-"#name)) {                              \
                 option_specified.name = true;                           \
                 s = option_read_bool(s, NULL, (void *)&options.name,    \
-                                     "-"#name, true, max);              \
+                                     "-"#name, true, 0);                \
                 continue; /* match found */                             \
             } else if (stri_eq(word, "-no_"#name)) {                    \
                 option_specified.name = true;                           \
                 s = option_read_bool(s, NULL, (void *)&options.name,    \
-                                     "-"#name, false, max);             \
+                                     "-"#name, false, 0);               \
                 continue; /* match found */                             \
             }                                                           \
         } else if (stri_eq(word, "-"#name)) {                           \
@@ -635,8 +659,9 @@ options_print_usage()
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
+            type _tmp = defval; /* work around cl bogus integer overflow if in [] */ \
             NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
-                             bool_string[(ptr_int_t)defval], short);    \
+                             bool_string[(ptr_int_t)_tmp], short);      \
             ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,    \
                    "defval must be true/false");                        \
         } else if (TYPE_HAS_RANGE_##type)                               \
