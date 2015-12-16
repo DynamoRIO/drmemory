@@ -156,3 +156,15 @@ if (NOT X64)
     newtest_ex(fuzz_threads fuzz_winthreads.c "" "${fuzz_threads_drmem_ops}" "" OFF "" 0)
   endif (UNIX)
 endif (NOT X64)
+
+# Test custom mutator
+add_library(custom_mutator SHARED custom_mutator.c)
+configure_DynamoRIO_client(custom_mutator)
+# This is a little awkward: it might be better to do this in framework/ and configure
+# as a DRMF client?  But we want to test end-to-end Dr. Memory custom mutators here.
+append_test_compile_flags(custom_mutator "-UX86 -I${PROJECT_SOURCE_DIR}/drfuzz -I${PROJECT_BINARY_DIR}/drmf/include")
+get_relative_location(custom_mutator mutator_libpath)
+newtest_nobuild_ex(fuzz_custom_mutator fuzz_buffer
+  "initialize"
+  "-fuzz_function;repeatme;-fuzz_num_iters;10;-fuzz_mutator_lib;${mutator_libpath};-fuzz_mutator_ops;-add 0xdeadbeef"
+  "" OFF "" 0 "")

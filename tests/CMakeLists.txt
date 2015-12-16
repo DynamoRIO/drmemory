@@ -101,6 +101,13 @@ function(set_props target)
   if (VMKERNEL)
     set(defs ${defs} VMX86_SERVER)
   endif (VMKERNEL)
+  # DrMem itself gets ARM from dr_api.h but tests need it on their own:
+  if (ARM)
+    set(defs ${defs} ARM)
+  endif ()
+  if (X86)
+    set(defs ${defs} X86)
+  endif ()
   set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
     ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
   # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
@@ -253,14 +260,6 @@ endif (TOOL_DR_MEMORY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/runtest.cmake" COPYONLY)
 set(cmd_script -P "${PROJECT_BINARY_DIR}/tests/runtest.cmake")
-
-# DrMem itself gets ARM from dr_api.h but tests need it on their own:
-if (ARM)
-  add_definitions(-DARM)
-endif ()
-if (X86)
-  add_definitions(-DX86)
-endif ()
 
 # test_ops and drmem_ops should have words separated by ; so they'll
 # be separate arguments on the cmdline, while dr_ops should be
