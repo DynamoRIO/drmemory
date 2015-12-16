@@ -794,8 +794,10 @@ check_program_counter(void *drcontext, app_pc pc, instr_t *inst)
     if (shadow_get_byte(&info, pc) == SHADOW_UNADDRESSABLE &&
         !is_in_realloc_gencode(pc) &&
         !in_replace_routine(pc)
-        /* on Linux replace_* routines call into PIC routines elsewhere in the library */
-        IF_LINUX(&& !is_in_client_or_DR_lib(pc))) {
+        /* On Unix replace_* routines call into PIC routines elsewhere in the library.
+         * Plus, we execute code from replace_native_ret as the app.
+         */
+        IF_UNIX(&& !is_in_client_or_DR_lib(pc))) {
         size_t sz = instr_length(drcontext, inst);
         app_loc_t loc;
         dr_mcontext_t mc;
