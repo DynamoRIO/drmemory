@@ -629,6 +629,16 @@ iterator_unlock(arena_header_t *arena, bool in_alloc)
 #endif
 }
 
+#if defined(WINDOWS) && defined(X64)
+static app_pc
+get_replace_native_caller(void *drcontext)
+{
+    /* drwrap saved the retaddr slot for us */
+    byte *app_xsp = (byte *) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_SP_SLOT);
+    return *(app_pc *)app_xsp;
+}
+#endif
+
 /* This must be inlined to get an xsp that's in the call chain */
 #define INITIALIZE_MCONTEXT_FOR_REPORT(mc) do {            \
     /* assumption: we only need xsp and xbp initialized */ \
@@ -3561,6 +3571,12 @@ replace_start_nosy_sequence(void *wrapcxt, OUT void **user_data)
     cls_replace_t *data = (cls_replace_t *)
         drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_replace);
     data->in_nosy_heap_region++;
+    LOG(4, "%s: counter=%d\n", __FUNCTION__, data->in_nosy_heap_region);
+    DOLOG(4, {
+        dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_INTEGER);
+        client_print_callstack(drwrap_get_drcontext(wrapcxt), mc,
+                               (app_pc)addr_RtlGetThreadPreferredUILanguages);
+    });
 }
 
 static void
@@ -3571,6 +3587,12 @@ replace_stop_nosy_sequence(void *wrapcxt, OUT void **user_data)
     ASSERT(data->in_nosy_heap_region > 0, "missed in_native stop");
     if (data->in_nosy_heap_region > 0) /* try to recover */
         data->in_nosy_heap_region--;
+    LOG(4, "%s: counter=%d\n", __FUNCTION__, data->in_nosy_heap_region);
+    DOLOG(4, {
+        dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_INTEGER);
+        client_print_callstack(drwrap_get_drcontext(wrapcxt), mc,
+                               (app_pc)addr_RtlGetThreadPreferredUILanguages);
+    });
 }
 
 static void
@@ -3668,28 +3690,33 @@ replace_leave_native(void *drcontext, dr_mcontext_t *mc, HANDLE heap,
          */
         bool found_normal_free = false;
         instr_t inst;
-        app_pc pc, app_caller = callstack_next_retaddr(mc);
+        app_pc pc;
 #       define NOSY_MAX_DECODE 512
-        if (app_caller < ntdll_base || app_caller > ntdll_end) /* sanity check */
-            return false;
         instr_init(drcontext, &inst);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-            for (pc = app_caller; pc < app_caller + NOSY_MAX_DECODE; ) {
-                pc = decode(drcontext, pc, &inst);
-                if (instr_valid(&inst) && instr_is_call_direct(&inst)) {
-                    if (opnd_get_pc(instr_get_target(&inst)) ==
-                        (app_pc)native_RtlFreeHeap) {
-                        LOG(3, "%s: found call to RtlFreeHeap => not a native alloc\n",
-                            __FUNCTION__);
-                        DOLOG(3, {
-                            client_print_callstack(dr_get_current_drcontext(), mc,
-                                                   (app_pc)native_RtlAllocateHeap);
-                        });
-                        found_normal_free = true;
-                        break;
+            /* i#1833: we used to call callstack_next_retaddr(mc) but it can produce
+             * bogus frames w/o unwind data, so we go with the more robust drwrap
+             * retaddr slot:
+             */
+            app_pc app_caller = get_replace_native_caller(drcontext);
+            if (app_caller >= ntdll_base && app_caller < ntdll_end) { /* sanity check */
+                for (pc = app_caller; pc < app_caller + NOSY_MAX_DECODE; ) {
+                    pc = decode(drcontext, pc, &inst);
+                    if (instr_valid(&inst) && instr_is_call_direct(&inst)) {
+                        if (opnd_get_pc(instr_get_target(&inst)) ==
+                            (app_pc)native_RtlFreeHeap) {
+                            LOG(3, "%s: found RtlFreeHeap call => not a native alloc\n",
+                                __FUNCTION__);
+                            DOLOG(3, {
+                                client_print_callstack(dr_get_current_drcontext(), mc,
+                                                       (app_pc)native_RtlAllocateHeap);
+                            });
+                            found_normal_free = true;
+                            break;
+                        }
                     }
+                    instr_reset(drcontext, &inst);
                 }
-                instr_reset(drcontext, &inst);
             }
         }, { /* EXCEPT */
             found_normal_free = false;
