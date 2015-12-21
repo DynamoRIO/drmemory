@@ -34,7 +34,10 @@
 #include "drvector.h"
 #include "alloc.h"
 
-#ifdef WINDOWS
+#ifdef UNIX
+# include <dirent.h> /* opendir, readdir */
+#else
+# include <windows.h>
 # include "dbghelp.h"
 #endif
 
@@ -85,6 +88,17 @@ typedef struct _fuzz_state_t {
     uint repeat_index;
     uint skip_initial;       /* number of target invocations remaining to skip */
     thread_id_t thread_id;   /* always safe to access without lock */
+    drfuzz_mutator_t *mutator;
+    uint64 num_bbs;          /* number of basic blocks seen */
+
+    /* fields for corpus based mutation */
+    /* index in corpus_vec indicating which input file has been executed */
+    uint   corpus_index;
+    /* index in mutator_vec indicating which mutator to be used */
+    uint   mutator_index;
+    bool   should_mutate;    /* perform mutation on mutators from mutator_vec */
+    bool   use_orig_input;   /* run with original input from app */
+
     /* While fields below are thread-local like the others, they may be read
      * by another thread at any time, i.e., during error reporting.
      * For error reporting code (e.g., fuzz_error_report) that may access other
@@ -94,11 +108,8 @@ typedef struct _fuzz_state_t {
      * before updating those fields.
      */
     byte *input_buffer;      /* reference to the fuzz target's buffer arg */
-    byte *input_buffer_copy; /* threadsafe copy of the fuzz target's buffer arg */
     byte *mutation_start;    /* start of mutation region within the input_buffer */
     size_t input_size;       /* size of the fuzz target's buffer arg */
-    drfuzz_mutator_t *mutator;
-    uint64 num_bbs;          /* number of basic blocks seen */
 } fuzz_state_t;
 
 /* List of the fuzz states for all process threads. Protected by fuzz_state_lock.
@@ -137,9 +148,29 @@ typedef struct _fuzz_target_t {
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
     bool use_bbcov;         /* use basic block coverage info for mutation */
+    /* fields that need fuzz_target_lock for synchronized update */
+    thread_id_t tid;        /* the thread that performs fuzzing */
 } fuzz_target_t;
 
 static fuzz_target_t fuzz_target;
+
+/* Synchronize the fuzz_target fields update */
+static void *fuzz_target_lock;
+
+
+/* Tables for corpus based fuzzing.
+ * FIXME i#1842: we do not support multiple threads fuzzing the same target function.
+ */
+/* The corpus_vec stores corpus input file names.
+ * All its operations are synchronized.
+ */
+drvector_t corpus_vec;
+/* The mutator_vec stores created mutators.
+ * All its operations are synchronized.
+ */
+drvector_t mutator_vec;
+#define CORPUS_VEC_INIT_SIZE 64
+#define MUTATOR_VEC_INIT_SIZE 64
 
 static drfuzz_mutator_api_t mutator_api = {sizeof(mutator_api),};
 static int mutator_argc;
@@ -147,7 +178,7 @@ static char **mutator_argv;
 
 static bool fuzzer_initialized;
 
-/* Protects the fuzz_state_t fields input_buffer_copy and input_size for access from
+/* Protects the fuzz_state_t fields input_buffer and input_size for access from
  * other threads while the fuzz_state_t owner thread is fuzzing its target. Also
  * protects the state_list during thread init/exit and error reporting.
  */
@@ -188,6 +219,77 @@ fuzzer_option_init();
 static void
 fuzzer_mutator_option_exit(void);
 
+static drfuzz_mutator_t *
+fuzzer_mutator_copy(void *dcontext, fuzz_state_t *state);
+
+static ssize_t
+load_fuzz_corpus_input(void *dcontext, const char *fname, fuzz_state_t *state);
+
+static bool
+dump_fuzz_corpus_input(void *dcontext, fuzz_state_t *state);
+
+static void
+mutator_vec_entry_free(void *entry)
+{
+    mutator_api.drfuzz_mutator_stop(entry);
+}
+
+static void
+corpus_vec_entry_free(void *entry)
+{
+    global_free(entry, strlen(entry) + 1, HEAPSTAT_MISC);
+}
+
+/* Called once at initialization to read the corpus file list for loading later. */
+#ifdef UNIX
+static bool
+fuzzer_read_corpus_list(void)
+{
+    DIR *dir;
+    struct dirent *ent;
+
+    LOG(2, "Reading corpus directory %s\n", options.fuzz_corpus);
+    dir = opendir(options.fuzz_corpus);
+    if (dir == NULL) {
+        /* could not open directory */
+        FUZZ_ERROR("Failed to open directory '%s'"NL, options.fuzz_corpus);
+        return false;
+    }
+    for (ent = readdir(dir); ent != NULL; ent = readdir(dir)) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+            continue;
+        /* add corpus into the vector for later execution */
+        drvector_append(&corpus_vec, drmem_strdup(ent->d_name, HEAPSTAT_MISC));
+    }
+    closedir(dir);
+    return true;
+}
+#else
+static bool
+fuzzer_read_corpus_list(void)
+{
+    HANDLE h_find = INVALID_HANDLE_VALUE;
+    WIN32_FIND_DATA ffd;
+    char path[MAXIMUM_PATH];
+
+    /* append \* to the end */
+    dr_snprintf(path, BUFFER_SIZE_ELEMENTS(path), "%s\\*", options.fuzz_corpus);
+    NULL_TERMINATE_BUFFER(path);
+    LOG(2, "Reading corpus directory %s\n", path);
+    h_find = FindFirstFile(path, &ffd);
+    if (h_find == INVALID_HANDLE_VALUE) {
+        ASSERT(false, "Failed to read corpus directory\n");
+        return false;
+    }
+    do {
+        if (!TESTANY(ffd.dwFileAttributes, FILE_ATTRIBUTE_DIRECTORY))
+            drvector_append(&corpus_vec, drmem_strdup(ffd.cFileName, HEAPSTAT_MISC));
+    } while (FindNextFile(h_find, &ffd) != 0);
+    FindClose(h_find);
+    return true;
+}
+#endif
+
 static inline void
 replace_char(char *dst, char old, char new)
 {
@@ -201,6 +303,7 @@ void
 fuzzer_init(client_id_t client_id)
 {
     fuzz_state_lock = dr_mutex_create();
+    fuzz_target_lock = dr_mutex_create();
 
     drmgr_init();
     if (drfuzz_init(client_id) != DRMF_SUCCESS)
@@ -228,17 +331,33 @@ fuzzer_init(client_id_t client_id)
 
     fuzzer_initialized = true;
     fuzzer_option_init();
+    if (option_specified.fuzz_corpus) {
+        drvector_init(&corpus_vec, CORPUS_VEC_INIT_SIZE, true/*sync*/,
+                      corpus_vec_entry_free);
+        drvector_init(&mutator_vec, MUTATOR_VEC_INIT_SIZE, true/*sync*/,
+                      mutator_vec_entry_free);
+        if (!fuzzer_read_corpus_list()) {
+            NOTIFY_ERROR("Fuzzer failed to read corpus list."NL);
+            dr_abort();
+        }
+    }
 }
 
 void
 fuzzer_exit()
 {
     uint64 num_bbs;
+
+    if (option_specified.fuzz_corpus) {
+        drvector_delete(&mutator_vec);
+        drvector_delete(&corpus_vec);
+    }
     fuzzer_mutator_option_exit();
 
     free_fuzz_target();
 
     dr_mutex_destroy(fuzz_state_lock);
+    dr_mutex_destroy(fuzz_target_lock);
 
     drfuzz_get_target_num_bbs(NULL, &num_bbs);
     LOG(1, LOG_PREFIX" "SZFMT" basic blocks seen during execution.\n", num_bbs);
@@ -521,6 +640,9 @@ load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
         if (!dr_file_size(data, &file_size)) {
             FUZZ_ERROR("Failed to get input file size."NL);
             file_size = (uint64)state->input_size;
+        } else if (file_size == 0) {
+            FUZZ_WARN("Empty file."NL);
+            return 0;
         } else if (state->input_size != (size_t)file_size) {
             input_buffer = drfuzz_reallocate_buffer(dcontext, (size_t)file_size,
                                                     (app_pc)fuzz_target.pc);
@@ -548,36 +670,70 @@ load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
     return read_size;
 }
 
-static bool
-dump_fuzz_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
-                size_t *sofar, ssize_t *len, char *prefix, int eid)
+static ssize_t
+load_fuzz_corpus_input(void *dcontext, const char *fname, fuzz_state_t *state)
 {
-    char buf[MAXIMUM_PATH];
-    char suffix[32];
-    file_t data;
+    char path[MAXIMUM_PATH];
+    if (dr_snprintf(path, BUFFER_SIZE_ELEMENTS(path),
+                    "%s%c%s", options.fuzz_corpus, DIRSEP, fname) <= 0) {
+        FUZZ_WARN("Failed to get full path of log file %s\n", fname);
+        return -1;
+    }
+    return load_fuzz_input(dcontext, path, state);
+}
 
-    dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), "error.%d.dat", eid);
-    NULL_TERMINATE_BUFFER(suffix);
-
-    data = drx_open_unique_appid_file(logsubdir,
-                                      dr_get_process_id(),
-                                      "fuzz", suffix,
-                                      DR_FILE_ALLOW_LARGE,
-                                      buf, BUFFER_SIZE_ELEMENTS(buf));
+static bool
+dump_fuzz_input(fuzz_state_t *state, char *logdir, char *suffix, char *path, size_t size)
+{
+    file_t data = drx_open_unique_appid_file(logdir,
+                                             dr_get_process_id(),
+                                             "fuzz", suffix, 0, path, size);
     if (data == INVALID_FILE) {
-        ELOG(1, "Failed to create/dump fuzz input to file");
+        FUZZ_ERROR("Failed to create/dump fuzz input to file."NL);
         return false;
     }
     if (dr_write_file(data, state->input_buffer, state->input_size) !=
         state->input_size) {
-        ELOG(1, "Partial fuzz input is dumped to file");
+        FUZZ_ERROR("Partial fuzz input is dumped to file."NL);
     }
     dr_close_file(data);
-
-    BUFPRINT(buffer, buffer_size, *sofar, *len,
-             "%sfuzz input for error #%d is stored in file %s\n",
-             prefix, eid, buf);
+    LOG(2, "Dumped input to file %s."NL, path);
     return true;
+}
+
+/* dump current fuzz input data into corpus directory */
+#define CORPUS_FILE_SUFFIX "corpus.dat"
+static bool
+dump_fuzz_corpus_input(void *dcontext, fuzz_state_t *state)
+{
+    char suffix[32];
+    char *logdir;
+    char path[MAXIMUM_PATH];
+    logdir = options.fuzz_corpus;
+    dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), CORPUS_FILE_SUFFIX);
+    NULL_TERMINATE_BUFFER(suffix);
+    return dump_fuzz_input(state, logdir, suffix, path, BUFFER_SIZE_ELEMENTS(path));
+}
+
+static bool
+dump_fuzz_error_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
+                      size_t *sofar, ssize_t *len, char *prefix, int eid)
+{
+    char suffix[32];
+    char path[MAXIMUM_PATH];
+    dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), "error.%d.dat", eid);
+    NULL_TERMINATE_BUFFER(suffix);
+    if (dump_fuzz_input(state, logsubdir, suffix, path, BUFFER_SIZE_ELEMENTS(path))) {
+        BUFPRINT(buffer, buffer_size, *sofar, *len,
+                 "%sfuzz input for error #%d is stored in file %s\n",
+                 prefix, eid, path);
+        return true;
+    } else {
+        BUFPRINT(buffer, buffer_size, *sofar, *len,
+                 "%sfailed to dump fuzz input for error #%d to file %s\n",
+                 prefix, eid, path);
+    }
+    return false;
 }
 
 static void
@@ -675,8 +831,8 @@ fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size, 
 
     if (fuzzing_thread_count > 0) {
         if (options.fuzz_dump_on_error) {
-            dump_fuzz_input(this_thread, notify, notify_size, &sofar,
-                            &len, INFO_PFX, eid);
+            dump_fuzz_error_input(this_thread, notify, notify_size, &sofar,
+                                  &len, INFO_PFX, eid);
         } else {
             BUFPRINT(notify, notify_size, sofar, len,
                      INFO_PFX"%d threads were executing fuzz targets."NL""INFO_PFX,
@@ -926,7 +1082,7 @@ init_thread_shadow_state(OUT shadow_state_t **shadow_out)
 }
 
 static void
-shadow_state_init(void *dcontext, fuzz_state_t *fuzz_state, dr_mcontext_t *mc)
+shadow_state_init(void *dcontext, fuzz_state_t *state, dr_mcontext_t *mc, bool save_input)
 {
     shadow_state_t *shadow;
     /* We only need to save shadow state for uninit check. */
@@ -937,7 +1093,7 @@ shadow_state_init(void *dcontext, fuzz_state_t *fuzz_state, dr_mcontext_t *mc)
     if (!init_thread_shadow_state(&shadow)) {
         FUZZ_ERROR("Failed to initialize the shadow memory state for target "PIFX
                    "on thread 0x%x. Disabling the fuzz target."NL,
-                   fuzz_target.pc, fuzz_state->thread_id);
+                   fuzz_target.pc, state->thread_id);
         fuzz_target.enabled = false;
         return;
     }
@@ -947,12 +1103,20 @@ shadow_state_init(void *dcontext, fuzz_state_t *fuzz_state, dr_mcontext_t *mc)
      * should not be changed.
      */
     shadow_state_save_stack_frame(mc, shadow);
-    shadow->buffer_shadow = shadow_save_region(fuzz_state->input_buffer,
-                                               fuzz_state->input_size);
+    if (save_input) {
+        shadow->buffer_shadow = shadow_save_region(state->input_buffer,
+                                                   state->input_size);
+    } else {
+        shadow->buffer_shadow = NULL;
+        shadow_set_range(state->input_buffer,
+                         state->input_buffer + state->input_size,
+                         SHADOW_DEFINED);
+    }
  }
 
 static void
-shadow_state_restore(void *dcontext, void *fuzzcxt, dr_mcontext_t *mc)
+shadow_state_restore(void *dcontext, void *fuzzcxt,
+                     fuzz_state_t *state, dr_mcontext_t *mc)
 {
     drmf_status_t res;
     shadow_state_t *shadow;
@@ -972,7 +1136,13 @@ shadow_state_restore(void *dcontext, void *fuzzcxt, dr_mcontext_t *mc)
         return;
     }
     shadow_state_restore_stack_frame(mc, shadow);
-    shadow_restore_region(shadow->buffer_shadow);
+    if (shadow->buffer_shadow != NULL)
+        shadow_restore_region(shadow->buffer_shadow);
+    else {
+        shadow_set_range(state->input_buffer,
+                         state->input_buffer + state->input_size,
+                         SHADOW_DEFINED);
+    }
 }
 
 static void
@@ -1089,8 +1259,6 @@ find_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt, generic_func_t targe
     dr_mutex_lock(fuzz_state_lock);
     fuzz_state->input_size = input_size;
     fuzz_state->input_buffer = input_buffer;
-    fuzz_state->input_buffer_copy = global_alloc(fuzz_state->input_size, HEAPSTAT_MISC);
-    memcpy(fuzz_state->input_buffer_copy, input_buffer, fuzz_state->input_size);
     dr_mutex_unlock(fuzz_state_lock);
 
     return fuzz_target.enabled;
@@ -1101,10 +1269,10 @@ free_target_buffer(fuzz_state_t *fuzz_state, void *fuzzcxt)
 {
     byte *buffer;
     dr_mutex_lock(fuzz_state_lock);
-    global_free(fuzz_state->input_buffer_copy, fuzz_state->input_size, HEAPSTAT_MISC);
     fuzz_state->input_size = 0;
     buffer = fuzz_state->input_buffer;
     fuzz_state->input_buffer = NULL;
+    fuzz_state->repeat_index = 0;
     dr_mutex_unlock(fuzz_state_lock);
     if (options.fuzz_replace_buffer && buffer != NULL) {
         drfuzz_free_reallocated_buffer(drfuzz_get_drcontext(fuzzcxt), buffer,
@@ -1123,7 +1291,6 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
         fuzz_target.buffer_fixed_size < mutation_size)
         mutation_size = fuzz_target.buffer_fixed_size;
 
-    fuzz_state->repeat_index = 0;
     if (fuzz_target.repeat_count < 0)
         LOG(1, LOG_PREFIX" Repeating until mutator is exhausted.\n");
 
@@ -1134,7 +1301,7 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
     });
 
     if (fuzz_state->mutator != NULL) {
-        drfuzz_mutator_stop(fuzz_state->mutator); /* in case a target was aborted */
+        mutator_api.drfuzz_mutator_stop(fuzz_state->mutator);
         fuzz_state->mutator = NULL;
     }
 
@@ -1145,6 +1312,29 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
         NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
         dr_abort();
     }
+}
+
+/* create new mutator with existing mutator's current value as input seed */
+static drfuzz_mutator_t *
+fuzzer_mutator_copy(void *dcontext, fuzz_state_t *state)
+{
+    drmf_status_t res;
+    drfuzz_mutator_t *mutator;
+    void *input = global_alloc(state->input_size, HEAPSTAT_MISC);
+    res = mutator_api.drfuzz_mutator_get_current_value(state->mutator, input);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to get current mutator value."NL);
+        global_free(input, state->input_size, HEAPSTAT_MISC);
+        return NULL;
+    }
+    res = mutator_api.drfuzz_mutator_start
+        (&mutator, input, state->input_size, mutator_argc, (const char **)mutator_argv);
+    global_free(input, state->input_size, HEAPSTAT_MISC);
+    if (res != DRMF_SUCCESS) {
+        FUZZ_ERROR("Failed to copy the mutator."NL);
+        return NULL;
+    }
+    return mutator;
 }
 
 static void
@@ -1192,6 +1382,69 @@ fuzzer_mutator_exit(fuzz_state_t *fuzz_state)
     }
 }
 
+/* Pre fuzz function for corpus based fuzzing.
+ * We have two phases: corpus phase and mutate phase.
+ * In the corpus phase (if state->should_mutate is false), we load corpus inputs
+ * from corpus_vec for execution and create mutators for future fuzzing.
+ * The newly created mutators will be added into mutator_vec in post_fuzz_corpus.
+ * In the mutate phase (if state->should_mutate is true), we pick a mutator from
+ * the mutator_vec, perform mutation on it, and then execute the mutated input.
+ */
+static void
+pre_fuzz_corpus(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
+{
+    void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    fuzz_state_t *state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+
+    /* corpus phase */
+    if (!state->should_mutate) {
+        bool has_corpus = false;
+        while (state->corpus_index < corpus_vec.entries) {
+            char *fname = drvector_get_entry(&corpus_vec, state->corpus_index++);
+            ssize_t read_size;
+            read_size = load_fuzz_corpus_input(dcontext, fname, state);
+            if (read_size > 0) {
+                state->mutator = NULL;
+                fuzzer_mutator_init(dcontext, state);
+                if (state->repeat)
+                    shadow_state_restore(dcontext, fuzzcxt, state, mc);
+                else /* first fuzz loop */
+                    shadow_state_init(dcontext, state, mc, false);
+                has_corpus = true;
+                break;
+            }
+        }
+        if (!has_corpus &&
+            /* no corpus or all empty corpus, use current input */
+            (corpus_vec.entries == 0 || mutator_vec.entries == 0)) {
+            state->use_orig_input = true;
+            ASSERT(state->mutator == NULL, "mutator should be NULL");
+            fuzzer_mutator_init(dcontext, state);
+            shadow_state_init(dcontext, state, mc, false);
+        }
+        state->should_mutate = !has_corpus;
+    }
+
+    /* mutate phase */
+    if (state->should_mutate && mutator_vec.entries > 0) {
+        /* pick a mutator for fuzzing */
+        state->mutator = drvector_get_entry(&mutator_vec, state->mutator_index);
+        state->mutator_index++;
+        if (state->mutator_index >= mutator_vec.entries)
+            state->mutator_index = 0;
+        ASSERT(state->mutator != NULL, "corpus mutator must not be NULL");
+        fuzzer_mutator_next(dcontext, state);
+        shadow_state_restore(dcontext, fuzzcxt, state, mc);
+    }
+
+    if (options.fuzz_replace_buffer) {
+        ASSERT(state->input_buffer != NULL,
+               "fuzz input buffer must not be NULL");
+        drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, state->input_buffer);
+        drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)state->input_size);
+    }
+}
+
 static void
 pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
@@ -1200,12 +1453,28 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 
     LOG(2, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
 
-    if (!fuzz_target.enabled || fuzz_state->skip_initial > 0)
+    /* i#1782: pick the first thread that hit target function for fuzzing */
+    dr_mutex_lock(fuzz_target_lock);
+    if (fuzz_target.tid == 0)
+        fuzz_target.tid = dr_get_thread_id(dcontext);
+    dr_mutex_unlock(fuzz_target_lock);
+
+    if (!fuzz_target.enabled || fuzz_state->skip_initial > 0 ||
+        /* FIXME i#1782: no multiple threads fuzzing support */
+        fuzz_target.tid != dr_get_thread_id(dcontext))
         return;
 
+    /* find buffer arg and size arg */
+    if (!fuzz_state->repeat && !find_target_buffer(fuzz_state, fuzzcxt, target_pc))
+        return;
+
+    if (option_specified.fuzz_corpus) {
+        /* separate handling for fuzzing with corpus */
+        pre_fuzz_corpus(fuzzcxt, target_pc, mc);
+        return;
+    }
+
     if (!fuzz_state->repeat) {
-        if (!find_target_buffer(fuzz_state, fuzzcxt, target_pc))
-            return;
         if (option_specified.fuzz_input_file) {
             if (load_fuzz_input(dcontext, options.fuzz_input_file, fuzz_state) == 0) {
                 /* fail to load input, do not fuzz */
@@ -1222,7 +1491,7 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, fuzz_state->input_buffer);
             drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)fuzz_state->input_size);
         }
-        shadow_state_init(dcontext, fuzz_state, mc);
+        shadow_state_init(dcontext, fuzz_state, mc, true);
         fuzzer_mutator_init(dcontext, fuzz_state);
         if (fuzz_target.repeat_count == 0)
             return;
@@ -1231,8 +1500,47 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             return;
         }
     } else
-        shadow_state_restore(dcontext, fuzzcxt, mc);
+        shadow_state_restore(dcontext, fuzzcxt, fuzz_state, mc);
     fuzzer_mutator_next(dcontext, fuzz_state);
+}
+
+/* Post fuzz function for corpus based fuzzing.
+ * This is where any mutator is added into mutator_vec for future fuzzing.
+ */
+static bool
+post_fuzz_corpus(void *fuzzcxt, generic_func_t target_pc)
+{
+    uint64 num_bbs;
+    void *dcontext = drfuzz_get_drcontext(fuzzcxt);
+    fuzz_state_t *state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
+
+    if (drfuzz_get_target_num_bbs(target_pc, &num_bbs) == DRMF_SUCCESS) {
+        if (!state->should_mutate) {
+            /* corpus phase: simply add the mutator into mutator_vec */
+            drvector_append(&mutator_vec, (void *)state->mutator);
+        } else if (num_bbs > state->num_bbs) {
+            /* mutate phase: dump and add the mutator if we discover new bbs */
+            dump_fuzz_corpus_input(dcontext, state);
+            drvector_append(&mutator_vec,
+                            state->use_orig_input ?
+                            state->mutator : fuzzer_mutator_copy(dcontext, state));
+            state->use_orig_input = false;
+        }
+        state->num_bbs = num_bbs;
+    }
+
+    if (fuzz_target.repeat_count > 0 &&
+        state->repeat_index++ <= fuzz_target.repeat_count) {
+        state->repeat = true;
+        return true;
+    }
+
+    state->repeat = false;
+    shadow_state_exit(dcontext, fuzzcxt);
+    free_target_buffer(state, fuzzcxt);
+    /* for corpus fuzzing, we stop fuzzing even if we see the fuzz function again */
+    fuzz_target.enabled = false;
+    return false; /* stop fuzzing */
 }
 
 static bool
@@ -1242,7 +1550,9 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     fuzz_state_t *fuzz_state = (fuzz_state_t *) drmgr_get_tls_field(dcontext,
                                                                     tls_idx_fuzzer);
 
-    if (!fuzz_target.enabled)
+    if (!fuzz_target.enabled ||
+        /* FIXME i#1782: no multiple threads fuzzing support */
+        fuzz_target.tid != dr_get_thread_id(dcontext))
         return false; /* in case someone unfuzzed while a target was looping */
     if (fuzz_state->skip_initial > 0) {
         fuzz_state->skip_initial--;
@@ -1250,6 +1560,9 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     }
 
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
+
+    if (option_specified.fuzz_corpus)
+        return post_fuzz_corpus(fuzzcxt, target_pc);
 
     fuzzer_mutator_feedback(dcontext, target_pc, fuzz_state);
 
