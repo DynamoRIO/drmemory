@@ -72,23 +72,23 @@
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 #define MAX_APP_CMDLINE 4096
 
-#ifdef X64
-# define LIB_ARCH "lib64"
-# define BIN_ARCH "bin64"
-#else
-# define LIB_ARCH "lib32"
-# define BIN_ARCH "bin"
-#endif
+#define LIB64_ARCH "lib64"
+#define BIN64_ARCH "bin64"
+#define LIB32_ARCH "lib32"
+#define BIN32_ARCH "bin"
 
 #ifdef WINDOWS
 # define DR_LIB_NAME "dynamorio.dll"
 # define DRMEM_LIB_NAME "drmemorylib.dll"
+# define FRONTEND_NAME "drmemory.exe"
 #elif defined(LINUX)
 # define DR_LIB_NAME "libdynamorio.so"
 # define DRMEM_LIB_NAME "libdrmemorylib.so"
+# define FRONTEND_NAME "drmemory"
 #elif defined(MACOS)
 # define DR_LIB_NAME "libdynamorio.dylib"
 # define DRMEM_LIB_NAME "libdrmemorylib.dylib"
+# define FRONTEND_NAME "drmemory"
 #endif
 
 /* -shared_slowpath requires -disable_traces
@@ -711,6 +711,9 @@ _tmain(int argc, TCHAR *targv[])
     char default_drmem_root[MAXIMUM_PATH];
     char client_path[MAXIMUM_PATH];
 
+    const char *lib_arch = IF_X64_ELSE(LIB64_ARCH, LIB32_ARCH);
+    const char *bin_arch = IF_X64_ELSE(BIN64_ARCH, BIN32_ARCH);
+
     char client_ops[MAX_DR_CMDLINE];
     size_t cliops_sofar = 0; /* for BUFPRINT to client_ops */
     char dr_ops[MAX_DR_CMDLINE];
@@ -761,8 +764,7 @@ _tmain(int argc, TCHAR *targv[])
 #endif
 
     drfront_status_t sc;
-    IF_NOT_X64(bool is64;)
-    IF_NOT_X64(bool is32;)
+    bool is64, is32;
     dr_config_status_t status;
 
     if (dr_standalone_init() == NULL) {
@@ -1158,18 +1160,55 @@ _tmain(int argc, TCHAR *targv[])
         info("app cmdline: %s", buf);
     }
 
-#ifndef X64
-    /* Currently our builds and test suite are all single-arch and we don't
-     * have a 64-bit build in the release package, so for a 32-bit frontend
-     * we supply this useful message up front.  Once we do add 64-bit we'll
-     * want to solve i#1037 and then get rid of or modify this message.
-     */
     if (drfront_is_64bit_app(app_name, &is64, &is32) == DRFRONT_SUCCESS &&
-        is64 && !is32) {
-        fatal("This Dr. Memory release does not support 64-bit applications.");
+        IF_X64_ELSE(!is64, is64 && !is32)) {
+#ifdef MACOS
+        /* XXX DRi#1568: DR does not yet support 64-bit MacOS */
+        fatal("This Dr. Memory release does not support 64-bit applications on OSX.");
         goto error; /* actually won't get here */
-    }
 #endif
+        /* We launch the other frontend b/c drinjectlib doesn't support cross-arch
+         * injection (DRi#803).
+         */
+        char *orig_argv0 = argv[0];
+        lib_arch = IF_X64_ELSE(LIB32_ARCH, LIB64_ARCH);
+        bin_arch = IF_X64_ELSE(BIN32_ARCH, BIN64_ARCH);
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                  "%s%c%s%c%s", drmem_root, DIRSEP, bin_arch, DIRSEP, FRONTEND_NAME);
+        NULL_TERMINATE_BUFFER(buf);
+        if (!file_is_readable(buf)) {
+            fatal("unable to find frontend %s to match target app bitwidth: "
+                  "is this an incomplete installation?", buf);
+        }
+        argv[0] = buf;
+        info("launching frontend %s to match target app bitwidth", buf);
+        /* XXX DRi#943: this lib routine currently doesn't handle int18n */
+#ifdef WINDOWS
+        errcode = dr_inject_process_create(buf, (const char **)argv, &inject_data);
+#else
+        errcode = dr_inject_prepare_to_exec(buf, (const char **)argv, &inject_data);
+#endif
+        /* Mismatch is just a warning */
+        if (errcode == 0 || errcode == WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
+            dr_inject_process_run(inject_data);
+#ifdef WINDOWS
+            /* If we don't wait, the prompt comes back, which is confusing */
+            info("waiting for other frontend...");
+            errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data),
+                                          INFINITE);
+            if (errcode != WAIT_OBJECT_0)
+                info("failed to wait for frontend: %d\n", errcode);
+            dr_inject_process_exit(inject_data, false);
+#else
+            fatal("failed to exec frontend to match target app bitwidth");
+#endif
+            argv[0] = orig_argv0;
+            goto cleanup;
+        } else {
+            fatal("unable to launch frontend to match target app bitwidth: code=%d",
+                  errcode);
+        }
+    }
 
     if (!file_is_readable(dr_root)) {
         fatal("invalid -dr_root %s", dr_root);
@@ -1183,14 +1222,15 @@ _tmain(int argc, TCHAR *targv[])
         dr_root = default_dr_root;
     }
     _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-              "%s/"LIB_ARCH"/%s/%s", dr_root,
-              use_dr_debug ? "debug" : "release", DR_LIB_NAME);
+              "%s%c%s%c%s%c%s", dr_root, DIRSEP, lib_arch, DIRSEP,
+              use_dr_debug ? "debug" : "release", DIRSEP, DR_LIB_NAME);
     NULL_TERMINATE_BUFFER(buf);
     if (!file_is_readable(buf)) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                      "%s/"LIB_ARCH"/%s/%s", dr_root, "debug", DR_LIB_NAME);
+                      "%s%c%s%c%s%c%s", dr_root, DIRSEP, lib_arch, DIRSEP,
+                      "debug", DIRSEP, DR_LIB_NAME);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf)) {
                 fatal("cannot find DynamoRIO library %s", buf);
@@ -1203,14 +1243,14 @@ _tmain(int argc, TCHAR *targv[])
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
     _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
-              "%s%c"BIN_ARCH"%c%s%c%s", drmem_root, DIRSEP, DIRSEP,
+              "%s%c%s%c%s%c%s", drmem_root, DIRSEP, bin_arch, DIRSEP,
               use_drmem_debug ? "debug" : "release", DIRSEP, DRMEM_LIB_NAME);
     NULL_TERMINATE_BUFFER(client_path);
     if (!file_is_readable(client_path)) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
-                      "%s%c"BIN_ARCH"%c%s%c%s", drmem_root,
-                      DIRSEP, DIRSEP, "debug", DIRSEP, DRMEM_LIB_NAME);
+                      "%s%c%s%c%s%c%s", drmem_root, DIRSEP, bin_arch,
+                      DIRSEP, "debug", DIRSEP, DRMEM_LIB_NAME);
             NULL_TERMINATE_BUFFER(client_path);
             if (!file_is_readable(client_path)) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);
