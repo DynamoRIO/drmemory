@@ -233,7 +233,7 @@ OPTION_CLIENT(client, callstack_max_frames, uint, 20, 0, 4096,
               "How many call stack frames to record for each non-leak error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool if there are many error reports with large callstacks.  This option must be larger than the largest suppression supplied to -suppress.  The separate option -malloc_max_frames controls the callstack size for leak reports, while -free_max_frames controls the callstack size for freed memory overlap reports from -delay_frees_stack.")
 OPTION_CLIENT(client, malloc_max_frames, uint, 12, 0, 4096,
               "How many call stack frames to record on each malloc",
-              "How many call stack frames to record on each malloc, for use in leak error reports as well as alloc/free mismatch error reports.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool.")
+              "How many call stack frames to record on each malloc, for use in leak error reports as well as alloc/free mismatch error reports (unless leaks are disabled (via -no_count_leaks or -light) and -malloc_callstacks is also disabled).  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool.")
 OPTION_CLIENT(client, free_max_frames, uint, 6, 0, 4096,
               "How many call stack frames to record on each free",
               "If -delay_frees_stack is enabled, this controls how many call stack frames to record for each use-after-free informational report.  A larger maximum will ensure that no call stack is truncated, but can use more memory and slow down the tool.")
@@ -540,6 +540,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_delete_mismatch, true,
 OPTION_CLIENT_BOOL(drmemscope, check_prefetch, true,
                    "Whether to report unaddressable prefetches as warnings",
                    "Whether to report unaddressable prefetches as warnings")
+OPTION_CLIENT_BOOL(drmemscope, malloc_callstacks, false,
+                   "Record callstacks on allocs to use when reporting mismatches",
+                   "Record callstacks on allocations to use when reporting alloc/free mismatches.  If leaks are enabled (i.e., -count_leaks is on), this option is always enabled.  The callstack size is controlled by -malloc_max_frames.  When enabled in light mode, this option incurs additional overhead, particularly on malloc-intensive applications.")
 
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",

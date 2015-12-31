@@ -451,7 +451,8 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
 void *
 client_add_malloc_pre(malloc_info_t *mal, dr_mcontext_t *mc, app_pc post_call)
 {
-    if (!options.count_leaks && !options.track_origins_unaddr)
+    if (!options.malloc_callstacks && !options.count_leaks &&
+        !options.track_origins_unaddr)
         return NULL;
     return (void *)
         get_shared_callstack((packed_callstack_t *)mal->client_data, mc, post_call,

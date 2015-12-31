@@ -71,6 +71,10 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
    an argv-style array of parameters, to better support custom mutators.
  - Added checking that the program counter points to valid memory,
    controlled by the on-by-default -check_pc option.
+ - Added a new option -malloc_callstacks for recording malloc callstacks
+   to include in alloc/free error reports when leaks are disabled.
+   The option is off by default due to the additional overhead that
+   it incurs.
 
 The changes between version 1.9.0 and version 1.8.0 include:
  - Added support for Mac OSX Yosemite.

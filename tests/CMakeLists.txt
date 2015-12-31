@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -601,6 +601,8 @@ if (TOOL_DR_MEMORY)
   endif ()
   newtest_nobuild(addronly free "" "-light" "" OFF "")
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF ${cs2bug_res})
+  newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
+    OFF "cs2bug.light")
   if (USE_DRSYMS)
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif (USE_DRSYMS)

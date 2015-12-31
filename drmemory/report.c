@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -3073,10 +3073,10 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         report_heap_info(etp, buf, bufsz, &sofar, addr, etp->sz,
                          etp->errtype == ERROR_INVALID_HEAP_ARG, for_log);
     }
+    if (etp->aux_msg != NULL)
+        BUFPRINT(buf, bufsz, sofar, len, "%s", etp->aux_msg);
     if (etp->aux_pcs != NULL) {
         symbolized_callstack_t scs;
-        if (etp->aux_msg != NULL)
-            BUFPRINT(buf, bufsz, sofar, len, "%s", etp->aux_msg);
         /* to get var-align we need to convert to symbolized.
          * if we remove var-align feature, should use direct packed_callstack_print
          * and avoid this extra work
@@ -3204,18 +3204,22 @@ report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
 {
     error_toprint_t etp = {0};
     char buf[MISMATCH_MSG_SZ];
+    ssize_t len = 0;
+    size_t sofar = 0;
     etp.errtype = ERROR_INVALID_HEAP_ARG;
     etp.loc = loc;
     etp.addr = addr;
     etp.msg = msg;
     etp.aux_pcs = pcs;
     if (etp.aux_pcs != NULL) {
-        ssize_t len = 0;
-        size_t sofar = 0;
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                  "%smemory was allocated here:"NL, INFO_PFX);
-        etp.aux_msg = buf;
+    } else {
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                 "%sre-run with -malloc_callstacks (or -count_leaks) to add the "
+                 "allocation callstack."NL, INFO_PFX);
     }
+    etp.aux_msg = buf;
     report_error(&etp, mc, NULL);
 }
 
