@@ -807,9 +807,9 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
 static void
 read_suppression_file(file_t f, bool is_default)
 {
-    char *line, *newline, *next_line, *eof;
+    const char *line, *newline, *next_line, *eof;
     suppress_spec_t *spec = NULL;
-    char *cstack_start;
+    const char *cstack_start;
     int type;
     bool skip_suppression = false;
     int brace_line = -1;
@@ -836,26 +836,10 @@ read_suppression_file(file_t f, bool is_default)
     cstack_start = (char *) map;
     eof = ((char *) map) + map_size;
     for (line = (char *) map; line < eof; line = next_line) {
-        /* First, set "line" to start of line and "newline" to end (pre-whitespace) */
-        /* We have to use strnchr to avoid SIGBUS on non-Windows */
-        newline = strnchr(line, '\r', eof - line);
-        if (newline == NULL)
-            newline = strnchr(line, '\n', eof - line);
-        if (newline == NULL) {
-            newline = ((char *)map) + map_size; /* handle EOF w/o trailing \n */
-            next_line = newline + 1;
-        } else {
-            for (next_line = newline; *next_line == '\r' || *next_line == '\n';
-                 next_line++)
-                ; /* nothing */
-            /* trim trailing whitespace (i#381) */
-            for (; newline > line && (*(newline-1) == ' ' || *(newline-1) == '\t');
-                 newline--)
-                ; /* nothing */
-        }
-        /* Skip leading whitespace (mainly to support Valgrind format) */
-        for (; line < newline && (*line == ' ' || *line == '\t'); line++)
-            ; /* nothing */
+        /* We trim trailing whitespace (i#381) and skip leading whitespace (mainly to
+         * support Valgrind format)
+         */
+        next_line = find_next_line(line, eof, &line, &newline, true);
         /* Skip blank and comment lines */
         if (line == newline || line[0] == '#')
             continue;

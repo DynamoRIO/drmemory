@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -635,23 +635,6 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
         c += strlen(c) + 1;
     }
     return false;
-}
-
-char *
-strnchr(const char *str, int find, size_t max)
-{
-    register const char *s = str;
-    register char c = (char) find;
-    while (true) {
-        if (s - str >= max)
-            return NULL;
-        if (*s == c)
-            return (char *) s;
-        if (*s == '\0')
-            return NULL;
-        s++;
-    }
-    return NULL;
 }
 
 /* patterns is a null-separated, double-null-terminated list of strings */

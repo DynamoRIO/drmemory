@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -981,6 +981,14 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
 const char *
 text_contains_any_string(const char *text, const char *patterns, bool ignore_case,
                          const char **matched);
+
+/* For parsing an mmapped file into lines: returns the start of the next line.
+ * Optionally returns the start of this line after skipping whitespace (if skip_ws)
+ * in "sol" and the end of the line (prior to any whitespace, if skip_ws) in "eol".
+ */
+const char *
+find_next_line(const char *start, const char *eof, const char **sol OUT,
+               const char **eol OUT, bool skip_ws);
 
 /***************************************************************************
  * REGISTER CONVERSION UTILITIES

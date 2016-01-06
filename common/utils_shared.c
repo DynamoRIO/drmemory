@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -28,6 +28,23 @@
 #include "utils.h"
 #include <ctype.h> /* for tolower */
 #include <string.h>
+
+char *
+strnchr(const char *str, int find, size_t max)
+{
+    register const char *s = str;
+    register char c = (char) find;
+    while (true) {
+        if (s - str >= max)
+            return NULL;
+        if (*s == c)
+            return (char *) s;
+        if (*s == '\0')
+            return NULL;
+        s++;
+    }
+    return NULL;
+}
 
 /* not available in ntdll CRT so we supply our own */
 #ifndef MACOS /* available on Mac */
@@ -87,4 +104,39 @@ drmem_strndup(const char *src, size_t max, heapstat_t type)
         dup[sz] = '\0';
     }
     return dup;
+}
+
+/* see description in header */
+const char *
+find_next_line(const char *start, const char *eof, const char **sol,
+               const char **eol OUT, bool skip_ws)
+{
+    const char *line = start, *newline, *next_line;
+    /* First, set "line" to start of line and "newline" to end (pre-whitespace) */
+    /* We have to use strnchr to avoid SIGBUS on non-Windows */
+    newline = strnchr(line, '\n', eof - line);
+    if (newline == NULL) {
+        newline = eof; /* handle EOF w/o trailing \n */
+        next_line = newline + 1;
+    } else {
+        for (next_line = newline; *next_line == '\r' || *next_line == '\n';
+             next_line++)
+            ; /* nothing */
+        if (*(newline-1) == '\r') /* always skip CR */
+            newline--;
+        if (skip_ws) {
+            for (; newline > line && (*(newline-1) == ' ' || *(newline-1) == '\t');
+                 newline--)
+                ; /* nothing */
+        }
+    }
+    if (skip_ws) {
+        for (; line < newline && (*line == ' ' || *line == '\t'); line++)
+            ; /* nothing */
+    }
+    if (sol != NULL)
+        *sol = line;
+    if (eol != NULL)
+        *eol = newline;
+    return next_line;
 }
