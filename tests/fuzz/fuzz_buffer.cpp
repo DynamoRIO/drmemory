@@ -97,10 +97,12 @@ BufferPrinter::repeatme(uint *buffer, size_t size)
     uint i = 0, elements = (size / ELEMENT_SIZE);
 
     if (deliberate_errors->uninit) {
+        uint val;
         for (i = 0; i < elements; i++) {
             /* buffer value should have at most one bit set */
-            if ((buffer[i] & (buffer[i] - 1)) != 0)
-                printf("Error!\n");
+            val = buffer[i] & (buffer[i] - 1);
+            if (val != 0)
+                printf("Error: mutator flipped too many bits: %u!\n", val);
         }
     } else {
         printf("Buffer:");
