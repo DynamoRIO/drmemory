@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -344,6 +344,70 @@ test_bitflip_buffer(size_t size, const char *arg_sparsity, const char *arg_alg,
     EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
 }
 
+static void
+test_dictionary(const char * const dict[], size_t entries, const char *arg_alg,
+                const char *arg_flags, bool dict_legal)
+{
+#   define DICT_FNAME "dictionary.txt"
+#   define RAND_ITERS 500
+    uint i;
+    drmf_status_t res;
+    file_t f;
+    byte byte_buffer[MAX_BUFFER_LENGTH];
+    char arg_seed[16];
+    const char *argv[] = {
+        "-alg", arg_alg, "-dictionary", DICT_FNAME, "-random_seed", arg_seed,
+        "-flags", arg_flags
+    };
+    int argc = sizeof(argv)/sizeof(argv[0]);
+    dr_snprintf(arg_seed, BUFFER_SIZE_ELEMENTS(arg_seed), UINT64_FORMAT_STRING,
+                get_random_value());
+    NULL_TERMINATE_BUFFER(arg_seed);
+
+    dr_fprintf(STDERR, "\nTesting dictionary |%s,...| %s\n\n", dict[0], arg_alg);
+
+    f = dr_open_file(DICT_FNAME, DR_FILE_WRITE_OVERWRITE);
+    EXPECT(f != INVALID_FILE, "failed to open dictionary file");
+    for (i = 0; i < entries; i++)
+        dr_fprintf(f, "\"%s\"\n", dict[i]);
+    dr_close_file(f);
+
+    /* Fill with non-zero for easier verbose printing */
+    memset(byte_buffer, 'x', BUFFER_SIZE_BYTES(byte_buffer));
+
+    res = drfuzz_mutator_start(&mutator_iter, &byte_buffer, MAX_BUFFER_LENGTH, argc, argv);
+    if (dict_legal)
+        EXPECT(res == DRMF_SUCCESS, "failed to start the mutator with default options");
+    else {
+        EXPECT(res != DRMF_SUCCESS, "dictionary should have failed");
+        return;
+    }
+    i = 0;
+    while (drfuzz_mutator_has_next_value(mutator_iter)) {
+        res = drfuzz_mutator_get_next_value(mutator_iter, &byte_buffer);
+        EXPECT(res == DRMF_SUCCESS, "failed to get next fuzz value");
+        res = drfuzz_mutator_get_current_value(mutator_iter, current_value);
+        EXPECT(res == DRMF_SUCCESS, "failed to get current fuzz value");
+#if VERBOSE > 0
+        dr_fprintf(STDERR, "iter %d => |%s|\n", i, (char *)byte_buffer);
+#endif
+        if (strcmp(arg_alg, "ordered") == 0) {
+            EXPECT(strncmp((char *)byte_buffer, dict[i], strlen(dict[i])) == 0 ||
+                   strstr(dict[i], "\\") != NULL /* can't cmp these */,
+                   "failed to match token");
+        }
+        i++;
+        if (strcmp(arg_alg, "random") == 0 && i > RAND_ITERS)
+            break;
+    }
+    if (strcmp(arg_alg, "ordered") == 0) {
+        EXPECT(!drfuzz_mutator_has_next_value(mutator_iter),
+               "ordered bitflip mutator should be exhausted now");
+    }
+    res = drfuzz_mutator_stop(mutator_iter);
+    EXPECT(res == DRMF_SUCCESS, "failed to cleanup mutator");
+}
+
 DR_EXPORT
 void dr_client_main(client_id_t id, int argc, const char *argv[])
 {
@@ -355,14 +419,14 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
     test_default_mutator();
 
     /* test ordered, seed-centric flip */
-    test_bitflip_buffer(1, "1", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
-    test_bitflip_buffer(2, "1", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
-    test_bitflip_buffer(3, "1000", "ordered", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(1, "1", "ordered", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
+    test_bitflip_buffer(2, "1", "ordered", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
+    test_bitflip_buffer(3, "1000", "ordered", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
 
     /* test random, seed-centric flip */
-    test_bitflip_buffer(1, "1", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
-    test_bitflip_buffer(2, "1", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
-    test_bitflip_buffer(3, "1000", "random", "1"/*MUTATOR_FLAG_BITFLIP_SEED_CENTRIC*/);
+    test_bitflip_buffer(1, "1", "random", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
+    test_bitflip_buffer(2, "1", "random", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
+    test_bitflip_buffer(3, "1000", "random", "1"/*MUTATOR_FLAG_SEED_CENTRIC*/);
 
     /* test progressive flip */
     test_bitflip_buffer(1, "1", "ordered", "0");
@@ -376,6 +440,19 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
 
     for (i = 0; i < 10; i++)
         test_random_buffer(dr_get_random_value(128) + 16); /* some non-scalar size */
+
+    /* test dictionaries */
+    {
+        const char * const dict1[] = {"tok1","tok2","1\\xab\\xcd","has\"quote\\slash"};
+        const char * const dict2[] = {"tok1","tok2","1\\x66\\x49e","has\"quote\\\\slash"};
+        test_dictionary(dict1, sizeof(dict1)/sizeof(dict1[0]), "ordered",
+                        "1"/*MUTATOR_FLAG_SEED_CENTRIC*/, false);
+        test_dictionary(dict2, sizeof(dict2)/sizeof(dict2[0]), "ordered",
+                        "1"/*MUTATOR_FLAG_SEED_CENTRIC*/, true);
+        test_dictionary(dict2, sizeof(dict2)/sizeof(dict2[0]), "random",
+                        "1"/*MUTATOR_FLAG_SEED_CENTRIC*/, true);
+        test_dictionary(dict2, sizeof(dict2)/sizeof(dict2[0]), "random", "0", true);
+    }
 
     dr_fprintf(STDOUT, "TEST PASSED\n"); /* must use STDOUT for correct ouptut sequence */
 }

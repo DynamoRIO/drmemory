@@ -248,6 +248,7 @@
 #ifdef WINDOWS
 # define CHECK_TRUNCATE_RANGE_ULONG(val) CHECK_TRUNCATE_RANGE_uint(val)
 #endif
+#define CHECK_TRUNCATE_RANGE_ushort(val)   ((val) >= 0 && (val) <= USHRT_MAX)
 #define ASSERT_TRUNCATE_TYPE(var, type) ASSERT(sizeof(var) == sizeof(type), \
                                                "mismatch "#var" and "#type)
 /* check no precision lose on typecast from val to var.

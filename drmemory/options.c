@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -551,6 +551,7 @@ options_init(const char *opstr)
         option_specified.fuzz_mutator_sparsity ||
         option_specified.fuzz_mutator_max_value ||
         option_specified.fuzz_mutator_random_seed ||
+        option_specified.fuzz_dictionary ||
         option_specified.fuzz_one_input ||
         option_specified.fuzz_buffer_fixed_size ||
         option_specified.fuzz_buffer_offset ||
@@ -562,6 +563,9 @@ options_init(const char *opstr)
             usage_error("-fuzz_replace_buffer cannot be used with -no_replace_malloc",
                         "");
         }
+        if (option_specified.fuzz_dictionary && option_specified.fuzz_mutator_unit &&
+            strcmp(options.fuzz_mutator_unit, "token") != 0)
+            usage_error("-fuzz_dictionary requires -fuzz_mutator_unit token", "");
     }
 
     if (options.replace_malloc) {

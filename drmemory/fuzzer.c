@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -496,6 +496,12 @@ fuzzer_mutator_option_init(void)
         NULL_TERMINATE_BUFFER(buf);
         drvector_append(&vec, drmem_strdup("-random_seed", HEAPSTAT_MISC));
         drvector_append(&vec, drmem_strdup(buf, HEAPSTAT_MISC));
+    }
+    if (option_specified.fuzz_dictionary) {
+        drvector_append(&vec, drmem_strdup("-unit", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup("token", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup("-dictionary", HEAPSTAT_MISC));
+        drvector_append(&vec, drmem_strdup(options.fuzz_dictionary, HEAPSTAT_MISC));
     }
 
     mutator_argc = vec.entries;
@@ -1343,12 +1349,8 @@ fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
     if (fuzz_target.singleton_input == NULL) {
         mutator_api.drfuzz_mutator_get_next_value
             (fuzz_state->mutator, fuzz_state->mutation_start);
-        if (fuzz_target.repeat_count < 0) /* repeating until mutator exhausts */
-            fuzz_state->repeat = mutator_api.drfuzz_mutator_has_next_value
-                (fuzz_state->mutator);
     } else {
         apply_singleton_input(fuzz_state);
-        fuzz_state->repeat = false;
     }
     DOLOG(3, {
         LOG(3, "\n"LOG_PREFIX" Executing target with mutated buffer:\n");
@@ -1451,7 +1453,8 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     void *dcontext = drfuzz_get_drcontext(fuzzcxt);
     fuzz_state_t *fuzz_state = drmgr_get_tls_field(dcontext, tls_idx_fuzzer);
 
-    LOG(2, LOG_PREFIX" executing pre-fuzz for "PIFX"\n", target_pc);
+    LOG(2, LOG_PREFIX" executing pre-fuzz (repeat=%d) for "PIFX"\n",
+        fuzz_state->repeat, target_pc);
 
     /* i#1782: pick the first thread that hit target function for fuzzing */
     dr_mutex_lock(fuzz_target_lock);
@@ -1499,6 +1502,7 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             /* no mutation for the base input if using bbcov */
             return;
         }
+        LOG(2, LOG_PREFIX" re-starting mutator\n");
     } else
         shadow_state_restore(dcontext, fuzzcxt, fuzz_state, mc);
     fuzzer_mutator_next(dcontext, fuzz_state);
@@ -1571,8 +1575,16 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
         LOG(1, LOG_PREFIX" mutation for iteration #%d:\n", fuzz_state->repeat_index);
         log_target_buffer(dcontext, 1, fuzz_state);
     }
-    if (fuzz_target.repeat_count > 0 && fuzz_target.singleton_input == NULL)
-        fuzz_state->repeat = (fuzz_state->repeat_index < fuzz_target.repeat_count);
+    if (fuzz_target.singleton_input == NULL) {
+        bool has_next = mutator_api.drfuzz_mutator_has_next_value(fuzz_state->mutator);
+        if (fuzz_target.repeat_count > 0) {
+            fuzz_state->repeat = (fuzz_state->repeat_index < fuzz_target.repeat_count) &&
+                /* If the mutator ran out we do end early */
+                has_next;
+        } else if (fuzz_target.repeat_count < 0)
+            fuzz_state->repeat = has_next;
+    } else
+        fuzz_state->repeat = false;
 
     if (fuzz_state->repeat)
         return true;

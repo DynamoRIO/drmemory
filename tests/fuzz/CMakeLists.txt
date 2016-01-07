@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -111,6 +111,10 @@ newtest_nobuild_ex(fuzz_buffer.offset fuzz_buffer
 set(fuzz_buffer_drmem_ops "-fuzz_target;fuzz_buffer${app_extension}!repeatme|2|0|1|10")
 newtest_nobuild_ex(fuzz_buffer.module_name fuzz_buffer
   "initialize" "${fuzz_buffer_drmem_ops}" "" OFF "" 0 "")
+set(fuzz_dictionary_drmem_ops
+  "-fuzz_function;repeatme;-fuzz_dictionary;${CMAKE_CURRENT_SOURCE_DIR}/dictionary.txt")
+newtest_nobuild_ex(fuzz_buffer.dictionary fuzz_buffer
+  "initialize" "${fuzz_dictionary_drmem_ops};-fuzz_mutator_alg;ordered" "" OFF "" 0 "")
 
 # fuzz the cpp target
 if (NOT UNIX AND NOT X64)

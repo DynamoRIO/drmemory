@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2015 Google, Inc.   All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.   All rights reserved.
  * **********************************************************/
 
 /*
@@ -100,20 +100,23 @@ drfuzz_mutator_start()):
  - -alg &lt;algorithm_name&gt;<br>
    Specifies the algorithm for generating a new value.  The choices are:
    - "random": Randomly search the domain of possible permutations.
+     This is the default for -unit token.
    - "ordered": Exhaustively search all possible permutations in an ordered
-     manner.  This is the default;
+     manner.  This is the default for -unit bits and -unit num.
 
  - -unit &lt;unit_name&gt;<br>
    Specifies the unit of transformation for applying the mutation algorithm.
    The choices are:
    - "bits": Bitwise application of the mutation algorithm.  This is the default.
    - "num": Numeric application of the mutation algorithm.
+   - "token": Insertion of tokens from a dictionary.  The dictionary must
+     be specified via -dictionary.
 
  - -flags &lt;int&gt;<br>
    Flags for the mutator. Some flags are specific to a particular algorithm and/or
    mutation unit.  The choices are:
    - 0x1: Reset the buffer contents to the input_seed after every bit-flip
-     mutation. Only valid for MUTATOR_UNIT_BITS. On by default.
+     mutation. Not valid for -unit num. On by default.
    - 0x2: Seed the mutator's random number generator with the current clock time.
 
  - -sparsity &lt;int&gt;<br>
@@ -130,6 +133,22 @@ drfuzz_mutator_start()):
    Set the randomization seed for algorithm "random".
    The default random seed is 0x5a8390e9a31dc65fULL, which was selected to
    have an equal number of 0 and 1 bits.
+
+ - -dictionary &lt;path&gt;<br>
+   Specifies a dictionary file containing tokens for -unit token.
+   The file format is compatible with AFL (http://lcamtuf.coredump.cx/afl/).
+   It is a text file with one token, in double quotes, per line, with an
+   optional preceding name followed by an equals sign.
+   Non-printable characters must use \\x hex escapes, and double quotes and
+   backslashes must be escaped by a preceding backslash.
+   Comment lines starting with '#' can be included.
+   An example:
+     \code
+     "token42"
+     "different_token"
+     unprint="\xCD\xEF"
+     mytokA="internal\"quotes\""
+     \endcode
 
 The default options are for ordered, seed-centric bit-flipping.
 

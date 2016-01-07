@@ -1,0 +1,45 @@
+# **********************************************************
+# Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+Buffer: 0x666f6f77 0x00000020 0x00000003 0x00000004
+Buffer: 0x656b6f74 0x2032346e 0x00000003 0x00000004
+Buffer: 0x66666964 0x6e657265 0x6f745f74 0x206e656b
+Buffer: 0x0020efcd 0x00000002 0x00000003 0x00000004
+Buffer: 0x65746e69 0x6c616e72 0x6f757122 0x22736574
+Buffer: 0x6b636162 0x616c735c 0x20236873 0x00000004
+Buffer: 0x666f6f77 0x00000020 0x00000004
+Buffer: 0x656b6f74 0x2032346e 0x00000004
+Buffer: 0x66666964 0x6e657265 0x6f745f74
+Buffer: 0x0020efcd 0x00000003 0x00000004
+Buffer: 0x65746e69 0x6c616e72 0x6f757122
+Buffer: 0x6b636162 0x616c735c 0x20236873
+Buffer: 0x666f6f77 0x00000020
+Buffer: 0x656b6f74 0x2032346e
+Buffer: 0x66666964 0x6e657265
+Buffer: 0x0020efcd 0x00000004
+Buffer: 0x65746e69 0x6c616e72
+Buffer: 0x6b636162 0x616c735c
+done
+~~Dr.M~~ NO ERRORS FOUND:
+~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
+~~Dr.M~~       0 unique,     0 total warning(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

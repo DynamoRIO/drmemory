@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /*
@@ -38,6 +38,7 @@
 #include "hashtable.h"
 #include "utils.h"
 #include "drfuzz.h"
+#include "drfuzz_internal.h"
 #include "drfuzz_mutator.h" /* default mutator */
 
 #ifdef UNIX
@@ -45,18 +46,6 @@
 #endif
 
 #define ARGSIZE(target) ((target)->arg_count * sizeof(reg_t))
-
-#define DRFUZZ_ERROR(...) \
-do { \
-    ELOG(0, "ERROR: [drfuzz] "); \
-    ELOG(0, __VA_ARGS__); \
-} while (0)
-
-#define DRFUZZ_LOG(level, ...) \
-do { \
-    LOG(level, "[drfuzz] "); \
-    LOG(level, __VA_ARGS__); \
-} while (0)
 
 #ifdef UNIX
 typedef dr_signal_action_t drfuzz_fault_action_t;

@@ -1,0 +1,12 @@
+# Test dictionary
+
+foo="woof"
+
+# Example from docs
+     "token42"
+     "different_token"
+     unprint="\xCD\xEF"
+     mytokA="internal\"quotes\""
+
+# Test AFL level
+var@55  =    "back\\slash\x23"

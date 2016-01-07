@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -715,6 +715,7 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_mutator_unit, "bits",
                      "Specify the mutator unit of operation as one of these strings:@@<ul>"
                      "<li>bits = mutation by bit flipping.@@"
                      "<li>num = mutation by random number generation.@@"
+                     "<li>token = mutation by inserting tokens from -fuzz_dictionary.@@"
                      "</ul>@@See also \\ref sec_drfuzz_mutators.@@")
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_flags, uint, 1, 0, UINT_MAX,
                     "Specify mutator flags",
@@ -731,6 +732,9 @@ OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_max_value, uint64, 0, 0, ULLONG_MAX
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_mutator_random_seed, uint64, 0x5a8390e9a31dc65fULL, 0, ULLONG_MAX,
                     "Randomization seed for the random algorithm",
                     "Randomization seed for -fuzz_mutator_alg random.  The default random seed is arbitrary, selected to have an equal number of 0 and 1 bits.  See also \\ref sec_drfuzz_mutators.")
+OPTION_CLIENT_STRING(drmemscope, fuzz_dictionary, "",
+                     "Specify a dictionary containing tokens for mutation",
+                     "Specify a dictionary file listing tokens to use for mutation by insertion into the input buffer.  The file must be a text file with one double-quote-delimited token per line.  Specifying this option automatically selects -fuzz_mutator_unit token.")
 
 OPTION_CLIENT_STRING(drmemscope, fuzz_one_input, "",
                      "Specify one fuzz input value to test."NL

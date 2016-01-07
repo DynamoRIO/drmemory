@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -36,7 +36,9 @@
 #include "utils.h"
 #include <string.h>
 #include <stddef.h>
+#include "drfuzz_internal.h"
 #include "drfuzz_mutator.h"
+#include "drvector.h"
 
 #define MUTATOR_MAX_INDEX 0xffffffffffffffffLL
 #define MAX_NUMERIC_SIZE 8
@@ -66,6 +68,7 @@ typedef enum _drfuzz_mutator_algorithm_t {
 typedef enum _drfuzz_mutator_unit_t {
     MUTATOR_UNIT_BITS, /* Bitwise application of the mutation algorithm. */
     MUTATOR_UNIT_NUM,  /* Numeric application of the mutation algorithm. */
+    MUTATOR_UNIT_TOKEN,/* Dictionary token-based mutation. */
 } drfuzz_mutator_unit_t;
 
 /* Flags for the mutator. Some flags are specific to a particular algorithm and/or
@@ -73,9 +76,9 @@ typedef enum _drfuzz_mutator_unit_t {
  */
 typedef enum _drfuzz_mutator_flags_t {
     /* Reset the buffer contents to the input_seed after every bit-flip
-     * mutation. Only valid for MUTATOR_UNIT_BITS. On by default.
+     * mutation. Not valid for MUTATOR_UNIT_NUM. On by default.
      */
-    MUTATOR_FLAG_BITFLIP_SEED_CENTRIC = 0x0001,
+    MUTATOR_FLAG_SEED_CENTRIC = 0x0001,
     /* Initialize the random seed for MUTATOR_ALG_RANDOM with the current clock time. */
     MUTATOR_FLAG_SEED_WITH_CLOCK      = 0x0002,
 } drfuzz_mutator_flags_t;
@@ -104,7 +107,7 @@ typedef struct _drfuzz_mutator_options_t {
 static const drfuzz_mutator_options_t default_options = {
     MUTATOR_ALG_ORDERED,               /* alg */
     MUTATOR_UNIT_BITS,                 /* unit */
-    MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, /* flags */
+    MUTATOR_FLAG_SEED_CENTRIC, /* flags */
     1,                                 /* sparsity */
     0,                                 /* max_value */
     0x5a8390e9a31dc65fULL              /* random_seed */
@@ -119,6 +122,11 @@ typedef struct _mutator_t  {
     uint64 index;             /* counter for MUTATOR_ALG_ORDERED | MUTATOR_UNIT_NUM */
     drfuzz_mutator_options_t options; /* mutator option values */
     bitflip_t *bitflip;
+    /* A vector of token_t* entries used for MUTATOR_UNIT_TOKEN.
+     * Access is unsynchronized as this is private to this mutator and it's up to
+     * the caller to synchronize access to the mutator.
+     */
+    drvector_t dictionary;
 } mutator_t;
 
 static bitflip_t *
@@ -139,13 +147,172 @@ bitflip_shuffle_and_flip(mutator_t *mutator, void *buffer);
 static inline void
 bitflip_distribute_index_and_flip(mutator_t *mutator, void *buffer);
 
+/***************************************************************************
+ * Dictionaries
+ */
+
+#define DICT_INIT_CAP 256
+
+/* Dictionary-based fuzzing uses tokens that can contain zeroes, so we cannot
+ * simply use C strings.  We assume strings are the most common token, however,
+ * by allocating for the text-encoded size.
+ */
+typedef struct _token_t {
+    ushort size;
+    ushort capacity;
+    byte data[0]; /* variable-sized */
+} token_t;
+
+static char
+token_separator(mutator_t *mutator)
+{
+    /* XXX: we could parametrize this but we'll wait until we actually see an
+     * instance that does not accept a space (perhaps some binary token scheme).
+     */
+    return ' ';
+}
+
+static token_t *
+token_alloc(size_t data_alloc_size)
+{
+    token_t *token = (token_t *)
+        global_alloc(offsetof(token_t, data) + data_alloc_size, HEAPSTAT_MISC);
+    token->capacity = data_alloc_size;
+    token->size = 0;
+    return token;
+}
+
+static void
+token_free(void *entry)
+{
+    token_t *token = (token_t *) entry;
+    global_free(token, offsetof(token_t, data) + token->capacity, HEAPSTAT_MISC);
+}
+
+static void
+dictionary_init(mutator_t *mutator)
+{
+    /* To properly free on dictionary parsing errors as well as other option
+     * errors, it's simplest to init up front and free at end unconditionally.
+     */
+    drvector_init(&mutator->dictionary, DICT_INIT_CAP, false/*!sync*/, token_free);
+}
+
+static void
+dictionary_free(mutator_t *mutator)
+{
+    drvector_delete(&mutator->dictionary);
+}
+
+static bool
+drfuzz_parse_dictionary(const char *file, mutator_t *mutator)
+{
+    const char *line, *next_line, *eof;
+    uint64 map_size;
+    size_t actual_size;
+    bool res = false;
+    void *map = NULL;
+    file_t f;
+    token_t *token = NULL;
+
+    /* We mmap the file for simpler parsing */
+    f = dr_open_file(file, DR_FILE_READ);
+    if (f != INVALID_FILE) {
+        res = dr_file_size(f, &map_size);
+        if (res) {
+            actual_size = (size_t) map_size;
+            ASSERT(actual_size == map_size, "file size too large");
+            map = dr_map_file(f, &actual_size, 0, NULL, DR_MEMPROT_READ, 0);
+        }
+    }
+    if (!res || map == NULL || actual_size < map_size) {
+        if (map != NULL)
+            dr_unmap_file(map, actual_size);
+        if (f != INVALID_FILE)
+            dr_close_file(f);
+        DRFUZZ_ERROR("Error opening dictionary %s"NL, file);
+        return false;
+    }
+
+    eof = ((char *) map) + map_size;
+    res = false;
+    for (line = (char *) map; line < eof; line = next_line) {
+        const char *c = line, *newline;
+        byte *tok;
+        next_line = find_next_line(line, eof, &line, &newline, true/*trim ws*/);
+        if (line == newline || line[0] == '#')
+            continue; /* skip blank or comment */
+        DRFUZZ_LOG(4, "dictionary line: \"%.*s\"\n", newline - line, line);
+        /* We ignore the names (and AFL levels) */
+        while (*c != '"')
+            c++;
+        c++;
+        if (*(newline-1) != '"') {
+            DRFUZZ_ERROR("Dictionary entry %.*s is not \"-delimited"NL,
+                         newline - line, line);
+            goto parse_exit;
+        }
+        /* We alloc up front with the max size (we expect few escapes) */
+        if (!CHECK_TRUNCATE_RANGE_ushort(newline - c)) {
+            DRFUZZ_ERROR("Dictionary entry %.*s is too large"NL, newline - line, line);
+            goto parse_exit;
+        }
+        token = token_alloc(newline - c - 1/*"*/);
+        /* Parsing the tokens is not a critical path so we go char by char, which
+         * we have to do in the presence of escapes in any case.
+         */
+        for (tok = token->data; c < newline - 1; tok++, c++) {
+            if (*c == '\\') {
+                if (*(c+1) == 'x') {
+                    int val;
+                    if (dr_sscanf(c+2, "%2x", &val) != 1) {
+                        ASSERT(false, "internal sscanf error?  failed to parse hex");
+                        goto parse_exit;
+                    }
+                    DRFUZZ_LOG(4, "adding hex val 0x%02x\n", val);
+                    *tok = (byte) val;
+                    c += 3;
+                } else if (*(c+1) == '"' || *(c+1) == '\\') {
+                    c++;
+                    *tok = (byte) *c;
+                } else {
+                    DRFUZZ_ERROR("Dictionary entry %.*s contains an unsupported escape"NL,
+                                 newline - line, line);
+                    goto parse_exit;
+                }
+            } else
+                *tok = (byte) *c;
+        }
+        ASSERT(CHECK_TRUNCATE_RANGE_ushort(tok - token->data), "size < capacity");
+        token->size = (ushort) (tok - token->data);
+        DRFUZZ_LOG(3, "appending token cap=%d size=%d |%.*s|\n", token->capacity,
+                   token->size, token->size,
+                   (char *)token->data/*XXX: may be non-ascii!*/);
+        drvector_append(&mutator->dictionary, token);
+    }
+    res = true;
+    token = NULL;
+
+ parse_exit:
+    dr_unmap_file(map, actual_size);
+    dr_close_file(f);
+    if (token != NULL)
+        token_free(token);
+    return res;
+}
+
+/***************************************************************************
+ * Options
+ */
+
 static drmf_status_t
 drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
                            int argc, const char *argv[])
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
     int i;
-    bool user_seed = false, user_sparsity = false;
+    bool user_seed = false, user_sparsity = false, user_units = false, user_dict = false,
+        user_alg = false;
 
     mutator->options = default_options;
 
@@ -163,6 +330,7 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
                 mutator->options.alg = MUTATOR_ALG_ORDERED;
             else
                 return DRMF_ERROR_INVALID_PARAMETER;
+            user_alg = true;
         } else if (strcmp(argv[i], "-unit") == 0) {
             if (i >= argc - 1)
                 return DRMF_ERROR_INVALID_PARAMETER;
@@ -171,8 +339,11 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
                 mutator->options.unit = MUTATOR_UNIT_BITS;
             else if (strcmp(argv[i], "num") == 0)
                 mutator->options.unit = MUTATOR_UNIT_NUM;
+            else if (strcmp(argv[i], "token") == 0)
+                mutator->options.unit = MUTATOR_UNIT_TOKEN;
             else
                 return DRMF_ERROR_INVALID_PARAMETER;
+            user_units = true;
         } else if (strcmp(argv[i], "-flags") == 0) {
             if (i >= argc - 1)
                 return DRMF_ERROR_INVALID_PARAMETER;
@@ -203,24 +374,43 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
                           &mutator->options.random_seed) != 1)
                 return DRMF_ERROR_INVALID_PARAMETER;
             user_seed = true;
+        } else if (strcmp(argv[i], "-dictionary") == 0) {
+            if (i >= argc - 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
+            ++i;
+            if (!drfuzz_parse_dictionary(argv[i], mutator))
+                return DRMF_ERROR_INVALID_PARAMETER;
+            user_dict = true;
         } else
             return DRMF_ERROR_INVALID_PARAMETER;
     }
 
+    if (mutator->options.unit == MUTATOR_UNIT_TOKEN && !user_dict) {
+        DRFUZZ_ERROR("-unit token requires -dictionary"NL);
+        return DRMF_ERROR_INVALID_PARAMETER;
+    }
+    if (user_dict) {
+        if (user_units && mutator->options.unit != MUTATOR_UNIT_TOKEN)
+            return DRMF_ERROR_INVALID_PARAMETER;
+        mutator->options.unit = MUTATOR_UNIT_TOKEN;
+        if (!user_alg)
+            mutator->options.alg = MUTATOR_ALG_RANDOM;
+    }
+
     if (mutator->options.flags != 0 &&
-        !TESTANY(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC | MUTATOR_FLAG_SEED_WITH_CLOCK,
+        !TESTANY(MUTATOR_FLAG_SEED_CENTRIC | MUTATOR_FLAG_SEED_WITH_CLOCK,
                  mutator->options.flags))
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (TEST(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, mutator->options.flags) &&
-        mutator->options.unit != MUTATOR_UNIT_BITS) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify seed-centric"NL);
-        NOTIFY_ERROR("mutation together with the numeric mutation unit."NL);
+    if (TEST(MUTATOR_FLAG_SEED_CENTRIC, mutator->options.flags) &&
+        mutator->options.unit == MUTATOR_UNIT_NUM) {
+        DRFUZZ_ERROR("Invalid mutator configuration: cannot specify seed-centric"NL);
+        DRFUZZ_ERROR("mutation together with the numeric mutation unit."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
     }
     if (TEST(MUTATOR_FLAG_SEED_WITH_CLOCK, mutator->options.flags)) {
         mutator->options.random_seed = dr_get_milliseconds();
         if (user_seed) {
-            NOTIFY_ERROR("Cannot specify both an initial value and a clock seed "
+            DRFUZZ_ERROR("Cannot specify both an initial value and a clock seed "
                          "for the same mutator."NL);
             return DRMF_ERROR_INVALID_PARAMETER;
         }
@@ -228,13 +418,13 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
 
     if (user_sparsity && mutator->options.sparsity > 0 &&
         mutator->options.unit == MUTATOR_UNIT_NUM) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify mutation"NL);
-        NOTIFY_ERROR("sparsity together with the numeric mutation unit."NL);
+        DRFUZZ_ERROR("Invalid mutator configuration: cannot specify mutation"NL);
+        DRFUZZ_ERROR("sparsity together with the numeric mutation unit."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
     }
     if (mutator->options.max_value > 0 && mutator->size > MAX_NUMERIC_SIZE) {
-        NOTIFY_ERROR("Invalid mutator configuration: cannot specify a max mutator"NL);
-        NOTIFY_ERROR("value together with a mutation buffer size larger than 8 bytes."NL);
+        DRFUZZ_ERROR("Invalid mutator configuration: cannot specify a max mutator"NL);
+        DRFUZZ_ERROR("value together with a mutation buffer size larger than 8 bytes."NL);
         return DRMF_ERROR_INVALID_PARAMETER;
     }
 
@@ -243,6 +433,10 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
 
     return DRMF_SUCCESS;
 }
+
+/***************************************************************************
+ * Core operation
+ */
 
 LIB_EXPORT drmf_status_t
 drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
@@ -258,9 +452,11 @@ drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
     mutator = global_alloc(sizeof(mutator_t), HEAPSTAT_MISC);
     memset(mutator, 0, sizeof(mutator_t));
     mutator->size = size;
+    dictionary_init(mutator);
 
     res = drfuzz_mutator_set_options((drfuzz_mutator_t *)mutator, argc, argv);
     if (res != DRMF_SUCCESS) {
+        dictionary_free(mutator);
         global_free(mutator, sizeof(mutator_t), HEAPSTAT_MISC);
         return res;
     }
@@ -291,9 +487,16 @@ drfuzz_mutator_has_next_value(drfuzz_mutator_t *mutator_in)
             else
                 return mutator->index < mutator->options.max_value;
         }
-    } else {
-        ASSERT(mutator->options.unit == MUTATOR_UNIT_BITS, "unknown mutator unit");
+    } else if (mutator->options.unit == MUTATOR_UNIT_BITS) {
         return bitflip_has_next_value(mutator->bitflip);
+    } else {
+        ASSERT(mutator->options.unit == MUTATOR_UNIT_TOKEN, "unknown mutator unit");
+        if (mutator->options.alg == MUTATOR_ALG_RANDOM) {
+            return true;
+        } else {
+            ASSERT(mutator->options.alg == MUTATOR_ALG_ORDERED, "unknown mutator alg");
+            return mutator->index < mutator->dictionary.entries;
+        }
     }
 }
 
@@ -345,6 +548,27 @@ get_next_ordered_number(mutator_t *mutator, void *buffer)
 }
 
 static drmf_status_t
+get_next_ordered_token(mutator_t *mutator, void *buffer)
+{
+    /* XXX: there are multiple dimensions here: which token to add, where to place
+     * it, whether to shift/append or overwrite, and if not overwriting whether to
+     * enumerate all orderings of tokens.  For now we only implement the very
+     * simplest scheme: we overwrite at position 0, and do an ordered walk through
+     * each token.  We could easily randomize the position, try all positions, start
+     * laying out tokens side-by-side to try different orderings, etc., but the
+     * current focus is on corpus-based fuzzing where we use a random mutation and
+     * thus we're not spending much time on this ordered mutator.
+     */
+    token_t *token = drvector_get_entry(&mutator->dictionary, mutator->index++);
+    ASSERT(mutator->index <= mutator->dictionary.entries, "ordered dictionary overflow");
+    memcpy(buffer, token->data, MIN(token->size, mutator->size));
+    /* We separate this from the existing data with a separator */
+    if (mutator->size > token->size)
+        *((char *)buffer+token->size) = token_separator(mutator);
+    return DRMF_SUCCESS;
+}
+
+static drmf_status_t
 get_next_ordered_value(mutator_t *mutator, void *buffer)
 {
     switch (mutator->options.unit) {
@@ -352,8 +576,11 @@ get_next_ordered_value(mutator_t *mutator, void *buffer)
         return get_next_ordered_bits(mutator, buffer);
     case MUTATOR_UNIT_NUM:
         return get_next_ordered_number(mutator, buffer);
+    case MUTATOR_UNIT_TOKEN:
+        return get_next_ordered_token(mutator, buffer);
+    default:
+        return DRMF_ERROR;
     }
-    return DRMF_ERROR;
 }
 
 /* Randomly pick n bits to flip, where n is `mutator->bitflip->bits_to_flip`, as
@@ -410,6 +637,33 @@ get_next_random_number(mutator_t *mutator, void *buffer)
 }
 
 static drmf_status_t
+get_next_random_token(mutator_t *mutator, void *buffer)
+{
+    uint64 rand_which_tok = generate_random_number(mutator);
+    uint64 rand_where = generate_random_number(mutator);
+    size_t offs;
+    token_t *token = drvector_get_entry(&mutator->dictionary,
+                                        rand_which_tok % mutator->dictionary.entries);
+    /* XXX: there are multiple strategies that could be followed here,
+     * such as looking for a separator to avoid splitting an existing token,
+     * or shifting existing data to avoid overwriting existing tokens.
+     * Shifting is time-consuming and risky for our execution model (we'd
+     * have to reallocate the input buffer).
+     * We simply insert our own separators around our token.
+     */
+    offs = token->size >= mutator->size ? 0 :
+        (rand_where % (mutator->size - token->size));
+    memcpy((byte *)buffer + offs, token->data, MIN(token->size, mutator->size));
+    /* We separate this from the existing data with separators */
+    if (offs > 0)
+        *((char *)buffer + offs - 1) = token_separator(mutator);
+    if (offs + token->size < mutator->size)
+        *((char *)buffer + offs + token->size) = token_separator(mutator);
+
+    return DRMF_SUCCESS;
+}
+
+static drmf_status_t
 get_next_random_value(mutator_t *mutator, void *buffer)
 {
     switch (mutator->options.unit) {
@@ -417,8 +671,11 @@ get_next_random_value(mutator_t *mutator, void *buffer)
         return get_next_random_bits(mutator, buffer);
     case MUTATOR_UNIT_NUM:
         return get_next_random_number(mutator, buffer);
+    case MUTATOR_UNIT_TOKEN:
+        return get_next_random_token(mutator, buffer);
+    default:
+        return DRMF_ERROR;
     }
-    return DRMF_ERROR;
 }
 
 LIB_EXPORT drmf_status_t
@@ -427,7 +684,7 @@ drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, IN void *buffer)
     mutator_t *mutator = (mutator_t *) mutator_in;
     drmf_status_t res;
 
-    if (TEST(MUTATOR_FLAG_BITFLIP_SEED_CENTRIC, mutator->options.flags))
+    if (TEST(MUTATOR_FLAG_SEED_CENTRIC, mutator->options.flags))
         memcpy(buffer, mutator->input_seed, mutator->size);
 
     switch (mutator->options.alg) {
@@ -455,6 +712,7 @@ drfuzz_mutator_stop(drfuzz_mutator_t *mutator_in)
         bitflip_destroy(mutator->bitflip);
     global_free(mutator->input_seed, mutator->size, HEAPSTAT_MISC);
     global_free(mutator->current_value, mutator->size, HEAPSTAT_MISC);
+    dictionary_free(mutator);
     global_free(mutator, sizeof(mutator_t), HEAPSTAT_MISC);
     return DRMF_SUCCESS;
 }

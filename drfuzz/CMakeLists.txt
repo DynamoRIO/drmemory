@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015 Google, Inc.    All rights reserved.
+# Copyright (c) 2015-2016 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -113,6 +113,7 @@ add_library(drfuzz_mutator SHARED
 set(PREFERRED_BASE 0x79100000)
 configure_DynamoRIO_client(drfuzz_mutator)
 use_DynamoRIO_extension(drfuzz_mutator drmgr_static)
+use_DynamoRIO_extension(drfuzz_mutator drcontainers)
 # Not bothering to remove RC_IS_DRFUZZ: resources.rc has this one first:
 set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ_MUTATOR)
 set_property(TARGET drfuzz_mutator PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
