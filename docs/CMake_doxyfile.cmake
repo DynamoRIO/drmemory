@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -210,7 +210,7 @@ set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
 set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
-    "using.dox" "using.dox errors.dox reports.dox light.dox fuzzer.dox"
+    "using.dox" "using.dox errors.dox reports.dox light.dox fuzzer.dox coverage.dox"
     string "${string}")
   string(REGEX REPLACE
     "main.dox" "main.dox tools.dox ${headers}" string "${string}")

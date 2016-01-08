@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -55,6 +55,7 @@
 #include "dr_api.h"
 #include "drwrap.h"
 #include "drx.h"
+#include "drcovlib.h"
 #include "drmemory.h"
 #include "instru.h"
 #include "slowpath.h"
@@ -432,6 +433,17 @@ event_exit(void)
         drsymcache_exit();
 #endif
     utils_exit();
+
+    if (options.coverage) {
+        const char *covfile;
+        if (drcovlib_logfile(NULL, &covfile) == DRCOVLIB_SUCCESS) {
+            ELOGF(0, f_results, "Code coverage raw data: %s"NL, covfile);
+            NOTIFY_COND(options.summary, f_global, "Code coverage raw data: %s"NL,
+                        covfile);
+        }
+        if (drcovlib_exit() != DRCOVLIB_SUCCESS)
+            ASSERT(false, "failed to exit drcovlib");
+    }
 
     drx_exit();
 
@@ -1962,4 +1974,10 @@ dr_init(client_id_t id)
         perturb_init();
 
     instrument_init();
+
+    if (options.coverage) {
+        drcovlib_options_t ops = {sizeof(ops), 0, logsubdir, };
+        if (drcovlib_init(&ops) != DRCOVLIB_SUCCESS)
+            ASSERT(false, "failed to init drcovlib");
+    }
 }

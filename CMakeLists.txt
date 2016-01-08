@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -755,7 +755,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "6.0.16790")
+set(DynamoRIO_VERSION_REQUIRED "6.0.16808")
 
 set(DR_install_dir "dynamorio")
 
@@ -1161,6 +1161,9 @@ use_DynamoRIO_extension(${client_target} drx_static)
 use_DynamoRIO_extension(${client_target} drutil_static)
 use_DynamoRIO_extension(${client_target} drwrap_static)
 use_DynamoRIO_extension(${client_target} drreg_static)
+# DRi#1829: we discussed invoking drcov as a separate client, which would require using
+# all shared ext libs.  We ended up making drcovlib.
+use_DynamoRIO_extension(${client_target} drcovlib_static)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
@@ -1682,6 +1685,7 @@ if (BUILD_TOOL_TESTS)
     use_DynamoRIO_extension(unit_tests drutil_static)
     use_DynamoRIO_extension(unit_tests drwrap_static)
     use_DynamoRIO_extension(unit_tests drsyms_static)
+    use_DynamoRIO_extension(unit_tests drcovlib_static)
     target_link_libraries(unit_tests drsyscall_int)
     target_link_libraries(unit_tests umbra_int)
     target_link_libraries(unit_tests drsymcache_int)
@@ -1920,6 +1924,30 @@ else (BUILDING_SUB_PACKAGE)
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
   endif (UNIX)
+
+  if (TOOL_DR_MEMORY)
+    # For the new -coverage feature, we include a copy of drcov2lcov.
+    # We keep it inside the dynamorio/ subdir so its rpath will still work.
+    # XXX: a debug build of drmem pointing at an external DR will pull in a
+    # release-build drcov2lcov whose rpath will point at a release DR yet
+    # we only copy debug DR so it will fail -- we just live with this though
+    # as a full RC package will work fine.
+    if (USER_SPECIFIED_DynamoRIO_DIR)
+      set(covdir tools)
+    else ()
+      set(covdir clients)
+    endif ()
+    if (UNIX)
+      # We can't use get_target_property() for USER_SPECIFIED_DynamoRIO_DIR
+      set(covhelper drcov2lcov)
+    else ()
+      set(covhelper drcov2lcov.exe)
+    endif ()
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${covdir}/${BIN_ARCH}/${covhelper}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/tools/${BIN_ARCH}/${covhelper}\" COPYONLY)")
+    if (WIN32)
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/tools/${BIN_ARCH}/dynamorio.dll\" COPYONLY)")
+    endif ()
+  endif ()
 endif (BUILDING_SUB_PACKAGE)
 
 # DRMF install rules

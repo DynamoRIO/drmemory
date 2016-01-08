@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -75,6 +75,7 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
    to include in alloc/free error reports when leaks are disabled.
    The option is off by default due to the additional overhead that
    it incurs.
+ - Added code coverage measurement via a new option -coverage.
 
 The changes between version 1.9.0 and version 1.8.0 include:
  - Added support for Mac OSX Yosemite.

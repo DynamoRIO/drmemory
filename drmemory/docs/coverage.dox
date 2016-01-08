@@ -1,0 +1,64 @@
+/* **********************************************************
+ * Copyright (c) 2016 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_coverage Code Coverage
+
+Dr. Memory provides optional code coverage information to aid in fuzz
+testing (\ref page_fuzzer) or in general testing.
+
+\section sec_enable Enabling Coverage Information
+
+Simply specify the \p -coverage runtime option to request code coverage
+information.  The raw coverage data will be stored in a file with a "drcov"
+prefix in the regular Dr. Memory log directory.  The file will be pointed
+at by a line at the end of the summary, if the application has a console
+for text output.  This line looks like this:
+
+\verbatim
+~~Dr.M~~ Code coverage raw data: /home/joe/drmemory/logs/DrMemory-myapp.13112.000/drcov.myapp.13112.0000.proc.log
+\endverbatim
+
+\section sec_postproc Post Processing
+
+The "drcov" file is raw data in \p drcov format that must be post-processed
+to make it human readable.  DynamoRIO's \p drcov2lcov utility converts it
+into \p lcov format.  The Dr. Memory release package includes a copy of
+this utility.  Simply use its \p -input parameter to point at the \p
+drcov log file:
+
+\verbatim
+dynamorio/tools/bin32/drcov2lcov -input logs/DrMemory-myapp.13112.000/drcov.myapp.13112.0000.proc.log
+\endverbatim
+
+The resulting \p coverage.info file (in the current directory by default)
+is in the standard \p lcov format and can be processed by the <a
+href="http://ltp.sourceforge.net/coverage/lcov.php">lcov tool</a> to
+produce nice html result pages.
+
+For a full description of the drcov2lcov usage see the \p drcov
+documemtation at http://dynamorio.org/docs/page_drcov.html.
+
+****************************************************************************
+****************************************************************************
+*/

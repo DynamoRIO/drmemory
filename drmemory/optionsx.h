@@ -603,9 +603,12 @@ OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
 OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
                    "Ensure external processes terminated by this one exit cleanly",
                    "Ensure external processes terminated by this one exit cleanly.  Often applications forcibly terminate child processes, which can prevent proper leak checking and error and suppression summarization as well as generation of symbol and code cache files needed for performance.  When this option is enabled, every termination call to another process will be replaced with a directive to the Dr. Memory running in that process to perform a clean shutdown.  If there is no DynamoRIO-based tool in the target process, the regular termination call will be carried out.")
+OPTION_CLIENT_BOOL(drmemscope, coverage, false,
+                   "Measure and provide code coverage information",
+                   "Measure code coverage during application execution.  The resulting data is written to a separate file named with a 'drcov' prefix in the same directory as Dr. Memory's other results files.  The raw data can be turned into a human-readable format using the drcov2lcov utility.")
 OPTION_CLIENT_BOOL(drmemscope, fuzz, false,
                    "Enable fuzzing by Dr. Memory",
-                   "Enable fuzzing by Dr. Memory.")
+                   "Enable fuzzing by Dr. Memory.  See the other fuzz_* options for all of the different fuzzing options.")
 OPTION_CLIENT_STRING(drmemscope, fuzz_module, "",
                      "The fuzz target module name. The application main executable is used by default.",
                      "The fuzz target module name. The application main executable is used by default.")
