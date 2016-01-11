@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -388,6 +388,9 @@ foreach (str ${patterns})
   endwhile()
 
   string(REGEX REPLACE "(^|\n)%(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
+
+  # We support skipping lines (w/ no regex support file can't have .*)
+  string(REGEX REPLACE "(^|\n)%SKIPLINE\n" "\\1.*\n" ${str} "${${str}}")
 endforeach (str)
 
 # Remove up to and including the line matched by 'needle'.  Used to ensure that
@@ -424,6 +427,17 @@ set(cmd_tomatch "${cmd_err}")
 
 # remove default-suppressed errors (varies by platform: i#339)
 string(REGEX REPLACE ", *[0-9]+ default-suppressed" "" cmd_tomatch "${cmd_tomatch}")
+
+# remove platform-specific paths to log files
+string(REGEX REPLACE "/[-A-Za-z0-9\\._/]+logs/[-A-Za-z0-9\\._/]+"
+  "" cmd_tomatch "${cmd_tomatch}")
+if (WIN32)
+  string(REGEX REPLACE "[A-Za-z]:[/\\\\][-A-Za-z0-9\\._/\\\\]+logs[-A-Za-z0-9\\._/\\\\]+"
+    "" cmd_tomatch "${cmd_tomatch}")
+endif (WIN32)
+
+# remove trailing spaces
+string(REGEX REPLACE " *\n" "\n" cmd_tomatch "${cmd_tomatch}")
 
 foreach (line ${lines})
   set(remove_line ON)

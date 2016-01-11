@@ -624,6 +624,9 @@ if (TOOL_DR_MEMORY)
       "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
       "" OFF "registers.blacklist" 0 "")
   endif ()
+  # XXX: ideally we'd run drcov2lcov and test the output too.  For now this
+  # is just a test of the coverage data line output.
+  newtest_nobuild(coverage free "" "-coverage" "" OFF "")
 
   # -replace_malloc is now the default, so test wrapping
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
