@@ -543,6 +543,7 @@ options_init(const char *opstr)
         option_specified.fuzz_dump_on_error ||
         option_specified.fuzz_input_file ||
         option_specified.fuzz_corpus ||
+        option_specified.fuzz_corpus_out ||
         option_specified.fuzz_bbcov ||
         option_specified.fuzz_target ||
         option_specified.fuzz_mutator_lib ||
@@ -572,6 +573,8 @@ options_init(const char *opstr)
         if (option_specified.fuzz_dictionary && option_specified.fuzz_mutator_unit &&
             strcmp(options.fuzz_mutator_unit, "token") != 0)
             usage_error("-fuzz_dictionary requires -fuzz_mutator_unit token", "");
+        if (option_specified.fuzz_corpus_out && !option_specified.fuzz_corpus)
+            usage_error("-fuzz_corpus_out requires -fuzz_corpus", "");
     }
 
     if (options.replace_malloc) {

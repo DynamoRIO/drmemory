@@ -47,6 +47,13 @@ else (UNIX)
 endif (UNIX)
 
 # fuzz the c target
+set(CORPUS_PATH "${PROJECT_SOURCE_DIR}/tests/fuzz/corpus")
+set(CORPUS_OUT "${PROJECT_BINARY_DIR}/tests/corpus_out")
+file(MAKE_DIRECTORY "${CORPUS_OUT}")
+newtest_ex(fuzz_corpus fuzz_corpus.c ""
+  "-fuzz_corpus;${CORPUS_PATH};-fuzz_corpus_out;${CORPUS_OUT};-fuzz_num_iters;3"
+  # share the result file with asmtest
+  "" OFF "../asmtest" 0)
 newtest_ex(fuzz_buffer fuzz_buffer.c
   "initialize" "-fuzz_function;repeatme;-fuzz_num_iters;10" "" OFF "" 0)
 newtest_nobuild_ex(fuzz_buffer.overflow fuzz_buffer

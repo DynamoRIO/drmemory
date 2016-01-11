@@ -336,8 +336,14 @@ fuzzer_init(client_id_t client_id)
                       corpus_vec_entry_free);
         drvector_init(&mutator_vec, MUTATOR_VEC_INIT_SIZE, true/*sync*/,
                       mutator_vec_entry_free);
-        if (!fuzzer_read_corpus_list()) {
+        if (!dr_directory_exists(options.fuzz_corpus) || !fuzzer_read_corpus_list()) {
             NOTIFY_ERROR("Fuzzer failed to read corpus list."NL);
+            dr_abort();
+        }
+        if (option_specified.fuzz_corpus_out &&
+            !dr_directory_exists(options.fuzz_corpus_out)) {
+            NOTIFY_ERROR("Corpus output directory %s does not exist."NL,
+                         options.fuzz_corpus_out);
             dr_abort();
         }
     }
@@ -715,7 +721,8 @@ dump_fuzz_corpus_input(void *dcontext, fuzz_state_t *state)
     char suffix[32];
     char *logdir;
     char path[MAXIMUM_PATH];
-    logdir = options.fuzz_corpus;
+    logdir = option_specified.fuzz_corpus_out ?
+        options.fuzz_corpus_out : options.fuzz_corpus;
     dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), CORPUS_FILE_SUFFIX);
     NULL_TERMINATE_BUFFER(suffix);
     return dump_fuzz_input(state, logdir, suffix, path, BUFFER_SIZE_ELEMENTS(path));
@@ -1525,6 +1532,8 @@ post_fuzz_corpus(void *fuzzcxt, generic_func_t target_pc)
         if (!state->should_mutate) {
             /* corpus phase: simply add the mutator into mutator_vec */
             drvector_append(&mutator_vec, (void *)state->mutator);
+            if (option_specified.fuzz_corpus_out && num_bbs > state->num_bbs)
+                dump_fuzz_corpus_input(dcontext, state);
         } else if (num_bbs > state->num_bbs) {
             /* mutate phase: dump and add the mutator if we discover new bbs */
             dump_fuzz_corpus_input(dcontext, state);
@@ -1537,7 +1546,7 @@ post_fuzz_corpus(void *fuzzcxt, generic_func_t target_pc)
     }
 
     if (fuzz_target.repeat_count > 0 &&
-        state->repeat_index++ <= fuzz_target.repeat_count) {
+        ++state->repeat_index < fuzz_target.repeat_count) {
         state->repeat = true;
         return true;
     }
