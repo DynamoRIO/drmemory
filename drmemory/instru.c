@@ -59,6 +59,7 @@ hashtable_t xl8_sharing_table;
 #define IGNORE_UNADDR_HASH_BITS 6
 hashtable_t ignore_unaddr_table;
 
+#ifdef X86
 /* Handle slowpath for OP_loop in repstr_to_loop properly (i#391).
  * We map the address of an allocated OP_loop to the app_pc of the original
  * app rep-stringop instr.  We also map the reverse so we can delete it
@@ -66,7 +67,7 @@ hashtable_t ignore_unaddr_table;
  * every single bb).  We're helped there b/c repstr_to_loop always
  * has single-instr bbs so the tag is the rep-stringop instr pc.
  */
-#define STRINGOP_HASH_BITS 6
+# define STRINGOP_HASH_BITS 6
 hashtable_t stringop_us2app_table;
 static hashtable_t stringop_app2us_table;
 void *stringop_lock; /* protects both tables */
@@ -77,6 +78,7 @@ typedef struct _stringop_entry_t {
     /* This is used to handle non-precise flushing */
     byte ignore_next_delete;
 } stringop_entry_t;
+#endif
 
 #ifdef TOOL_DR_MEMORY
 /* We wait until 1st bb to set thread data structs, as we want the mcxt
@@ -111,7 +113,7 @@ void
 instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
 {
     bb_saved_info_t *save;
-    stringop_entry_t *stringop;
+    IF_X86(stringop_entry_t *stringop;)
     uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
     if (!INSTRUMENT_MEMREFS())
@@ -168,6 +170,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
         }
     }
 
+#ifdef X86
     dr_mutex_lock(stringop_lock);
     /* We rely on repstr_to_loop arranging the repstr to be the only
      * instr and thus the tag (i#391) (and we require -disable_traces)
@@ -189,6 +192,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
         }
     }
     dr_mutex_unlock(stringop_lock);
+#endif
 }
 
 static void
@@ -199,6 +203,7 @@ bb_table_free_entry(void *entry)
     global_free(save, sizeof(*save), HEAPSTAT_PERBB);
 }
 
+#ifdef X86
 static void
 stringop_free_entry(void *entry)
 {
@@ -208,6 +213,7 @@ stringop_free_entry(void *entry)
         e, e->ignore_next_delete);
     global_free(e, sizeof(*e), HEAPSTAT_PERBB);
 }
+#endif
 
 /***************************************************************************
  * TOP-LEVEL
@@ -264,14 +270,16 @@ instrument_init(void)
         hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
     }
-    stringop_lock = dr_mutex_create();
     hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
                       false/*!synch*/, bb_table_free_entry, NULL, NULL);
+#ifdef X86
+    stringop_lock = dr_mutex_create();
     hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
                       false/*!strdup*/, false/*!synch*/,
                       stringop_free_entry, NULL, NULL);
     hashtable_init_ex(&stringop_us2app_table, STRINGOP_HASH_BITS, HASH_INTPTR,
                       false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
+#endif
 
 #ifdef TOOL_DR_MEMORY
     if (INSTRUMENT_MEMREFS())
@@ -293,10 +301,12 @@ instrument_exit(void)
         hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
         hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
     }
-    dr_mutex_destroy(stringop_lock);
     hashtable_delete_with_stats(&bb_table, "bb_table");
+#ifdef X86
+    dr_mutex_destroy(stringop_lock);
     hashtable_delete(&stringop_app2us_table);
     hashtable_delete(&stringop_us2app_table);
+#endif
 #ifdef TOOL_DR_MEMORY
     if (INSTRUMENT_MEMREFS())
         replace_exit();
@@ -342,6 +352,7 @@ instrument_persist_ro_size(void *drcontext, void *perscxt)
                                      perscxt, DR_HASHPERS_REBASE_KEY |
                                      DR_HASHPERS_ONLY_IN_RANGE);
     }
+#ifdef X86
     LOG(2, "persisting string table\n");
     sz += hashtable_persist_size(drcontext, &stringop_app2us_table,
                                  sizeof(stringop_entry_t), perscxt,
@@ -351,6 +362,7 @@ instrument_persist_ro_size(void *drcontext, void *perscxt)
      * stringop_app2us_table, which will change on resurrection: so rather than
      * persist we rebuild at resurrect time
      */
+#endif
     return sz;
 }
 
@@ -376,11 +388,13 @@ instrument_persist_ro(void *drcontext, void *perscxt, file_t fd)
                                      perscxt, DR_HASHPERS_REBASE_KEY |
                                      DR_HASHPERS_ONLY_IN_RANGE);
     }
+#ifdef X86
     LOG(2, "persisting string table\n");
     ok = ok && hashtable_persist(drcontext, &stringop_app2us_table,
                                  sizeof(stringop_entry_t), fd, perscxt,
                                  DR_HASHPERS_PAYLOAD_IS_POINTER | DR_HASHPERS_REBASE_KEY |
                                  DR_HASHPERS_ONLY_IN_RANGE | DR_HASHPERS_ONLY_PERSISTED);
+#endif
     return ok;
 }
 
@@ -427,6 +441,7 @@ xl8_sharing_resurrect_entry(void *key, void *payload, ptr_int_t shift)
     return true;
 }
 
+#ifdef X86
 /* caller should hold hashtable lock */
 static void
 stringop_app2us_add_entry(app_pc xl8, stringop_entry_t *entry)
@@ -468,6 +483,7 @@ populate_us2app_table(void)
     }
     return true;
 }
+#endif
 
 bool
 instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
@@ -491,6 +507,7 @@ instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
         ok = ok && hashtable_resurrect(drcontext, map, &ignore_unaddr_table, sizeof(uint),
                                        perscxt, DR_HASHPERS_REBASE_KEY, NULL);
     }
+#ifdef X86
     LOG(2, "resurrecting string table\n");
     dr_mutex_lock(stringop_lock);
     ok = ok && hashtable_resurrect(drcontext, map, &stringop_app2us_table,
@@ -505,6 +522,7 @@ instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
      */
     ok = ok && populate_us2app_table();
     dr_mutex_unlock(stringop_lock);
+#endif
 
     /* FIXME: if a later one fails, we'll abort the pcache load but we'll have entries
      * added to the earlier tables.  we should invalidate them.
@@ -818,6 +836,7 @@ check_program_counter(void *drcontext, app_pc pc, instr_t *inst)
     }
 }
 
+#ifdef X86
 /* PR 580123: add fastpath for rep string instrs by converting to normal loop */
 static void
 convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
@@ -891,6 +910,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
         bi->is_repstr_to_loop = true;
     }
 }
+#endif
 
 /* Conversions to app code itself that should happen before instrumentation */
 static dr_emit_flags_t
@@ -941,8 +961,10 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
         for_trace ? " for trace" : "", translating ? " translating" : "");
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
 
+#ifdef X86
     if (options.repstr_to_loop && INSTRUMENT_MEMREFS())
         convert_repstr_to_loop(drcontext, bb, bi, translating);
+#endif
 
 #if defined(WINDOWS) && !defined(X64)
     /* i#1374: we need insert non-meta instr for handling zero_retaddr in _chkstk */

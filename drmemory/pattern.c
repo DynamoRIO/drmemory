@@ -810,8 +810,9 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
 }
 #endif /* X86 */
 
+/* Assumes the caller has set the ISA mode to match the fault point */
 static bool
-pattern_ill_instr_is_instrumented(byte *pc)
+pattern_ill_instr_is_instrumented(void *drcontext, byte *pc)
 {
 #ifdef X86
     byte buf[6];
@@ -825,7 +826,60 @@ pattern_ill_instr_is_instrumented(byte *pc)
         (*(ushort *)&buf[4] != (ushort)UD2A_OPCODE))
         return false;
 #elif defined(ARM)
-    /* FIXME i#1726: update for ARM */
+    /* For Thumb:
+     *  +30   m4 @0x4f7d2008  f8d3 c004  ldr    +0x04(%r3)[4byte] -> %r12
+     *  +34   m4 @0x4f7d1f70  f24f 14fd  movw   $0x0000f1fd -> %r4
+     *  +38   m4 @0x4f7d1f24  f2cf 14fd  movt   $0x0000f1fd -> %r4
+     *  +42   m4 @0x4f7d1ee4  ebbc 0f04  cmp    %r12 %r4  $0x00
+     *  +46   m4 @0x537a1ea4  d100       b.ne   @0x537a20a0[4byte]
+     *  +48   m4 @0x537a1bb0  de00       udf    $0x00000000
+     *  +50   m4 @0x537a20a0             <label>
+     * When the app memref is predicated, we add a b.!pred at the top, so the
+     * rest does not change.
+     * For ARM:
+     *  +20   m4 @0x4f3fe0f4  e5901000   ldr    (%r0)[4byte] -> %r1
+     *  +24   m4 @0x4f3fe180  e30f21fd   movw   $0x0000f1fd -> %r2
+     *  +28   m4 @0x4f3fdee8  e34f21fd   movt   $0x0000f1fd -> %r2
+     *  +32   m4 @0x4f3fdf28  e1510002   cmp    %r1 %r2  $0x00
+     *  +36   m4 @0x4f3fdf68  1a000000   b.ne   @0x4f3fdc34[4byte]
+     *  +40   m4 @0x4f3fdb50  e7f000f0   udf    $0x00000000
+     *  +44   m4 @0x4f3fdc34             <label>
+     * For 2-byte or 1-byte memrefs, there is no movt.
+     */
+    if (dr_get_isa_mode(drcontext) == DR_ISA_ARM_THUMB) {
+        byte buf[12]; /* 12 bytes from movt (or movw for <4byte) through udf */
+#       define BNE_THUMB_OPCODE 0xd100
+        int immed;
+        if (!safe_read(pc + UDF_THUMB_LENGTH - sizeof(buf), sizeof(buf), buf))
+            return false;
+        immed = ((buf[0] & 0xf) << 12) | ((buf[1] & 0x4) << 9) |
+            ((buf[3] & 0x70) << 4) | buf[2];
+        DOLOG(3, {
+            int i;
+            LOG(3, "%s: read ", __FUNCTION__);
+            for (i = 0; i < sizeof(buf); i++)
+                LOG(3, " %02x", buf[i]);
+            LOG(3, "\n\timmed=0x%x, bne=0x%x, udf=0x%x\n", immed,
+                *(ushort *)&buf[8], *(ushort *)&buf[10]);
+        });
+        if ((immed != (options.pattern & 0xffff) &&
+             immed != (pattern_reverse & 0xffff)) ||
+            *(ushort *)&buf[8] != (ushort)BNE_THUMB_OPCODE ||
+            *(ushort *)&buf[10] != (ushort)UDF_THUMB_OPCODE)
+            return false;
+    } else {
+        byte buf[16]; /* 16 bytes from movt (or movw for <4byte) through udf */
+#       define BNE_ARM_OPCODE 0x1a000000
+        int immed;
+        if (!safe_read(pc + UDF_ARM_LENGTH - sizeof(buf), sizeof(buf), buf))
+            return false;
+        immed = ((buf[2] & 0xf) << 12) | ((buf[1] & 0xf) << 8) | buf[0];
+        if ((immed != (options.pattern & 0xffff) &&
+             immed != (pattern_reverse & 0xffff)) ||
+            *(ushort *)&buf[8] != (ushort)BNE_ARM_OPCODE ||
+            *(ushort *)&buf[12] != (ushort)UDF_ARM_OPCODE)
+            return false;
+    }
 #endif
     return true;
 }
@@ -854,12 +908,20 @@ pattern_handle_ill_fault(void *drcontext,
     bool   is_write;
     int    memopidx;
     instr_t instr;
-    uint   pos;
+    uint   pos, skip;
     ASSERT(options.pattern != 0, "incorrectly called");
     STATS_INC(num_slowpath_faults);
+#ifdef ARM
+    dr_isa_mode_t old_mode;
+    dr_isa_mode_t fault_mode = get_isa_mode_from_fault_mc(raw_mc);
+    dr_set_isa_mode(drcontext, fault_mode, &old_mode);
+#endif
+
     /* check if ill-instr is our code */
-    if (!pattern_ill_instr_is_instrumented(raw_mc->pc))
+    if (!pattern_ill_instr_is_instrumented(drcontext, raw_mc->pc)) {
+        IF_ARM(dr_set_isa_mode(drcontext, old_mode, NULL));
         return false;
+    }
     /* get the information of the instr that triggered the ill fault.
      * will report on all unaddr refs in this instr and don't care
      * which one triggered the ud2a
@@ -888,25 +950,29 @@ pattern_handle_ill_fault(void *drcontext,
     /* we are not skipping all cmps for this instr, which is ok because we
      * clobberred the pattern if a 2nd memref was unaddr.
      */
+    skip = IF_ARM_ELSE(fault_mode == DR_ISA_ARM_THUMB ?
+                       UDF_THUMB_LENGTH : UDF_ARM_LENGTH, UD2A_LENGTH);
     LOG(2, "pattern check ud2a triggered@"PFX" => skip to "PFX"\n",
-        raw_mc->pc, raw_mc->pc + UD2A_LENGTH);
-    raw_mc->pc += UD2A_LENGTH;
+        raw_mc->pc, raw_mc->pc + skip);
+    raw_mc->pc += skip;
 
     if (options.pattern_max_2byte_faults > 0 &&
         num_2byte_faults >= options.pattern_max_2byte_faults) {
         /* 2-byte checks caused too many faults, switch instrumentation style */
         pattern_switch_instrumentation_style();
     }
+    IF_ARM(dr_set_isa_mode(drcontext, old_mode, NULL));
     return true;
 }
 
+/* Assumes the caller has set the ISA mode to match the fault point */
 static bool
 pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
                                    instr_t *inst, instr_t *next)
 {
+#ifdef X86
     ushort ud2a;
     /* check code sequence: cmp; jne_short; ud2a */
-    /* FIXME i#1726: for ARM, there will be a load into a reg first */
     if (instr_get_opcode(inst) == OP_cmp &&
         instr_get_opcode(next) == IF_X86_ELSE(OP_jne_short, OP_b_short) &&
         /* FIXME i#1726: ARM vs Thumb: UDF_THUMB_OPCODE, UDF_ARM_OPCODE */
@@ -929,6 +995,9 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
         });
         return true;
     }
+#elif defined(ARM)
+    /* FIXME i#1726: ARM NYI */
+#endif
     return false;
 }
 
@@ -956,6 +1025,12 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
     bool ours = false;
     instr_t inst, next;
     byte *next_pc;
+    uint skip;
+#ifdef ARM
+    dr_isa_mode_t old_mode;
+    dr_isa_mode_t fault_mode = get_isa_mode_from_fault_mc(raw_mc);
+    dr_set_isa_mode(drcontext, fault_mode, &old_mode);
+#endif
 
     /* check if wrong pc */
     instr_init(drcontext, &inst);
@@ -1031,11 +1106,14 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
     }
 #endif
     /* skip pattern check code */
+    skip = IF_ARM_ELSE(fault_mode == DR_ISA_ARM_THUMB ?
+                       UDF_THUMB_LENGTH : UDF_ARM_LENGTH, UD2A_LENGTH);
     LOG(2, "pattern check cmp fault@"PFX" => skip to "PFX"\n",
-        raw_mc->pc, next_pc + UD2A_LENGTH);
-    raw_mc->pc = next_pc + UD2A_LENGTH;
+        raw_mc->pc, next_pc + skip);
+    raw_mc->pc = next_pc + skip;
     ours = true;
   handle_light_mode_segv_fault_done:
+    IF_ARM(dr_set_isa_mode(drcontext, old_mode, NULL));
     instr_free(drcontext, &inst);
     instr_free(drcontext, &next);
     return ours;

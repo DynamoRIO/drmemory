@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -318,5 +318,10 @@ instr_is_restore(instr_t *inst);
 
 bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);
+
+#ifdef ARM
+dr_isa_mode_t
+get_isa_mode_from_fault_mc(dr_mcontext_t *mc);
+#endif
 
 #endif /* _FASTPATH_H_ */

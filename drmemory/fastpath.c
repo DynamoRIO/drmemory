@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -174,6 +174,14 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
 /***************************************************************************
  * Fault handling
  */
+
+#ifdef ARM
+dr_isa_mode_t
+get_isa_mode_from_fault_mc(dr_mcontext_t *mc)
+{
+    return TEST(EFLAGS_T, mc->xflags) ? DR_ISA_ARM_THUMB : DR_ISA_ARM_A32;
+}
+#endif
 
 #ifdef TOOL_DR_MEMORY
 

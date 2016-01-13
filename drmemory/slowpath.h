@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -222,27 +222,29 @@ slowpath_module_unload(void *drcontext, const module_data_t *mod);
  * ISA UTILITY ROUTINES
  */
 
-#define REP_PREFIX    0xf3
-#define REPNE_PREFIX  0xf2
-#define MOVS_4_OPCODE 0xa5
-#define CMPS_1_OPCODE 0xa6
-#define LOOP_INSTR_OPCODE 0xe2
-#define LOOP_INSTR_LENGTH 2
-#define JNZ_SHORT_OPCODE    0x75
-#define JNZ_SHORT_LENGTH    2
-#define UD2A_LENGTH         2
-#define CMP_OPCODE       0x80
-#define CMP_BASE_IMM1_LENGTH  3
-#define UD2A_OPCODE      0x0b0f
+#ifdef X86
+# define REP_PREFIX    0xf3
+# define REPNE_PREFIX  0xf2
+# define MOVS_4_OPCODE 0xa5
+# define CMPS_1_OPCODE 0xa6
+# define LOOP_INSTR_OPCODE 0xe2
+# define LOOP_INSTR_LENGTH 2
+# define JNZ_SHORT_OPCODE    0x75
+# define JNZ_SHORT_LENGTH    2
+# define UD2A_LENGTH         2
+# define CMP_OPCODE       0x80
+# define CMP_BASE_IMM1_LENGTH  3
+# define UD2A_OPCODE      0x0b0f
 /* N.B.: other opcodes like ADD also use 0x81, and CMP with immed opnd may use
  * other opcode value too.
  */
-#define CMP_IMMED_OPCODE 0x81
-#define RET_NOIMM_OPCODE 0xc3
-
-#ifdef ARM
+# define CMP_IMMED_OPCODE 0x81
+# define RET_NOIMM_OPCODE 0xc3
+#elif defined(ARM)
 # define UDF_THUMB_OPCODE 0xde00
-# define UDF_ARM_OPCODE   0xe7f000f0
+# define UDF_THUMB_LENGTH 2
+# define UDF_ARM_OPCODE 0xe7f000f0
+# define UDF_ARM_LENGTH 4
 #endif
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
