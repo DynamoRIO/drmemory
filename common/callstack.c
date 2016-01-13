@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -443,7 +443,18 @@ callstack_thread_init(void *drcontext)
          */
         module_data_t *data = dr_get_main_module();
         instr_t inst;
-        byte *pc = data->entry_point;
+        app_pc pc = data->entry_point;
+        app_pc stop = data->entry_point + PAGE_SIZE;
+        uint i;
+        /* Ensure we don't walk off the end of the segment (i#1846) */
+        for (i = 0; i < data->num_segments; i++) {
+            if (pc >= data->segments[i].start &&
+                pc < data->segments[i].end) {
+                if (data->segments[i].end < stop)
+                    stop = data->segments[i].end;
+                break;
+            }
+        }
         instr_init(drcontext, &inst);
         do {
             pc = decode(drcontext, pc, &inst);
@@ -456,7 +467,7 @@ callstack_thread_init(void *drcontext)
                 break;
             }
             instr_reset(drcontext, &inst);
-        } while (pc != NULL && pc - data->entry_point < PAGE_SIZE);
+        } while (pc != NULL && pc < stop);
         instr_free(drcontext, &inst);
         LOG(1, "stack_lowest_retaddr for main thread = 1st call "PFX" > entry "PFX"\n",
             pt->stack_lowest_retaddr, data->entry_point);
