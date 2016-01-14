@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,39 +21,39 @@
 #
 %if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1225
+registers.c_asm.asm:1227
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1232
+registers.c_asm.asm:1234
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:104
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1452
+registers.c_asm.asm:1454
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1469
+registers.c_asm.asm:1471
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1499
+registers.c_asm.asm:1501
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:187
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1201
+registers.c_asm.asm:1203
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1026
+registers.c_asm.asm:1028
 Error #10: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1030
+registers.c_asm.asm:1032
 Error #11: UNINITIALIZED READ: reading register cl
-registers.c_asm.asm:1035
+registers.c_asm.asm:1037
 Error #12: UNINITIALIZED READ: reading register ecx
-registers.c_asm.asm:1055
+registers.c_asm.asm:1057
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
-registers.c_asm.asm:1086
+registers.c_asm.asm:1088
 Error #14: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1252
+registers.c_asm.asm:1254
 Error #15: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1264
+registers.c_asm.asm:1266
 Error #16: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1277
+registers.c_asm.asm:1279
 Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1278
+registers.c_asm.asm:1280
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
@@ -99,7 +99,7 @@ registers.c_asm.asm:967
 %endif
 %if WINDOWS
 Error #19: UNINITIALIZED READ: reading register ecx
-registers.c_asm.asm:1594
+registers.c_asm.asm:1596
 %endif
 Error #20: UNINITIALIZED READ: reading register
 registers.c:267
@@ -107,13 +107,13 @@ Error #21: UNINITIALIZED READ: reading register
 registers.c:288
 %if WINDOWS
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1679
+registers.c_asm.asm:1681
 Error #23: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1693
+registers.c_asm.asm:1695
 Error #24: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1707
+registers.c_asm.asm:1709
 Error #25: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1721
+registers.c_asm.asm:1723
 %endif
 %if UNIX
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
