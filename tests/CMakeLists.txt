@@ -462,9 +462,7 @@ newtest_ex(operators operators.cpp "" "" "" OFF ""
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
-if (NOT ARM) # XXX i#1726: port to ARM
-  newtest_ex(state state.c "" "" "" OFF "" "ANY")
-endif ()
+newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
 if (UNIX)
   newtest(signal signal.c)

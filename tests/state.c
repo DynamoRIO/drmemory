@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -46,7 +46,9 @@ void test_fault_asm(int xax_val);
 #ifdef LINUX
 typedef struct sigcontext sigcontext_t;
 # define SIGCXT_FROM_UCXT(ucxt) (&((ucxt)->uc_mcontext))
-# ifdef X64
+# ifdef ARM
+#  define XAX arm_r0
+# elif defined(X64)
 #  define XAX rax
 # else
 #  define XAX eax
@@ -141,6 +143,7 @@ START_FILE
 /* void test_fault_asm(int xax_val); */
         DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
+#ifdef X86
         /* set %eax to be xax_val for the check in handler */
         mov      REG_XAX, ARG1
         push     REG_XBP
@@ -163,6 +166,24 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XSP, REG_XBP
         pop      REG_XBP
         ret
+#elif defined(ARM)
+        /* set for the check in handler */
+        mov      REG_R0, ARG1
+
+        /* i#1466: the asm code below tests Dr.Memory state restore event on fault */
+        b        1f
+    1:
+        mov      REG_R1, #0
+        /* no aflags stealing for instrumenting this str because of the cmp after */
+        str      REG_R1, BYTE [REG_R1] /* access violation */
+        cmp      REG_R1, #0
+        /* aflags stealing for instrumenting this str because of the jcc after */
+        str      REG_R1, BYTE [REG_R1] /* access violation */
+        /* jcc to end the bb, so %r0 is live */
+        bne      1b
+
+        bx       lr
+#endif
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
 

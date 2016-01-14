@@ -974,8 +974,7 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
     ushort ud2a;
     /* check code sequence: cmp; jne_short; ud2a */
     if (instr_get_opcode(inst) == OP_cmp &&
-        instr_get_opcode(next) == IF_X86_ELSE(OP_jne_short, OP_b_short) &&
-        /* FIXME i#1726: ARM vs Thumb: UDF_THUMB_OPCODE, UDF_ARM_OPCODE */
+        instr_get_opcode(next) == OP_jne_short &&
         safe_read(next_next_pc, sizeof(ushort), &ud2a) &&
         ud2a == (ushort)UD2A_OPCODE) {
         DODEBUG({
@@ -996,7 +995,17 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
         return true;
     }
 #elif defined(ARM)
-    /* FIXME i#1726: ARM NYI */
+    /* check code sequence: ldr; movw+movt; cmp; b.ne; udf */
+    if ((instr_get_opcode(inst) == OP_ldr ||
+         instr_get_opcode(inst) == OP_ldrb ||
+         instr_get_opcode(inst) == OP_ldrh) &&
+        instr_get_opcode(next) == OP_movw &&
+        opnd_is_immed_int(instr_get_src(next, 0))) {
+        uint imm = opnd_get_immed_int(instr_get_src(next, 0));
+        if (imm == (ushort)options.pattern ||
+            imm == (ushort)pattern_reverse)
+            return true;
+    }
 #endif
     return false;
 }
@@ -1025,7 +1034,6 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
     bool ours = false;
     instr_t inst, next;
     byte *next_pc;
-    uint skip;
 #ifdef ARM
     dr_isa_mode_t old_mode;
     dr_isa_mode_t fault_mode = get_isa_mode_from_fault_mc(raw_mc);
@@ -1106,11 +1114,31 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc,
     }
 #endif
     /* skip pattern check code */
-    skip = IF_ARM_ELSE(fault_mode == DR_ISA_ARM_THUMB ?
-                       UDF_THUMB_LENGTH : UDF_ARM_LENGTH, UD2A_LENGTH);
+#ifdef X86
     LOG(2, "pattern check cmp fault@"PFX" => skip to "PFX"\n",
-        raw_mc->pc, next_pc + skip);
-    raw_mc->pc = next_pc + skip;
+        raw_mc->pc, next_pc + UD2A_LENGTH);
+    raw_mc->pc = next_pc + UD2A_LENGTH;
+#elif defined(ARM)
+    instr_reset(drcontext, &next);
+    if (!safe_decode(drcontext, next_pc, &next, &next_pc))
+        goto handle_light_mode_segv_fault_done;
+    if (instr_get_opcode(&next) == OP_movt) {
+        instr_reset(drcontext, &next);
+        if (!safe_decode(drcontext, next_pc, &next, &next_pc))
+            goto handle_light_mode_segv_fault_done;
+    }
+    ASSERT(instr_get_opcode(&next) == OP_cmp, "invalid pattern instru");
+    instr_reset(drcontext, &next);
+    if (!safe_decode(drcontext, next_pc, &next, &next_pc))
+        goto handle_light_mode_segv_fault_done;
+    ASSERT(instr_is_cbr(&next), "invalid pattern instru");
+    instr_reset(drcontext, &next);
+    if (!safe_decode(drcontext, next_pc, &next, &next_pc))
+        goto handle_light_mode_segv_fault_done;
+    ASSERT(instr_get_opcode(&next) == OP_udf, "invalid pattern instru");
+    LOG(2, "pattern check fault@"PFX" => skip to "PFX"\n", raw_mc->pc, next_pc);
+    raw_mc->pc = next_pc;
+#endif
     ours = true;
   handle_light_mode_segv_fault_done:
     IF_ARM(dr_set_isa_mode(drcontext, old_mode, NULL));
