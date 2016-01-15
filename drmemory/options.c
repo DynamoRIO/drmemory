@@ -561,6 +561,10 @@ options_init(const char *opstr)
         IF_WINDOWS(option_specified.fuzz_mangled_names ||)
         option_specified.fuzz_stat_freq) {
         options.fuzz = true;
+        /* enable replace_buffer by default if fuzzing with input files */
+        if ((option_specified.fuzz_corpus || option_specified.fuzz_input_file) &&
+            !option_specified.fuzz_replace_buffer)
+            options.fuzz_replace_buffer = true;
         if (options.fuzz_replace_buffer && !options.replace_malloc) {
             usage_error("-fuzz_replace_buffer cannot be used with -no_replace_malloc",
                         "");

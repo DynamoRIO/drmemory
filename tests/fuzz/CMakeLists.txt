@@ -77,7 +77,7 @@ if (INPUT_DATA-NOTFOUND)
   message(FATAL "Did not find input.dat for fuzz_buffer.load_input test")
 endif ()
 set(fuzz_load_input_drmem_ops
-  "-fuzz_function;repeatme;-fuzz_input_file;${INPUT_DATA};-fuzz_num_iters;0")
+  "-fuzz_function;repeatme;-fuzz_input_file;${INPUT_DATA};-fuzz_num_iters;0;-no_fuzz_replace_buffer")
 newtest_nobuild_ex(fuzz_buffer.load_input fuzz_buffer
   "initialize" "${fuzz_load_input_drmem_ops}" "" OFF
   "fuzz_buffer.one-input" 0 "")

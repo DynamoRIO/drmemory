@@ -1494,7 +1494,10 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
             drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, fuzz_state->input_buffer);
             drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)fuzz_state->input_size);
         }
-        shadow_state_init(dcontext, fuzz_state, mc, true);
+        shadow_state_init(dcontext, fuzz_state, mc,
+                          options.fuzz_replace_buffer ?
+                          false /* do not save the shadow state of the input data */:
+                          true  /* save the shadow state of the input data */);
         fuzzer_mutator_init(dcontext, fuzz_state);
         if (fuzz_target.repeat_count == 0)
             return;
