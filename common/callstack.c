@@ -1027,16 +1027,18 @@ walk_wide_string(wchar_t *start, size_t safe_wchars,
 }
 #endif
 
-#define OP_CALL_DIR 0xe8
-#define OP_CALL_IND 0xff
-#define OP_JMP_DIR_SHORT 0xeb
-#define OP_JMP_DIR_LONG 0xe9
-#define OP_JMP_IND 0xff
-#define OP_SEG_FS   0x64
-#define WOW64_SYSOFFS  0xc0
+#ifdef X86
+# define OP_CALL_DIR 0xe8
+# define OP_CALL_IND 0xff
+# define OP_JMP_DIR_SHORT 0xeb
+# define OP_JMP_DIR_LONG 0xe9
+# define OP_JMP_IND 0xff
+# define OP_SEG_FS   0x64
+# define WOW64_SYSOFFS  0xc0
+#endif
 
 static bool
-is_retaddr(byte *pc, bool exclude_tool_lib)
+is_retaddr(app_pc pc, bool exclude_tool_lib)
 {
     /* XXX: for our purposes we really want is_in_code_section().  Since
      * is_in_module() is used for is_image(), we would need a separate rbtree.  We
@@ -1048,8 +1050,12 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
      * match +rx anyway, and rare for global var to have what looks like a call prior
      * to it.
      */
+#ifdef ARM
+    bool is_thumb = TEST(1, (ptr_uint_t)pc);
+    pc = (app_pc) ALIGN_BACKWARD(pc, 2);
+#endif
     STATS_INC(cstack_is_retaddr);
-    if (!is_in_module(pc))
+    if (!is_in_module(pc-1))
         return false;
     if (exclude_tool_lib &&
         ((pc >= libdr_base && pc < libdr_end) ||
@@ -1063,7 +1069,8 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
         bool match;
         STATS_INC(cstack_is_retaddr_backdecode);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-            match = ((*(pc - 5) == OP_CALL_DIR
+            IF_X86_ELSE({
+                match = ((*(pc - 5) == OP_CALL_DIR
                       /* rule out call to next instr used for PIC */
                       IF_UNIX(&& *(int*)(pc - 4) != 0)) ||
                      (*(pc - 2) == OP_CALL_IND &&
@@ -1090,6 +1097,29 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
                      /* indirect through mem: 0xff /2 + sib (w/o sib reg=5) */
                      (*(pc - 3) == OP_CALL_IND &&
                       (*(pc - 2) == 0x14 && ((*(pc - 1) & 0x3) != 5))));
+            }, {
+                match =
+                    (is_thumb &&
+                     /* T32 bl <label> */
+                     ((((*(pc - 3) & 0xf0) == 0xf0) &&
+                       ((*(pc - 1) & 0xd0) == 0xd0)) ||
+                      /* T32 blx <label> */
+                      (((*(pc - 3) & 0xf0) == 0xf0) &&
+                       ((*(pc - 1) & 0xd0) == 0xc0)) ||
+                      /* T32 blx <reg> */
+                      (*(pc - 1) == 0x47 &&
+                       ((*(pc - 2) & 0x87) == 0x80)))) ||
+                    (!is_thumb &&
+                     /* A32 bl <label> */
+                     (((*(pc - 1) & 0x0f) == 0x09) ||
+                      /* A32 blx <label> */
+                      ((*(pc - 1) & 0xfe) == 0xfa) ||
+                      /* A32 blx <reg> */
+                      (((*(pc - 1) & 0x0f) == 0x01) &&
+                       *(pc - 2) == 0x2f &&
+                       *(pc - 3) == 0xff &&
+                       ((*(pc - 4) & 0xf0) == 0x30))));
+            })
         }, { /* EXCEPT */
             match = false;
             /* If we end up with a lot of these we could either cache
@@ -1170,13 +1200,17 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
              * system calls (i#1436).
              */
             DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-                if (*(pc - 5) == OP_CALL_DIR) {
-                    pc = *(int*)(pc - 4) + pc;
-                    /* Follow "call; jmp*", where jmp* is 0xff /4 */
-                    if (*pc != OP_JMP_IND ||
-                        ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
-                        res = false;
-                }
+                IF_X86_ELSE({
+                    if (*(pc - 5) == OP_CALL_DIR) {
+                        pc = *(int*)(pc - 4) + pc;
+                        /* Follow "call; jmp*", where jmp* is 0xff /4 */
+                        if (*pc != OP_JMP_IND ||
+                            ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
+                            res = false;
+                    }
+                }, {
+                    /* FIXME i#1726: port to ARM */
+                })
             }, { /* EXCEPT */
                 res = false;
                 LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
@@ -1203,34 +1237,38 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
     frame_sym.funcoffs = 0;
     lookup_func_and_line(&frame_sym, frame_name, frame_addr - frame_mod_start);
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        /* We only support a direct call or a 32-bit memory indirect: not
-         * feasible to figure out register values in prior frames.
-         */
-        if (*(pc - 5) == OP_CALL_DIR) {
-            pc = *(int*)(pc - 4) + pc;
-            /* Follow "call; jmp*", where jmp* is 0xff /4 */
-            if (*pc == OP_JMP_IND && *(pc + 1) == 0x25) {
-                int disp32 = *(int*)(pc + 2);
+        IF_X86_ELSE({
+            /* We only support a direct call or a 32-bit memory indirect: not
+             * feasible to figure out register values in prior frames.
+             */
+            if (*(pc - 5) == OP_CALL_DIR) {
+                pc = *(int*)(pc - 4) + pc;
+                /* Follow "call; jmp*", where jmp* is 0xff /4 */
+                if (*pc == OP_JMP_IND && *(pc + 1) == 0x25) {
+                    int disp32 = *(int*)(pc + 2);
+                    app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
+                    call_target = *(app_pc*)indir;
+                } else
+                    call_target = pc;
+            } else if (*(pc - 6) == OP_CALL_IND && *(pc - 5) == 0x15) {
+                int disp32 = *(int*)(pc - 4);
                 app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
+                LOG(4, "%s: call* @ "PFX" targets poi("PFX")\n", __FUNCTION__,
+                    pc - 6, indir);
                 call_target = *(app_pc*)indir;
-            } else
-                call_target = pc;
-        } else if (*(pc - 6) == OP_CALL_IND && *(pc - 5) == 0x15) {
-            int disp32 = *(int*)(pc - 4);
-            app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
-            LOG(4, "%s: call* @ "PFX" targets poi("PFX")\n", __FUNCTION__,
-                pc - 6, indir);
-            call_target = *(app_pc*)indir;
-            /* Account for forwarding stubs like kernel32!HeapCreateStub */
-            if (*call_target == OP_JMP_DIR_SHORT ||
-                *call_target == OP_JMP_DIR_LONG) {
-                /* Bail -- too complex to find where it's going.  Sometimes
-                 * there's yet another jmp* intermediary.
-                 */
-                LOG(3, "%s: call* targets a stub: bailing\n", __FUNCTION__);
-                call_target = NULL;
+                /* Account for forwarding stubs like kernel32!HeapCreateStub */
+                if (*call_target == OP_JMP_DIR_SHORT ||
+                    *call_target == OP_JMP_DIR_LONG) {
+                    /* Bail -- too complex to find where it's going.  Sometimes
+                     * there's yet another jmp* intermediary.
+                     */
+                    LOG(3, "%s: call* targets a stub: bailing\n", __FUNCTION__);
+                    call_target = NULL;
+                }
             }
-        }
+        }, {
+            /* FIXME i#1726: port to ARM */
+        })
     }, { /* EXCEPT */
         res = false;
         LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
@@ -1539,6 +1577,11 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
            (buf == NULL && sofar == NULL && pcs != NULL),
            "print_callstack: can't pass buf and pcs");
+
+    /* XXX: for ARM should we use %lr, which drwrap_replace_native stored?
+     * The problem is that the current %lr value might also be on the stack,
+     * and how would we know whether to skip it?
+     */
 
 #ifdef DEBUG
     if (mc != NULL && ops.dump_app_stack > 0) {
