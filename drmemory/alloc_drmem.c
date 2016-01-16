@@ -1470,7 +1470,7 @@ client_pre_syscall(void *drcontext, int sysnum)
 #else
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (sysnum == IF_MACOS_ELSE(SYS_sigaction, SYS_rt_sigaction)
-        IF_X86_32(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
+        IF_NOT_X64(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
         /* PR 406333: linux signal delivery.
          * For delivery: signal event doesn't help us since have to predict
          * which stack and size of frame: should intercept handler registration
@@ -1518,7 +1518,7 @@ client_pre_syscall(void *drcontext, int sysnum)
         }
     }
     else if ((sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigreturn)
-              IF_X86_32(|| sysnum == SYS_sigreturn)) &&
+              IF_NOT_X64(|| sysnum == SYS_sigreturn)) &&
              options.check_stack_bounds) {
 #ifdef LINUX
         /* PR 406333: linux signal delivery.
@@ -1618,7 +1618,7 @@ client_post_syscall(void *drcontext, int sysnum)
     if (!options.shadowing)
         return;
     if (sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigaction)
-        IF_X86_32(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
+        IF_NOT_X64(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
         if (result != 0) {
             LOG(2, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
                   syscall_get_param(drcontext, 1));

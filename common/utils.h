@@ -64,7 +64,7 @@
 # else
 #  define IF_LINUX(x)
 #  define IF_LINUX_ELSE(x,y) y
-#  define IF_LINUX_(x) x,
+#  define IF_LINUX_(x)
 # endif
 #endif
 
@@ -75,7 +75,7 @@
 #else
 # define IF_MACOS(x)
 # define IF_MACOS_ELSE(x,y) y
-# define IF_MACOS_(x) x,
+# define IF_MACOS_(x)
 #endif
 
 #ifndef IF_X64
@@ -83,6 +83,22 @@
 #  define IF_X64(x) x
 # else
 #  define IF_X64(x)
+# endif
+#endif
+
+#ifndef IF_NOT_X64
+# ifdef X64
+#  define IF_NOT_X64(x)
+# else
+#  define IF_NOT_X64(x) x
+# endif
+#endif
+
+#ifndef IF_NOT_X64_
+# ifdef X64
+#  define IF_NOT_X64_(x)
+# else
+#  define IF_NOT_X64_(x) x,
 # endif
 #endif
 

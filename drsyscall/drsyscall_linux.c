@@ -1966,7 +1966,7 @@ bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt)
 {
     ptr_int_t res = (ptr_int_t) pt->mc.IF_ARM_ELSE(r0,xax);
-    if (sysnum.number == SYS_mmap || IF_X86_32(sysnum.number == SYS_mmap2 ||)
+    if (sysnum.number == SYS_mmap || IF_NOT_X64(sysnum.number == SYS_mmap2 ||)
         sysnum.number == SYS_mremap)
         return (res >= 0 || res < -PAGE_SIZE);
     else

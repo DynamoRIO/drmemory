@@ -4385,7 +4385,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     case SYS_mmap:
     case SYS_munmap:
 # ifdef LINUX
-    IF_X86_32(case SYS_mmap2:)
+    IF_NOT_X64(case SYS_mmap2:)
     case SYS_mremap:
     case SYS_brk:
     case SYS_clone:
@@ -4876,7 +4876,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
     bool success = (result >= 0);
-    if (sysnum == SYS_mmap IF_LINUX(IF_X86_32(|| sysnum == SYS_mmap2))) {
+    if (sysnum == SYS_mmap IF_LINUX(IF_NOT_X64(|| sysnum == SYS_mmap2))) {
         unsigned long flags = 0;
         size_t size = 0;
         /* libc interprests up to -PAGE_SIZE as an error */

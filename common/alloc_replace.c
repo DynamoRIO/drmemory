@@ -127,7 +127,7 @@ typedef uint heapsz_t;
  * XXX: add stats on searches to help in tuning these
  */
 static const uint free_list_sizes[] = {
-    IF_X86_32_(8) 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048,
+    IF_NOT_X64_(8) 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048,
     4096, 8192, 16384, 32768,
 };
 #define NUM_FREE_LISTS (sizeof(free_list_sizes)/sizeof(free_list_sizes[0]))
