@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -179,7 +179,7 @@ alloc_exiting_alloc_routine(app_pc pc);
 bool
 alloc_syscall_filter(void *drcontext, int sysnum);
 
-void
+bool
 handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc);
 
 void

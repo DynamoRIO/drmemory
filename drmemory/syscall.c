@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -504,7 +504,7 @@ event_pre_syscall(void *drcontext, int sysnum)
      * shadow handling for proper NtContinue handling and proper
      * NtCallbackReturn handling
      */
-    handle_pre_alloc_syscall(drcontext, sysnum, mc);
+    res = handle_pre_alloc_syscall(drcontext, sysnum, mc) && res;
 
     if (options.perturb)
         res = perturb_pre_syscall(drcontext, sysnum) && res;

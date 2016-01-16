@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -327,6 +327,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     /* when non-exported routines are added here, add to the regex list in
      * find_alloc_routines() to reduce # symbol lookups (i#315)
      */
+    /* This must be the first entry, for the check in find_alloc_routines(): */
     { "malloc_usable_size", HEAP_ROUTINE_SIZE_USABLE },
 #ifdef WINDOWS
     { "_msize", HEAP_ROUTINE_SIZE_REQUESTED },
@@ -359,6 +360,28 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
 #ifdef WINDOWS
     /* XXX i#199: intercept _recalloc and _aligned_* malloc routines */
+#endif
+#ifdef  UNIX
+    /* i#267: support tcmalloc, though not yet on Windows (b/c the late
+     * injection there requires heap walking which is not easy for tcmalloc).
+     */
+    { "tc_malloc_size",    HEAP_ROUTINE_SIZE_USABLE },
+    { "tc_malloc",         HEAP_ROUTINE_MALLOC },
+    { "tc_realloc",        HEAP_ROUTINE_REALLOC },
+    { "tc_free",           HEAP_ROUTINE_FREE },
+    { "tc_calloc",         HEAP_ROUTINE_CALLOC },
+    { "tc_cfree",          HEAP_ROUTINE_FREE },
+    { "tc_posix_memalign", HEAP_ROUTINE_POSIX_MEMALIGN },
+    { "tc_memalign",       HEAP_ROUTINE_MEMALIGN },
+    { "tc_valloc",         HEAP_ROUTINE_VALLOC },
+    { "tc_mallopt",        HEAP_ROUTINE_STATS },
+    { "tc_mallinfo",       HEAP_ROUTINE_STATS },
+    /* TCMallocGuard::TCMallocGuard() static init calls internal routines directly
+     * (requires syms, but w/o we'll fail brk and tcmalloc will just use mmap).
+     */
+    { "(anonymous namespace)::do_malloc", HEAP_ROUTINE_MALLOC },
+    /* We ignore the callback arg */
+    { "(anonymous namespace)::do_free_with_callback", HEAP_ROUTINE_FREE },
 #endif
 #ifdef MACOS
     { "malloc_create_zone",   ZONE_ROUTINE_CREATE },
@@ -445,6 +468,17 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 # ifdef WINDOWS
     { DEBUG_HEAP_DELETE_NAME, HEAP_ROUTINE_DebugHeapDelete },
+# endif
+# ifdef UNIX
+    /* i#267: support tcmalloc */
+    { "tc_new",      HEAP_ROUTINE_NEW },
+    { "tc_newarray",    HEAP_ROUTINE_NEW_ARRAY },
+    { "tc_delete",   HEAP_ROUTINE_DELETE },
+    { "tc_deletearray", HEAP_ROUTINE_DELETE_ARRAY },
+    { "tc_new_nothrow",      HEAP_ROUTINE_NEW_NOTHROW },
+    { "tc_newarray_nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
+    { "tc_delete_nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
+    { "tc_deletearray_nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 # endif
 #else
     /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
@@ -2510,6 +2544,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
         if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
+            /* We rule out tc_malloc_size by assuming malloc_usable_size is index 0 */
+            i == 0 &&
             mod->start == get_libc_base(NULL)) {
             ASSERT(pc != NULL, "no malloc_usable_size in libc!");
             malloc_usable_size = (size_t(*)(void *)) pc;
@@ -4364,9 +4400,10 @@ alloc_syscall_filter(void *drcontext, int sysnum)
 #endif
 }
 
-void
+bool
 handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
+    bool res = true;
 #if defined(WINDOWS) || (defined(LINUX) && defined(DEBUG))
     cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
 #endif
@@ -4513,6 +4550,21 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 # if defined(LINUX) && defined(DEBUG)
     else if (sysnum == SYS_brk) {
         pt->sbrk = (app_pc) dr_syscall_get_param(drcontext, 0);
+        if (alloc_ops.replace_malloc && pt->sbrk != NULL) {
+            /* -replace_malloc assumes it has exclusive access to the brk */
+            LOG(2, "SYS_brk "PFX": disallowing and returning "PFX"\n",
+                pt->sbrk, get_brk(false));
+            /* Notify the user.  A good allocator should switch to mmap if the
+             * brk fails (tcmalloc does this).
+             */
+            NOTIFY("WARNING: The application is changing the brk! "
+                   "It may contain a hidden custom allocator.  Ensure that you "
+                   "have debug symbols available."NL);
+            NOTIFY("WARNING: The use of the brk is being rejected.  There is chance that "
+                   "this will crash the application."NL);
+            res = false; /* skip syscall */
+            dr_syscall_set_result(drcontext, (reg_t)get_brk(false));
+        }
     }
 # endif
 # ifdef MACOS
@@ -4525,6 +4577,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 # endif
 #endif /* WINDOWS */
     client_pre_syscall(drcontext, sysnum);
+    return res;
 }
 
 #ifdef WINDOWS
@@ -4921,6 +4974,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         /* We can mostly ignore SYS_brk since we treat heap as unaddressable
          * until sub-allocated, though we do want the bounds for suppressing
          * header accesses by malloc code.
+         * For -replace_malloc we prevent the app from changing the brk in pre-sys.
          */
         byte *heap_start = get_heap_start();
         LOG(2, "SYS_brk "PFX" => "PFX"\n", pt->sbrk, result);
