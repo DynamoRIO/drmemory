@@ -56,6 +56,10 @@ newtest_ex(fuzz_corpus fuzz_corpus.c ""
   "" OFF "../asmtest" 0)
 newtest_ex(fuzz_buffer fuzz_buffer.c
   "initialize" "-fuzz_function;repeatme;-fuzz_num_iters;10" "" OFF "" 0)
+newtest_nobuild_ex(fuzz_buffer.replace_buffer fuzz_buffer
+  "initialize"
+  "-fuzz_function;repeatme;-fuzz_num_iters;10;-fuzz_replace_buffer"
+  "" OFF "fuzz_buffer" 0 "")
 newtest_nobuild_ex(fuzz_buffer.overflow fuzz_buffer
   "initialize;overread"
   "-light;-fuzz_function;repeatme;-fuzz_num_iters;10;-fuzz_replace_buffer"

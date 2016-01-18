@@ -108,9 +108,11 @@ typedef struct _fuzz_state_t {
      * before updating those fields.
      */
     byte *input_buffer;      /* reference to the fuzz target's buffer arg */
-    byte *mutation_start;    /* start of mutation region within the input_buffer */
     size_t input_size;       /* size of the fuzz target's buffer arg */
 } fuzz_state_t;
+
+/* start of mutation region within the input_buffer */
+#define MUTATION_START(buffer) ((buffer) + fuzz_target.buffer_offset)
 
 /* List of the fuzz states for all process threads. Protected by fuzz_state_lock.
  * Xref comment above about which fuzz_state fields are safe to access with/without lock.
@@ -655,7 +657,13 @@ load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
         } else if (file_size == 0) {
             FUZZ_WARN("Empty file."NL);
             return 0;
-        } else if (state->input_size != (size_t)file_size) {
+        } else if (state->input_size < (size_t)file_size) {
+            /* We only reallocate the buffer if we cannot fit the input data into
+             * the current input buffer.
+             * By doing that, we are able to support multiple mutators without
+             * keeping track of the input size of each mutator.
+             * Xref pre_fuzz_corpus() about pick a mutator for fuzzing.
+             */
             input_buffer = drfuzz_reallocate_buffer(dcontext, (size_t)file_size,
                                                     (app_pc)fuzz_target.pc);
         }
@@ -1299,7 +1307,6 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
     drmf_status_t res;
     size_t mutation_size = fuzz_state->input_size - fuzz_target.buffer_offset;
 
-    fuzz_state->mutation_start = fuzz_state->input_buffer + fuzz_target.buffer_offset;
     if (fuzz_target.buffer_fixed_size > 0 &&
         fuzz_target.buffer_fixed_size < mutation_size)
         mutation_size = fuzz_target.buffer_fixed_size;
@@ -1319,7 +1326,7 @@ fuzzer_mutator_init(void *dcontext, fuzz_state_t *fuzz_state)
     }
 
     res = mutator_api.drfuzz_mutator_start
-        (&fuzz_state->mutator, fuzz_state->mutation_start,
+        (&fuzz_state->mutator, MUTATION_START(fuzz_state->input_buffer),
          mutation_size, mutator_argc, (const char **)mutator_argv);
     if (res != DRMF_SUCCESS) {
         NOTIFY_ERROR("Failed to start the mutator with the specified options."NL);
@@ -1334,6 +1341,8 @@ fuzzer_mutator_copy(void *dcontext, fuzz_state_t *state)
     drmf_status_t res;
     drfuzz_mutator_t *mutator;
     void *input = global_alloc(state->input_size, HEAPSTAT_MISC);
+    ASSERT(state->input_size > fuzz_target.buffer_offset,
+           "buffer offset is too large");
     res = mutator_api.drfuzz_mutator_get_current_value(state->mutator, input);
     if (res != DRMF_SUCCESS) {
         FUZZ_ERROR("Failed to get current mutator value."NL);
@@ -1341,7 +1350,8 @@ fuzzer_mutator_copy(void *dcontext, fuzz_state_t *state)
         return NULL;
     }
     res = mutator_api.drfuzz_mutator_start
-        (&mutator, input, state->input_size, mutator_argc, (const char **)mutator_argv);
+        (&mutator, MUTATION_START((byte *)input), state->input_size,
+         mutator_argc, (const char **)mutator_argv);
     global_free(input, state->input_size, HEAPSTAT_MISC);
     if (res != DRMF_SUCCESS) {
         FUZZ_ERROR("Failed to copy the mutator."NL);
@@ -1355,7 +1365,7 @@ fuzzer_mutator_next(void *dcontext, fuzz_state_t *fuzz_state)
 {
     if (fuzz_target.singleton_input == NULL) {
         mutator_api.drfuzz_mutator_get_next_value
-            (fuzz_state->mutator, fuzz_state->mutation_start);
+            (fuzz_state->mutator, MUTATION_START(fuzz_state->input_buffer));
     } else {
         apply_singleton_input(fuzz_state);
     }
@@ -1437,6 +1447,10 @@ pre_fuzz_corpus(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     /* mutate phase */
     if (state->should_mutate && mutator_vec.entries > 0) {
         /* pick a mutator for fuzzing */
+        /* Assuming we only increase the buffer size with -fuzz_replace_buffer.
+         * The current buffer can be used for any mutator we have seen,
+         * Xref load_fuzz_input() for when the buffer is replaced.
+         */
         state->mutator = drvector_get_entry(&mutator_vec, state->mutator_index);
         state->mutator_index++;
         if (state->mutator_index >= mutator_vec.entries)
@@ -1495,27 +1509,28 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 return;
             }
         }
-        if (options.fuzz_replace_buffer) {
-            ASSERT(fuzz_state->input_buffer != NULL,
-                   "fuzz input buffer must not be NULL");
-            drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, fuzz_state->input_buffer);
-            drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)fuzz_state->input_size);
-        }
         shadow_state_init(dcontext, fuzz_state, mc,
                           options.fuzz_replace_buffer ?
                           false /* do not save the shadow state of the input data */:
                           true  /* save the shadow state of the input data */);
         fuzzer_mutator_init(dcontext, fuzz_state);
         if (fuzz_target.repeat_count == 0)
-            return;
+            goto pre_fuzz_done;
         if (fuzz_target.use_bbcov) {
             /* no mutation for the base input if using bbcov */
-            return;
+            goto pre_fuzz_done;
         }
         LOG(2, LOG_PREFIX" re-starting mutator\n");
     } else
         shadow_state_restore(dcontext, fuzzcxt, fuzz_state, mc);
     fuzzer_mutator_next(dcontext, fuzz_state);
+ pre_fuzz_done:
+    if (options.fuzz_replace_buffer) {
+        ASSERT(fuzz_state->input_buffer != NULL,
+               "fuzz input buffer must not be NULL");
+        drfuzz_set_arg(fuzzcxt, fuzz_target.buffer_arg, fuzz_state->input_buffer);
+        drfuzz_set_arg(fuzzcxt, fuzz_target.size_arg, (void *)fuzz_state->input_size);
+    }
 }
 
 /* Post fuzz function for corpus based fuzzing.
