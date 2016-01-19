@@ -138,6 +138,7 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     instr_t *label;
     app_pc pc = instr_get_app_pc(app);
 #ifdef ARM
+    uint i;
     drreg_status_t res;
     reg_id_t scratch, scratch2;
     dr_pred_type_t pred = instr_get_predicate(app);
@@ -173,13 +174,12 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
              instr_invert_predicate(pred)));
     }
     /* ldr scratch, ref */
-    if (opnd_uses_reg(ref, scratch)) {
-        res = drreg_get_app_value(drcontext, ilist, app, scratch, scratch);
-        ASSERT(res == DRREG_SUCCESS, "should get app value");
-    }
-    if (opnd_uses_reg(ref, scratch2)) {
-        res = drreg_get_app_value(drcontext, ilist, app, scratch2, scratch2);
-        ASSERT(res == DRREG_SUCCESS, "should get app value");
+    for (i = 0; i < opnd_num_regs_used(ref); i++) {
+        reg_id_t reg = opnd_get_reg_used(ref, i);
+        if (reg != dr_get_stolen_reg()) { /* stolen handled below */
+            res = drreg_get_app_value(drcontext, ilist, app, reg, reg);
+            ASSERT(res == DRREG_SUCCESS, "should get app value");
+        }
     }
     /* XXX DRi#1834: sthg like drx_load_from_app_mem() would make this simpler if
      * it handled the stolen reg plus pc-relative (and far refs on x86).
