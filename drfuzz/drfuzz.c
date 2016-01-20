@@ -121,6 +121,9 @@ typedef struct _pass_target_t {
     void *wrapcxt;
     fuzz_target_t *target;
     reg_t xsp;            /* stack level at entry to the fuzz target */
+#ifdef ARM
+    reg_t lr;             /* link register value at entry */
+#endif
     retaddr_unclobber_t unclobber; /* see comment on retaddr_unclobber_t */
     reg_t *original_args; /* original arg values passed by the app to the fuzz target */
     reg_t *current_args;  /* fuzzed argument values for the current iteration */
@@ -693,6 +696,7 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
 #ifdef X86
         live->unclobber.retaddr_loc = (reg_t *) mc->xsp; /* see retaddr_unclobber_t */
 #endif
+        IF_ARM(live->lr = mc->lr);
         live->unclobber.retaddr = (reg_t) drwrap_get_retaddr(wrapcxt);
         DRFUZZ_LOG(4, "fuzz target "PFX": saving stack pointer "PFX"\n",
                    target_to_fuzz, mc->xsp);
@@ -743,6 +747,10 @@ post_fuzz_handler(void *wrapcxt, void *user_data)
         DRFUZZ_LOG(4, "fuzz target "PFX": restoring xsp to "PFX"\n",
                    live->target->func_pc, live->xsp);
         mc->xsp = live->xsp;
+        /* Restore lr, to avoid incorrect flushes in drwrap from it thinking there
+         * is a different retaddr for our repeating function.
+         */
+        IF_ARM(mc->lr = live->lr);
         mc->pc = live->target->func_pc;
         IF_DEBUG(redirect_status =) drwrap_redirect_execution(wrapcxt);
         DRFUZZ_LOG(4, "fuzz target "PFX" requesting redirect to self entry; result: %d\n",
