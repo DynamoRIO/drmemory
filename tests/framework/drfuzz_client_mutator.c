@@ -285,11 +285,11 @@ static void
 test_bitflip_buffer(size_t size, const char *arg_sparsity, const char *arg_alg,
                     const char *arg_flags)
 {
-    uint i = 0, flips, expected_flips = 1, expected_iterations;
+    uint i = 0, flips, expected_flips = 1, expected_iterations, got;
     drmf_status_t res;
     byte byte_buffer[MAX_BUFFER_LENGTH] = {0}, last_buffer[MAX_BUFFER_LENGTH] = {0};
     bool seed_centric = strcmp(arg_flags, "1") == 0;
-    uint sparsity = atoi(arg_sparsity);
+    uint sparsity;
     char arg_seed[16];
     const char *argv[] = {
         "-alg", arg_alg, "-sparsity", arg_sparsity,
@@ -299,6 +299,8 @@ test_bitflip_buffer(size_t size, const char *arg_sparsity, const char *arg_alg,
     dr_snprintf(arg_seed, BUFFER_SIZE_ELEMENTS(arg_seed), UINT64_FORMAT_STRING,
                 get_random_value());
     NULL_TERMINATE_BUFFER(arg_seed);
+    got = dr_sscanf(arg_sparsity, "%d", &sparsity);
+    EXPECT(got == 1, "sscanf failed");
 
     dr_fprintf(STDERR, "\nFlipping %d bits (sparsity %s, %s, %s)\n\n", (size * 8),
                arg_sparsity, seed_centric ? "seed-centric" : "progressive", arg_alg);

@@ -51,18 +51,21 @@ if (WIN32)
   set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ)
 endif ()
 
-# We set DR libc option on b/c this is needed to link with drsyms_static
-# on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
-set(DynamoRIO_USE_LIBC ON)
+# We save pdb+dll space by not using libc (xref DRi#714).
+# For Android, we allow running w/o a private Bionic.
+# For Linux x86 we need libc for div+mod routines.
+if (WIN32 OR ARM OR ANDROID)
+  set(DynamoRIO_USE_LIBC OFF)
+endif ()
 
-macro(configure_drfuzz_target target drwrap drmgr drsyms)
+macro(configure_drfuzz_target target drwrap drmgr)
   use_DynamoRIO_extension(drfuzz ${drwrap})
   use_DynamoRIO_extension(drfuzz ${drmgr})
-  use_DynamoRIO_extension(drfuzz ${drsyms})
   use_DynamoRIO_extension(drfuzz drcontainers)
   if (UNIX)
     # Avoid relocations which tend to violate security policies
-    append_property_string(TARGET ${target} COMPILE_FLAGS "-fPIC")
+    # Avoid tolower from the strcasestr in utils_shared.c, which we don't call
+    append_property_string(TARGET ${target} COMPILE_FLAGS "-fPIC -DNOLINK_STRCASESTR")
   endif (UNIX)
   set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endmacro(configure_drfuzz_target)
@@ -74,7 +77,7 @@ macro(export_drfuzz_target target drwrap drmgr)
   export_target(${target})
   # Now put in our imports (w/o any namespace on them)
   set_target_properties(${target} PROPERTIES
-    LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drsyms;drcontainers")
+    LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drcontainers")
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files
@@ -87,7 +90,7 @@ add_library(drfuzz SHARED ${srcs} ${external_srcs})
 set(PREFERRED_BASE 0x79000000)
 configure_DynamoRIO_client(drfuzz)
 set_target_properties(drfuzz PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
-configure_drfuzz_target(drfuzz "drwrap" "drmgr" "drsyms")
+configure_drfuzz_target(drfuzz "drwrap" "drmgr")
 export_drfuzz_target(drfuzz "drwrap" "drmgr")
 install(FILES drfuzz.h drfuzz_mutator.h DESTINATION ${DRMF_INSTALL_INC})
 
@@ -95,7 +98,7 @@ install(FILES drfuzz.h drfuzz_mutator.h DESTINATION ${DRMF_INSTALL_INC})
 add_library(drfuzz_static STATIC ${srcs_static} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 configure_DynamoRIO_client(drfuzz_static)
-configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static" "drsyms_static")
+configure_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 add_static_lib_debug_info(drfuzz_static ${DRMF_INSTALL_BIN})
 export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 
@@ -103,7 +106,7 @@ export_drfuzz_target(drfuzz_static "drwrap_static" "drmgr_static")
 # log/assert/notify infrastructure.
 add_library(drfuzz_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drfuzz_int)
-configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static" "drsyms_static")
+configure_drfuzz_target(drfuzz_int "drwrap_static" "drmgr_static")
 
 # We build drfuzz_mutator.c as a separate shared library for users who
 # want to extend its mutator at the API level in their own custom

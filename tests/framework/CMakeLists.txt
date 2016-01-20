@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -45,6 +45,13 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 # As we'll be calling configure_DynamoRIO_{client,standalone} from within
 # a function scope, we must set the global vars ahead of time:
 configure_DynamoRIO_global(OFF ON)
+
+# We save pdb+dll space by not using libc (xref DRi#714).
+# For Android, we allow running w/o a private Bionic.
+# For Linux x86 we need libc for div+mod routines.
+if (WIN32 OR ARM OR ANDROID)
+  set(DynamoRIO_USE_LIBC OFF)
+endif ()
 
 function(add_drmf_test_app app_name src_app)
   add_executable(${app_name} ${src_app})

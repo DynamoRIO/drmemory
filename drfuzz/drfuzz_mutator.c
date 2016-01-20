@@ -347,11 +347,15 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
         } else if (strcmp(argv[i], "-flags") == 0) {
             if (i >= argc - 1)
                 return DRMF_ERROR_INVALID_PARAMETER;
-            mutator->options.flags = strtoul(argv[++i], NULL, 0);
+            /* we avoid strtoul to avoid needing libc on Linux */
+            if (dr_sscanf(argv[++i], "0x%x", &mutator->options.flags) != 1 &&
+                dr_sscanf(argv[i], "%d", &mutator->options.flags) != 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
         } else if (strcmp(argv[i], "-sparsity") == 0) {
             if (i >= argc - 1)
                 return DRMF_ERROR_INVALID_PARAMETER;
-            mutator->options.sparsity = strtoul(argv[++i], NULL, 0);
+            if (dr_sscanf(argv[++i], "%u", &mutator->options.sparsity) != 1)
+                return DRMF_ERROR_INVALID_PARAMETER;
             user_sparsity = true;
         } else if (strcmp(argv[i], "-max_value") == 0) {
             if (i >= argc - 1)
