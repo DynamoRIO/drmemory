@@ -33,6 +33,7 @@
 /* Test of the Dr. Memory Fuzz Corpus Feature */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef WINDOWS
 # define EXPORT __declspec(dllexport)
