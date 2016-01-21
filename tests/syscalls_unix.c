@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -28,6 +28,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#ifdef ANDROID
+/* Android declares this inside sys/syscall.h instead of unistd.h */
+extern long syscall(long number, ...);
+#endif
 #include "sysnum_linux.h"
 
 #define BUFSZ 1024

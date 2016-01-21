@@ -75,6 +75,11 @@ elseif (UNIX)
   set(LINUX 1)
 endif (APPLE)
 
+if (CMAKE_SYSTEM_NAME MATCHES "^Android")
+  set(ANDROID 1)
+  set(DEFINES ${DEFINES} -DANDROID)
+endif ()
+
 # The target arch:
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
   set(ARM 1)
@@ -322,8 +327,19 @@ if (UNIX)
       set(EXTRA_FLAGS "")
     endif ()
   endif ()
+  if (ARM)
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -mthumb -march=armv7-a")
+    if (ANDROID OR CMAKE_C_LIBRARY_ARCHITECTURE MATCHES "gnueabi$")
+      set(EXTRA_FLAGS "${EXTRA_FLAGS} -mfloat-abi=softfp")
+      # Android requires PIE.  We export symbols to match our test assumptions.
+      set(CMAKE_EXE_LINKER_FLAGS
+        "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
+    endif ()
+  endif ()
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
+  set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
 else (UNIX)
   # FIXME i#1204: fix warnings and up to /W4
   set(WARN "/W2 /WX")

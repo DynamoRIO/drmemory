@@ -47,10 +47,10 @@ strnchr(const char *str, int find, size_t max)
 }
 
 /* Not available in ntdll CRT so we supply our own.
- * It is available on Mac, and we want to avoid it for libs that do not
+ * It is available on Mac and Android, and we want to avoid it for libs that do not
  * want a libc dependence.
  */
-#if !defined(MACOS) && !defined(NOLINK_STRCASESTR)
+#if !defined(MACOS) && !defined(ANDROID) && !defined(NOLINK_STRCASESTR)
 const char *
 strcasestr(const char *text, const char *pattern)
 {

@@ -115,7 +115,7 @@ wait_for_user(const char *message)
         char keypress;
         dr_fprintf(STDERR, "%s in pid "PIDFMT"\n", message, dr_get_process_id());
         dr_fprintf(STDERR, "<press enter to continue>\n");
-        dr_read_file(IF_MACOS_ELSE(stdin->_file, stdin->_fileno),
+        dr_read_file(stdin->IF_MACOS_ELSE(_file, IF_ANDROID_ELSE(_file, _fileno)),
                      &keypress, sizeof(keypress));
     }
 #endif

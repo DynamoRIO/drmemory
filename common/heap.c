@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -611,8 +611,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
             /* In-use */
             LOG(2, "  heap in-use chunk "PFX"-"PFX"\n", pc, pc+sz + sizeof(sz));
 # ifdef DEBUG
-            if (malloc_usable_size != NULL) {
-                size_t check_sz = malloc_usable_size(user_start);
+            if (libc_malloc_usable_size != NULL) {
+                size_t check_sz = libc_malloc_usable_size(user_start);
                 /* The prev_size of next chunk is really a usable footer
                  * for this chunk
                  */

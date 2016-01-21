@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -168,7 +169,14 @@ redirect_stdouterr(const char *outfile)
     int stdout_fd = fileno(stdout);
     int stderr_fd = fileno(stderr);
     if (outfile != NULL) {
-        newout = open(outfile, O_CREAT|O_WRONLY|O_TRUNC, S_IREAD|S_IWRITE);
+        /* Windows still uses the older defines: */
+#       ifndef S_IRUSR
+#        define S_IRUSR S_IREAD
+#       endif
+#       ifndef S_IWUSR
+#        define S_IWUSR S_IWRITE
+#       endif
+        newout = open(outfile, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
         if (newout < 0) {
             perror("open new stdout failed");
             exit(1);

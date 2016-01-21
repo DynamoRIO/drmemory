@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -338,12 +338,14 @@ syscall_info_t syscall_ioctl_info[] = {
     {IOCTL(SIOCGETSGCNT), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct sioc_sg_req), R|W}}},
 #endif
 
+#ifndef ANDROID
     // <include/linux/mtio.h>
     {IOCTL(MTIOCTOP), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct mtop), R}}},
     {IOCTL(MTIOCGET), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct mtget), W}}},
     {IOCTL(MTIOCPOS), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct mtpos), W}}},
     {IOCTL(MTIOCGETCONFIG), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct mtconfiginfo), W}}},
     {IOCTL(MTIOCSETCONFIG), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct mtconfiginfo), R}}},
+#endif
 
 #if 0 /* FIXME: define not in my headers */
     // <include/linux/netrom.h>

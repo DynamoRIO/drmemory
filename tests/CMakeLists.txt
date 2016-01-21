@@ -525,7 +525,9 @@ if (UNIX)
   # so we use "pthread_test".  The compare files are still "pthreads.*".
   newtest_ex(pthread_test pthreads.c "" "" "" OFF "pthreads" 0)
   append_test_compile_flags(pthread_test "-Wno-uninitialized")
-  target_link_libraries(pthread_test pthread)
+  if (NOT ANDROID) # pthread is built in to Bionic
+    target_link_libraries(pthread_test pthread)
+  endif ()
   if (APPLE)
     set(loaderlib_flags "-Wl,-U,_import_does_not_exist")
   else (APPLE)
@@ -783,17 +785,17 @@ if (TOOL_DR_MEMORY)
   endif (WIN32)
 
   newtest(realloc realloc.c)
-  if (UNIX)
+  if (UNIX AND NOT ANDROID) # pthread is built in to Bionic
     target_link_libraries(realloc pthread)
-  endif (UNIX)
+  endif ()
 
   newtest(annotations annotations.c)
 
-  if (UNIX)
+  if (UNIX AND NOT ANDROID) # Android doesn't seem to support these alloc routines
     newtest(memalign memalign.c)
     newtest_nobuild(memalign.nodelay memalign "" "-delay_frees;0" "" OFF "memalign")
     newtest_nobuild(memalign.pattern memalign "" "-light" "" OFF "")
-  endif (UNIX)
+  endif ()
 
   # persistent cache tests: currently only light mode is supported
   # XXX: would be nice to ensure pcaches are actually generated and used,

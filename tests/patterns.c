@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -21,10 +21,10 @@
  */
 
 /* Tests various read-dword optimizations in str* and mem* routines
- * that DR handles via pattern matching.
+ * that DrMem handles via pattern matching.
  */
 
-#ifdef LINUX
+#if defined(LINUX) && !defined(ANDROID)
 # define _GNU_SOURCE /* strchrnul */
 #endif
 #include <string.h>
@@ -51,7 +51,7 @@ main()
 
     c = strchr(dup, 'x');
 
-#ifdef LINUX
+#if defined(LINUX) && !defined(ANDROID)
     c = strchrnul(dup, 'x');
 #endif
 

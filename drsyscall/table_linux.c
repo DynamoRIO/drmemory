@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -238,11 +238,16 @@ syscall_info_t syscall_info[] = {
          {0,0, R|CT, CSTRING},
      }
     },
+#ifdef ANDROID
+    /* XXX i#1850: no ustat?  Not in my NDK 21 headers. */
+    {{PACKNUM(136,62,62),0},"ustat", UNKNOWN, RLONG, 2,},
+#else
     {{PACKNUM(136,62,62),0},"ustat", OK, RLONG, 2,
      {
          {1, sizeof(struct ustat), W},
      }
     },
+#endif
     {{PACKNUM(33,63,63),0},"dup2", OK, RLONG, 2,},
     {{PACKNUM(110,64,64),0},"getppid", OK, RLONG, 0,},
     {{PACKNUM(111,65,65),0},"getpgrp", OK, RLONG, 0,},

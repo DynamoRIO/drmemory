@@ -170,10 +170,12 @@ if (NOT X64)
   set(fuzz_threads_drmem_ops "-fuzz_target;<main>!print_buffer|2|0|1|10")
   if (UNIX)
     newtest_ex(fuzz_threads fuzz_pthreads.c "" "${fuzz_threads_drmem_ops}" "" OFF "" 0)
-    target_link_libraries(fuzz_threads pthread)
-  else (UNIX)
+    if (NOT ANDROID) # pthread is built in to Bionic
+      target_link_libraries(fuzz_threads pthread)
+    endif ()
+  else ()
     newtest_ex(fuzz_threads fuzz_winthreads.c "" "${fuzz_threads_drmem_ops}" "" OFF "" 0)
-  endif (UNIX)
+  endif ()
 endif (NOT X64)
 
 # Test custom mutator

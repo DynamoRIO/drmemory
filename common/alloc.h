@@ -238,7 +238,7 @@ byte *
 set_brk(byte *new_val);
 
 /* this is libc's version */
-extern alloc_size_func_t malloc_usable_size;
+extern alloc_size_func_t libc_malloc_usable_size;
 #endif
 
 /* This can only be called if alloc_ops.global_lock was set */

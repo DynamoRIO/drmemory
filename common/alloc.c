@@ -2548,7 +2548,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             i == 0 &&
             mod->start == get_libc_base(NULL)) {
             ASSERT(pc != NULL, "no malloc_usable_size in libc!");
-            malloc_usable_size = (size_t(*)(void *)) pc;
+            libc_malloc_usable_size = (size_t(*)(void *)) pc;
         }
 #endif
     }
@@ -2639,7 +2639,7 @@ typedef size_t (__stdcall *rtl_size_func_t)(IN reg_t /*really HANDLE*/ Heap,
 typedef size_t (*dbg_size_func_t)(IN byte *pc, int blocktype);
 #else
 /* points at libc's version, used in initial heap walk */
-alloc_size_func_t malloc_usable_size;
+alloc_size_func_t libc_malloc_usable_size;
 #endif
 
 /* malloc_usable_size exported, so declared in alloc.h */

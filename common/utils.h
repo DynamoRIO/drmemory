@@ -78,6 +78,14 @@
 # define IF_MACOS_(x)
 #endif
 
+#ifdef ANDROID
+# define IF_ANDROID(x) x
+# define IF_ANDROID_ELSE(x,y) x
+#else
+# define IF_ANDROID(x)
+# define IF_ANDROID_ELSE(x,y) y
+#endif
+
 #ifndef IF_X64
 # ifdef X64
 #  define IF_X64(x) x
@@ -977,7 +985,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
  */
 #define MAX_OPTION_LEN DR_MAX_OPTIONS_LENGTH
 
-#ifndef MACOS /* available on Mac */
+#if !defined(MACOS) && !defined(ANDROID) && !defined(NOLINK_STRCASESTR)
 const char *
 strcasestr(const char *text, const char *pattern);
 #endif

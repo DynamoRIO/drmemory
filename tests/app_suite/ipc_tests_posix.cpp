@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -30,6 +30,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 
+#ifndef ANDROID
 TEST(IPCTests, SYSV_Semaphore) {
     int semid;
     int res;
@@ -47,6 +48,7 @@ TEST(IPCTests, SYSV_Semaphore) {
     res = semctl(semid, 0, IPC_RMID);
     ASSERT_EQ(res, 0);
 }
+#endif
 
 TEST(IPCTests, Futex_Semaphore) {
     // These end up using futexes
