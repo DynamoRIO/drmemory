@@ -64,6 +64,9 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
    not MacOS yet).  This does not yet include uninitialized read checking,
    so we still recommend compiling your application as 32-bit.
+ - Fixed incremental error output to the console for graphical
+   applications, which was missing in prior versions when using certain
+   consoles such as cmd.
  - Removed the -fuzz_mutator option and replaced it with separate options
    for each component of the mutator.
  - Added custom mutator support to Dr. Fuzz.

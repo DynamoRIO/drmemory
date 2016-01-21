@@ -595,7 +595,8 @@ process_results_file(const char *logdir, const char *symdir,
          */
         (is_graphical || !on_vista_or_later()) &&
         /* Win7 output from client works even for graphical app since DR r2325 */
-        win_ver.version != DR_WINDOWS_VERSION_7) {
+        /* Win8+ output from client works even for graphical app since DR 3db7e90 */
+        win_ver.version < DR_WINDOWS_VERSION_7) {
         /* Even with console-writing support from DR, the client cannot write
          * to a cmd console from the exit event: nor can it write for a graphical
          * application (xref i#261/PR 562198).  Thus when within cmd we always
