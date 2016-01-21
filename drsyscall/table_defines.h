@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -61,6 +61,7 @@
 # define WIN8     DR_WINDOWS_VERSION_8
 # define WIN81    DR_WINDOWS_VERSION_8_1
 # define WIN10    DR_WINDOWS_VERSION_10
+# define WIN11    DR_WINDOWS_VERSION_10_1511
 #endif
 
 #endif /* _TABLE_DEFINES_H 1 */

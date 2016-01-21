@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -3155,6 +3155,13 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN10,0},"NtGdiDdDDIUpdateGpuVirtualAddress", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN10,0},"NtGdiDdDDIWaitForSynchronizationObjectFromCpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN10,0},"NtGdiDdDDIWaitForSynchronizationObjectFromGpu", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    /* Added in Windows 10 1511 */
+    /* FIXME i#1750: fill in details */
+    {{WIN11,0},"NtGdiDdDDIFlushHeapTransitions", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtGdiDdDDISetHwProtectionTeardownRecovery", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtGdiGetCertificateByHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtGdiGetCertificateSizeByHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+
 };
 #define NUM_GDI32_SYSCALLS \
     (sizeof(syscall_gdi32_info)/sizeof(syscall_gdi32_info[0]))

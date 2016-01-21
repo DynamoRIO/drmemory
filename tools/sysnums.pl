@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -19,6 +19,11 @@
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# This script formats system call numbers into columns for drsyscall/drsyscall_numx.h.
+# The numbers are obtained from the output of DR's winsysnums tool on system dlls+pdbs.
+# An example of usage:
+# % tools/sysnums.pl NTDLL <path-to-drmemory>/drsyscall/drsyscall_numx.h ntdll.dll/10.0.10586.20-x86/syscalls ntdll.dll/10.0.10586.20-wow64/syscalls ntdll.dll/10.0.10586.20-x64/syscalls
 
 use strict;
 
@@ -239,6 +244,7 @@ foreach my $n (sort (keys %nums)) {
             # Add leading zeroes to match max length of this column
             for (my $l = length($nums{$n}[$i]); $l < $maxlen[$i]; $l++) {
                 $nums{$n}[$i] =~ s/0x/0x0/;
+                $nums{$n}[$i] =~ s/NONE/ NONE/;
             }
             printf ",%s", $nums{$n}[$i];
         } else {

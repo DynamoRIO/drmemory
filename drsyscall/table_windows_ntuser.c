@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2499,6 +2499,13 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN10,0},"NtUserSetWindowArrangement", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{WIN10,0},"NtUserSetWindowShowState", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN10,0},"NtVisualCaptureBits", UNKNOWN, DRSYS_TYPE_UNKNOWN, 9, },
+    /* Added in Windows 10 1511 */
+    /* FIXME i#1750: fill in details */
+    {{WIN11,0},"NtCompositionSetDropTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtDCompositionAttachMouseWheelToHwnd", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtSetCompositionSurfaceBufferCompositionModeAndOrientation", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtUserRemoveInjectionDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN11,0},"NtUserUpdateWindowTrackingInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))

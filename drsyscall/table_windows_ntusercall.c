@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -39,7 +39,7 @@
  */
 /* FIXME i#1153: Windows 8 added some syscalls we do not have details for */
 /* FIXME i#1360: Windows 8.1 added some syscalls we do not have details for */
-/* FIXME i#1750: Windows 8.1 added some syscalls we do not have details for */
+/* FIXME i#1750: Windows 10+ added some syscalls we do not have details for */
 
 /* FIXME i#1089: fill in info on all the inlined args for all of
  * syscalls in this file.
@@ -189,6 +189,7 @@ syscall_info_t syscall_UserCallHwndParam_info[] = {
     {{0,0},"NtUserCallHwndParam.SETWINDOWSTATE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{WIN10,0},"NtUserCallHwndParam.UNKNOWNB", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {{WIN10,0},"NtUserCallHwndParam.REGISTERWINDOWARRANGEMENTCALLOUT", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
+    {{WIN11,0},"NtUserCallHwndParam.ENABLEMODERNAPPWINDOWKBDINTERCEPT", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwndParam.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
 };
@@ -247,6 +248,7 @@ syscall_info_t syscall_UserCallTwoParam_info[] = {
     {{0,0},"NtUserCallTwoParam.UNHOOKWINDOWSHOOK", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*int, HOOKPROC*/},
     {{0,0},"NtUserCallTwoParam.WOWCLEANUP", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {{WIN10,0},"NtUserCallTwoParam.ENABLESHELLWINDOWMGT", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{WIN11,0},"NtUserCallTwoParam.SCALESYSTEMMETRICFORDPI", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallTwoParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
 };

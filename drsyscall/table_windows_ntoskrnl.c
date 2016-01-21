@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -3549,6 +3549,11 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
+    /* Added in Windows 10 1511 */
+    /* FIXME i#1750: fill in details */
+    {{WIN11,0},"NtCreateEnclave", UNKNOWN, RNTST, 9, },
+    {{WIN11,0},"NtInitializeEnclave", UNKNOWN, RNTST, 5, },
+    {{WIN11,0},"NtLoadEnclaveData", UNKNOWN, RNTST, 9, },
 };
 
 #define NUM_NTDLL_SYSCALLS \
