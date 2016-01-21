@@ -35,8 +35,10 @@
 ***************************************************************************
 \page page_drfuzz Dr. Fuzz: Dynamic Fuzz Testing Extension
 
-The \p Dr. Fuzz DynamoRIO Extension provides fuzz testing features.
-\p Dr. Fuzz is part of the Dr. Memory Framework.
+The Dr. Fuzz DynamoRIO Extension provides fuzz testing features.
+Dr. Fuzz is part of the Dr. Memory Framework.  Dr. Fuzz is used to
+implement the Dr. Memory \ref page_fuzzer.
+
 
  - \ref sec_drfuzz_setup
  - \ref sec_drfuzz_API

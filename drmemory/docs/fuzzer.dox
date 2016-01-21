@@ -36,6 +36,12 @@ descriptor format is provided in the
 require a more complete explanation, which is provided in the following
 sections.
 
+ - \ref sec_fuzzer_target
+ - \ref sec_cpp_targets
+ - \ref sec_calling_conventions
+ - \ref sec_mutator
+ - \ref sec_corpus
+
 \section sec_fuzzer_target Fuzzer Target
 
 The fuzzer is capable of testing one target function on potentially multiple
@@ -153,6 +159,21 @@ For example, to load input.dat for reproducing an error, you would
 specify the following command-line option to \p drmemory:
 
     -fuzz_input_file input.dat -fuzz_num_iters 0
+
+\section sec_corpus Corpus-Based Fuzzing
+
+Dr. Memory supports corpus-based fuzzing through the following options:
+ - \p -fuzz_corpus: the directory for loading and storing the corpus inputs
+ - \p -fuzz_corpus_out: the directory for storing the minimized corpus inputs
+
+Each input is stored by itself in a separate file in a specified directory,
+and that there should be nothing else in the directory.
+
+For example, to fuzz the function \p DrMemFuzzFunc with a set of inputs stored in
+/path/to/inputs/ and dump the minimized corpus inputs to /path/to/min_corpus/,
+you would specify the following command-line option to \p drmemory:
+
+    -fuzz_corpus /path/to/inputs -fuzz_corpus_out /path/to/min_corpus/
 
 ****************************************************************************
 ****************************************************************************
