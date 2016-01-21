@@ -472,6 +472,7 @@ static const TCHAR * const known_libs[] = {
     L"comctl32.dll",
     L"apphelp.dll",
     L"cryptbase.dll",
+    L"bcryptprimitives.dll",
     L"sspicli.dll",
     L"rpcrt4.dll",
     L"advapi32.dll",
