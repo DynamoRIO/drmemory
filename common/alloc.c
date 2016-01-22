@@ -2270,11 +2270,21 @@ find_RtlFreeStringRoutine_helper(void *drcontext, const module_data_t *mod,
         instr_reset(drcontext, &instr);
         pc = decode(drcontext, pc, &instr);
         opc = instr_get_opcode(&instr);
-        if (pc == NULL || opc == OP_call_ind || opc == OP_ret)
+        if (pc == NULL || opc == OP_ret)
             break;
+        if (opc == OP_call_ind) {
+            opnd = instr_get_target(&instr);
+            break;
+        }
+        /* i#1851: win8.1 has a more complex multi-step indirect call */
+        if (get_windows_version() == DR_WINDOWS_VERSION_8_1 && opc == OP_mov_ld) {
+            opnd = instr_get_src(&instr, 0);
+            if (opnd_is_rel_addr(opnd) || opnd_is_abs_addr(opnd))
+                break;
+        }
     }
 
-    if (opc != OP_call_ind) {
+    if (opc != OP_call_ind && opc != OP_mov_ld) {
         WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
         instr_free(drcontext, &instr);
         return NULL;
@@ -2323,6 +2333,24 @@ find_RtlFreeStringRoutine(const module_data_t *mod)
      * 7d65e0bc ff15bcf9617d call dword ptr [ntdll32!RtlFreeStringRoutine (7d61f9bc)]
      * 7d65e0c2 5d               pop     ebp
      * 7d65e0c3 c20400           ret     0x4
+     *
+     * Win8.1-x64
+     * ntdll!RtlFreeOemString:
+     * 00007ff9`be4428f0 48895c2408      mov     qword ptr [rsp+8],rbx
+     * 00007ff9`be4428f5 57              push    rdi
+     * 00007ff9`be4428f6 4883ec20        sub     rsp,20h
+     * 00007ff9`be4428fa 488b7908        mov     rdi,qword ptr [rcx+8]
+     * 00007ff9`be4428fe 4885ff          test    rdi,rdi
+     * 00007ff9`be442901 7415            je      ntdll!RtlFreeOemString+0x28 (00007ff9`be442918)
+     * 00007ff9`be442903 488b1d561af9ff  mov     rbx,qword ptr [ntdll!RtlFreeStringRoutine (00007ff9`be3d4360)]
+     * 00007ff9`be44290a 488bcb          mov     rcx,rbx
+     * 00007ff9`be44290d ff15bdd80c00    call    qword ptr [ntdll!_guard_check_icall_fptr (00007ff9`be5101d0)]
+     * 00007ff9`be442913 488bcf          mov     rcx,rdi
+     * 00007ff9`be442916 ffd3            call    rbx
+     * 00007ff9`be442918 488b5c2430      mov     rbx,qword ptr [rsp+30h]
+     * 00007ff9`be44291d 4883c420        add     rsp,20h
+     * 00007ff9`be442921 5f              pop     rdi
+     * 00007ff9`be442922 c3              ret
      */
     void *drcontext = dr_get_current_drcontext();
     app_pc pc = find_RtlFreeStringRoutine_helper(drcontext, mod, "RtlFreeOemString");
