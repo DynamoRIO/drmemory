@@ -530,7 +530,10 @@ OPTION_CLIENT_BOOL(internal, filter_handle_leaks, true,
 OPTION_CLIENT(internal, handle_leak_threshold, uint, 50, 1, 65535,
               "Report leaks of handles created more often than this threshold",
               "Only applies for -filter_handle_leaks.  Report leaks of handles created more often than this threshold.")
-OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, true,
+/* XXX i#1839: on 64-bit, false positive Windows vs C mismatches are
+ * proving difficult to handle.  We are disabling the feature for now.
+ */
+OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, IF_X64_ELSE(false, true),
                    "Whether to check for Windows API vs C library mismatches",
                    "Whether to check for Windows API vs C library mismatches")
 #endif
