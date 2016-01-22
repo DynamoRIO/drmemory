@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -162,5 +162,16 @@ name=default i#1451 std::_Bit_reference bitfield
 *!std::_Bit_const_iterator::operator*
 ...
 *!std::vector<>::*
+
+##################################################
+# i#267: tcmalloc deliberate leaks
+
+LEAK
+name=default (tcmalloc)
+...
+*!InitModule
+...
+*!MallocExtension::Register
+*!TCMallocGuard::TCMallocGuard
 
 ###########################################################################

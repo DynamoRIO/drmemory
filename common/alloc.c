@@ -380,6 +380,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
      * (requires syms, but w/o we'll fail brk and tcmalloc will just use mmap).
      */
     { "(anonymous namespace)::do_malloc", HEAP_ROUTINE_MALLOC },
+    { "(anonymous namespace)::do_memalign", HEAP_ROUTINE_MEMALIGN },
     /* We ignore the callback arg */
     { "(anonymous namespace)::do_free_with_callback", HEAP_ROUTINE_FREE },
 #endif
