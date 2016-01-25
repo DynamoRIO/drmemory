@@ -198,6 +198,11 @@ if (WIN32)
     "(ENABLED_SECTIONS[ \t]*=)"
     "\\1 WINDOWS" string "${string}")
 endif (WIN32)
+if (TOOL_DR_MEMORY)
+  string(REGEX REPLACE
+    "(ENABLED_SECTIONS[ \t]*=)"
+    "\\1 TOOL_DR_MEMORY" string "${string}")
+endif (TOOL_DR_MEMORY)
 if (PACKAGED_WITH_DYNAMORIO)
   string(REGEX REPLACE
     "(ENABLED_SECTIONS[ \t]*=)"
