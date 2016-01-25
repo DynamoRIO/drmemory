@@ -72,6 +72,8 @@ allocations.  The callstack for the allocation of each leak and possible leak
 is gathered by default and listed with other errors in the results file.
 To also see all of the reachable allocations, use the \p -show_reachable
 runtime option.  Reachable allocations are labeled as <tt>REACHABLE LEAK</tt>.
+By default, without the \p -show_reachable option, reachable leak
+callstacks are not compared to suppressions, in order to reduce overhead.
 
 Here are example lines from Dr. Memory's output summary:
 

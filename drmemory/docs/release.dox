@@ -79,6 +79,9 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
    The option is off by default due to the additional overhead that
    it incurs.
  - Added code coverage measurement via a new option -coverage.
+ - By default, without the \p -show_reachable option, reachable leak
+   callstacks are no longer compared to suppressions, in order to reduce
+   overhead.
 
 The changes between version 1.9.0 and version 1.8.0 include:
  - Added support for Mac OSX Yosemite.

@@ -3442,8 +3442,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 
         /* Convert to symbolized so we can compare to suppressions.  Don't try
          * to get stacks for early leaks, leave ecs.scs with 0 frames.
+         *
+         * i#1852: to improve speed we don't symbolize reachable (and thus don't
+         * support suppressing) when show_reachable is off and the only goal
+         * is a count of unique instances.
          */
-        if (!early) {
+        if (!early && (!reachable || show_reachable)) {
             ASSERT(pcs != NULL, "non-early allocs must have stacks");
             packed_callstack_to_symbolized(pcs, &ecs.scs);
         }
@@ -3452,8 +3456,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             alloc_callstack_unlock();
 
         /* only real, possible, and reachable leaks can be suppressed */
-        if (type < ERROR_MAX_VAL)
-            reporting = !on_suppression_list(type, &ecs, &spec);
+        if (type < ERROR_MAX_VAL) {
+            if (reachable && !show_reachable)
+                reporting = true; /* suppressions not supported: i#1852 */
+            else
+                reporting = !on_suppression_list(type, &ecs, &spec);
+        }
 
         if (reporting && type < ERROR_MAX_VAL) {
             /* We can have identical leaks across nudges: keep same error #.
