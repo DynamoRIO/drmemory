@@ -678,6 +678,8 @@ load_fuzz_input(void *dcontext, const char *fname, fuzz_state_t *state)
     /* read at most input_size */
     read_size = dr_read_file(data, state->input_buffer, state->input_size);
     dr_mutex_unlock(fuzz_state_lock);
+    LOG(2, LOG_PREFIX" Load %d bytes from %s to "PFX"."NL,
+        read_size, fname, state->input_buffer);
     /* free if necessary */
     if (to_free != NULL)
         drfuzz_free_reallocated_buffer(dcontext, to_free, (app_pc)fuzz_target.pc);
@@ -703,7 +705,8 @@ load_fuzz_corpus_input(void *dcontext, const char *fname, fuzz_state_t *state)
 }
 
 static bool
-dump_fuzz_input(fuzz_state_t *state, char *logdir, char *suffix, char *path, size_t size)
+dump_fuzz_input(fuzz_state_t *state, const char *logdir, char *suffix,
+                char *path, size_t size)
 {
     file_t data = drx_open_unique_appid_file(logdir,
                                              dr_get_process_id(),
@@ -717,7 +720,7 @@ dump_fuzz_input(fuzz_state_t *state, char *logdir, char *suffix, char *path, siz
         FUZZ_ERROR("Partial fuzz input is dumped to file."NL);
     }
     dr_close_file(data);
-    LOG(2, "Dumped input to file %s."NL, path);
+    LOG(2, LOG_PREFIX" Dumped input to file %s."NL, path);
     return true;
 }
 
@@ -742,9 +745,14 @@ dump_fuzz_error_input(fuzz_state_t *state, char *buffer, size_t buffer_size,
 {
     char suffix[32];
     char path[MAXIMUM_PATH];
+    const char *dump_dir;
     dr_snprintf(suffix, BUFFER_SIZE_ELEMENTS(suffix), "error.%d.dat", eid);
     NULL_TERMINATE_BUFFER(suffix);
-    if (dump_fuzz_input(state, logsubdir, suffix, path, BUFFER_SIZE_ELEMENTS(path))) {
+    /* we prefer corpus directory over log directory */
+    dump_dir = option_specified.fuzz_corpus_out ?
+        options.fuzz_corpus_out :
+        (option_specified.fuzz_corpus ? options.fuzz_corpus : logsubdir);
+    if (dump_fuzz_input(state, dump_dir, suffix, path, BUFFER_SIZE_ELEMENTS(path))) {
         BUFPRINT(buffer, buffer_size, *sofar, *len,
                  "%sfuzz input for error #%d is stored in file %s\n",
                  prefix, eid, path);
