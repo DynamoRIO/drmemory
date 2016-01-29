@@ -67,7 +67,9 @@ int
 main(int argc, char **argv)
 {
     int *buf = (int *)malloc(BUF_SIZE);
-    if (DrMemFuzzFunc(buf, BUF_SIZE) == 1)
+    /* use function pointer and conditional assignment to avoid inlining */
+    int (*func_ptr)(int *, int) = argc > 2 ? NULL : &DrMemFuzzFunc;
+    if (func_ptr(buf, BUF_SIZE) == 1)
         return 0;
     if (!found_1 || !found_2 || !found_3) {
         printf("Error: some value was not seen\n");
