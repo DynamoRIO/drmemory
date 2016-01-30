@@ -1107,6 +1107,14 @@ if (USE_DRSYMS)
     set(frontend_srcs ${frontend_srcs} make/resources.rc)
   endif ()
   add_executable(${toolname} ${frontend_srcs})
+  if (ANDROID AND TOOL_DR_MEMORY)
+    # There's no DT_RPATH support so we have a script set the load path.
+    # To avoid confusion we rename the exe.
+    set(frontend_name "launcher")
+    set_target_properties(${toolname} PROPERTIES OUTPUT_NAME "${frontend_name}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/launcher_android.sh"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}" @ONLY)
+  endif ()
   if (WIN32)
     target_link_libraries(${toolname} dbghelp)
   endif (WIN32)
@@ -1806,6 +1814,13 @@ endif (USE_DRSYMS)
 if (NOT "${script_aux}" STREQUAL "")
   install(FILES
     ${script_aux}
+    DESTINATION "${INSTALL_BIN}"
+    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+endif ()
+if (ANDROID AND TOOL_DR_MEMORY)
+  install(FILES
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}"
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
