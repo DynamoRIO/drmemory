@@ -139,7 +139,7 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     app_pc pc = instr_get_app_pc(app);
 #ifdef ARM
     uint i;
-    drreg_status_t res;
+    IF_DEBUG(drreg_status_t res;)
     reg_id_t scratch, scratch2;
     dr_pred_type_t pred = instr_get_predicate(app);
     instr_t *in;
@@ -160,9 +160,11 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
      * XXX: for ARM, there are no multi-byte immediates, but subX4 is faster
      * than movw,movt if there's no dead scratch2.
      */
-    res = drreg_reserve_register(drcontext, ilist, app, NULL, &scratch);
+    IF_DEBUG(res =)
+        drreg_reserve_register(drcontext, ilist, app, NULL, &scratch);
     ASSERT(res == DRREG_SUCCESS, "should always find scratch reg");
-    res = drreg_reserve_register(drcontext, ilist, app, NULL, &scratch2);
+    IF_DEBUG(res =)
+        drreg_reserve_register(drcontext, ilist, app, NULL, &scratch2);
     ASSERT(res == DRREG_SUCCESS, "should always find 2nd scratch reg");
     /* To handle a predicated memref, because we can't predicate a conditional
      * branch nor OP_udf, we need an explicit branch to skip the OP_udf if the
@@ -177,7 +179,8 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     for (i = 0; i < opnd_num_regs_used(ref); i++) {
         reg_id_t reg = opnd_get_reg_used(ref, i);
         if (reg != dr_get_stolen_reg()) { /* stolen handled below */
-            res = drreg_get_app_value(drcontext, ilist, app, reg, reg);
+            IF_DEBUG(res =)
+                drreg_get_app_value(drcontext, ilist, app, reg, reg);
             ASSERT(res == DRREG_SUCCESS, "should get app value");
         }
     }
@@ -186,11 +189,13 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
      */
     if (opnd_uses_reg(ref, dr_get_stolen_reg())) {
         reg_id_t swap = opnd_uses_reg(ref, scratch) ? scratch2 : scratch;
-        bool ok;
+        IF_DEBUG(bool ok;)
         ASSERT(!opnd_uses_reg(ref, swap), "opnd uses 3 different regs?!");
-        ok = dr_insert_get_stolen_reg_value(drcontext, ilist, app, swap);
+        IF_DEBUG(ok =)
+            dr_insert_get_stolen_reg_value(drcontext, ilist, app, swap);
         ASSERT(ok, "failed to handle stolen register");
-        ok = opnd_replace_reg(&ref, dr_get_stolen_reg(), swap);
+        IF_DEBUG(ok =)
+            opnd_replace_reg(&ref, dr_get_stolen_reg(), swap);
         ASSERT(ok, "failed to replace reg");
     }
     if (opnd_get_size(ref) == OPSZ_1) {
@@ -215,9 +220,11 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     in = INSTR_CREATE_cmp(drcontext, opnd_create_reg(scratch),
                           opnd_create_reg(scratch2));
     PREXL8M(ilist, app, INSTR_XL8(in, pc));
-    res = drreg_unreserve_register(drcontext, ilist, app, scratch2);
+    IF_DEBUG(res =)
+        drreg_unreserve_register(drcontext, ilist, app, scratch2);
     ASSERT(res == DRREG_SUCCESS, "should always succeed");
-    res = drreg_unreserve_register(drcontext, ilist, app, scratch);
+    IF_DEBUG(res =)
+        drreg_unreserve_register(drcontext, ilist, app, scratch);
     ASSERT(res == DRREG_SUCCESS, "should always succeed");
 #endif
 
