@@ -1158,6 +1158,41 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
     return true;
 }
 
+#ifdef ARM
+/* XXX: we should share this with DR's decode_raw_jmp_target().
+ * Should DR export that?
+ * It's ARM-only right now but we could make an x86 version and use it
+ * in several places where we directly de-reference the immed today.
+ */
+static byte *
+get_call_target(byte *pc, dr_isa_mode_t mode)
+{
+    if (mode == DR_ISA_ARM_A32) {
+        uint word = *(uint*)pc;
+        int disp = word & 0xffffff;
+        if (TEST(0x800000, disp))
+            disp |= 0xff000000; /* sign-extend */
+        return pc + 8 + (disp << 2);
+    } else {
+        /* A10,B13,B11,A9:0,B10:0 x2, but B13 and B11 are flipped if A10 is 0 */
+        /* XXX: share with decoder's TYPE_J_b26_b13_b11_b16_b0 */
+        ushort valA = *(ushort *)pc;
+        ushort valB = *(ushort *)(pc + 2);
+        uint bitA10 = (valA & 0x0400) >> 10;
+        uint bitB13 = (valB & 0x2000) >> 13;
+        uint bitB11 = (valB & 0x0800) >> 11;
+        int disp = valB & 0x7ff; /* B10:0 */
+        disp |= (valA & 0x3ff) << 11;
+        disp |= ((bitA10 == 0 ? (bitB11 == 0 ? 1 : 0) : bitB11) << 21);
+        disp |= ((bitA10 == 0 ? (bitB13 == 0 ? 1 : 0) : bitB13) << 22);
+        disp |= bitA10 << 23;
+        if (bitA10 == 1)
+            disp |= 0xff000000; /* sign-extend */
+        return pc + 4 + (disp << 1);
+    }
+}
+#endif
+
 /* Checks that the call preceding next_retaddr targets the function containing
  * frame_addr, or that a cross-module call is indirect, depending on ops.fp_flags.
  * If it can't tell, it returns true.
@@ -1170,6 +1205,10 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
     app_pc pc = next_retaddr, call_target = NULL;
     bool res = true;
     symbolized_frame_t frame_sym;
+#ifdef ARM
+    bool is_thumb = TEST(1, (ptr_uint_t)next_retaddr);
+    pc = (app_pc) ALIGN_BACKWARD(pc, 2);
+#endif
     LOG(4, "%s: checking does "PFX" => "PFX"\n", __FUNCTION__, next_retaddr, frame_addr);
     if (TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags) &&
         !TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
@@ -1209,7 +1248,35 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
                             res = false;
                     }
                 }, {
-                    /* FIXME i#1726: port to ARM */
+                    /* We assume the PLT is always ARM and looks sthg like this:
+                     *    0xe28fc600  add     r12, pc, #0, 12
+                     *    0xe28cca08  add     r12, r12, #8, 20        ; 0x8000
+                     *    0xe5bcfaf4  ldr     pc, [r12, #2804]!       ; 0xaf4
+                     */
+                    if ((is_thumb &&
+                         /* T32 bl <label> */
+                         ((*(pc - 3) & 0xf0) == 0xf0) &&
+                         ((*(pc - 1) & 0xd0) == 0xd0)) ||
+                        (!is_thumb &&
+                         /* A32 blx <reg> */
+                         ((*(pc - 1) & 0x0f) == 0x01) &&
+                         *(pc - 2) == 0x2f &&
+                         *(pc - 3) == 0xff &&
+                         ((*(pc - 4) & 0xf0) == 0x30)))
+                        res = false;
+                    else if ((is_thumb &&
+                         /* T32 blx <label> */
+                         ((*(pc - 3) & 0xf0) == 0xf0) &&
+                         ((*(pc - 1) & 0xd0) == 0xc0)) ||
+                        (!is_thumb &&
+                         /* A32 bl <label> */
+                         ((*(pc - 1) & 0x0f) == 0x09))) {
+                        pc = get_call_target(pc - 4, is_thumb);
+                        LOG(4, "%s: call tgt is "PFX"\n", __FUNCTION__, pc);
+                        /* Just look for an add -- rare in func prologue 1st instr */
+                        if (((*(uint*)pc) & 0xe2800000) == 0xe2800000)
+                            res = false;
+                    }
                 })
             }, { /* EXCEPT */
                 res = false;
