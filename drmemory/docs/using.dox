@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -40,6 +40,7 @@ your computer:
  - \subpage page_install_linux
  - \subpage page_install_macos
  - \subpage page_install_windows
+ - \subpage page_install_android
 
 ***************************************************************************
 \page page_install_linux Installing on Linux
@@ -154,6 +155,21 @@ and add ";C:\INSTALL\DrMemory-Windows-X.X.X-X\bin" (with the X's replaced
 with the version you installed, of course).  Note that the semicolon
 (;) is important!  After editing your PATH, you should restart your Cygwin
 or cmd shell.
+
+***************************************************************************
+\page page_install_android Installing on Android
+
+Download the \p .tar.gz version of Dr. Memory for Android.  Untar the
+package into a directory on your local machine:
+
+\verbatim
+tar xzf DrMemory-ARM-Android-EABI-X.X.X-X.tar.gz
+\endverbatim
+
+Now copy the entire unpacked directory to your Android device (typically
+using <tt>adb push</tt>.  The <tt>bin/drmemory</tt> front-end can be
+invoked directly from the <tt>adb shell</tt>.  Dr. Memory for Android is
+targeted toward native applications that use Android's NDK.
 
 ***************************************************************************
 \page page_prep Preparing Your Application
@@ -335,6 +351,13 @@ Currently there is no support for applications built with Cygwin gcc or g++.
 The regular Dr. Memory build can be executed just fine from a Cygwin
 shell when targeting non-Cygwin applications.
 
+********************
+\section sec_prep_android Android
+
+Build your application using the Android NDK and copy it over to your device.
+Be sure to compile with debugging information included and to disable FPO,
+as described in \ref sec_prep_general.
+
 ***************************************************************************
 \page page_running Running Dr. Memory
 
@@ -418,7 +441,7 @@ On Windows:
 drmemory.exe -- c:/path/to/my/app args to my app
 \endverbatim
 
-On Linux or Mac:
+On Linux, Mac, or Android:
 \verbatim
 drmemory -- /path/to/my/app args to my app
 \endverbatim

@@ -64,6 +64,8 @@ The changes between \TOOL_VERSION and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
    not MacOS yet).  This does not yet include uninitialized read checking,
    so we still recommend compiling your application as 32-bit.
+ - Added preliminary Linux/ARM and Android/ARM 32-bit Dr. Memory support.
+   This does not yet include uninitialized read checking.
  - Fixed incremental error output to the console for graphical
    applications, which was missing in prior versions when using certain
    consoles such as cmd.
@@ -382,6 +384,8 @@ The changes between version 1.1.0 and 1.0.1 include:
 Dr. Memory is still under development.  It has some missing features and undoubtedly
 some bugs.  The missing features include:
 
+ - Uninitialized read checking is not yet supported for 64-bit applications
+   nor for ARM platforms.
  - Windows system call parameters are not all known, which can
    result in false positives and false negatives, especially on Vista or
    Windows 7+, or with code that interacts with the network.
@@ -414,8 +418,6 @@ some bugs.  The missing features include:
    - This release can produce false positives if multiple threads write
      to adjacent bytes simultaneously.  Future releases will provide
      options to trade off performance, memory usage, and accuracy.
- - On a 32-bit Windows 7 kernel, error reports are not visible in the \p cmd window.
-   Send stderr to a file to view them inlined with program output.
 
 \subsection sec_interop Interoperability
 

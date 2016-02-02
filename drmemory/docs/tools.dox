@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -137,19 +137,19 @@ The usage summary is as follows:
 % bin/symquery.exe
 Usage:
 Look up addresses for one module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-f] [-v] -a [<address relative to module base> ...]
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-f] [-v] -a [<address relative to module base> ...]
 Look up addresses for multiple modules:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe [-f] [-v] -q <pairs of [module_path;address relative to module base] on stdin>
+  D:\derek\drmemory\bin\symquery.exe [-f] [-v] -q <pairs of [module_path;address relative to module base] on stdin>
 Look up exact symbols for one module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] [--enum] -s [<symbol1> <symbol2> ...]
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-v] [--enum] -s [<symbol1> <symbol2> ...]
 Look up symbols matching wildcard patterns (glob-style: *,?) for one module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --search -s [<symbol1> <symbol2> ...]
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-v] --search -s [<symbol1> <symbol2> ...]
 Look up private symbols matching wildcard patterns (glob-style: *,?) for one module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --searchall -s [<symbol1> <symbol2> ...]
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-v] --searchall -s [<symbol1> <symbol2> ...]
 List all symbols in a module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --list
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-v] --list
 List all source lines in a module:
-  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --lines
+  D:\derek\drmemory\bin\symquery.exe -e <module> [-v] --lines
 Optional parameters:
   -f = show function name
   -v = verbose

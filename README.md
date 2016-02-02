@@ -10,7 +10,7 @@ memory leaks, and (on Windows) handle leaks, GDI API usage errors, and
 accesses to un-reserved thread local storage slots.
 
 Dr. Memory operates on unmodified application binaries running on Windows,
-Linux, or Mac on commodity IA-32 and AMD64 hardware.
+Linux, Mac, or Android on commodity IA-32, AMD64, and ARM hardware.
 
 Dr. Memory is released under an LGPL license and binary packages are
 [available for
