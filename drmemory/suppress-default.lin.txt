@@ -174,4 +174,11 @@ name=default (tcmalloc)
 *!MallocExtension::Register
 *!TCMallocGuard::TCMallocGuard
 
+##################################################
+# i#1856: Android emutls actual leaks with offset pointers
+
+LEAK
+name=default (emutls)
+libc.so!emutls_alloc
+
 ###########################################################################
