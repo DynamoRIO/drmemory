@@ -171,6 +171,11 @@ using <tt>adb push</tt>.  The <tt>bin/drmemory</tt> front-end can be
 invoked directly from the <tt>adb shell</tt>.  Dr. Memory for Android is
 targeted toward native applications that use Android's NDK.
 
+Dr. Memory requires a writable temporary directory.  If neither
+<tt>/data/local/tmp</tt> nor the current working directory are writable,
+you will need to specify a writable directory via the
+<tt>DYNAMORIO_CONFIGDIR</tt> environment variable.
+
 ***************************************************************************
 \page page_prep Preparing Your Application
 
