@@ -1111,7 +1111,7 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
                        ((*(pc - 2) & 0x87) == 0x80)))) ||
                     (!is_thumb &&
                      /* A32 bl <label> */
-                     (((*(pc - 1) & 0x0f) == 0x09) ||
+                     (((*(pc - 1) & 0x0f) == 0x0b) ||
                       /* A32 blx <label> */
                       ((*(pc - 1) & 0xfe) == 0xfa) ||
                       /* A32 blx <reg> */

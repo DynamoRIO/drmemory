@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -793,6 +793,27 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
             LOG(2, "zero retaddr in SEH_epilog\n");
         }
 # endif /* WINDOWS */
+# ifdef ARM
+    } else if (instr_get_opcode(inst) == OP_ldr &&
+               opnd_get_base(instr_get_src(inst, 0)) == DR_REG_SP &&
+               opnd_get_reg(instr_get_dst(inst, 0)) == DR_REG_LR) {
+        /* We handle this idiom here which thwarts the other retaddr clobbering code
+         * as the pop is prior to the indirect branch (i#1856):
+         *
+         *      f85d eb04  ldr    (%sp)[4byte] $0x00000004 %sp -> %lr %sp
+         *      b003       add    %sp $0x0000000c -> %sp
+         *      4770       bx     %lr
+         */
+        bool writeback = instr_num_srcs(inst) > 1;
+        if (writeback && opnd_is_immed_int(instr_get_src(inst, 1))) {
+            opnd_t memop = instr_get_src(inst, 0);
+            opnd_set_disp(&memop, -opnd_get_immed_int(instr_get_src(inst, 1)));
+            /* See above: we just write our stolen reg value */
+            /* XXX: is this against drmgr rules? */
+            POST(bb, inst, XINST_CREATE_store
+                 (drcontext, memop, opnd_create_reg(dr_get_stolen_reg())));
+        }
+#endif
     }
 }
 
