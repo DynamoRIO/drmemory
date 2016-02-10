@@ -38,7 +38,7 @@ Memory)?  What about when running with the options "-leaks_only
 -no_count_leaks -no_track_allocs"?
 
 Does the problem go away when using the most recent build from
-http://build.chromium.org/p/client.drmemory/builds/?
+https://github.com/DynamoRIO/drmemory/wiki/Latest-Build?
 
 Try the debug version of Dr. Memory and of its underlying engine DynamoRIO
 by passing "-debug -dr_debug -pause_at_assert" to drmemory.exe. Are any

@@ -117,7 +117,7 @@ following steps to help diagnose the issue:
    drmemory.exe.  Are any messages reported?
  - Try running light mode ("-light").  Does the issue appear there?
  - Try running "-leaks_only -no_count_leaks -no_track_allocs".  Does that work?
- - Try a recent build from http://build.chromium.org/p/client.drmemory/builds/
+ - Try a recent build from https://github.com/DynamoRIO/drmemory/wiki/Latest-Build
  - Try disabling anti-virus or other invasive software, as it may not
    interoperate well with Dr. Memory (see \ref sec_interop).
 
