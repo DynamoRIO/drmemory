@@ -869,6 +869,18 @@ _tmain(int argc, TCHAR *targv[])
             NULL_TERMINATE_BUFFER(logdir);
             if (file_is_writable(logdir))
                 have_logdir = true;
+            if (use_root_for_logdir) {
+                /* Our root was writable but not our logs subdir(s): go back to
+                 * a good temp value, as cwd may not work later.
+                 */
+                if (drfront_appdata_logdir(logdir, "Dr. Memory", &use_root_for_logdir,
+                                           logdir, BUFFER_SIZE_ELEMENTS(logdir)) ==
+                    DRFRONT_SUCCESS && !use_root_for_logdir) {
+                    if ((dr_create_dir(logdir) || dr_directory_exists(logdir)) &&
+                        file_is_writable(logdir))
+                        have_logdir = true;
+                }
+            }
         } else
             have_logdir = true;
     } else
