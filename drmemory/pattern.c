@@ -217,6 +217,10 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
         PREXL8M(ilist, app, INSTR_XL8(in, pc));
     }
     /* cmp scratch to scratch2 */
+    /* XXX: we should switch to OP_teq to avoid clobbering the V flag, but
+     * we'd need drreg to support granular flag reservations (DRi#1886) to
+     * avoid an aflags spill.  Xref DRi#1877.
+     */
     in = INSTR_CREATE_cmp(drcontext, opnd_create_reg(scratch),
                           opnd_create_reg(scratch2));
     PREXL8M(ilist, app, INSTR_XL8(in, pc));

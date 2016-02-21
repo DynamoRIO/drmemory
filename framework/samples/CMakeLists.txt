@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -91,7 +91,7 @@ add_library(strace SHARED strace.c)
 # We add the rpath so drsyscall is found within our build   # NON-COMBINED
 # dir and standalone package.  This should not be needed in # NON-COMBINED
 # a combined DR+DRMF package.                               # NON-COMBINED
-if (WIN32)                                                  # NON-COMBINED
+if (WIN32 OR ANDROID)                                       # NON-COMBINED
   set(DynamoRIO_RPATH ON)                                   # NON-COMBINED
 endif ()                                                    # NON-COMBINED
 configure_DynamoRIO_client(strace)
@@ -106,6 +106,10 @@ endif ()                                                    # NON-COMBINED
 # START NON-EXPORTED SECTION
 # We also remove any lines above marked "NON-PUBLIC", and also
 # "# NON-COMBINED" if building a combined package.
+
+set(PROJECT_BINARY_DIR ${TOP_BINARY_DIR}) # fix Android paths
+copy_target_to_device(strace)
+copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} strace)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" string)
 string(REGEX REPLACE "[^\n]*NON-PUBLIC[^\n]*\n" "" string "${string}")
@@ -124,15 +128,18 @@ if (BUILD_TOOL_TESTS)
   # Make this a test to ensure we don't break it.
   # We use the framework test "drsyscall_app" as the app, and just the
   # exit code as the success test.
-  get_target_property(client_path strace LOCATION${location_suffix})
-  get_target_property(app_path drsyscall_app LOCATION${location_suffix})
+  get_target_path_for_execution(client_path strace)
+  get_target_path_for_execution(app_path drsyscall_app)
   if (DEBUG_BUILD)
     set(drrun_extra -debug)
   else ()
     set(drrun_extra "")
   endif ()
+  set(drrun_path ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun)
+  convert_local_path_to_device_path(drrun_path ${drrun_path})
+  prefix_cmd_if_necessary(drrun_path OFF ${drrun_path})
   add_test(strace_sample
-    ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
+    ${drrun_path} ${drrun_extra}
     -client ${client_path} 0 ""
     -msgbox_mask 0
     "--" ${app_path})

@@ -184,7 +184,7 @@ configure_DynamoRIO_client(custom_mutator)
 # This is a little awkward: it might be better to do this in framework/ and configure
 # as a DRMF client?  But we want to test end-to-end Dr. Memory custom mutators here.
 append_test_compile_flags(custom_mutator "-UX86 -I${PROJECT_SOURCE_DIR}/drfuzz -I${PROJECT_BINARY_DIR}/drmf/include")
-get_relative_location(custom_mutator mutator_libpath)
+get_target_path_for_execution(mutator_libpath custom_mutator)
 newtest_nobuild_ex(fuzz_custom_mutator fuzz_buffer
   "initialize"
   "-fuzz_function;repeatme;-fuzz_num_iters;10;-fuzz_mutator_lib;${mutator_libpath};-fuzz_mutator_ops;-add 0xdeadbeef"

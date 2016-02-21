@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -100,6 +100,7 @@ macro(configure_drsyscall_target target)
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     add_dependencies(${target} ntdll_imports)
   endif ()
+  copy_target_to_device(${target})
 endmacro(configure_drsyscall_target)
 
 macro(export_drsyscall_target target drmgr)

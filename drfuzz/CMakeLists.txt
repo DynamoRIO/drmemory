@@ -81,6 +81,7 @@ macro(export_drfuzz_target target drwrap drmgr)
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files
+  copy_target_to_device(${target})
 endmacro(export_drfuzz_target)
 
 # For the exported version, we don't want to print to stderr or raise

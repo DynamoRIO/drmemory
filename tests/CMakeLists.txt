@@ -138,6 +138,7 @@ function(tobuild name source)
       add_dependencies(${name} ${gen_asm_tgt})
     endif ()
   endif ()
+  copy_target_to_device(${name})
 endfunction(tobuild)
 
 function(append_link_flags target newflags)
@@ -159,17 +160,17 @@ function(tobuild_lib name source cust_flags cust_link)
   endif (NOT cur_flags)
   set_target_properties(${name} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
   append_link_flags(${name} "${cust_link}")
+  copy_target_to_device(${name})
 endfunction(tobuild_lib)
 
 # tools for nudge tests
 # to avoid conflict w/ DR's run_in_bg target we use a different target name
-tobuild(run_in_bg_tgt run_in_bg.c)
-set_target_properties(run_in_bg_tgt PROPERTIES OUTPUT_NAME run_in_bg)
+tobuild(run_app_in_bg run_in_bg.c)
 if (WIN32)
-  target_link_libraries(run_in_bg_tgt ${ntimp_lib})
+  target_link_libraries(run_app_in_bg ${ntimp_lib})
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     # for parallel build correctness we need a target dependence
-    add_dependencies(run_in_bg_tgt ntdll_imports)
+    add_dependencies(run_app_in_bg ntdll_imports)
   endif ()
 endif (WIN32)
 
@@ -184,21 +185,12 @@ set(bin_path "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${BIN_ARCH}")
 set(src_param_pattern "{DRMEMORY_CTEST_SRC_DIR}")
 set(DR_param_pattern "{DRMEMORY_CTEST_DR_DIR}")
 
-function (get_relative_location target outvar)
-  get_target_property(tgtpath ${target} LOCATION${location_suffix})
-  # For more portable testing (PR 544430) use relative dirs within parent build dir
-  file(RELATIVE_PATH relpath "${CMAKE_CURRENT_BINARY_DIR}" "${tgtpath}")
-  if (NOT "${relpath}" MATCHES "^\\.\\.")
-    set(relpath "./${relpath}")
-  endif()
-  set(${outvar} "${relpath}" PARENT_SCOPE)
-endfunction (get_relative_location)
-
-if (UNIX)
-  set(cmd_shell ${bin_path}/${toolname})
-else (UNIX)
-  set(cmd_shell ${bin_path}/${toolname}.exe)
-
+get_target_path_for_execution(cmd_shell ${toolname})
+if (ANDROID)
+  string(REPLACE "${BIN_ARCH}/${frontend_name}" "${BIN_ARCH}/${toolname}"
+    cmd_shell ${cmd_shell})
+endif ()
+if (NOT UNIX)
   # XXX i#143: we now support /MDd but need symbols for full support.
   # Also, /MTd results in the debug heap code throwing an exception
   # when malloc.exe does free(0x1230).
@@ -234,7 +226,7 @@ else (UNIX)
       endforeach ()
     endif ()
   endif (NOT DEBUG_BUILD)
-endif (UNIX)
+endif (NOT UNIX)
 if (DEBUG_BUILD)
   # use debug DR as well to catch asserts there
   set(dbg_args "-debug;-dr_debug")
@@ -244,13 +236,14 @@ endif (DEBUG_BUILD)
 if (WIN32)
   # we need the nudge notification msgs
   # we want core dumps on asserts, etc.
-  set(default_dr_ops "-dumpcore_mask 0x87fd -stderr_mask 15 -msgbox_mask 0")
+  set(default_dr_ops -dumpcore_mask 0x87fd -stderr_mask 15 -msgbox_mask 0)
 else (WIN32)
   # stderr_mask 15 is the default for debug build, and we don't want to go
   # over option buffer limit on esxi
-  set(default_dr_ops "-dumpcore_mask 0")
+  set(default_dr_ops -dumpcore_mask 0)
 endif (WIN32)
 set(cmd_base ${cmd_shell} ${dbg_args} -dr ${DR_param_pattern}/..)
+prefix_cmd_if_necessary(cmd_base OFF ${cmd_base})
 if (TOOL_DR_MEMORY)
   set(cmd_base ${cmd_base} -batch)
 endif (TOOL_DR_MEMORY)
@@ -278,15 +271,15 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
-    get_relative_location(${exe} exepath)
+    get_target_path_for_execution(exepath ${exe})
   endif ()
 
   set(cmd ${cmd_base})
-  if (NOT "${dr_ops}" STREQUAL "")
-    set(cmd ${cmd} -dr_ops "${default_dr_ops} ${dr_ops}")
-  else()
-    set(cmd ${cmd} -dr_ops "${default_dr_ops}")
-  endif ()
+  # We avoid requiring spaces and quoting as it's non-trivial to get through
+  # adb shell to Android.
+  foreach (drop ${default_dr_ops} ${dr_ops})
+    set(cmd ${cmd} -dr_ops ${drop})
+  endforeach ()
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
   # we include absaddr and mod+offs for easier debugging of problems
@@ -298,14 +291,14 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
-  if ("${exepath}" MATCHES "run_in_bg")
+  if ("${exepath}" MATCHES "run_app_in_bg")
     # unfortunately we have to hardcode support here: if we run drmemory.pl
     # as the command, cmake waits for its direct children to exit (including
-    # postprocess.pl): instead we run run_in_bg as the primary app, which
+    # postprocess.pl): instead we run run_app_in_bg as the primary app, which
     # makes it much easier to run drmemory.pl in the background.
     set(cmd ${exepath} ${test_ops} ${cmd})
     if (WIN32)
-      # run_in_bg spawns perl.exe and perl then re-parses the args, so we need
+      # run_app_in_bg spawns perl.exe and perl then re-parses the args, so we need
       # extra quotes.  '' works for cygwin perl but not ActiveState: "" works
       # for both (PR 506111)
       string(REGEX REPLACE ";-dr_ops;([^;]+);" ";-dr_ops;\"\\1\";" cmd "${cmd}")
@@ -346,6 +339,7 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
   else (X64)
     set(TOOL_BIN "bin32")
   endif (X64)
+  convert_local_path_to_device_path(dr_device_path ${DynamoRIO_DIR})
   add_test(${test} ${CMAKE_COMMAND}
     -D cmd:STRING=${cmd}
     -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
@@ -355,9 +349,12 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
     -D VMKERNEL:BOOL=${VMKERNEL}
     -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D X64:BOOL=${X64}
+    -D ARM:BOOL=${ARM}
+    -D ANDROID:BOOL=${ANDROID}
+    -D ADB:FILEPATH=${ADB}
     -D toolbindir:STRING=${DR_param_pattern}/../${TOOL_BIN}
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
-    -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
+    -D DRMEMORY_CTEST_DR_DIR:STRING=${dr_device_path}
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
     -D exit_code:STRING=${exit_code}
     -D path_append:STRING=${path_append}
@@ -415,8 +412,9 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
-if (NOT X64)
 # FIXME i#111, i#217: 64-bit is only supported in pattern mode
+# i#1726: ditto for ARM.
+if (NOT X64 AND NOT ARM)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -519,7 +517,7 @@ if (UNIX)
     # PR 468352: SYS_clone w/o CLONE_SETTLS not supported on ESXi
     newtest(clone clone.c)
   endif ()
-  get_relative_location(malloc malloc_path)
+  get_target_path_for_execution(malloc_path malloc)
   newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "" 0)
   # i#1264: the name "pthreads" on an executable breaks 2.8.11 find_package(Threads)
   # so we use "pthread_test".  The compare files are still "pthreads.*".
@@ -534,7 +532,7 @@ if (UNIX)
     set(loaderlib_flags "")
   endif (APPLE)
   tobuild_lib(loaderlib loader.lib.c "" "${loaderlib_flags}")
-  get_relative_location(loaderlib loaderlib_path)
+  get_target_path_for_execution(loaderlib_path loaderlib)
   newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "" 0)
   target_link_libraries(loader dl)
 else (UNIX)
@@ -559,7 +557,7 @@ if (UNIX)
 else (UNIX)
   tobuild_lib(unloadlib unload.lib.c "/DUSE_CUSTOM_MALLOC" "/nodefaultlib /noentry")
 endif (UNIX)
-get_relative_location(unloadlib unloadlib_path)
+get_target_path_for_execution(unloadlib_path unloadlib)
 # We need 50 iters to hit i#545.
 # We name it "unloadtest" to avoid security software issues with "unload.exe".
 newtest_ex(unloadtest unload.c "${unloadlib_path};50" "" "" OFF "unload" 0)
@@ -568,19 +566,19 @@ if (UNIX)
 endif (UNIX)
 if (WIN32)
   tobuild_lib(unloadlibMTd unload.lib.c "/D_DEBUG /MTd" "")
-  get_relative_location(unloadlibMTd unloadlibMTd_path)
+  get_target_path_for_execution(unloadlibMTd_path unloadlibMTd)
   newtest_nobuild(unloadMTd unloadtest "${unloadlibMTd_path};2" "" "" OFF "unload")
 
   if (TOOL_DR_MEMORY) # XXX; not working in drheapstat: figure out why
     tobuild_lib(unloadlibMD unload.lib.c "/MD" "")
-    get_relative_location(unloadlibMD unloadlibMD_path)
+    get_target_path_for_execution(unloadlibMD_path unloadlibMD)
     # Turning off leaks to avoid libc globals like environ ptr that
     # show up as possible leaks.  XXX: may be worth investigating further.
     newtest_nobuild(unloadMD unloadtest "${unloadlibMD_path};2" "-no_count_leaks"
       "" OFF "unloadMD")
 
     tobuild_lib(unloadlibMDd unload.lib.c "/D_DEBUG /MDd" "")
-    get_relative_location(unloadlibMDd unloadlibMDd_path)
+    get_target_path_for_execution(unloadlibMDd_path unloadlibMDd)
     # Turning off leaks to avoid libc globals like environ ptr that
     # show up as possible leaks.  XXX: may be worth investigating further.
     newtest_nobuild(unloadMDd unloadtest "${unloadlibMDd_path};2" "-no_count_leaks"
@@ -806,7 +804,7 @@ if (TOOL_DR_MEMORY)
   # instead.
   newtest_ex(pcache free.c "" "-no_check_uninitialized;-no_count_leaks;-persist_code"
     # do not load any stale pcaches from prior runs, in first run
-    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly" 0)
+    "-no_use_persisted;-no_coarse_disk_merge;-no_coarse_lone_merge" OFF "addronly" 0)
   if (WIN32)
     # we make a separate executable to avoid ASLR
     append_link_flags(pcache "/dynamicbase:no")
@@ -842,17 +840,17 @@ endif (TOOL_DR_MEMORY)
 if (NOT ARM) # XXX i#1726: port to ARM
   # nudge test: runs infloop in background and runtest.cmake nudges it
   tobuild(infloop infloop.c)
-  get_relative_location(infloop infloop_path)
-  # we have special support to put run_in_bg and its args first, so we put
+  get_target_path_for_execution(infloop_path infloop)
+  # we have special support to put run_app_in_bg and its args first, so we put
   # the test to run as a final drmem arg
-  newtest_nobuild(nudge run_in_bg_tgt
+  newtest_nobuild(nudge run_app_in_bg
     "-out;./nudge-out"
     "${nudge_test_args}--;${infloop_path}" "" OFF "")
 endif ()
 if (TOOL_DR_MEMORY AND WIN32)
   # See above for why passing -lib_blacklist_frames 0.
   set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
-  newtest_nobuild(nudge_handle run_in_bg_tgt
+  newtest_nobuild(nudge_handle run_app_in_bg
     "-out;./nudge-handle-out"
     "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")
 endif (TOOL_DR_MEMORY AND WIN32)
@@ -921,36 +919,46 @@ if (NOT APPLE)
     # i#1309: turn off some DR debug checking to speed up the test, as it times out
     # on Dr. Heapstat w/ online symbolization.
     # i#1809: turn off ldmps from false pos curiosity
-    "-checklevel 1 -dumpcore_mask 0x877d" OFF "")
+    "-checklevel;1;-dumpcore_mask;0x877d" OFF "")
   # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
   set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
   if (TOOL_DR_MEMORY)
     newtest_nobuild(app_suite.pattern app_suite_tests ""
       "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
       # i#1809: turn off ldmps from false pos curiosity
-      "-dumpcore_mask 0x877d" OFF "")
+      "-dumpcore_mask;0x877d" OFF "")
   endif ()
 endif ()
 
 # framework subdir is added at top level b/c wants DR cflags
 
-else (NOT X64)
+else (NOT X64 AND NOT ARM)
   # XXX i#111: we'll eliminate this duplication once we have full mode working --
   # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
 
   # default mode == pattern + leaks
   newtest(hello hello.c)
   newtest(free free.c)
-  newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
+  endif ()
   newtest(patterns patterns.c)
-  newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
+  if (NOT ANDROID) # FIXME i#1860: fix for Android
+    newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF
+      "free" 42 "")
+  endif ()
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
 
   # pattern mode testing w/o leaks
   newtest_nobuild_ex(free.pattern free "" "-unaddr_only" "" OFF "addronly" 0 "")
-  newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
-  newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF "registers.pattern" 0)
+  if (NOT ANDROID) # FIXME i#1860: fix for Android
+    newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
+  endif ()
+  if (NOT ARM) # XXX i#1726: port to ARM
+    newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF
+      "registers.pattern" 0)
+  endif ()
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
     "" OFF "track_origins" 0)
   if (WIN32)
@@ -961,18 +969,22 @@ else (NOT X64)
       "procterm.addronly" 0)
   endif (WIN32)
 
-  # shadow light testing
-  newtest_nobuild_ex(hello.shadow hello "" "-pattern;0" "" OFF "hello" 0 "")
-  newtest_nobuild_ex(free.shadow free "" "-pattern;0" "" OFF "free" 0 "")
-  newtest_nobuild_ex(patterns.shadow patterns "" "-pattern;0" "" OFF "patterns" 0 "")
-  if (LINUX)
-    get_relative_location(hello hello_path)
-    newtest_ex(nonaslr nonaslr.c "${hello_path}" "-pattern;0" "" OFF "hello" 0)
-  endif (LINUX)
-endif (NOT X64)
+  if (NOT ARM) # i#1726: no shadow yet on ARM
+    # shadow light testing
+    newtest_nobuild_ex(hello.shadow hello "" "-pattern;0" "" OFF "hello" 0 "")
+    newtest_nobuild_ex(free.shadow free "" "-pattern;0" "" OFF "free" 0 "")
+    newtest_nobuild_ex(patterns.shadow patterns "" "-pattern;0" "" OFF "patterns" 0 "")
+    if (LINUX)
+      get_target_path_for_execution(hello_path hello)
+      newtest_ex(nonaslr nonaslr.c "${hello_path}" "-pattern;0" "" OFF "hello" 0)
+    endif (LINUX)
+  endif ()
+endif (NOT X64 AND NOT ARM)
 
 if (TOOL_DR_MEMORY)
-  add_subdirectory(fuzz)
+  if (NOT ANDROID) # FIXME i#1860: fix for Android
+    add_subdirectory(fuzz)
+  endif ()
 endif ()
 
 if (APPLE)

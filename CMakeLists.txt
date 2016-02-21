@@ -78,6 +78,23 @@ endif (APPLE)
 if (CMAKE_SYSTEM_NAME MATCHES "^Android")
   set(ANDROID 1)
   set(DEFINES ${DEFINES} -DANDROID)
+  set(DRM_DEVICE_BASEDIR "/data/local/tmp" CACHE STRING "base dir for Android binaries")
+  option(DRM_COPY_TO_DEVICE "copy cross-compiled binaries to DRM_DEVICE_BASEDIR" OFF)
+  if (DRM_COPY_TO_DEVICE)
+    find_program(ADB adb DOC "adb Android utility")
+    if (NOT ADB)
+      message(FATAL_ERROR "Unable to find adb for DRM_COPY_TO_DEVICE")
+    else ()
+      execute_process(COMMAND ${ADB} get-state
+        RESULT_VARIABLE adb_result
+        ERROR_VARIABLE adb_err
+        OUTPUT_VARIABLE adb_out OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if (adb_result OR NOT adb_out STREQUAL "device")
+        message(FATAL_ERROR "Android device not connected for DRM_COPY_TO_DEVICE")
+      endif ()
+      message(STATUS "Binaries will be copied to the attached Android device")
+    endif ()
+  endif ()
 endif ()
 
 # The target arch:
@@ -825,6 +842,12 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
     set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
   endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+  if (DRM_COPY_TO_DEVICE)
+    set(DR_COPY_TO_DEVICE ON CACHE BOOL "DynamoRIO option: copy to Android")
+    get_filename_component(builddir ${PROJECT_BINARY_DIR} NAME)
+    set(DR_DEVICE_BASEDIR "${DRM_DEVICE_BASEDIR}/${builddir}" CACHE STRING
+      "DynamoRIO option: Android path")
+  endif ()
   # We do not want DR install, except for the targets we need for our
   # multi-export-set install of the DRMF.  We need those targets
   # even for BUILDING_SUB_PACKAGE.
@@ -981,6 +1004,68 @@ add_asm_target(common/${asm_file} asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
+if (DRM_COPY_TO_DEVICE)
+  # We cache this for us in sub-projects like framework/samples/
+  set(TOP_BINARY_DIR ${PROJECT_BINARY_DIR})
+  get_filename_component(builddir ${TOP_BINARY_DIR} NAME)
+  set(DRM_DEVICE_BINARY_DIR ${DRM_DEVICE_BASEDIR}/${builddir})
+endif ()
+
+function (copy_target_to_device target)
+  if (DRM_COPY_TO_DEVICE)
+    DynamoRIO_copy_target_to_device(${target} ${DRM_DEVICE_BASEDIR})
+  endif ()
+endfunction (copy_target_to_device)
+
+function (copy_file_to_device local_path)
+  if (DRM_COPY_TO_DEVICE)
+    file(RELATIVE_PATH relpath "${TOP_BINARY_DIR}" "${local_path}")
+    execute_process(
+      COMMAND ${ADB} push ${local_path} ${DRM_DEVICE_BINARY_DIR}/${relpath}
+      RESULT_VARIABLE adb_result ERROR_VARIABLE adb_err OUTPUT_QUIET)
+    if (adb_result)
+      message(FATAL_ERROR "*** Failed to adb push ${local_path}: ${adb_err} ***\n")
+    endif ()
+  endif ()
+endfunction (copy_file_to_device)
+
+function (get_target_path_for_execution out target)
+  if (ANDROID)
+    DynamoRIO_get_target_path_for_execution(local ${target} ${DRM_DEVICE_BASEDIR})
+  else ()
+    DynamoRIO_get_target_path_for_execution(local ${target} "")
+  endif ()
+  set(${out} ${local} PARENT_SCOPE)
+endfunction (get_target_path_for_execution)
+
+function (convert_local_path_to_device_path out local_path)
+  if (ANDROID)
+    file(RELATIVE_PATH relpath "${TOP_BINARY_DIR}" "${local_path}")
+    set(local ${DRM_DEVICE_BINARY_DIR}/${relpath})
+  else ()
+    set(local ${local_path})
+  endif ()
+  set(${out} ${local} PARENT_SCOPE)
+endfunction (convert_local_path_to_device_path)
+
+function (prefix_cmd_if_necessary cmd_out use_ats cmd_in)
+  DynamoRIO_prefix_cmd_if_necessary(local ${use_ats} ${cmd_in} ${ARGN})
+  set(${cmd_out} ${local} PARENT_SCOPE)
+endfunction (prefix_cmd_if_necessary)
+
+function (copy_and_adjust_drpaths basedir target)
+  if (ANDROID AND DRM_COPY_TO_DEVICE)
+    file(GLOB drpaths ${target}/*${target}*.drpath)
+    foreach(drpath ${drpaths}) # we only expect one though
+      file(READ ${drpath} contents)
+      string(REPLACE "${PROJECT_BINARY_DIR}" "${DRM_DEVICE_BINARY_DIR}"
+        contents ${contents})
+      file(WRITE ${drpath} ${contents})
+      copy_file_to_device(${drpath})
+    endforeach ()
+  endif ()
+endfunction ()
+
 if (WIN32)
   set(FLAG_DISABLE_FPO "/Oy-")
 else (WIN32)
@@ -1114,10 +1199,12 @@ if (USE_DRSYMS)
     set_target_properties(${toolname} PROPERTIES OUTPUT_NAME "${frontend_name}")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/launcher_android.sh"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}" @ONLY)
+    copy_file_to_device("${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}")
   endif ()
   if (WIN32)
     target_link_libraries(${toolname} dbghelp)
   endif (WIN32)
+  copy_target_to_device(${toolname})
 else (USE_DRSYMS)
   set(client_target ${toolname})
 endif (USE_DRSYMS)
@@ -1133,6 +1220,7 @@ if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # ensure race-free parallel builds
   add_dependencies(${client_target} ${asm_utils_tgt})
 endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+copy_target_to_device(${client_target})
 
 # We require frames in our replacement routines in order to reliably include
 # the allocator routines in the callstack for i#639.  Xref i#958.
@@ -1368,6 +1456,8 @@ endif (PERL_TO_EXE)
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
+file(WRITE "${PROJECT_BINARY_DIR}/logs/README" "Directory for logs") # for adb push
+copy_file_to_device("${PROJECT_BINARY_DIR}/logs")
 if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl" @ONLY)
@@ -1497,6 +1587,7 @@ else (WIN32)
   file(READ "${defsupp_in}" txt)
   file(WRITE "${defsupp_out}" "${txt}")
 endif (WIN32)
+copy_file_to_device("${defsupp_out}")
 
 ###########################################################################
 # Tests
@@ -1716,7 +1807,12 @@ if (BUILD_TOOL_TESTS)
     target_link_libraries(unit_tests drsymcache_int)
     target_link_libraries(unit_tests drfuzz_int)
     set(DynamoRIO_RPATH ${old_rpath})
-    add_test(unit_tests "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/unit_tests")
+    get_target_path_for_execution(unit_relpath unit_tests)
+    prefix_cmd_if_necessary(unit_relpath OFF ${unit_relpath})
+    if (NOT ANDROID) # FIXME i#: not working on Android
+      add_test(unit_tests ${unit_relpath})
+    endif ()
+    copy_target_to_device(unit_tests)
   endif (TOOL_DR_MEMORY)
 
 endif (BUILD_TOOL_TESTS)

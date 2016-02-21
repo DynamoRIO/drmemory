@@ -29,6 +29,9 @@
 # * VMKERNEL = whether running on vmkernel
 # * USE_DRSYMS = whether running a DRSYMS build
 # * X64 = whether running a 64-bit build
+# * ARM = whether running an ARM build
+# * ANDROID = whether running an Android build
+# * ADB = path to adb command for Android
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
 # * CMAKE_SYSTEM_VERSION
@@ -122,15 +125,27 @@ set(TIMEOUT_APP "120")
 set(cmd_with_at ${cmd})
 string(REGEX REPLACE "@@" " " cmd "${cmd}")
 string(REGEX REPLACE "@" ";" cmd "${cmd}")
+if (ANDROID)
+  # quote special chars as we're passing it through a shell
+  set(raw_cmd ${cmd})
+  set(cmd "")
+  foreach (arg ${raw_cmd})
+    if (arg MATCHES "[<>|]")
+      set(cmd ${cmd} "\"'${arg}'\"")
+    else ()
+      set(cmd ${cmd} "${arg}")
+    endif ()
+  endforeach ()
+endif ()
 
-if ("${cmd}" MATCHES "run_in_bg")
+if ("${cmd}" MATCHES "run_app_in_bg")
   # nudge test
   # modeled after DR's runall.cmake
   string(REGEX MATCHALL "-out@[^@]+@" out "${cmd_with_at}")
   string(REGEX REPLACE "-out@([^@]+)@" "\\1" out "${out}")
 
   if (WIN32)
-    # can't get pid from run_in_bg for 2 reasons: not printed to stdout,
+    # can't get pid from run_app_in_bg for 2 reasons: not printed to stdout,
     # and drmemory.exe doesn't exec.  so we pass in pidfile to drmemory.exe.
     string(REGEX REPLACE "(dr[a-z]*.exe);" "\\1;-pid_file;${out}pid;" cmd "${cmd}")
     file(REMOVE "${out}pid")
@@ -139,7 +154,7 @@ if ("${cmd}" MATCHES "run_in_bg")
   # we must remove so we know when the background process has re-created it
   file(REMOVE "${out}")
 
-  # run in the background.  run_in_bg prints the bg pid to stdout.
+  # run in the background.  run_app_in_bg prints the bg pid to stdout.
   execute_process(COMMAND ${cmd}
     RESULT_VARIABLE cmd_result
     ERROR_VARIABLE cmd_err
@@ -158,7 +173,7 @@ if ("${cmd}" MATCHES "run_in_bg")
     execute_process(COMMAND ${SLEEP_SHORT})
     math(EXPR iters "${iters} + 1")
     if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
-      message(FATAL_ERROR "Timed out waiting for run_in_bg")
+      message(FATAL_ERROR "Timed out waiting for run_app_in_bg")
     endif ()
   endwhile ()
 
@@ -308,7 +323,7 @@ else ()
   set(cmd_err "${cmd_out}${cmd_err}")
   if (NOT exit_code STREQUAL "ANY")
     if (NOT cmd_result STREQUAL exit_code)
-      message(FATAL_ERROR "*** ${cmd} failed (${cmd_result}): ${cmd_err}***\n")
+      message(FATAL_ERROR "*** ${cmd} has the wrong exit code (${cmd_result}): ${cmd_err}***\n")
     endif ()
   endif ()
 endif ()
@@ -455,9 +470,12 @@ foreach (line ${lines})
     endif ()
     # XXX i#111: for now we don't support full mode, but we will soon.  To avoid
     # changing a ton of .res files we instead just ignore uninit lines here.
-    if (X64 AND "${line}" MATCHES "total uninitialized")
-      set(enable_check OFF)
-      set(remove_line OFF)
+    # i#1726: ditto for ARM.
+    if (X64 OR ARM)
+      if ("${line}" MATCHES "total uninitialized")
+        set(enable_check OFF)
+        set(remove_line OFF)
+      endif ()
     endif ()
     if (enable_check)
       strip_trailing_newline_regex(line "${line}")
@@ -527,6 +545,21 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
     else (NOT "${postcmd}" STREQUAL "")
       set(postcmd_err "")
     endif (NOT "${postcmd}" STREQUAL "")
+
+    if (ANDROID AND ADB)
+      # Copy the DrMemory-<appname>*/results.txt into tests/logs/ w/ subdir
+      set(remote ${resfile})
+      get_filename_component(resname ${remote} NAME)
+      get_filename_component(resdir ${remote} PATH)
+      get_filename_component(resdir ${resdir} NAME)
+      set(resfile ${CMAKE_CURRENT_BINARY_DIR}/logs/${resdir}/${resname})
+      execute_process(
+        COMMAND ${ADB} pull ${remote} ${resfile}
+        RESULT_VARIABLE adb_result ERROR_VARIABLE adb_err OUTPUT_QUIET)
+      if (adb_result)
+        message(FATAL_ERROR "*** Failed to adb pull ${remote}: ${adb_err} ***\n")
+      endif ()
+    endif ()
 
     file(READ "${resfile}" contents)
     string(LENGTH "${contents}" reslen)

@@ -67,6 +67,7 @@ function(add_drmf_test_app app_name src_app)
     # fuzzing targets being inlined
     append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi /Ob0")
   endif (UNIX)
+  copy_target_to_device(${app_name})
 endfunction(add_drmf_test_app)
 
 # We only expect a few tests, so we simplify things by having a simple
@@ -94,19 +95,27 @@ function(add_drmf_test test_name app_name src_client ext_list client_options pas
     add_dependencies(${client_name} ${ext})
   endforeach (ext)
 
-  get_target_property(app_path ${app_name} LOCATION${location_suffix})
-  get_target_property(client_path ${client_name} LOCATION${location_suffix})
+  copy_target_to_device(${client_name})
+  copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} ${client_name})
+
+  get_target_path_for_execution(app_path ${app_name})
+  get_target_path_for_execution(client_path ${client_name})
   if (DEBUG_BUILD)
     set(drrun_extra -quiet -debug)
   else ()
     set(drrun_extra -quiet)
   endif ()
-  add_test(${test_name}
-    ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
-    -client ${client_path} 0 "${client_options}"
-    -msgbox_mask 0 -stderr_mask 0xc
-    "--" ${app_path})
-  set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
+  set(drrun_path ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun)
+  convert_local_path_to_device_path(drrun_path ${drrun_path})
+  prefix_cmd_if_necessary(drrun_path OFF ${drrun_path})
+  if (NOT ANDROID) # FIXME i#1860: fix for Android
+    add_test(${test_name}
+      ${drrun_path} ${drrun_extra}
+      -client ${client_path} 0 "${client_options}"
+      -msgbox_mask 0 -stderr_mask 0xc
+      "--" ${app_path})
+    set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
+  endif ()
 endfunction(add_drmf_test)
 
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
