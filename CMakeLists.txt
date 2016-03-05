@@ -1531,6 +1531,9 @@ endif ()
 function (create_drrun_file frontend file_out name) # option list follows name
   get_target_property(frontend_path ${frontend} LOCATION${location_suffix})
   get_filename_component(frontend_name ${frontend_path} NAME)
+  if (ANDROID AND TOOL_DR_MEMORY)
+    set(frontend_name ${toolname}) # point at script, not launcher
+  endif ()
   if (BUILDING_SUB_PACKAGE)
     set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}/${frontend_name}")
   else ()
@@ -1545,6 +1548,10 @@ function (create_drrun_file frontend file_out name) # option list follows name
   foreach (op ${ARGN})
     file(APPEND ${DRRUN_FILE} "TOOL_OP=${op}\n")
   endforeach ()
+  if (X64)
+    file(APPEND ${DRRUN_FILE}
+      "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues.\n")
+  endif ()
   install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
   set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
 
@@ -1554,18 +1561,12 @@ function (create_drrun_file frontend file_out name) # option list follows name
   endif ()
 endfunction (create_drrun_file)
 
+create_drrun_file(${toolname} unused "drmemory")
 if (NOT X64)
-  create_drrun_file(${toolname} unused "drmemory")
   create_drrun_file(${toolname} unused "drmemory_light" "-light")
 endif ()
 if (WIN32)
-  if (NOT X64) # XXX: today we aren't yet shipping 64-bit drmemory.exe
-    create_drrun_file(${toolname} leakfile "handle_leaks" "-handle_leaks_only")
-    if (X64)
-      file(APPEND ${leakfile}
-        "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues.\n")
-    endif ()
-  endif ()
+  create_drrun_file(${toolname} unused "handle_leaks" "-handle_leaks_only")
 endif ()
 
 ###########################################################################
