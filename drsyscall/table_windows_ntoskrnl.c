@@ -94,6 +94,7 @@ extern drsys_sysnum_t sysnum_SetSystemInformation;
 extern drsys_sysnum_t sysnum_SetInformationProcess;
 extern drsys_sysnum_t sysnum_PowerInformation;
 extern drsys_sysnum_t sysnum_QueryVirtualMemory;
+extern drsys_sysnum_t sysnum_FsControlFile;
 
 
 /* The secondary tables are large, so we separate them into their own file: */
@@ -925,11 +926,11 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
          {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {6, -7, R},
+         /* The "{6, -7, R}" param can have padding inside it and is special-cased */
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {8, -9, W},
          {9, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_FsControlFile
     },
     {{0,0},"NtGetContextThread", OK, RNTST, 2,
      {

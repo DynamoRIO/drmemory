@@ -337,6 +337,7 @@ drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
 drsys_sysnum_t sysnum_SetInformationFile = {-1,0};
 drsys_sysnum_t sysnum_PowerInformation = {-1,0};
 drsys_sysnum_t sysnum_QueryVirtualMemory = {-1,0};
+drsys_sysnum_t sysnum_FsControlFile = {-1,0};
 
 /* The tables are large, so we separate them into their own files: */
 extern syscall_info_t syscall_ntdll_info[];
@@ -2210,6 +2211,48 @@ handle_post_QueryVirtualMemory(void *drcontext, cls_syscall_t *pt, sysarg_iter_i
     }
 }
 
+static void
+handle_FsControlFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    ULONG code = (ULONG) pt->sysarg[5];
+    switch (code) {
+    case FSCTL_PIPE_WAIT:
+        /* i#1827: the input struct has a BOOLEAN and thus padding */
+        if (ii->arg->pre) {
+            FILE_PIPE_WAIT_FOR_BUFFER *data = (FILE_PIPE_WAIT_FOR_BUFFER *) pt->sysarg[6];
+            size_t data_sz = (size_t) pt->sysarg[7];
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)data,
+                                    offsetof(FILE_PIPE_WAIT_FOR_BUFFER, TimeoutSpecified),
+                                    "FILE_PIPE_WAIT_FOR_BUFFER Timeout+NameLength",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)&data->TimeoutSpecified,
+                                    sizeof(data->TimeoutSpecified),
+                                    "FILE_PIPE_WAIT_FOR_BUFFER.TimeoutSpecified",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)&data->Name,
+                                    data_sz - offsetof(FILE_PIPE_WAIT_FOR_BUFFER, Name),
+                                    "FILE_PIPE_WAIT_FOR_BUFFER.Name",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+        break;
+    /* XXX: check the rest of the codes and see whether any have padding or
+     * optional fields in either the input or output buffers.
+     */
+    default:
+        if (ii->arg->pre) {
+            byte *data = (byte *) pt->sysarg[6];
+            size_t data_sz = (size_t) pt->sysarg[7];
+            if (!report_memarg_type(ii, 1, SYSARG_READ, data, data_sz,
+                                    "InputBuffer", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+        break;
+    }
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -2970,6 +3013,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_QuerySystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_PowerInformation))
         handle_PowerInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_FsControlFile))
+        handle_FsControlFile(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
 }
@@ -3063,7 +3108,9 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
          * checks in os_syscall_succeeded() and handle_post_QueryVirtualMemory().
          */
         handle_post_QueryVirtualMemory(drcontext, pt, ii);
-    } else
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_FsControlFile))
+        handle_FsControlFile(drcontext, pt, ii);
+    else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
     DOLOG(2, { syscall_diagnostics(drcontext, pt); });
 }

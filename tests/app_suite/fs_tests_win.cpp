@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -184,4 +184,9 @@ TEST(FSTests, SetIoCompletion) {
     ASSERT_NE(NULL, result);
     /* Wait for the completion port thread to terminate */
     WaitForSingleObject(thread_hiocp, INFINITE);
+}
+
+TEST(FSTests, NamedPipe) {
+    BOOL ret = WaitNamedPipeW(L"\\\\.\\pipe\\bogusname", 1);
+    EXPECT_EQ(ret, FALSE);
 }
