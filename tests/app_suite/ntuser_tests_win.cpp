@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -378,4 +378,12 @@ TEST(NtUserTests, BuildPropList) {
     }
     PropVariantClear(&prop);
     pps->Release();
+}
+
+TEST(NtUserTests, GetKeyNameTextW) {
+    /* i#1819: ensure null char is marked init */
+    WCHAR buf[MAX_PATH];
+    int ret = GetKeyNameTextW(35454976/*CTRL*/, buf, MAX_PATH);
+    EXPECT_NE(ret, 0);
+    EXPECT_EQ(buf[ret], '\0');
 }

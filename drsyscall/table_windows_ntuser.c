@@ -864,7 +864,7 @@ syscall_info_t syscall_user32_info[] = {
      {
          {0, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
-         {1, RET, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
+         {1, RET, W|SYSARG_SIZE_IN_ELEMENTS|SYSARG_SIZE_PLUS_1, sizeof(wchar_t)},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1339,6 +1339,10 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
             ASSERT(false, "linux should not have io_status flag set");
 #endif
         }
+    }
+    if (TEST(SYSARG_SIZE_PLUS_1, arg->flags)) {
+        LOG(SYSCALL_VERBOSE, "\t  adding 1 to original size of %d\n", size);
+        size++;
     }
     if (TEST(SYSARG_SIZE_IN_ELEMENTS, arg->flags)) {
         ASSERT(arg->misc > 0 || -arg->misc < SYSCALL_NUM_ARG_STORE,

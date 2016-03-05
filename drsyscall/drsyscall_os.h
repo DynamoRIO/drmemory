@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -147,6 +147,10 @@ enum {
      * it relies on handler code.
      */
     SYSARG_NON_MEMARG          = 0x00001000,
+    /* Indicates that the size value from an output parameter is one smaller
+     * than the actual written size (typically, a string's terminating null).
+     */
+    SYSARG_SIZE_PLUS_1         = 0x00002000,
 
     /*****************************************/
     /* sysinfo_arg_t.size, using values that cannot be mistaken for
