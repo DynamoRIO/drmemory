@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -98,3 +98,9 @@ TEST(NtGdiTests, CreatePolygonRgn) {
     delete [] points;
 }
 
+TEST(NtGdiTests, FontResource) {
+    /* i#1825: test NtGdiAddFontResourceW */
+    /* XXX: we assume arial.ttf exists */
+    int ret = AddFontResourceExW(L"C:\\Windows\\Fonts\\arial.ttf", FR_PRIVATE, NULL);
+    EXPECT_EQ(ret, 1);
+}
