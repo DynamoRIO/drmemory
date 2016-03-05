@@ -1899,6 +1899,9 @@ if (BUILDING_SUB_PACKAGE)
   # We're being included in another package (DR's).
   # Our rpaths assumed we had a dynamorio/ subdir, but now that's the upper dir.
   # Easier to add a symlink than to change rpaths.
+  # XXX i#1855: this symlink makes "adb push" of our tarball's contents not work,
+  # but presumably most users will untar on the Android device.
+  # Fixing would require changing the script and the frontend binary.
   install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink .. dynamorio WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX})")
 
   # Add a docs link in the top-level docs/ dir
