@@ -746,12 +746,11 @@ syscall_info_t syscall_user32_info[] = {
          {1, sizeof(GETCLIPBDATA), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    /* XXX: reactos now has this as LPWSTR instead of PUNICODE_STRING */
     {{0,0},"NtUserGetClipboardFormatName", OK, SYSARG_TYPE_SINT32, 3,
      {
          {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
-         /*3rd param is max count but should be able to ignore*/
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
+         {1, RET, W|SYSARG_SIZE_IN_ELEMENTS|SYSARG_SIZE_PLUS_1, sizeof(wchar_t)},
          {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
