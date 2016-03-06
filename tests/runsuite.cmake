@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -191,7 +191,7 @@ foreach (tool ${tools})
       # 64-bit builds cannot be last as that messes up the package build
       # for Ninja (i#1763).
       testbuild_ex("${name}-dbg-64" ON "
-        ${base_cache}
+         ${base_cache}
          ${tool}
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Debug
@@ -235,6 +235,80 @@ foreach (tool ${tools})
     endif (arg_vmk_only OR arg_test_vmk)
   endif (UNIX)
 endforeach (tool)
+
+if (UNIX AND ARCH_IS_X86)
+  # Optional cross-compilation for ARM/Linux and ARM/Android if the cross
+  # compilers are on the PATH.
+  # XXX: can we share w/ the DR code this is based on?
+  set(optional_cross_compile ON)
+  set(ARCH_IS_X86 OFF)
+  set(ENV{CFLAGS} "") # environment vars do not obey the normal scope rules--must reset
+  set(ENV{CXXFLAGS} "")
+  set(run_tests OFF) # build tests but don't run them
+  testbuild_ex("drmemory-arm-dbg-32" OFF "
+    ${base_cache}
+    TOOL_DR_MEMORY:BOOL=ON
+    ${DR_entry}
+    CMAKE_BUILD_TYPE:STRING=Debug
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-arm32.cmake
+    " OFF OFF "")
+  testbuild_ex("drmemory-arm-rel-32" OFF "
+    ${base_cache}
+    TOOL_DR_MEMORY:BOOL=ON
+    ${DR_entry}
+    CMAKE_BUILD_TYPE:STRING=Release
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-arm32.cmake
+    " OFF OFF "")
+  set(run_tests ON) # restore
+
+  # Android cross-compilation and running of tests using "adb shell"
+  find_program(ADB adb DOC "adb Android utility")
+  if (ADB)
+    execute_process(COMMAND ${ADB} get-state
+      RESULT_VARIABLE adb_result
+      ERROR_VARIABLE adb_err
+      OUTPUT_VARIABLE adb_out OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if (adb_result OR NOT adb_out STREQUAL "device")
+      message("Android device not connected: NOT running Android tests")
+      set(ADB OFF)
+    endif ()
+  else ()
+    message("adb not found: NOT running Android tests")
+  endif ()
+  if (ADB)
+    set(android_extra_dbg "DRM_COPY_TO_DEVICE:BOOL=ON")
+    if (TEST_LONG)
+      set(android_extra_rel "DRM_COPY_TO_DEVICE:BOOL=ON")
+    endif ()
+  else ()
+    set(android_extra_dbg "")
+    set(android_extra_rel "")
+    set(run_tests OFF) # build tests but don't run them
+  endif ()
+  testbuild_ex("drmemory-android-dbg-32" OFF "
+    ${base_cache}
+    TOOL_DR_MEMORY:BOOL=ON
+    ${DR_entry}
+    CMAKE_BUILD_TYPE:STRING=Debug
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
+    ${android_extra_dbg}
+    " OFF OFF "")
+  if (NOT TEST_LONG)
+    set(run_tests OFF) # build tests but don't run them
+  endif ()
+  testbuild_ex("drmemory-android-rel-32" OFF "
+    ${base_cache}
+    TOOL_DR_MEMORY:BOOL=ON
+    ${DR_entry}
+    CMAKE_BUILD_TYPE:STRING=Release
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
+    ${android_extra_rel}
+    " OFF OFF "")
+  set(run_tests ON) # restore
+
+  set(optional_cross_compile OFF)
+  set(ARCH_IS_X86 ON)
+endif (UNIX AND ARCH_IS_X86)
 
 if (NOT arg_vmk_only AND NOT arg_already_built)
   set(build_package ON)

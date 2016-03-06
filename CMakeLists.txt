@@ -1004,7 +1004,7 @@ add_asm_target(common/${asm_file} asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
-if (DRM_COPY_TO_DEVICE)
+if (ANDROID)
   # We cache this for us in sub-projects like framework/samples/
   set(TOP_BINARY_DIR ${PROJECT_BINARY_DIR})
   get_filename_component(builddir ${TOP_BINARY_DIR} NAME)
