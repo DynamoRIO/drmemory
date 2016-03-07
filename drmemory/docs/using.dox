@@ -272,7 +272,10 @@ properties of your build target. Under "Configuration Properties | C/C++ |
 General", the "Debug Information Format" entry should either say "Program
 Database (/Zi)" or "Program Database for Edit and Continue (/ZI)".
 Additionally, under "Configuration Properties | Linker | Debugging", the
-"Generate Debug Info" entry should say "Yes (/DEBUG)".
+"Generate Debug Info" entry should say "Yes (/DEBUG)".  For Visual Studio
+2015, under "Configuration Properties | Linker | Debugging", the
+"Generate Debug Info" entry should say "Optimize for debugging (/DEBUG)" --
+it should <em>not</em> say "Optimize for faster linking (/DEBUG:FASTLINK)".
 
 To disable inlining as recommended above, use the \p /Ob0 parameter.  In
 the Visual Studio IDE, press Alt-F7 and then under "Configuration
