@@ -837,7 +837,7 @@ pdh.dll!*
 UNINITIALIZED READ
 name=default i#1302 SockSocket EA
 system call NtCreateFile parameter #9
-MSWSOCK.dll!SockSocket
+MSWSOCK.dll!*
 
 ##################################################
 # i#1303: real bug in ATL
