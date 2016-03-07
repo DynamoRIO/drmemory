@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -3275,6 +3275,9 @@ libc_heap_handle(const module_data_t *mod)
          * it anyway, we just go straight for _crtheap.
          */
         byte *addr = lookup_internal_symbol(mod, "_crtheap");
+        /* i#1864: VS2015 changed the name to "__acrt_heap" */
+        if (addr == NULL)
+            addr = lookup_internal_symbol(mod, "__acrt_heap");
         if (addr != NULL) {
             if (!safe_read(addr, sizeof(pre_us_heap), &pre_us_heap))
                 pre_us_heap = NULL;
