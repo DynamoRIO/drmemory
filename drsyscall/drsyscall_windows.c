@@ -338,6 +338,7 @@ drsys_sysnum_t sysnum_SetInformationFile = {-1,0};
 drsys_sysnum_t sysnum_PowerInformation = {-1,0};
 drsys_sysnum_t sysnum_QueryVirtualMemory = {-1,0};
 drsys_sysnum_t sysnum_FsControlFile = {-1,0};
+drsys_sysnum_t sysnum_TraceControl = {-1,0};
 
 /* The tables are large, so we separate them into their own files: */
 extern syscall_info_t syscall_ntdll_info[];
@@ -2253,6 +2254,34 @@ handle_FsControlFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     }
 }
 
+static void
+handle_TraceControl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    ULONG code = (ULONG) pt->sysarg[0];
+    byte *input = (byte *) pt->sysarg[1];
+    size_t sz = (size_t) pt->sysarg[2];
+    switch (code) {
+    case 0x1e:
+        /* XXX i#1865: we do not know the full layout.  We just avoid a false positive
+         * on the input buffer by assuming the last 6 bytes are optional/padding.
+         */
+        if (ii->arg->pre) {
+            if (!report_memarg_type(ii, 1, SYSARG_READ, input, sz - 6,
+                                    "InputBuffer", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+        break;
+    default:
+        if (ii->arg->pre) {
+            if (!report_memarg_type(ii, 1, SYSARG_READ, input, sz,
+                                    "InputBuffer", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+        break;
+    }
+    /* All other parameters are handled by the table entries */
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -3015,6 +3044,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_PowerInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_FsControlFile))
         handle_FsControlFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_TraceControl))
+        handle_TraceControl(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
 }
@@ -3110,6 +3141,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_post_QueryVirtualMemory(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_FsControlFile))
         handle_FsControlFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_TraceControl))
+        handle_TraceControl(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
     DOLOG(2, { syscall_diagnostics(drcontext, pt); });

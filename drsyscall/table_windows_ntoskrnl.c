@@ -95,6 +95,7 @@ extern drsys_sysnum_t sysnum_SetInformationProcess;
 extern drsys_sysnum_t sysnum_PowerInformation;
 extern drsys_sysnum_t sysnum_QueryVirtualMemory;
 extern drsys_sysnum_t sysnum_FsControlFile;
+extern drsys_sysnum_t sysnum_TraceControl;
 
 
 /* The secondary tables are large, so we separate them into their own file: */
@@ -3279,13 +3280,13 @@ syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtTraceControl", OK, RNTST, 6,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, -2, R|HT, DRSYS_TYPE_STRUCT},
+         /* The "{1, -2, R|HT, DRSYS_TYPE_STRUCT}" entry is specially handled */
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, -4, W|HT, DRSYS_TYPE_STRUCT},
          {3, -5, WI|HT, DRSYS_TYPE_STRUCT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_TraceControl
     },
     {{0,WIN7},"NtWaitForWorkViaWorkerFactory", OK, RNTST, 2,
      {
