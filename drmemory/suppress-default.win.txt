@@ -832,20 +832,12 @@ KERNEL32.dll!...
 pdh.dll!*
 
 ##################################################
-# i#1301: Tcpip6_WSHGetSockaddrType final 9 EA bytes are left uninit
-
-UNINITIALIZED READ
-name=default i#1301 Tcpip6_WSHGetSockaddrType EA
-system call NtCreateFile parameter #9
-MSWSOCK.dll!Tcpip6_WSHGetSockaddrType
-
-##################################################
-# i#1302: SockSocket final 9 EA bytes are left uninit
+# i#1302: MSWSOCK.dll NtCreateFile final 9 EA bytes are left uninit
 
 UNINITIALIZED READ
 name=default i#1302 SockSocket EA
 system call NtCreateFile parameter #9
-MSWSOCK.dll!SockSocket
+MSWSOCK.dll!*Sock*
 
 ##################################################
 # i#1303: real bug in ATL
