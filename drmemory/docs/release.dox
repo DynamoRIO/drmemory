@@ -60,7 +60,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.9.0 include:
+The changes between \TOOL_VERSION and version 1.10.0 include:
+ - Nothing yet.
+
+The changes between 1.10.0 and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
    not MacOS yet).  This does not yet include uninitialized read checking,
    so we still recommend compiling your application as 32-bit.
