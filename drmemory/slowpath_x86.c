@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2075,6 +2075,8 @@ num_true_srcs(instr_t *inst, dr_mcontext_t *mc /*optional*/)
      */
     if (opc == OP_sbb && opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))
         return 0;
+    if (opc == OP_nop_modrm) /* i#1870 */
+        return 0;
     return instr_num_srcs(inst);
 }
 
@@ -2087,6 +2089,8 @@ num_true_dsts(instr_t *inst, dr_mcontext_t *mc /*optional*/)
         if (mc != NULL && !instr_cmovcc_triggered(inst, mc->xflags))
             return 0;
     }
+    if (opc == OP_nop_modrm) /* i#1870 */
+        return 0;
     return instr_num_dsts(inst);
 }
 

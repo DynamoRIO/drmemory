@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -276,6 +276,24 @@ GLOBAL_LABEL(FUNCNAME:)
         pop      REG_XBX
         jmp      post_xlat_test
     post_xlat_test:
+
+        /***************************************************
+         * Test i#1870: xl8 sharing with a modrm nop
+         */
+        jmp      al_test
+    al_test:
+        push     REG_XBX
+        push     REG_XAX
+        mov      REG_XBX, REG_XSP
+        mov      eax, DWORD [REG_XBX]
+        nop      DWORD [REG_XBX]
+        mov      al, BYTE [REG_XSP]
+        test     al, al
+        movsx    eax, al
+        jmp      post_al_test
+    post_al_test:
+        pop      REG_XAX
+        pop      REG_XBX
 
         /***************************************************
          * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or

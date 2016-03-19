@@ -1104,6 +1104,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     app_pc pc = instr_get_app_pc(inst);
     uint opc;
     bool has_shadowed_reg, has_mem, has_noignorable_mem;
+    bool used_fastpath = false;
     fastpath_info_t mi;
 
     if (go_native)
@@ -1262,9 +1263,10 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             pattern_instrument_check(drcontext, bb, inst, bi, translating);
         }
     } else if (options.shadowing &&
-        (options.check_uninitialized || has_noignorable_mem)) {
+               (options.check_uninitialized || has_noignorable_mem)) {
         if (instr_ok_for_instrument_fastpath(inst, &mi, bi)) {
             instrument_fastpath(drcontext, bb, inst, &mi, bi->check_ignore_unaddr);
+            used_fastpath = true;
             bi->added_instru = true;
         } else {
             LOG(3, "fastpath unavailable "PFX": ", pc);
@@ -1379,6 +1381,12 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
  instru_event_bb_insert_done:
     if (bi->first_instr && instr_is_app(inst))
         bi->first_instr = false;
+    if (!used_fastpath && options.shadowing) {
+        /* i#1870: sanity check in case we bail out of instrumenting the next instr
+         * when we're sharing.
+         */
+        bi->shared_memop = opnd_create_null();
+    }
     /* We store whether bi->check_ignore_unaddr in our own data struct to avoid
      * DR having to store translations, so we can recreate deterministically
      * => DR_EMIT_DEFAULT
