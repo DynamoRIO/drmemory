@@ -1248,6 +1248,7 @@ replaced_nop_true_routine(void)
 }
 #endif
 
+/* Ignores exports forwarded to other modules */
 static app_pc
 lookup_symbol_or_export(const module_data_t *mod, const char *name, bool internal)
 {
@@ -1262,8 +1263,20 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
             return res;
     }
     res = (app_pc) dr_get_proc_address(mod->handle, name);
-    if (res != NULL && alloc_ops.use_symcache)
+# ifdef WINDOWS
+    /* Skip forwarded exports pointing at other libraries: we can't easily
+     * cache them, and we assume we'll find them when examining the target lib.
+     */
+    if (res != NULL && !dr_module_contains_addr(mod, res)) {
+        IF_DEBUG(const char *modname = dr_module_preferred_name(mod));
+        LOG(2, "NOT intercepting forwarded %s in module %s\n",
+            name, (modname == NULL) ? "<noname>" : modname);
+        return NULL;
+    }
+# endif
+    if (res != NULL && alloc_ops.use_symcache) {
         drsymcache_add(mod, name, res - mod->start);
+    }
     return res;
 #else
     return (app_pc) dr_get_proc_address(mod->handle, name);
