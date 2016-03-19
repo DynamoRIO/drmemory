@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -85,6 +85,7 @@
     REPLACE_DEF(wmemcpy, NULL)     \
     REPLACE_DEF(wmemchr, NULL)     \
     REPLACE_DEF(wcslen, NULL)      \
+    REPLACE_DEF(wcsnlen, NULL)     \
     REPLACE_DEF(wcscmp, NULL)      \
     REPLACE_DEF(wcsncmp, NULL)     \
     REPLACE_DEF(wcscpy, NULL)      \
