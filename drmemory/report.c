@@ -2459,9 +2459,19 @@ report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *s
     ssize_t len = 0;
 
     if (etp->on_stack) {
-        BUFPRINT(buf, bufsz, *sofar, len,
-                 "%s"PFX" refers to %d byte(s) beyond the top of the stack "PFX NL,
-                 INFO_PFX, addr, etp->xsp - addr, etp->xsp);
+        /* If the offset is negative, we've messed up somewhere.  We do not want to
+         * report a negative offset (xref crbug.com/594614).  We still report the
+         * unaddr so someone will investigate and report an issue.
+         */
+        if (addr > etp->xsp) {
+            DO_ONCE({
+                WARN("WARNING: stack addressability messed up: stack-internal unaddr!");
+            });
+        } else {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%s"PFX" refers to %d byte(s) beyond the top of the stack "PFX NL,
+                     INFO_PFX, addr, etp->xsp - addr, etp->xsp);
+        }
     }
 
     if (etp->next_start != NULL) {
