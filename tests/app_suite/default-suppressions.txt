@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -181,3 +181,11 @@ name=default i#1023: RPC binding leaks
 RPCRT4.dll!AllocWrapper
 RPCRT4.dll!...
 RPCRT4.dll!*BindingCopy
+
+##################################################
+# i#1875: Concurrency x64 possible leak
+# Seen reliably in Concurrency.Scheduler x64 test.
+# Needs analysis.
+POSSIBLE LEAK
+name=default i#1875: Concurrency x64
+*!Concurrency::details::SchedulerBase::GetSubAllocator
