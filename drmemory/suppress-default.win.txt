@@ -757,17 +757,25 @@ MSVCR*.dll!initterm_e
 
 ##################################################
 # i#1240: real mismatches in VS2010 CRT
+# i#1275: real mismatches in VS2012 CRT
 # We can rely on symbols here as without them we wouldn't see the operator stubs.
 # For /MD*, the i#960 suppression already covers it.
 
-INVALID HEAP ARGUMENT
-name=default i#1240 CRT mismatch A
-*!Concurrency::details::Hash<*>::*
+# Rather than trying to match all of these:
+# A) Precise:
+#   *!Concurrency::details::Hash<*>::*
+# B) Hash destructor is inlined into another class:
+#   *!Concurrency::details::ContextBase::~ContextBase
+# C) Seen on x64 (did not analyze: Hash inlined again?)
+#   *!Concurrency::details::SchedulerBase::Finalize
+#   *!Concurrency::details::ExternalContextBase::`scalar deleting destructor'
+# D) i#1275
+#   *!Concurrency::details::ContextBase::CancellationBeaconStack::~CancellationBeaconStack
+# We go with simple, folding i#1275 into here as well:
 
-# Hash destructor is inlined into another class
 INVALID HEAP ARGUMENT
-name=default i#1240 CRT mismatch B
-*!Concurrency::details::ContextBase::~ContextBase
+name=default i#1240 CRT mismatch
+*!Concurrency::details::*
 
 ##################################################
 # i#1241: Python suppressions
@@ -780,15 +788,6 @@ name=default i#1241 python malloc
 UNADDRESSABLE ACCESS
 name=default i#1241 python malloc
 *python*!PyObject_Realloc
-
-##################################################
-# i#1275: real mismatches in VS2012 CRT
-# We can rely on symbols here as without them we wouldn't see the operator stubs.
-# For /MD*, the i#960 suppression already covers it.
-
-INVALID HEAP ARGUMENT
-name=default i#1275 CRT mismatch
-*!Concurrency::details::ContextBase::CancellationBeaconStack::~CancellationBeaconStack
 
 ##################################################
 # i#1279: leak in LdrpGetNewTlsVector
