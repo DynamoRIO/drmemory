@@ -905,33 +905,6 @@ if (APPLE)
   newtest(mac_zones mac_zones.c)
 endif (APPLE)
 
-# XXX i#1660: gtest is not building with clang 6.0
-if (NOT APPLE)
-  add_subdirectory(app_suite)
-  if (TOOL_DR_HEAPSTAT)
-    # i#1358: Dr. Heapstat currently can't handle code in the heap
-    set(app_suite_ops "--gtest_filter=-MallocTests.Executable")
-  else ()
-    set(app_suite_ops "")
-  endif ()
-  newtest_nobuild(app_suite app_suite_tests "${app_suite_ops}"
-    "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-    # i#1309: turn off some DR debug checking to speed up the test, as it times out
-    # on Dr. Heapstat w/ online symbolization.
-    # i#1809: turn off ldmps from false pos curiosity
-    "-checklevel;1;-dumpcore_mask;0x877d" OFF "")
-  # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
-  set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
-  if (TOOL_DR_MEMORY)
-    newtest_nobuild(app_suite.pattern app_suite_tests ""
-      "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-      # i#1809: turn off ldmps from false pos curiosity
-      "-dumpcore_mask;0x877d" OFF "")
-  endif ()
-endif ()
-
-# framework subdir is added at top level b/c wants DR cflags
-
 else (NOT X64 AND NOT ARM)
   # XXX i#111: we'll eliminate this duplication once we have full mode working --
   # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
@@ -980,6 +953,34 @@ else (NOT X64 AND NOT ARM)
     endif (LINUX)
   endif ()
 endif (NOT X64 AND NOT ARM)
+
+# XXX i#1660: gtest is not building with clang 6.0
+# XXX i#1726: need to port app_suite to ARM.
+if (NOT APPLE AND NOT ARM)
+  add_subdirectory(app_suite)
+  if (TOOL_DR_HEAPSTAT)
+    # i#1358: Dr. Heapstat currently can't handle code in the heap
+    set(app_suite_ops "--gtest_filter=-MallocTests.Executable")
+  else ()
+    set(app_suite_ops "")
+  endif ()
+  newtest_nobuild(app_suite app_suite_tests "${app_suite_ops}"
+    "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+    # i#1309: turn off some DR debug checking to speed up the test, as it times out
+    # on Dr. Heapstat w/ online symbolization.
+    # i#1809: turn off ldmps from false pos curiosity
+    "-checklevel;1;-dumpcore_mask;0x877d" OFF "")
+  # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
+  set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
+  if (TOOL_DR_MEMORY)
+    newtest_nobuild(app_suite.pattern app_suite_tests ""
+      "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+      # i#1809: turn off ldmps from false pos curiosity
+      "-dumpcore_mask;0x877d" OFF "")
+  endif ()
+endif ()
+
+# framework subdir is added at top level b/c wants DR cflags
 
 if (TOOL_DR_MEMORY)
   if (NOT ANDROID) # FIXME i#1860: fix for Android
