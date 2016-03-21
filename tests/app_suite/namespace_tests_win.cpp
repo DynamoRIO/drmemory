@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -42,13 +42,15 @@ TEST(NamespaceTests, NtCreateOpenPrivateNamespace){
     if (!res) {
         /* The routine may fail for some security reasons. */
         printf("ConvertStringSidToSid failed. Error code is %u\n", GetLastError());
-    }
+    } else
+        LocalFree(plocal_admin);
     ASSERT_NE(FALSE, res);
     res = ConvertStringSidToSid(TEXT("S-1-1-0"), &plocal_admin);
     if (!res) {
         /* The routine may fail for some security reasons. */
         printf("AddSIDToBoundaryDescriptor failed. Error code is %u\n", GetLastError());
-    }
+    } else
+        LocalFree(plocal_admin);
     ASSERT_NE(FALSE, res);
     /* Create the namespace for Local Administrators only */
     SECURITY_ATTRIBUTES sa;
