@@ -59,6 +59,8 @@
  *
  * Template: REPLACE_NAME_DEF(app-name, replace_ func name, corresponding-wide-char)
  *
+ * The order does matter for routines that are sometimes aliases to one another:
+ * the later one takes precedence (thus, memmove is later than memcpy: i#1868).
  */
 #define REPLACE_DEF(name, wide) REPLACE_NAME_DEF(name, name, wide)
 #define REPLACE_DEFS()             \
@@ -132,6 +134,9 @@ static const char * const replace_routine_wide_alt[] = {
 
 static app_pc replace_routine_start;
 static size_t replace_routine_size;
+
+static int index_memcpy;
+static int index_memmove;
 
 #ifdef USE_DRSYMS
 /* for passing data to sym enum callback */
@@ -254,10 +259,20 @@ replace_memcpy(void *dst, const void *src, size_t size)
     return dst;
 }
 
+IN_REPLACE_SECTION void *
+replace_memmove(void *dst, const void *src, size_t size);
+
 IN_REPLACE_SECTION wchar_t *
 replace_wmemcpy(wchar_t *dst, const wchar_t *src, size_t size)
 {
+#if defined(WINDOWS) && defined(X64)
+    /* i#1868: 64-bit Visual Studio labels memmove as "memcpy" so we are
+     * forced to handle overlap (though mingw doesn't need it).
+     */
+    return (wchar_t*)replace_memmove(dst, src, size * sizeof(wchar_t));
+#else
     return (wchar_t*)replace_memcpy(dst, src, size * sizeof(wchar_t));
+#endif
 }
 
 IN_REPLACE_SECTION void *
@@ -915,6 +930,10 @@ replace_init(void)
         hashtable_init(&replace_name_table, REPLACE_NAME_TABLE_HASH_BITS, HASH_STRING,
                        false/*!strdup*/);
         for (i=0; i<REPLACE_NUM; i++) {
+            if (strcmp(replace_routine_name[i], "memcpy") == 0)
+                index_memcpy = i;
+            if (strcmp(replace_routine_name[i], "memmove") == 0)
+                index_memmove = i;
             hashtable_add(&replace_name_table, (void *) replace_routine_name[i],
                           (void *)(ptr_int_t)(i+1)/*since 0 is "not found"*/);
         }
@@ -962,6 +981,15 @@ replace_routine(bool add, const module_data_t *mod,
         modname == NULL ? "<noname>" : modname, mod->start);
     /* We can't store 0 in the table (==miss) so we store index + 1 */
     if (add) {
+        const void *replace_addr = replace_routine_addr[index];
+#if defined(WINDOWS) && defined(X64)
+        /* i#1868: 64-bit Visual Studio labels memmove as "memcpy" so we are
+         * forced to handle overlap (though mingw doesn't need it).  It's more
+         * efficient to swap here than to have replace_memcpy call replace_memmove.
+         */
+        if (index == index_memcpy)
+            replace_addr = replace_routine_addr[index_memmove];
+#endif
 #ifdef USE_DRSYMS
         if (options.use_symcache)
             drsymcache_add(mod, replace_routine_name[index], addr - mod->start);
@@ -973,9 +1001,11 @@ replace_routine(bool add, const module_data_t *mod,
          * our lib, for which DR will abort.
          */
         /* Pass true to override b/c we do end up w/ dups b/c we process exports
-         * and then all symbols (see below)
+         * and then all symbols (see below).  This also lets us handle aliases
+         * (e.g., memcpy aliased to memmove on MacOS: xref i#1868) by having
+         * the later-listed routine take precedence (memmove over memcpy, e.g.).
          */
-        if (!drwrap_replace((app_pc)addr, (app_pc)replace_routine_addr[index], true))
+        if (!drwrap_replace((app_pc)addr, (app_pc)replace_addr, true))
             ASSERT(false, "failed to replace");
     } else {
         if (!drwrap_replace((app_pc)addr, NULL, true)) {
