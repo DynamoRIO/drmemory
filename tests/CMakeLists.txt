@@ -426,7 +426,11 @@ endif (ARM)
 newtest(badjmp badjmp.c)
 if (NOT ARM) # XXX i#1726: port to ARM
   newtest(registers registers.c)
-  newtest(asmtest asmtest.c)
+endif ()
+if (ARM)
+  newtest(asmtest asmtest_arm.c)
+else ()
+  newtest(asmtest asmtest_x86.c)
 endif ()
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
@@ -922,6 +926,10 @@ else (NOT X64 AND NOT ARM)
   endif ()
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
+
+  if (ARM)
+    newtest(asmtest asmtest_arm.c)
+  endif ()
 
   # pattern mode testing w/o leaks
   newtest_nobuild_ex(free.pattern free "" "-unaddr_only" "" OFF "addronly" 0 "")
