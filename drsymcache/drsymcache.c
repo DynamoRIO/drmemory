@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -55,7 +55,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 13
+#define SYMCACHE_VERSION 14
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -360,7 +360,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     FLUSH_BUFFER(f, buf, sofar);
     if ((file_size = dr_file_tell(f)) < 0 ||
         dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                    "%"STRINGIFY(SYMCACHE_SIZE_DIGITS)"u", file_size) < 0 ||
+                    "%"STRINGIFY(SYMCACHE_SIZE_DIGITS)"u", (uint)file_size) < 0 ||
         !dr_file_seek(f, filesz_loc, DR_SEEK_SET) ||
         dr_write_file(f, buf, SYMCACHE_SIZE_DIGITS) != SYMCACHE_SIZE_DIGITS) {
         /* If any steps fail, warn and give up. */
@@ -369,7 +369,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         dr_delete_file(symfile_tmp);
         return;
     } else {
-        LOG(3, "Wrote symcache %s file size %d to pos filesz_loc\n",
+        LOG(3, "Wrote symcache %s file size %u to pos "SZFMT"\n",
             modname, (uint)file_size, filesz_loc);
         ASSERT(strlen(buf) <= SYMCACHE_SIZE_DIGITS, "not enough space for file size");
     }
