@@ -1660,10 +1660,18 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
      * die halfway through execution or have truncated output.
      */
     if (text_matches_pattern(info->full_path, "*cygwin1.dll", true/*!case*/)) {
-        NOTIFY_ERROR("WARNING: Cygwin applications are not fully supported in the "
+        NOTIFY_ERROR("ERROR: Cygwin applications are not fully supported in the "
                      "current Dr. Memory release.  Please re-compile with MinGW."NL);
         dr_abort();
     }
+# ifdef X64
+    /* i#1878: 64-bit MSYS2 does not yet work */
+    else if (text_matches_pattern(info->full_path, "*msys-2.0.dll", true/*!case*/)) {
+        NOTIFY_ERROR("ERROR: 64-bit MSYS2 applications are not fully supported in the "
+                     "current Dr. Memory release.  Aborting."NL);
+        dr_abort();
+    }
+# endif
 #endif
 #ifdef USE_DRSYMS
 # ifdef WINDOWS
