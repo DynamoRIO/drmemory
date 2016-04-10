@@ -3216,7 +3216,10 @@ pre_existing_heap_init(HANDLE heap)
         byte *alloc_base = (byte *) mbi.AllocationBase;
         byte *alloc_end = heap_allocated_end(heap);
         /* Go to next page to be safe */
-        alloc_end = (byte *) ALIGN_FORWARD(alloc_end + PAGE_SIZE, PAGE_SIZE);
+        /* FIXME i#1882: on x64 we have the endpoint computed incorrectly, or
+         * something is open-ended, so we skip one more page.
+         */
+        alloc_end = (byte *) ALIGN_FORWARD(alloc_end + IF_X64(2*)PAGE_SIZE, PAGE_SIZE);
         /* FIXME: for this case we'd have to fall back to native calls */
         ASSERT(alloc_end < (byte *)heap + mbi.RegionSize,
                "pre-us mapped heap has no room left");
