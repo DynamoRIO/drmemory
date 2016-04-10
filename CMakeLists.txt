@@ -1273,7 +1273,12 @@ endif (WIN32)
 
 # we want a preferred base to avoid patching pcaches
 set(DynamoRIO_SET_PREFERRED_BASE ON)
-set(PREFERRED_BASE 0x73800000)
+if (ANDROID)
+  # i#1881: 0x73800000 seems to conflict w/ hardcoded Android mmaps.
+  set(PREFERRED_BASE 0x17000000)
+else ()
+  set(PREFERRED_BASE 0x73800000)
+endif ()
 
 # we can handle being tied to a particular DR version (we already are)
 set(DynamoRIO_FAST_IR ON)
