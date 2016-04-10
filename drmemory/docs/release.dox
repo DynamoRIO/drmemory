@@ -60,7 +60,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.10.0 include:
+The changes between \TOOL_VERSION and version 1.10.1 include:
+ - Nothing yet: TBD.
+
+The changes between 1.10.1 and version 1.10.0 include:
  - Fixed problems with configuration directories on Android.
  - Fixed several bugs, including Windows false positives, ARM
    instrumentation issues, and VS2015 crashes.
