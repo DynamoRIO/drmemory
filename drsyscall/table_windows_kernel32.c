@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -87,7 +87,17 @@ syscall_info_t syscall_kernel32_info[] = {
     {{0,0},"GetConsoleFontSize", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"GetConsoleHandleInformation", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"GetConsoleHardwareState", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
-    {{0,0},"GetConsoleInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{0,0},"GetConsoleInput", OK, SYSARG_TYPE_BOOL32, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(INPUT_RECORD)},
+         {1, -3, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(INPUT_RECORD)},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"GetConsoleKeyboardLayoutNameWorker", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"GetConsoleLangId", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"GetConsoleMode", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
