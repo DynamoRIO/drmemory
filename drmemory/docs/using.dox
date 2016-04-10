@@ -167,14 +167,31 @@ tar xzf DrMemory-ARM-Android-EABI-X.X.X-X.tar.gz
 \endverbatim
 
 Now copy the entire unpacked directory to your Android device (typically
-using <tt>adb push</tt>.  The <tt>bin/drmemory</tt> front-end can be
+using <tt>adb push</tt>).  The <tt>bin/drmemory</tt> front-end can be
 invoked directly from the <tt>adb shell</tt>.  Dr. Memory for Android is
 targeted toward native applications that use Android's NDK.
 
 Dr. Memory requires a writable temporary directory.  If neither
 <tt>/data/local/tmp</tt> nor the current working directory are writable,
-you will need to specify a writable directory via the
-<tt>DYNAMORIO_CONFIGDIR</tt> environment variable.
+you will need to specify a writable directory via the \p TMPDIR environment
+variable.  Configuration, symbol caching, and result log files will be
+placed at the specified location.
+
+For Android Java applications on recent versions of Android, SELinux
+prevents writing to <tt>/data/local/tmp</tt>.  The application's data
+directory should be pointed at in the \p TMPDIR environment variable, as
+shown below in the example wrapper script.  SELinux also prevents executing
+from <tt>/data/local/tmp</tt>.  For non-native applications, we recommend
+copying the Dr. Memory package into <tt>/system/xbin</tt>, though be sure
+to point \p TMPDIR to a location both allowed by SElinux and with more
+space (typically the application's own <tt>/data/data</tt> sub-directory:
+see the preparation instructions specific to \ref sec_prep_android).
+
+If you run into problems with configuration files being created due to
+SELinux denials (look in the logs for such denials), it may be simplest to
+disable SELinux via <tt>setenforce 0</tt>.  We have attempted to get
+everything to work without this step, but we are not able to test on all
+versions or configurations of Android.
 
 ***************************************************************************
 \page page_prep Preparing Your Application
@@ -366,6 +383,34 @@ Build your application using the Android NDK and copy it over to your device.
 Be sure to compile with debugging information included and to disable FPO,
 as described in \ref sec_prep_general.
 
+While Java applications are not yet officially supported, we welcome
+contributions to help work toward full Android Java support.  To launch an
+Android Java application under Dr. Memory, use a wrapper script and
+point at the script via the \p logwrapper property set on your
+application's name prefixed by \p <tt>wrap.</tt>.  For example, if your
+application's name is <tt>com.myco.appname</tt>, set the property for
+<tt>wrap.com.myco.appname</tt>, truncating to 31 characters:
+
+\code
+setprop wrap.com.myco.appname "logwrapper /system/xbin/wrap.sh"
+\endcode
+
+The wrapper shell script should contain the command line prefix you wish to
+use to launch your application under Dr. Memory.  It should also set \p
+TMPDIR to point to the directory for your application, which is a location
+where SElinux allows writing:
+
+\code
+#!/system/bin/sh
+export TMPDIR=/data/data/com.myco.appname
+exec /system/xbin/drmemory/bin/drmemory -- $@
+\endcode
+
+See also the information on SElinux and writable directories under \ref
+page_install_android.  Be sure to place the Dr. Memory binaries and the
+wrapper script in an executable location, such as <tt>/system/xbin</tt>.
+Alternatively, disable SELinux via <tt>setenforce 0</tt>.
+
 ***************************************************************************
 \page page_running Running Dr. Memory
 
@@ -449,7 +494,7 @@ On Windows:
 drmemory.exe -- c:/path/to/my/app args to my app
 \endverbatim
 
-On Linux, Mac, or Android:
+On Linux, Mac, or an Android native application:
 \verbatim
 drmemory -- /path/to/my/app args to my app
 \endverbatim
@@ -464,6 +509,9 @@ you'll need to specify the full path to Dr. Memory.
 On Windows, you can also drag-and-drop your application onto \p drmemory.exe in
 Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
 installation.
+
+For Java applications on Android, see the information under Preparing Your
+Application for \ref sec_prep_android.
 
 When running scripts it is best to explicitly invoke the interpreter rather
 than invoking the script directly.  For example:

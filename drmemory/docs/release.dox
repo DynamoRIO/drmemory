@@ -61,7 +61,9 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.10.0 include:
- - Nothing yet.
+ - Fixed problems with configuration directories on Android.
+ - Fixed several bugs, including Windows false positives, ARM
+   instrumentation issues, and VS2015 crashes.
 
 The changes between 1.10.0 and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
