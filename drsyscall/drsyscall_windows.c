@@ -40,6 +40,7 @@
 #include "../wininc/ntddk.h"
 #include "../wininc/ntifs.h"
 #include "../wininc/tls.h"
+#include "../wininc/ntpsapi.h"
 
 static app_pc ntdll_base;
 dr_os_version_info_t win_ver = {sizeof(win_ver),};
@@ -329,6 +330,7 @@ drsys_sysnum_t sysnum_CreateThread = {-1,0};
 drsys_sysnum_t sysnum_CreateThreadEx = {-1,0};
 drsys_sysnum_t sysnum_CreateUserProcess = {-1,0};
 drsys_sysnum_t sysnum_DeviceIoControlFile = {-1,0};
+drsys_sysnum_t sysnum_QueryInformationThread = {-1,0};
 drsys_sysnum_t sysnum_QuerySystemInformation = {-1,0};
 drsys_sysnum_t sysnum_QuerySystemInformationWow64 = {-1,0};
 drsys_sysnum_t sysnum_QuerySystemInformationEx = {-1,0};
@@ -1878,6 +1880,24 @@ handle_post_CreateUserProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
 }
 
 static void
+handle_QueryInformationThread(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* Some cases are more complex than a single write. */
+    THREADINFOCLASS cls = (THREADINFOCLASS) pt->sysarg[1];
+    if (cls == ThreadTebInformation) { /* i#1885 */
+        THREAD_TEB_INFORMATION info;
+        if (!ii->arg->pre &&
+            NT_SUCCESS(dr_syscall_get_result(drcontext)) &&
+            safe_read((byte *) pt->sysarg[2], sizeof(info), &info)) {
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE,
+                                    info.OutputBuffer, info.BytesToRead, "TebInfo",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+    }
+}
+
+static void
 handle_QuerySystemInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* Normally the buffer is just output.  For the input case here we
@@ -3036,6 +3056,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_SetInformationProcess(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationFile))
         handle_SetInformationFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QueryInformationThread))
+        handle_QueryInformationThread(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
@@ -3121,6 +3143,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_post_CreateUserProcess(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_DeviceIoControlFile))
         handle_DeviceIoControlFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QueryInformationThread))
+        handle_QueryInformationThread(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))

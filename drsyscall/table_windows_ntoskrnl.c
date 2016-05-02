@@ -87,6 +87,7 @@ extern drsys_sysnum_t sysnum_CreateThread;
 extern drsys_sysnum_t sysnum_CreateThreadEx;
 extern drsys_sysnum_t sysnum_CreateUserProcess;
 extern drsys_sysnum_t sysnum_DeviceIoControlFile;
+extern drsys_sysnum_t sysnum_QueryInformationThread;
 extern drsys_sysnum_t sysnum_QuerySystemInformation;
 extern drsys_sysnum_t sysnum_QuerySystemInformationWow64;
 extern drsys_sysnum_t sysnum_QuerySystemInformationEx;
@@ -1535,7 +1536,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_QueryInformationThread
     },
     {{0,0},"NtQueryInformationToken", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {

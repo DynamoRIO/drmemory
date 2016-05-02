@@ -15,6 +15,9 @@
 #ifndef __PHLIB_NTPSAPI_H
 #define __PHLIB_NTPSAPI_H
 
+typedef DWORD MEMORY_RESERVE_TYPE;
+typedef PVOID PPS_APC_ROUTINE;
+
 /**************************************************
  * Syscalls added in Win7
  */
@@ -62,6 +65,16 @@ NTAPI
 NtUmsThreadYield(
     __in  PVOID SchedulerParam
     );
+
+/**************************************************
+ * NtQueryThreadInformation
+ */
+
+typedef struct _THREAD_TEB_INFORMATION {
+    PVOID OutputBuffer;
+    ULONG TebOffset;
+    ULONG BytesToRead;
+} THREAD_TEB_INFORMATION, *PTHREAD_TEB_INFORMATION;
 
 #endif /* __PHLIB_NTPSAPI_H */
 

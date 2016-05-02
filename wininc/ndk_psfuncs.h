@@ -111,6 +111,11 @@ typedef enum _THREADINFOCLASS
     ThreadActualBasePriority,
     ThreadTebInformation,
     ThreadCSwitchMon,
+    ThreadWow64Context,
+    ThreadGroupInformation,
+    ThreadUmsInformation,
+    ThreadCounterProfiling,
+    ThreadIdealProcessorEx,
     MaxThreadInfoClass
 } THREADINFOCLASS;
 
