@@ -957,7 +957,8 @@ find_package(Doxygen)
 if (NOT DOXYGEN_FOUND)
   # We'd like to require doxygen for Windows pre-commit suite but it's not
   # installed on our bots so we live with just Linux catching docs errors.
-  if (TEST_SUITE AND UNIX)
+  # Ditto for Mac.
+  if (TEST_SUITE AND UNIX AND NOT APPLE)
     message(FATAL_ERROR "doxygen is required to build the documentation")
   else ()
     # Non-fatal for a single, un-official build, or on Windows
