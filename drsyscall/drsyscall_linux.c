@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -331,7 +331,7 @@ ipmi_addr_len_adjust(struct ipmi_addr * addr)
 static void
 handle_pre_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    int request = (int) pt->sysarg[1];
+    ptr_uint_t request = (ptr_uint_t) pt->sysarg[1];
     void *arg = SYSARG_AS_PTR(pt, IOCTL_BUF_ARGNUM, void *);
     if (arg == NULL)
         return;
@@ -413,7 +413,7 @@ handle_pre_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 static void
 handle_post_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    int request = (int) pt->sysarg[1];
+    ptr_uint_t request = (ptr_uint_t) pt->sysarg[1];
     void *arg = SYSARG_AS_PTR(pt, 2, ptr_uint_t *);
     ptr_int_t result = dr_syscall_get_result(drcontext);
     if (arg == NULL)

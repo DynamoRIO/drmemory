@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -414,7 +414,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         base = seg->app_base;
         end  = seg->app_end;
         for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
-            if (app_segments[i].map == NULL)
+            if (app_segments[i].map[map_idx] == NULL)
                 continue;
             if (segment_overlap(base, end,
                                 app_segments[i].shadow_base[map_idx],
@@ -433,7 +433,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         base = seg->shadow_base[seg_map_idx];
         end  = seg->shadow_end[seg_map_idx];
         for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
-            if (app_segments[i].map == NULL)
+            if (app_segments[i].map[map_idx] == NULL)
                 continue;
             if (segment_overlap(base, end,
                                 app_segments[i].app_base,
@@ -457,7 +457,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         base = seg->reserve_base[seg_map_idx];
         end  = seg->reserve_end[seg_map_idx];
         for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
-            if (app_segments[i].map == NULL)
+            if (app_segments[i].map[map_idx] == NULL)
                 continue;
             if (segment_overlap(base, end,
                                 app_segments[i].app_base,

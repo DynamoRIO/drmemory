@@ -68,6 +68,8 @@ endif ()
 enable_language(C)
 enable_language(CXX)
 
+include(CheckCCompilerFlag)
+
 # The target OS:
 if (APPLE)
   set(MACOS 1)
@@ -449,34 +451,22 @@ endif (UNIX)
 if (UNIX)
   # We don't want our instrument_init() pre-empted by debug-internal DynamoRIO
   # that has visible internal routines.
-  # Check for -fvisibility: code from DynamoRIO's CMakeLists.txt
-  # I tried cmake's CheckCCompilerFlag but it doesn't seem to work
-  execute_process(COMMAND
-    ${CMAKE_C_COMPILER} -v --help
-    RESULT_VARIABLE gcc_result
-    ERROR_QUIET
-    OUTPUT_VARIABLE gcc_out)
-  if (gcc_result)
-    message(FATAL_ERROR "*** ${CMAKE_C_COMPILER} failed to run ***\n")
-  endif (gcc_result)
-  string(REGEX MATCH "fvisibility" flag_present "${gcc_out}")
-  if (NOT flag_present)
-    message("${CMAKE_C_COMPILER} missing flag -fvisibility, using linker script instead")
-    set(HAVE_FVISIBILITY OFF)
-  else (NOT flag_present)
-    set(HAVE_FVISIBILITY ON)
-  endif (NOT flag_present)
-  if (HAVE_FVISIBILITY)
-    # Only export functions so marked via attributes
-    if (APPLE)
-      # "internal" is not supported
-      set(VISIBILITY "hidden")
-    else (APPLE)
-      set(VISIBILITY "internal")
-    endif (APPLE)
+  CHECK_C_COMPILER_FLAG("-fvisibility=internal" HAVE_FVISIBILITY_INTERNAL)
+  CHECK_C_COMPILER_FLAG("-fvisibility=hidden" HAVE_FVISIBILITY_HIDDEN)
+  # Mac accepts internal but warns about it so we avoid it there.
+  if (HAVE_FVISIBILITY_INTERNAL AND NOT APPLE)
+    set(VISIBILITY "internal")
+  elseif (HAVE_FVISIBILITY_HIDDEN)
+    set(VISIBILITY "hidden")
+  else ()
+    message("${CMAKE_C_COMPILER} missing flag -fvisibility, using linker "
+            "script instead")
+    set(VISIBILITY " ")
+  endif ()
+  if (HAVE_FVISIBILITY_INTERNAL OR HAVE_FVISIBILITY_HIDDEN)
     set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
       "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} -fvisibility=${VISIBILITY}")
-  endif (HAVE_FVISIBILITY)
+  endif ()
 
   if (APPLE)
     # Incredibly, for both clang and g++, while a single compile-and-link

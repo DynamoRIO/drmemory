@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -136,6 +136,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 #endif
 
+    dll[0] = '\0';
     for (i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "-e") == 0) {
             bool is_readable;
@@ -189,8 +190,8 @@ _tmain(int argc, TCHAR *targv[])
             goto cleanup;
         }
     }
-    if ((!addr2sym_multi && dll == NULL) ||
-        (addr2sym_multi && dll != NULL) ||
+    if ((!addr2sym_multi && dll[0] == '\0') ||
+        (addr2sym_multi && dll[0] != '\0') ||
         (!sym2addr && !addr2sym && !addr2sym_multi && !enumerate_all && !enum_lines)) {
         PRINT_USAGE(argv[0]);
         goto cleanup;
@@ -198,7 +199,7 @@ _tmain(int argc, TCHAR *targv[])
 
     dr_standalone_init();
 
-    if (dll != NULL) {
+    if (dll[0] != '\0') {
         if (!check_architecture(dll, argv))
             goto cleanup;
     }
