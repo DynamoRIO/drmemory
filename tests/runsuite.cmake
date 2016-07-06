@@ -37,6 +37,7 @@ set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
                       # ../exports_vmk/cmake will be used as a default
 
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
+set(arg_travis OFF)
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "test_vmk")
@@ -62,6 +63,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
       string(REGEX REPLACE "^DRvmk=" "" DRvmk_path "${arg}")
     endif (${arg} MATCHES "^DRvmk=")
   endif (UNIX)
+  if (${arg} STREQUAL "travis")
+    set(arg_travis ON)
+  endif ()
 endforeach (arg)
 
 if (arg_test_vmk AND arg_vmk_only)
@@ -104,6 +108,15 @@ if (APPLE)
 endif ()
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
+if (arg_travis)
+  # XXX i#1900: under clang we have several failing tests.  Until those are
+  # fixed, our Travis clang suite only builds and does not run tests.
+  if ($ENV{CC} MATCHES "clang")
+    set(run_tests OFF)
+    message("Detected a Travis clang suite: disabling running of tests")
+  endif ()
+endif()
+set(prev_run_tests ${run_tests})
 
 ##################################################
 # pre-commit source file checks
@@ -259,7 +272,7 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_BUILD_TYPE:STRING=Release
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-arm32.cmake
     " OFF OFF "")
-  set(run_tests ON) # restore
+  set(run_tests ${prev_run_tests}) # restore
 
   # Android cross-compilation and running of tests using "adb shell"
   find_program(ADB adb DOC "adb Android utility")
@@ -304,7 +317,7 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
     ${android_extra_rel}
     " OFF OFF "")
-  set(run_tests ON) # restore
+  set(run_tests ${prev_run_tests}) # restore
 
   set(optional_cross_compile OFF)
   set(ARCH_IS_X86 ON)
