@@ -1,0 +1,62 @@
+# **********************************************************
+# Copyright (c) 2016 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Travis CI configuration:
+
+notifications:
+  email:
+    # This overrides the default of sending to the committer and author.
+    recipients:
+      - drmemory-devs@googlegroups.com
+    on_success: change
+    on_failure: always
+
+# We use Trusty to get cmake 2.8.12 instead of 2.8.7 from Precise:
+sudo: required
+dist: trusty
+
+language:
+  - c
+  - cpp
+
+os:
+  - linux
+  - osx
+
+# We request 2 runs, one with clang and one with gcc:
+compiler:
+  - clang
+  - gcc
+
+matrix:
+  exclude:
+    # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we disable:
+    - os: osx
+      compiler: gcc
+
+# For C/C++ there is no default install, so we set "install", not "before_install".
+install:
+  - uname -a
+  - if [[ "`uname`" == "Darwin" ]]; then brew install nasm; fi
+  # ImageMagick is present but these are not:
+  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen transfig; fi
+
+script:
+  - suite/runsuite_wrapper.pl travis
