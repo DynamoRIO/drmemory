@@ -29,7 +29,12 @@ cmake_minimum_required (VERSION 2.6)
 # arguments are a ;-separated list (must escape as \; from ctest_run_script())
 set(arg_test_vmk OFF) # for testing of ESXi on Linux: run vmk builds
 set(arg_vmk_only  OFF) # for testing on ESXi: run only vmk builds
-set(arg_drmemory_only OFF)   # only run Dr. Memory tests
+if (APPLE)
+  # Dr. Heapstat not supported on Mac yet.
+  set(arg_drmemory_only ON)    # only run Dr. Memory tests
+else ()
+  set(arg_drmemory_only OFF)   # only run Dr. Memory tests
+endif ()
 set(arg_drheapstat_only OFF) # only run Dr. Heapstat tests
 set(DR_path "")       # path to DynamoRIO cmake dir; if this arg is not set or
                       # doesn't exist, will build DynamoRIO from local copy
@@ -111,7 +116,7 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 if (arg_travis)
   # XXX i#1900: under clang we have several failing tests.  Until those are
   # fixed, our Travis clang suite only builds and does not run tests.
-  if ($ENV{CC} MATCHES "clang")
+  if (NOT APPLE AND $ENV{CC} MATCHES "clang")
     set(run_tests OFF)
     message("Detected a Travis clang suite: disabling running of tests")
   endif ()
