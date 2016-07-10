@@ -387,6 +387,11 @@ foreach (str ${patterns})
   else (X64)
     string(REGEX REPLACE "(^|\n)%if X64[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
   endif (X64)
+  if (APPLE)
+    string(REGEX REPLACE "(^|\n)%if !MACOS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  else ()
+    string(REGEX REPLACE "(^|\n)%if MACOS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  endif ()
 
   # Our expected output files don't support regexes, but we do support matching
   # any of a set of lines with %ANYLINE blocks.

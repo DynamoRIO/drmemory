@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,7 +21,12 @@
 #
 success
 ~~Dr.M~~ ERRORS FOUND:
+%if !MACOS
 ~~Dr.M~~      12 unique,    12 total unaddressable access(es)
+%endif
+%if MACOS
+~~Dr.M~~       8 unique,     8 total unaddressable access(es)
+%endif
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       1 unique,     1 total warning(s)

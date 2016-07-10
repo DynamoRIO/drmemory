@@ -1000,5 +1000,7 @@ if (APPLE)
   # XXX: can we get this to automatically happen for a local "ctest" w/o
   # the user having to pass "-L OSX"?
   set_tests_properties(hello free malloc asmtest bitfield addronly
-    float annotations free.pattern mac_zones PROPERTIES LABELS OSX)
+    float annotations free.pattern mac_zones memalign
+    memalign.nodelay memalign.pattern
+    PROPERTIES LABELS OSX)
 endif ()
