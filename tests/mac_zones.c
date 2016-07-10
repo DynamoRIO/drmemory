@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -70,7 +70,6 @@ main(void)
     m1 = malloc_zone_valloc(myzone, 58);
     assert(m1 != NULL);
     assert(ALIGNED(m1, sysconf(_SC_PAGESIZE)));
-    assert(*(int *)m1 == 0);
     malloc_zone_free(myzone, m1);
 
     m1 = malloc_zone_memalign(myzone, 256, 58);

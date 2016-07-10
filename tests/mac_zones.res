@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,9 +19,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNINITIALIZED READ
-mac_zones.c:48
+mac_zones.c:51
 
 Error #2: UNADDRESSABLE ACCESS of freed memory: reading 4 byte(s)
-mac_zones.c:59
+mac_zones.c:62
 that was freed
-mac_zones.c:58
+mac_zones.c:61
