@@ -326,7 +326,7 @@ GLOBAL_LABEL(FUNCNAME:)
         cpuid
 #       define HAS_AVX 28
         mov      edx, 1
-        shl      edx, 28
+        shl      edx, HAS_AVX
         test     edx, ecx
         pop      REG_XDX
         pop      REG_XAX
@@ -405,13 +405,35 @@ GLOBAL_LABEL(FUNCNAME:)
 /* void asm_test_i1680(char *buf); */
         DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
-        mov      ecx, ARG1
-        mov      eax, [ecx]
+        mov      REG_XCX, ARG1
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* Ensure the processor supports AES */
+        push     REG_XCX
+        push     REG_XDX
+#       define HAS_AES 25
+        mov      eax, 1
+        cpuid
+        mov      edx, 1
+        shl      edx, HAS_AES
+        test     ecx, edx
+        pop      REG_XDX
+        pop      REG_XCX
+        je       no_aes
+
+        mov      eax, [REG_XCX]
         movd     xmm0, eax
         movsldup xmm0, xmm0
         aeskeygenassist xmm0, xmm0, 0
         movd     eax, xmm0
-        mov      eax, [ecx]
+        mov      eax, [REG_XCX]
+
+     no_aes:
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
