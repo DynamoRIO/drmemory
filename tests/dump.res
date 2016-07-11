@@ -25,29 +25,29 @@ Error #1: INVALID HEAP ARGUMENT
 malloc.c:166
 %endif
 %if UNIX
-malloc.c:179
+malloc.c:180
 %endif
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
-malloc.c:191
+malloc.c:192
 %endif
 %if WINDOWS_PRE_8
-malloc.c:203
+malloc.c:204
 %endif
 %if WINDOWS_8_PLUS
-malloc.c:205
+malloc.c:206
 %endif
 %if WINDOWS
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 bytes
-malloc.c:218
+malloc.c:219
 Error #5: LEAK 17 bytes
-malloc.c:201
+malloc.c:202
 %endif
 %if UNIX
 Error #2: LEAK 17 bytes
-malloc.c:201
+malloc.c:202
 Error #3: LEAK 42 bytes
-malloc.c:218
+malloc.c:219
 %endif

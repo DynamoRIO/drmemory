@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -45,7 +45,7 @@ jmp_buf mark;
 static void
 signal_handler(int sig)
 {
-    if (sig == SIGSEGV)
+    if (sig == SIGSEGV || sig == SIGBUS)
         longjmp(mark, 1);
     else
         exit(1);
@@ -172,6 +172,7 @@ main()
      */
 #ifdef UNIX
     intercept_signal(SIGSEGV, signal_handler);
+    intercept_signal(SIGBUS, signal_handler); /* We see SIGBUS on Mac */
 #else
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif

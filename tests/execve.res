@@ -26,15 +26,15 @@ malloc.c:122
 Error #3: UNINITIALIZED READ
 malloc.c:135
 Error #4: INVALID HEAP ARGUMENT
-malloc.c:179
+malloc.c:180
 Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:288
+malloc.c:289
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:239
+malloc.c:240
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:271
+malloc.c:272
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:276
-: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:277
+: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:278

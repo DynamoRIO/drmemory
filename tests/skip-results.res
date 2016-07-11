@@ -27,16 +27,16 @@ malloc.c:122
 Error #3: UNINITIALIZED READ
 malloc.c:135
 Error #4: INVALID HEAP ARGUMENT
-malloc.c:179
+malloc.c:180
 %if WINDOWS
 Error #5: WARNING: heap allocation failed
-malloc.c:191
+malloc.c:192
 %endif
 %if WINDOWS_PRE_8
-malloc.c:203
+malloc.c:204
 %endif
 %if WINDOWS_8_PLUS
-malloc.c:205
+malloc.c:206
 %endif
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
@@ -44,13 +44,13 @@ malloc.c:205
 # must be outside of if..endif
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:239
+malloc.c:240
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:271
+malloc.c:272
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:276
-: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:277
+: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:278
 # summary isn't in stdout when we check it so we check summary in results.txt
 ERRORS FOUND:
       1 unique,    20 total unaddressable access(es)

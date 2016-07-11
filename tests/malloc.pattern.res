@@ -23,19 +23,19 @@
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
 malloc.c:112
 Error #2: INVALID HEAP ARGUMENT
-malloc.c:179
+malloc.c:180
 %if WINDOWS
 Error #3: WARNING: heap allocation failed
-malloc.c:191
+malloc.c:192
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
-malloc.c:199
+malloc.c:200
 Error #5: INVALID HEAP ARGUMENT
 %endif
 %if WINDOWS_PRE_8
-malloc.c:203
+malloc.c:204
 %endif
 %if WINDOWS_8_PLUS
-malloc.c:205
+malloc.c:206
 %endif
 : UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:288
+malloc.c:289
