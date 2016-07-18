@@ -1,6 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# Copyright (c) 2016 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,25 +18,10 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-malloc
-malloc small
-malloc 0
-malloc big
-calloc
-realloc
-invalid free
-%if WINDOWS
-HeapFree failed 87
-%endif
-all done
-~~Dr.M~~ ERRORS FOUND:
-%if WINDOWS
-~~Dr.M~~       2 unique,     2 total invalid heap argument(s)
-~~Dr.M~~       1 unique,     1 total warning(s)
-%endif
-%if UNIX
-~~Dr.M~~       1 unique,     1 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-%endif
-~~Dr.M~~       1 unique,     1 total,     59 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+%OUT_OF_ORDER
+: LEAK 16 direct bytes + 48 indirect bytes
+leak_indirect.c:48
+: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+leak_indirect.c:53
+: LEAK 16 direct bytes + 16 indirect bytes
+leak_indirect.c:54

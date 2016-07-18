@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -49,5 +49,5 @@ all done
 ~~Dr.M~~       1 unique,     1 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
 %endif
-~~Dr.M~~       3 unique,     3 total,    155 byte(s) of leak(s)
-~~Dr.M~~       1 unique,     1 total,     16 byte(s) of possible leak(s)
+~~Dr.M~~       1 unique,     1 total,     59 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

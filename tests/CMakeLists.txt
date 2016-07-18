@@ -416,6 +416,7 @@ if (NOT X64 AND NOT ARM)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
+newtest(leak_indirect leak_indirect.c)
 newtest(free free.c)
 if (ARM)
   newtest_ex(free_arm free.c "" "" "" OFF "free" 0)

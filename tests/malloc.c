@@ -249,42 +249,6 @@ main()
     *((size_t*)p3) = 24;
     p3 = (void *) (((char*)p3) + 8); /* align to 8 so matches malloc alignment */
 
-    /* test PR 576032's identification of direct vs indirect leaks
-     * = is head pointer, - is mid-chunk pointer:
-     *
-     *       X===========
-     *                  ||
-     *                   V
-     * A ==> B ==> C --> D
-     *       |      \\=> E
-     *       |       \-> F
-     *       ----------/
-     *
-     * We expect reported:
-     * 1) Leak pA + pB + pC + pE
-     * 2) Possible leak pF
-     * 3) Leak pX + pD
-     * Note: I used to have pX=>pB to further test dup dependents, but
-     * it's too difficult to control the ordering on all platforms.
-     */
-    {
-        char *pA, *pB, *pC, *pD, *pE, *pF, *pX;
-        pA = malloc(sizeof(pA)*4);
-        pB = malloc(sizeof(pB)*4);
-        pC = malloc(sizeof(pC)*4);
-        pD = malloc(sizeof(pD)*4);
-        pE = malloc(sizeof(pE)*4);
-        pF = malloc(sizeof(pF)*4);
-        pX = malloc(sizeof(pX)*4);
-        *((char **)pA) = pB;
-        *((char **)pB) = pC;
-        *((char **)(pB + sizeof(pB))) = pF + sizeof(pF);
-        *((char **)pC) = pD + sizeof(pD);
-        *((char **)(pC + sizeof(pC))) = pE;
-        *((char **)(pC + 2*sizeof(pC))) = pF + sizeof(pF);
-        *((char **)(pX + sizeof(pX))) = pD;
-    }
-
     if (setjmp(mark) == 0) {
         c = *(char *)0x100; /* i#1015: unaddr on wild access */
     }

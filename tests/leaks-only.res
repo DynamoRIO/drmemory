@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -33,12 +33,5 @@ malloc.c:204
 %if WINDOWS_8_PLUS
 malloc.c:206
 %endif
-%OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:240
-: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:272
-: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:277
-: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:278

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -38,19 +38,8 @@ malloc.c:204
 %if WINDOWS_8_PLUS
 malloc.c:206
 %endif
-# FIXME: should we remove the auto-escaping of regex chars in
-# this file, and then we can use them: "Error #(5|6)"?
-# for now just removing error#
-# must be outside of if..endif
-%OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:240
-: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:272
-: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:277
-: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:278
 # summary isn't in stdout when we check it so we check summary in results.txt
 ERRORS FOUND:
       1 unique,    20 total unaddressable access(es)
@@ -65,5 +54,5 @@ ERRORS FOUND:
       1 unique,     1 total invalid heap argument(s)
       0 unique,     0 total warning(s)
 %endif
-      3 unique,     3 total,    155 byte(s) of leak(s)
-      1 unique,     1 total,     16 byte(s) of possible leak(s)
+      1 unique,     1 total,     59 byte(s) of leak(s)
+      0 unique,     0 total,      0 byte(s) of possible leak(s)

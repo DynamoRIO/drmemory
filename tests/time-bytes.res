@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -37,21 +37,5 @@ malloc.c:204
 %if WINDOWS_8_PLUS
 malloc.c:206
 %endif
-%if WINDOWS
-# FIXME: should we remove the auto-escaping of regex chars in
-# this file, and then we can use them: "Error #(5|6)"?
-Error #4: LEAK 42 direct bytes + 17 indirect bytes
+: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:240
-Error #5: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:272
-Error #6: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:277
-%endif
-%if UNIX
-Error #2: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:240
-Error #3: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:272
-Error #4: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:277
-%endif

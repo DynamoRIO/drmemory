@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -46,17 +46,6 @@ Error #8: UNADDRESSABLE ACCESS beyond heap bounds: writing 4 byte(s)
 malloc.c:212
 %endif
 : UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:289
-# FIXME: should we remove the auto-escaping of regex chars in
-# this file, and then we can use them: "Error #(5|6)"?
-# for now just removing error#
-# must be outside of if..endif
-%OUT_OF_ORDER
+malloc.c:253
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:240
-: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:272
-: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:277
-: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:278
