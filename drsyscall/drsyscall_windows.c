@@ -44,6 +44,7 @@
 
 static app_pc ntdll_base;
 dr_os_version_info_t win_ver = {sizeof(win_ver),};
+static bool syscall_numbers_unknown;
 
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
@@ -282,7 +283,7 @@ name2num_entry_free(void *p)
 }
 
 void
-name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw)
+name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw, bool dup_name)
 {
     name2num_entry_t *e = global_alloc(sizeof(*e), HEAPSTAT_MISC);
     bool ok;
@@ -291,6 +292,9 @@ name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw)
         e->name = global_alloc(len, HEAPSTAT_MISC);
         dr_snprintf(e->name, len, "Zw%s", name + 2/*skip "Nt"*/);
         e->name[len - 1] = '\0';
+        e->name_allocated = true;
+    } else if (dup_name) {
+        e->name = drmem_strdup(name, HEAPSTAT_MISC);
         e->name_allocated = true;
     } else {
         e->name = (char *) name;
@@ -307,6 +311,37 @@ name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw)
                "no dup entries in name2num_table");
         name2num_entry_free((void *)e);
     }
+}
+
+void
+name2num_record(const char *name, int num, bool dup_name)
+{
+    const char *skip_prefix = NULL;
+    drsys_sysnum_t sysnum = {num, 0};
+
+    /* Support adding usercalls from a sysnum file. */
+    if (strstr(name, "NtUserCall") == name && strchr(name, '.') != NULL) {
+        wingdi_add_usercall(name, num);
+        return;
+    }
+
+    name2num_entry_add(name, sysnum, false/*no Zw*/, dup_name);
+
+    /* we also add the version without the prefix, so e.g. alloc.c
+     * can pass in "UserConnectToServer" without having the
+     * optional_prefix param in sysnum_from_name()
+     */
+    if (strstr(name, "NtUser") == name)
+        skip_prefix = name + strlen("NtUser");
+    else if (strstr(name, "NtGdi") == name)
+        skip_prefix = name + strlen("NtGdi");
+    /* We could re-arrange the add_syscall_entry() below and look up the
+     * entry to check SYSINFO_REQUIRES_PREFIX, but since GetThreadDesktop
+     * is the only one for now, we rely on having GetThreadDesktop before
+     * NtUserGetThreadDesktop to avoid the wrong # in the table (i#1418).
+     */
+    if (skip_prefix != NULL)
+        name2num_entry_add(skip_prefix, sysnum, false/*no Zw*/, dup_name);
 }
 
 /***************************************************************************
@@ -353,6 +388,11 @@ extern size_t num_user32_syscalls(void);
 extern syscall_info_t syscall_gdi32_info[];
 extern size_t num_gdi32_syscalls(void);
 
+/* The initial set of entries in drsyscall_numx for which we check the ntdll wrappers
+ * to ensure our table is correct.
+ */
+#define NUM_SPOT_CHECKS 4
+
 /* Takes in any Nt syscall wrapper entry point.
  * Will accept other entry points (e.g., we call it for gdi32!GetFontData)
  * and return -1 for them: up to caller to assert if that shouldn't happen.
@@ -367,7 +407,7 @@ syscall_num_from_wrapper(void *drcontext, byte *entry)
     return drmgr_decode_sysnum_from_wrapper(entry);
 }
 
-static bool
+bool
 syscall_num_from_name(void *drcontext, const module_data_t *info,
                       const char *name, const char *optional_prefix,
                       bool sym_lookup, drsys_sysnum_t *num_out OUT)
@@ -398,17 +438,6 @@ syscall_num_from_name(void *drcontext, const module_data_t *info,
                 num = syscall_num_from_wrapper(drcontext, entry);
         }
     }
-    DOLOG(1, {
-        if (num != -1) {
-            name2num_entry_t *e = (name2num_entry_t *)
-                hashtable_lookup(&name2num_table, (void *)name);
-            if (e != NULL && e->num.number != num) {
-                WARN("WARNING: sysnum table "PIFX" != wrapper "PIFX" for %s\n",
-                     e->num.number, num, name);
-                ASSERT(false, "syscall number table error detected");
-            }
-        }
-    });
     if (num == -1)
         return false;
     num_out->number = num;
@@ -429,6 +458,7 @@ os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT)
     return false;
 }
 
+#ifdef DEBUG
 static void
 check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
                     const char *optional_prefix)
@@ -446,10 +476,14 @@ check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *
                                         optional_prefix,
                                         drsys_ops.verify_sysnums,
                                         &num_from_wrapper);
-        ASSERT(!ok/*no syms*/ || drsys_sysnums_equal(&syslist->num, &num_from_wrapper),
-               "sysnum table does not match wrapper");
+        if (ok && !drsys_sysnums_equal(&syslist->num, &num_from_wrapper)) {
+            WARN("WARNING: sysnum table "PIFX" != wrapper "PIFX" for %s\n",
+                 syslist->num.number, num_from_wrapper.number, syslist->name);
+            ASSERT(false, "sysnum table does not match wrapper");
+        }
     }
 }
+#endif
 
 static bool
 get_primary_syscall_num(void *drcontext, const module_data_t *info,
@@ -463,7 +497,15 @@ get_primary_syscall_num(void *drcontext, const module_data_t *info,
         return ok;
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
-    if (info != NULL) {
+    /* i#388: we try our name2num table first.  We need it anyway for wrappers that
+     * are not exported or when we don't have symbol info.  The table has both
+     * win32k.sys entries (mostly not exported) and ntoskrnl entries (to handle hook
+     * conflicts: i#1686).
+     */
+    ok = os_syscall_get_num(syslist->name, &syslist->num);
+    if (!ok && info != NULL) {
+        LOG(SYSCALL_VERBOSE, "looking at wrapper b/c %s not in name2num_table\n",
+            syslist->name);
         ok = syscall_num_from_name(drcontext, info, syslist->name,
                                    optional_prefix,
                                    /* it's a perf hit to do one-at-a-time symbol
@@ -475,19 +517,9 @@ get_primary_syscall_num(void *drcontext, const module_data_t *info,
                                    drsys_ops.verify_sysnums,
                                    &syslist->num);
     }
-    if (!ok) {
-        /* i#388: use sysnum table if the wrapper is not exported and we don't have
-         * symbol info.  The table has both win32k.sys entries (mostly not exported)
-         * and ntoskrnl entries (to handle hook conflicts: i#1686).
-         */
-        LOG(SYSCALL_VERBOSE, "using name2num_table since no wrapper found for %s\n",
-            syslist->name);
-        ok = os_syscall_get_num(syslist->name, &syslist->num);
-    }
     DOLOG(SYSCALL_VERBOSE, {
         if (!ok) {
-            LOG(SYSCALL_VERBOSE,
-                "WARNING: could not find system call %s\n",
+            LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n",
                 syslist->name);
         }
     });
@@ -515,12 +547,14 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
             hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
     }
     dr_recurlock_unlock(systable_lock);
-    /* We do have a dup with GetThreadDesktop on many platforms */
-    ASSERT(ok || strcmp(syslist->name, "GetThreadDesktop") == 0,
-            "no dups in sys num to call table");
     LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
         "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
         syslist->num.secondary, syslist->num.number, syslist->num.secondary);
+    /* We do have a dup with GetThreadDesktop on many platforms */
+    ASSERT(ok || strcmp(syslist->name, "GetThreadDesktop") == 0 ||
+           (strstr(syslist->name, "NtUserCall") == syslist->name &&
+            syscall_numbers_unknown),
+            "no dups in sys num to call table");
     /* When SYSINFO_SECONDARY_TABLE flag is set, num_out
      * is a pointer to secondary table. So we shouldn't
      * rewrite them here.
@@ -531,9 +565,9 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     if (add_name2num) {
         /* Add the Nt variant only if a secondary, which our numx.h table doesn't have */
         if (is_secondary)
-            name2num_entry_add(syslist->name, syslist->num, false/*no Zw*/);
+            name2num_entry_add(syslist->name, syslist->num, false/*no Zw*/, false);
         /* Add the Zw variant */
-        name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/);
+        name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/, false);
     }
 }
 
@@ -561,7 +595,7 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
             second_entry_num =
                 cb(syscall_info_second[entry_index].name, syslist->num.number);
             if (second_entry_num == -1) {
-                LOG(SYSCALL_VERBOSE, "can't resolve secondary number for %s syscall",
+                LOG(SYSCALL_VERBOSE, "can't resolve secondary number for %s syscall\n",
                     syscall_info_second[entry_index].name);
                 continue;
             }
@@ -591,11 +625,11 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
 drmf_status_t
 drsyscall_os_init(void *drcontext)
 {
+    drmf_status_t res = DRMF_SUCCESS, subres;
     uint i;
-#ifdef WINDOWS
     module_data_t *data;
-#endif
-    const int *sysnums; /* array of primary syscall numbers */
+    bool nums_from_file = false;
+    const int *sysnums = NULL; /* array of primary syscall numbers */
     /* FIXME i#945: we expect the #s and args of 64-bit windows syscall match
      * wow64, but we have not verified there's no number shifting or arg shifting
      * in the wow64 marshaling layer.
@@ -649,8 +683,18 @@ drsyscall_os_init(void *drcontext)
         break;
     case DR_WINDOWS_VERSION_NT:
     default:
-        return DRMF_ERROR_INCOMPATIBLE_VERSION;
+        /* Unsupported but we try to continue; we'll return
+         * DRMF_WARNING_UNSUPPORTED_KERNEL below.
+         */
+        sysnums = NULL;
+        break;
     }
+
+    data = dr_lookup_module_by_name("ntdll.dll");
+    ASSERT(data != NULL, "cannot find ntdll.dll");
+    if (data == NULL)
+        return DRMF_ERROR;
+    ntdll_base = data->start;
 
     /* Set up hashtable for name2num translation at init time.
      * Case-insensitive primarily for NtUserCallOneParam.*.
@@ -658,28 +702,56 @@ drsyscall_os_init(void *drcontext)
     hashtable_init_ex(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!strdup*/, true/*synch*/, name2num_entry_free,
                       NULL, NULL);
-    for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
-        if (sysnums[i] != NONE) {
-            const char *skip_prefix = NULL;
-            drsys_sysnum_t sysnum = {sysnums[i], 0};
-            name2num_entry_add(sysnum_names[i], sysnum, false/*no Zw*/);
-
-            /* we also add the version without the prefix, so e.g. alloc.c
-             * can pass in "UserConnectToServer" without having the
-             * optional_prefix param in sysnum_from_name()
-             */
-            if (strstr(sysnum_names[i], "NtUser") == sysnum_names[i])
-                skip_prefix = sysnum_names[i] + strlen("NtUser");
-            else if (strstr(sysnum_names[i], "NtGdi") == sysnum_names[i])
-                skip_prefix = sysnum_names[i] + strlen("NtGdi");
-            /* We could re-arrange the add_syscall_entry() below and look up the
-             * entry to check SYSINFO_REQUIRES_PREFIX, but since GetThreadDesktop
-             * is the only one for now, we rely on having GetThreadDesktop before
-             * NtUserGetThreadDesktop to avoid the wrong # in the table (i#1418).
-             */
-            if (skip_prefix != NULL) {
-                name2num_entry_add(skip_prefix, sysnum, false/*no Zw*/);
+    if (sysnums != NULL) {
+        /* Check whether these match by spot-checking a few (we want to check
+         * multiple in case some are hooked or in case an update ends up with
+         * some being identical).  We do not want to take the time to check them all.
+         */
+        for (i = 0; i < NUM_SPOT_CHECKS; i++) {
+            drsys_sysnum_t num_from_wrapper, num_from_table;
+            bool ok = syscall_num_from_name(drcontext, data, sysnum_names[i], NULL,
+                                            false/*exported*/, &num_from_wrapper);
+            if (ok && num_from_wrapper.number != sysnums[i]) {
+                LOG(1, "Syscall mismatch for %s: wrapper %d vs table %d\n",
+                     sysnum_names[i], num_from_wrapper.number, sysnums[i]);
+                ELOG(0, "Syscall mismatch detected.  "
+                     "Running on unknown kernel version!\n");
+                sysnums = NULL;
+                break;
+            } else if (!ok) {
+                WARN("WARNING: failed to spot-check %s\n", sysnum_names[i]);
             }
+        }
+    }
+    if (sysnums != NULL) {
+        for (i = NUM_SPOT_CHECKS; i < NUM_SYSNUM_NAMES; i++) {
+            if (sysnums[i] != NONE)
+                name2num_record(sysnum_names[i], sysnums[i], false);
+        }
+    }
+
+    if (sysnums == NULL) {
+        /* i#1908: we support loading numbers from a file */
+        if (drsys_ops.sysnum_file == NULL)
+            res = DRMF_WARNING_UNSUPPORTED_KERNEL;
+        else {
+            res = read_sysnum_file(drcontext, drsys_ops.sysnum_file, data);
+            if (res != DRMF_SUCCESS) {
+                if (dr_file_exists(drsys_ops.sysnum_file)) {
+                    NOTIFY_ERROR("%s does not contain an entry for this kernel." NL,
+                                 drsys_ops.sysnum_file);
+                }
+            } else
+                nums_from_file = true;
+        }
+        if (res != DRMF_SUCCESS) {
+            /* We'll keep going, relying on wrapper decoding and unknown
+             * syscall heuristics.  Unless symbols are available, we expect
+             * false positives in graphical apps.  We tell the caller via
+             * this return value in case he wants to abort.
+             */
+            res = DRMF_WARNING_UNSUPPORTED_KERNEL;
+            syscall_numbers_unknown = true;
         }
     }
 
@@ -690,48 +762,54 @@ drsyscall_os_init(void *drcontext)
                       false/*!strdup*/, false/*!synch*/, NULL, sysnum_hash,
                       sysnum_cmp);
 
-    data = dr_lookup_module_by_name("ntdll.dll");
-    ASSERT(data != NULL, "cannot find ntdll.dll");
-    if (data == NULL)
-        return DRMF_ERROR;
-    ntdll_base = data->start;
-
     /* Add all entries at process init time, to support drsys_name_to_syscall()
      * for secondary win32k.sys and drsys_number_to_syscall() in dr_init.
+     * If the numbers are not known, however, such queries will fail, and
+     * we delay adding win32k.sys until module load time.
      */
     for (i = 0; i < num_ntdll_syscalls(); i++) {
         /* check whether syscall has additional entries */
         add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true, false);
         if (TEST(SYSINFO_SECONDARY_TABLE, syscall_ntdll_info[i].flags))
             secondary_syscall_setup(drcontext, data, &syscall_ntdll_info[i], NULL);
+        DODEBUG({ check_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL); });
     }
-    for (i = 0; i < num_kernel32_syscalls(); i++) {
-        add_syscall_entry(drcontext, NULL, &syscall_kernel32_info[i], NULL,
-                          false/*already added*/, false);
-    }
-
-    if (drsyscall_wingdi_init(drcontext, ntdll_base, &win_ver) != DRMF_SUCCESS)
-        ASSERT(false, "wingdi_init unexpectedly failed");
-
-    for (i = 0; i < num_user32_syscalls(); i++) {
-        /* We ignore SYSINFO_IMM32_DLL here.  We check vs dlls in
-         * drsyscall_os_module_load().
-         */
-        add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
-                          false/*already added*/, false);
-        if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
-            secondary_syscall_setup(drcontext, data, &syscall_user32_info[i],
-                                    wingdi_get_secondary_syscall_num);
+    if (!syscall_numbers_unknown) {
+        for (i = 0; i < num_kernel32_syscalls(); i++) {
+            add_syscall_entry(drcontext, NULL, &syscall_kernel32_info[i], NULL,
+                              false/*already added*/, false);
         }
     }
-    for (i = 0; i < num_gdi32_syscalls(); i++) {
-        add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",
-                          false/*already added*/, false);
+
+    /* wingdi_init will return _UNSUPPORTED_KERNEL if we pass true for 4th param */
+    subres = drsyscall_wingdi_init(drcontext, ntdll_base, &win_ver,
+                                   !syscall_numbers_unknown && !nums_from_file);
+    if (subres != DRMF_SUCCESS) {
+        ASSERT(false, "wingdi_init unexpectedly failed");
+        res = subres;
+    }
+
+    if (!syscall_numbers_unknown) {
+        for (i = 0; i < num_user32_syscalls(); i++) {
+            /* We ignore SYSINFO_IMM32_DLL here.  We check vs dlls in
+             * drsyscall_os_module_load().
+             */
+            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
+                              false/*already added*/, false);
+            if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
+                secondary_syscall_setup(drcontext, data, &syscall_user32_info[i],
+                                        wingdi_get_secondary_syscall_num);
+            }
+        }
+        for (i = 0; i < num_gdi32_syscalls(); i++) {
+            add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",
+                              false/*already added*/, false);
+        }
     }
 
     dr_free_module_data(data);
 
-    return DRMF_SUCCESS;
+    return res;
 }
 
 void
@@ -767,22 +845,63 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
      * Here we just check vs the wrapper numbers for other than ntdll
      * (ntdll module was available at process init).
      */
-    if (stri_eq(modname, "kernel32.dll")) {
-        for (i = 0; i < num_kernel32_syscalls(); i++)
-            check_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
-    } else if (stri_eq(modname, "user32.dll")) {
-        for (i = 0; i < num_user32_syscalls(); i++) {
-            if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
-                check_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+    if (stri_eq(modname, "kernel32.dll") ||
+        (win_ver.version >= DR_WINDOWS_VERSION_10_1607 &&
+         stri_eq(modname, "win32u.dll"))) {
+        for (i = 0; i < num_kernel32_syscalls(); i++) {
+            if (syscall_numbers_unknown) {
+                add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL,
+                                  true, false);
+            }
+            DODEBUG({
+                check_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
+            });
         }
-    } else if (stri_eq(modname, "imm32.dll")) {
+    }
+    if (stri_eq(modname, "user32.dll") ||
+        (win_ver.version >= DR_WINDOWS_VERSION_10_1607 &&
+         stri_eq(modname, "win32u.dll"))) {
         for (i = 0; i < num_user32_syscalls(); i++) {
-            if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
-                check_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+            if (syscall_numbers_unknown) {
+                add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser",
+                                  true, false);
+                if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
+                    secondary_syscall_setup(drcontext, info, &syscall_user32_info[i],
+                                            wingdi_get_secondary_syscall_num);
+                }
+            }
+            DODEBUG({
+                if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
+                    check_syscall_entry(drcontext, info, &syscall_user32_info[i],
+                                        "NtUser");
+                }
+            });
         }
-    } else if (stri_eq(modname, "gdi32.dll")) {
-        for (i = 0; i < num_gdi32_syscalls(); i++)
-            check_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
+    }
+    if (stri_eq(modname, "imm32.dll") ||
+        (win_ver.version >= DR_WINDOWS_VERSION_10_1607 &&
+         stri_eq(modname, "win32u.dll"))) {
+        DODEBUG({
+            for (i = 0; i < num_user32_syscalls(); i++) {
+                if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
+                    check_syscall_entry(drcontext, info, &syscall_user32_info[i],
+                                        "NtUser");
+                }
+            }
+        });
+    }
+    if (stri_eq(modname, "gdi32.dll") ||
+        (win_ver.version >= DR_WINDOWS_VERSION_10_1607 &&
+         stri_eq(modname, "win32u.dll"))) {
+        for (i = 0; i < num_gdi32_syscalls(); i++) {
+            if (syscall_numbers_unknown) {
+                add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi",
+                                  true, false);
+            }
+            DODEBUG({
+                check_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
+            });
+        }
     }
 }
 

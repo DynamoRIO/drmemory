@@ -886,7 +886,13 @@ get_sysnum(const char *name, drsys_sysnum_t *var, bool ok_to_fail)
     drsys_syscall_t *syscall;
     if (drsys_name_to_syscall(name, &syscall) != DRMF_SUCCESS ||
         drsys_syscall_number(syscall, var) != DRMF_SUCCESS) {
-        ASSERT(ok_to_fail, "error finding required syscall #");
+        /* As assert here does not play well with -ignore_kernel so we downgrade
+         * to a warning.
+         */
+        DOLOG(1, {
+            if (!ok_to_fail)
+                WARN("WARNING: Failed to find required syscall %s\n", name);
+        });
         return false;
     }
     return true;

@@ -70,7 +70,8 @@ else (UNIX)
     table_windows_ntusercall.c
     table_windows_ntgdi.c
     table_windows_kernel32.c
-    drsyscall_wingdi.c)
+    drsyscall_wingdi.c
+    drsyscall_fileparse.c)
   if (SYSCALL_DRIVER)
     set(srcs ${srcs}
       drmemory/syscall_driver.c)

@@ -3260,10 +3260,14 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
         sysnum_UserConnectToServer = sysnum_from_name("UserConnectToServer");
         /* UserConnectToServer is not exported and so requires symbols or i#388's
          * table.  It's not present prior to Vista or on 32-bit kernels.
+         * We make this a warning rather than an assert to avoid asserting
+         * for -ignore_kernel (i#1908).
          */
-        ASSERT(sysnum_UserConnectToServer != -1 ||
-               !is_wow64_process() || !running_on_Vista_or_later(),
-               "error finding alloc syscall #");
+        if (sysnum_UserConnectToServer == -1 &&
+            IF_X64_ELSE(true, is_wow64_process()) &&
+            running_on_Vista_or_later()) {
+            WARN("WARNING: error finding UserConnectToServer syscall #");
+        }
     }
 }
 #endif

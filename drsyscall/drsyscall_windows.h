@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -26,6 +26,20 @@
 
 extern dr_os_version_info_t win_ver;
 
+void
+name2num_record(const char *name, int num, bool dup_name);
+
+void
+name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw, bool dup_name);
+
+bool
+syscall_num_from_name(void *drcontext, const module_data_t *info,
+                      const char *name, const char *optional_prefix,
+                      bool sym_lookup, drsys_sysnum_t *num_out OUT);
+
+bool
+read_sysnum_file(void *drcontext, const char *sysnum_file, module_data_t *ntdll_data);
+
 bool
 handle_unicode_string_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                              app_pc start, uint size, bool ignore_len);
@@ -38,11 +52,15 @@ handle_cwstring(sysarg_iter_info_t *ii, const char *id,
 
 /* drsyscall_wingdi.c */
 
+void
+wingdi_add_usercall(const char *name, int num);
+
 uint
 wingdi_get_secondary_syscall_num(const char *secondary_syscall, uint primary_num);
 
 drmf_status_t
-drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver);
+drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver,
+                      bool use_usercall_table);
 
 void
 drsyscall_wingdi_exit(void);

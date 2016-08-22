@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -75,6 +75,7 @@ typedef enum {
     DRMF_WARNING_ALREADY_INITIALIZED, /**< Operation aborted: already initialized */
     DRMF_ERROR_NOT_INITIALIZED,     /**< Operation failed: not initialized */
     DRMF_ERROR_INVALID_ADDRESS,     /**< Operation failed: invalid address */
+    DRMF_WARNING_UNSUPPORTED_KERNEL,  /**< Continuing not advised: unsupported kernel */
 } drmf_status_t;
 
 

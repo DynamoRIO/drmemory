@@ -141,6 +141,45 @@ drmem_options_init(const char *opstr)
     op_prefix_style = options.prefix_style;
 }
 
+/* Returns pointer to penultimate dir separator in string or NULL if can't find */
+static const char *
+up_one_dir(const char *string)
+{
+    const char *dir1 = NULL, *dir2 = NULL;
+    while (*string != '\0') {
+        if (*string == DIRSEP IF_WINDOWS(|| *string == ALT_DIRSEP)) {
+            dir1 = dir2;
+            dir2 = string;
+        }
+        string++;
+    }
+    return dir1;
+}
+
+/* Places fname into our default config file path:
+ *   dr_get_client_path()/../fname
+ */
+bool
+obtain_configfile_path(char *buf OUT, size_t bufsz, const char *fname)
+{
+    const char *mypath = dr_get_client_path(client_id);
+    /* Windows kernel doesn't like paths with .. (0xc0000033 =
+     * Object Name invalid) so we can't do just strrchr and add ..
+     */
+    const char *sep = up_one_dir(mypath);
+    ASSERT(sep != NULL, "client lib path not absolute?");
+    ASSERT(sep - mypath < bufsz, "buffer too small");
+    if (sep != NULL && sep - mypath < bufsz) {
+        int len = dr_snprintf(buf, sep - mypath, "%s", mypath);
+        if (len == -1) {
+            len = dr_snprintf(buf + (sep - mypath), bufsz - (sep - mypath),
+                              "%c%s", DIRSEP, fname);
+            return (len > 0);
+        }
+    }
+    return false;
+}
+
 /***************************************************************************
  * GLOBALS AND STATISTICS
  */

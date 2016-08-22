@@ -445,6 +445,9 @@ OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
 OPTION_CLIENT_BOOL(drmemscope, batch, false,
                    "Do not invoke notepad at the end",
                    "Do not launch notepad with the results file at application exit.")
+OPTION_CLIENT_BOOL(drmemscope, ignore_kernel, false,
+                   "Attempt execution on an unsupported kernel",
+                   "Continue past the normally-fatal usage error of running on an unsupported kernel version.  This risks false positives and potential tool failure due to unknown system call behavior.")
 OPTION_CLIENT_BOOL(drmemscope, summary, true,
                    "Display a summary of results to stderr",
                    "Display process startup information and a summary of errors to stderr at app exit.")

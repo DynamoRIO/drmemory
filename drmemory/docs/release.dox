@@ -61,6 +61,10 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.10.1 include:
+ - Added support for loading system call numbers from a file, to make
+   it easier to update for future major Windows 10 updates.
+ - Added an option -ignore_kernel to attempt to continue on even when
+   running on a kernel with unknown system call numbers.
  - Added support for Mac OSX El Capitan.
 
 The changes between 1.10.1 and version 1.10.0 include:
@@ -74,6 +78,7 @@ The changes between 1.10.0 and version 1.9.0 include:
    so we still recommend compiling your application as 32-bit.
  - Added preliminary Linux/ARM and Android/ARM 32-bit Dr. Memory support.
    This does not yet include uninitialized read checking.
+ - Added support for Windows 10 1511.
  - Fixed incremental error output to the console for graphical
    applications, which was missing in prior versions when using certain
    consoles such as cmd.

@@ -1433,21 +1433,6 @@ print_timestamp(file_t f, uint64 timestamp, const char *prefix)
           time.month, time.day, time.year);
 }
 
-/* Returns pointer to penultimate dir separator in string or NULL if can't find */
-static const char *
-up_one_dir(const char *string)
-{
-    const char *dir1 = NULL, *dir2 = NULL;
-    while (*string != '\0') {
-        if (*string == DIRSEP IF_WINDOWS(|| *string == ALT_DIRSEP)) {
-            dir1 = dir2;
-            dir2 = string;
-        }
-        string++;
-    }
-    return dir1;
-}
-
 static bool
 is_stack_dword_defined(void *drcontext, byte *addr)
 {
@@ -1654,26 +1639,11 @@ report_init(void)
          */
         const char *const DEFAULT_SUPPRESS_NAME = "suppress-default.txt";
         char dname[MAXIMUM_PATH];
-        const char *mypath = dr_get_client_path(client_id);
-        /* Windows kernel doesn't like paths with .. (0xc0000033 =
-         * Object Name invalid) so we can't do just strrchr and add ..
-         */
-        const char *sep = up_one_dir(mypath);
-        ASSERT(sep != NULL, "client lib path not absolute?");
-        ASSERT(sep - mypath < BUFFER_SIZE_ELEMENTS(dname), "buffer too small");
-        if (sep != NULL && sep - mypath < BUFFER_SIZE_ELEMENTS(dname)) {
-            int len = dr_snprintf(dname, sep - mypath, "%s", mypath);
-            if (len == -1) {
-                len = dr_snprintf(dname + (sep - mypath),
-                                  BUFFER_SIZE_ELEMENTS(dname) - (sep - mypath),
-                                  "%c%s", DIRSEP, DEFAULT_SUPPRESS_NAME);
-                if (len > 0)
-                    open_and_read_suppression_file(dname, true);
-                else
-                    ASSERT(false, "default-suppress snprintf error");
-            } else
-                ASSERT(false, "default-suppress snprintf error");
-        }
+        if (obtain_configfile_path(dname, BUFFER_SIZE_ELEMENTS(dname),
+                                    DEFAULT_SUPPRESS_NAME))
+            open_and_read_suppression_file(dname, true);
+        else
+            ASSERT(false, "default-suppress snprintf error");
     }
 
     /* we support multiple suppress file (i#574) */

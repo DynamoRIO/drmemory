@@ -179,9 +179,6 @@ drsys_sysnum_t sysnum_GdiPolyPolyDraw = {-1,0};
  * TOP-LEVEL
  */
 
-extern void
-name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw);
-
 uint
 wingdi_get_secondary_syscall_num(const char *name, uint primary_num)
 {
@@ -197,21 +194,54 @@ wingdi_get_secondary_syscall_num(const char *name, uint primary_num)
     num.number = primary_num;
 
     /* add secondary usercall with & without primary prefix */
-    name2num_entry_add(name, num, false/*no Zw*/);
+    name2num_entry_add(name, num, false/*no Zw*/, false);
     skip_primary = strstr(name, ".");
     if (skip_primary != NULL &&
         /* don't add unknown w/o primary */
         strstr(name, ".UNKNOWN") == NULL) {
-        name2num_entry_add(skip_primary + 1/*"."*/, num, false/*no Zw*/);
+        name2num_entry_add(skip_primary + 1/*"."*/, num, false/*no Zw*/, false);
     }
     return num.secondary;
 }
 
+void
+wingdi_add_usercall(const char *name, int num)
+{
+    IF_DEBUG(bool ok;)
+    /* We might be called from sysnum file parsing prior to drsyscall_wingdi_init: */
+    if (usercall_table.table == NULL) {
+        /* We duplicate all strings to handle synum files (i#1908) */
+        hashtable_init(&usercall_table, USERCALL_TABLE_HASH_BITS,
+                       HASH_STRING, true/*strdup*/);
+    }
+    LOG(SYSCALL_VERBOSE + 1, "name2num usercall: adding %s => %d\n", name, num);
+    IF_DEBUG(ok =)
+        hashtable_add(&usercall_table, (void *)name, (void *)(num + 1/*avoid 0*/));
+    DOLOG(1, {
+      if (!ok)
+          LOG(1, "Dup usercall entry for %s\n", name);
+    });
+    ASSERT(ok, "no dup entries in usercall_table");
+}
+
 drmf_status_t
-drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver)
+drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver,
+                      bool use_usercall_table)
 {
     uint i;
     const int *usercalls;
+    if (usercall_table.table == NULL) { /* may be initialized earlier */
+        hashtable_init(&usercall_table, USERCALL_TABLE_HASH_BITS,
+                       HASH_STRING, true/*strdup*/);
+    }
+    if (!use_usercall_table) {
+        /* i#1908: while the usercall numbers don't change as much, they do
+         * shift around, and it's better to use our unknown syscall heuristics
+         * rather than get something completely wrong.  Our syscall file supports
+         * usercall numbers to get the right behavior.
+         */
+        return DRMF_SUCCESS;
+    }
     LOG(1, "Windows version is %d.%d.%d\n", ver->version, ver->service_pack_major,
         ver->service_pack_minor);
     switch (ver->version) {
@@ -232,18 +262,13 @@ drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *
     case DR_WINDOWS_VERSION_2000:  usercalls = win2k_usercall_nums;    break;
     case DR_WINDOWS_VERSION_NT:
     default:
-        return DRMF_ERROR_INCOMPATIBLE_VERSION;
+        return DRMF_WARNING_UNSUPPORTED_KERNEL;
     }
 
     /* Set up hashtable to translate usercall names to numbers */
-    hashtable_init(&usercall_table, USERCALL_TABLE_HASH_BITS,
-                   HASH_STRING, false/*!strdup*/);
     for (i = 0; i < NUM_USERCALL_NAMES; i++) {
         if (usercalls[i] != NONE) {
-            IF_DEBUG(bool ok =)
-                hashtable_add(&usercall_table, (void *)usercall_names[i],
-                              (void *)(usercalls[i] + 1/*avoid 0*/));
-            ASSERT(ok, "no dup entries in usercall_table");
+            wingdi_add_usercall(usercall_names[i], usercalls[i]);
         }
     }
 

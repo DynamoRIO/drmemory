@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -394,8 +394,59 @@ typedef struct _drsys_options_t {
     app_pc (*lookup_internal_symbol)(const module_data_t *mod, const char *sym);
     /** This is an internal-only option that is reserved for developer use. */
     bool syscall_driver;
+
+    /**
+     * Points at the path to a text file that contains system call numbers.  This is
+     * intended to provide a mechanism to support new versions of operating systems,
+     * Windows in particular, with a simple data file update.  The file is only
+     * examined if the built-in system call tables do not match the current operating
+     * system.
+     *
+     * The file format is text line-based.  The first line must contain the string
+     * "DrSyscall Number File" (#DRSYS_SYSNUM_FILE_HEADER).  The second line must
+     * contain a single integer indicating the format version
+     * (#DRSYS_SYSNUM_FILE_VERSION).  The third line contains a string indicating
+     * which system call (for Windows, it must be an ntoskrnl system call with a
+     * wrapper present in ntdll.dll) to use as the differentiator among versions.
+     * The body of the file contains lists of system calls of the format
+     * "name=number", with the number again in hexadecimal "0x" format.  Each list
+     * begins with a line "START=" with the value of the differentiator that selects
+     * that list after the "=" sign.  Each list concludes with a line "=END"
+     * (#DRSYS_SYSNUM_FILE_FOOTER).  For example:
+     *
+     *     DrSyscall Number File
+     *     1
+     *     NtGetContextThread
+     *     START=0xe5
+     *     NtBindCompositionSurface=0x1121
+     *     NtCompositionInputThread=0x1122
+     *     NtCompositionSetDropTarget=0x1123
+     *     NtUserCallNoParam.CREATEMENU=0x0
+     *     ...
+     *     =END
+     *     START=0xe6
+     *     NtBindCompositionSurface=0x1120
+     *     NtCompositionInputThread=0x1121
+     *     NtCompositionSetDropTarget=0x1122
+     *     NtUserCallNoParam.CREATEMENU=0x0
+     *     ...
+     *     =END
+     *
+     * This file is currently only honored on Windows.
+     */
+    const char *sysnum_file;
 } drsys_options_t;
 
+/** The current version of the file specified by drsys_options_t.sysnum_file. */
+#define DRSYS_SYSNUM_FILE_VERSION 1
+
+/** The header string of the file specified by drsys_options_t.sysnum_file. */
+#define DRSYS_SYSNUM_FILE_HEADER "DrSyscall Number File"
+/**
+ * The separator string indicating the end of a sequence of system call numbers in
+ * the file specified by drsys_options_t.sysnum_file.
+ */
+#define DRSYS_SYSNUM_FILE_FOOTER "=END"
 
 /** Type of iterator callbacks. */
 typedef bool (*drsys_iter_cb_t)(drsys_arg_t *arg, void *user_data);
@@ -426,7 +477,9 @@ DR_EXPORT
  * @param[in] client_id  The id of the client using drsys, as passed to dr_init().
  * @param[in] options    Allows changing the default behavior of Dr. Syscall.
  *
- * \return success code.
+ * \return success code.  The warning code #DRMF_WARNING_UNSUPPORTED_KERNEL
+ * indicates that initialization completed but that false positives are a risk
+ * due to missing information.
  */
 drmf_status_t
 drsys_init(client_id_t client_id, drsys_options_t *options);

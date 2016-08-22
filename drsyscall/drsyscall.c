@@ -2162,10 +2162,10 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
 
     if (ops->struct_size > sizeof(drsys_ops))
         return DRMF_ERROR_INCOMPATIBLE_VERSION;
-    /* once we start appending new options we'll replace this */
-    if (ops->struct_size != sizeof(drsys_ops))
-        return DRMF_ERROR_INCOMPATIBLE_VERSION;
-    memcpy(&drsys_ops, ops, sizeof(drsys_ops));
+    /* Appended fields so far are fine being the default 0 in drsys_ops so
+     * we have no reason yet to worry about an older struct.
+     */
+    memcpy(&drsys_ops, ops, ops->struct_size); /* Leave rest 0 */
 
     drmgr_register_thread_init_event(syscall_thread_init);
     drmgr_register_thread_exit_event(syscall_thread_exit);
@@ -2179,7 +2179,7 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
     systable_lock = dr_recurlock_create();
 
     res = drsyscall_os_init(drcontext);
-    if (res != DRMF_SUCCESS)
+    if (res != DRMF_SUCCESS && res != DRMF_WARNING_UNSUPPORTED_KERNEL)
         return res;
 
     /* We used to handle all the gory details of Windows pre- and
@@ -2223,7 +2223,7 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
         driver_init();
 #endif
 
-    return DRMF_SUCCESS;
+    return res;
 }
 
 DR_EXPORT

@@ -311,6 +311,14 @@ auxlib_shadow_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
  * SYSCALL HANDLING
  */
 
+#ifdef WINDOWS
+/* i#1908: we support loading numbers from a file */
+# define SYSNUM_FILE IF_X64_ELSE("syscalls_x64.txt", "syscalls_x86.txt")
+# define SYSNUM_FILE_WOW64 "syscalls_wow64.txt"
+static char sysnum_path[MAXIMUM_PATH];
+# define SYSNUM_URL "http://drmemory.org"
+#endif
+
 const char *
 get_syscall_name(drsys_sysnum_t num)
 {
@@ -647,6 +655,10 @@ void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 {
     drsys_options_t ops = { sizeof(ops), 0, };
+    drmf_status_t res;
+#ifdef WINDOWS
+    const char *sysnum_fname = is_wow64_process() ? SYSNUM_FILE_WOW64 : SYSNUM_FILE;
+#endif
     ops.analyze_unknown_syscalls = options.analyze_unknown_syscalls;
     ops.syscall_dword_granularity = options.syscall_dword_granularity;
     ops.syscall_sentinels = options.syscall_sentinels;
@@ -662,10 +674,37 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
             ops.is_register_defined = is_register_defined;
         }
     }
-    if (drsys_init(client_id, &ops) != DRMF_SUCCESS)
-        ASSERT(false, "drsys failed to init");
 
-    cls_idx_syscall = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
+#ifdef WINDOWS
+    /* i#1908: we support loading numbers from a file */
+    if (!obtain_configfile_path(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path),
+                                sysnum_fname)) {
+        ASSERT(false, "failed to compute sysnum file path");
+    } else
+        ops.sysnum_file = sysnum_path;
+#endif
+    res = drsys_init(client_id, &ops);
+#ifdef WINDOWS
+    if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
+        NOTIFY_ERROR("Running on an unsupported operating system. Please download "
+                     "%s/%s and save as %s to avoid false positives "
+                     "and other problems. If that fails, please file a bug report."
+                     "%s" NL, SYSNUM_URL, sysnum_fname, sysnum_path,
+                     options.ignore_kernel ? "" :
+                     " Re-run with -ignore_kernel to attempt continued execution.");
+        if (options.ignore_kernel)
+            res = DRMF_SUCCESS;
+        else
+            drmemory_abort();
+    }
+#endif
+    if (res != DRMF_SUCCESS) {
+        NOTIFY_ERROR("A fatal error identifying system call information occurred." NL);
+        drmemory_abort();
+    }
+
+    cls_idx_syscall =
+        drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
     ASSERT(cls_idx_syscall > -1, "unable to reserve CLS field");
 
     syscall_os_init(drcontext _IF_WINDOWS(ntdll_base));

@@ -462,7 +462,7 @@ extern int tls_idx_util;
 #ifdef DEBUG
 # define ASSERT(x, msg) do { \
     if (!(x)) { \
-        NOTIFY_ERROR("ASSERT FAILURE (thread "TIDFMT"): %s:%d: %s (%s)",  \
+        NOTIFY_ERROR("ASSERT FAILURE (thread "TIDFMT"): %s:%d: %s (%s)" NL,  \
                      (dr_get_current_drcontext() == NULL ? 0 :      \
                       dr_get_thread_id(dr_get_current_drcontext())),\
                      __FILE__,  __LINE__, #x, msg); \
@@ -477,7 +477,7 @@ extern int tls_idx_util;
          * twice which isn't a big deal \
          */ \
         assert_not_tested_printed = 1; \
-        NOTIFY("Not tested - %s @%s:%d"NL, msg, __FILE__, __LINE__); \
+        NOTIFY("Not tested - %s @%s:%d" NL, msg, __FILE__, __LINE__); \
     } \
 } while (0)
 #else
