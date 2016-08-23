@@ -3557,6 +3557,14 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN11,0},"NtCreateEnclave", UNKNOWN, RNTST, 9, },
     {{WIN11,0},"NtInitializeEnclave", UNKNOWN, RNTST, 5, },
     {{WIN11,0},"NtLoadEnclaveData", UNKNOWN, RNTST, 9, },
+    /* Added in Windows 10 1607 */
+    /* FIXME i#1750: fill in details */
+    {{WIN12,0},"NtCommitRegistryTransaction", UNKNOWN, RNTST, 2, },
+    {{WIN12,0},"NtCreateRegistryTransaction", UNKNOWN, RNTST, 4, },
+    {{WIN12,0},"NtOpenRegistryTransaction", UNKNOWN, RNTST, 3, },
+    {{WIN12,0},"NtQuerySecurityPolicy", UNKNOWN, RNTST, 6, },
+    {{WIN12,0},"NtRollbackRegistryTransaction", UNKNOWN, RNTST, 2, },
+    {{WIN12,0},"NtSetCachedSigningLevel2", UNKNOWN, RNTST, 6, },
 };
 
 #define NUM_NTDLL_SYSCALLS \

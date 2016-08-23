@@ -3161,6 +3161,19 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN11,0},"NtGdiDdDDISetHwProtectionTeardownRecovery", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN11,0},"NtGdiGetCertificateByHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN11,0},"NtGdiGetCertificateSizeByHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    /* Added in Windows 10 1607 */
+    /* FIXME i#1750: fill in details */
+    {{WIN12,0},"NtGdiCreateOPMProtectedOutput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDICheckMultiPlaneOverlaySupport3", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDIPresentMultiPlaneOverlay3", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDIQueryFSEBlock", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDIQueryProcessOfferInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDISetFSEBlock", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDITrimProcessCommitment", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiDdDDIUpdateAllocationProperty", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiGetEntry", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiGetProcessSessionFonts", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtGdiGetPublicFontTableChangeCookie", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
 
 };
 #define NUM_GDI32_SYSCALLS \

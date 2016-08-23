@@ -2505,6 +2505,29 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN11,0},"NtSetCompositionSurfaceBufferCompositionModeAndOrientation", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN11,0},"NtUserRemoveInjectionDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN11,0},"NtUserUpdateWindowTrackingInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    /* Added in Windows 10 1607 */
+    /* FIXME i#1750: fill in details */
+    {{WIN12,0},"NtDCompositionProcessChannelBatchBuffer", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtQueryCompositionSurfaceHDRMetaData", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtSetCompositionSurfaceDirectFlipState", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtSetCompositionSurfaceHDRMetaData", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserAcquireInteractiveControlBackgroundAccess", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserBroadcastThemeChangeEvent", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserEnableNonClientDpiScaling", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserGetInteractiveControlDeviceInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserGetInteractiveControlInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserGetProcessDpiAwarenessContext", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserGetQueueStatusReadonly", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserInheritWindowMonitor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserInteractiveControlQueryUsage", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserIsNonClientDpiScalingEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSendInteractiveControlHapticsReport", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSetInteractiveControlFocus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSetInteractiveCtrlRotationAngle", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSetProcessDpiAwarenessContext", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSetProcessInteractionFlags", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN12,0},"NtUserSystemParametersInfoForDpi", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))

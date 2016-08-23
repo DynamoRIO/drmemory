@@ -61,6 +61,7 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.10.1 include:
+ - Added support for Windows 10 1607.
  - Added support for loading system call numbers from a file, to make
    it easier to update for future major Windows 10 updates.
  - Added an option -ignore_kernel to attempt to continue on even when
