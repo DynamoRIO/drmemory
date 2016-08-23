@@ -357,7 +357,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
      }
     },
-    {{0,0},"NtCancelDeviceWakeupRequest", OK, RNTST, 1,
+    {{0,WINVISTA},"NtCancelDeviceWakeupRequest", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -437,7 +437,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtCreateChannel", OK, RNTST, 2,
+    {{0,WINXP},"NtCreateChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
@@ -1005,7 +1005,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,0},"NtIsSystemResumeAutomatic", OK, RNTST, 0, },
-    {{0,0},"NtListenChannel", OK, RNTST, 2,
+    {{0,WINXP},"NtListenChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(CHANNEL_MESSAGE), W},
@@ -1176,7 +1176,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {11, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtOpenChannel", OK, RNTST, 2,
+    {{0,WINXP},"NtOpenChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
@@ -1594,7 +1594,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryOleDirectoryFile", OK, RNTST, 11,
+    {{0,WINNT},"NtQueryOleDirectoryFile", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -1917,14 +1917,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(PORT_MESSAGE), R|W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
-    {{0,0},"NtReplyWaitSendChannel", OK, RNTST, 3,
+    {{0,WINXP},"NtReplyWaitSendChannel", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(CHANNEL_MESSAGE), W},
      }
     },
-    {{0,0},"NtRequestDeviceWakeup", OK, RNTST, 1,
+    {{0,WINVISTA},"NtRequestDeviceWakeup", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -1951,7 +1951,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
-    {{0,0},"NtRequestWakeupLatency", OK, RNTST, 1,
+    {{0,WINVISTA},"NtRequestWakeupLatency", OK, RNTST, 1,
      {
          {0, sizeof(LATENCY_TIME), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -2020,7 +2020,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSendWaitReplyChannel", OK, RNTST, 4,
+    {{0,WINXP},"NtSendWaitReplyChannel", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -2039,7 +2039,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(BOOT_OPTIONS), R},
      }
     },
-    {{0,0},"NtSetContextChannel", OK, RNTST, 1,
+    {{0,WINXP},"NtSetContextChannel", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -2102,7 +2102,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtSetHighWaitLowThread", OK, RNTST, 0},
+    {{0,WINNT},"NtSetHighWaitLowThread", OK, RNTST, 0},
     {{0,0},"NtSetInformationDebugObject", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2199,7 +2199,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtSetLowWaitHighThread", OK, RNTST, 0, },
+    {{0,WINNT},"NtSetLowWaitHighThread", OK, RNTST, 0, },
     {{0,0},"NtSetQuotaInformationFile", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2431,7 +2431,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtW32Call", OK, RNTST, 5,
+    {{0,WINNT},"NtW32Call", OK, RNTST, 5,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
