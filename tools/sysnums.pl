@@ -129,6 +129,7 @@ my %imm32_only = (
 my $os = 0;
 my %nums;
 my %sysnums;
+my %skip;
 
 if ($#ARGV < 0 || $ARGV[0] =~ /^-/) {
     die "Usage: $0 <prefix> <existing_table> files in platform order...\n";
@@ -145,7 +146,9 @@ my $old_os = 0;
 my @maxlen;
 
 open(IN,"<$existing") || die"Error opening $existing\n";
+my $entire_existing = "";
 while (<IN>) {
+    $entire_existing .= $_;
     if (/^$prefix/) {
         chomp;
         s/, /,/g;
@@ -219,6 +222,20 @@ while ($#ARGV >= 0) {
             next if ($prefix =~ /USER32/ && $name =~ /^NtGdi/);
             next if ($prefix =~ /GDI32/ && $name !~ /^NtGdi/);
 
+            if (!defined($nums{$name}[0])) {
+                # New syscall.
+                # For win10-1607, win32u has kernel32, user32, and gdi32 all combined,
+                # so do not duplicate entries from one to another.
+                if ($entire_existing =~ /\($name[\s,]/ ||
+                    # For new syscalls, put them in the right place
+                    ($prefix =~ /KERNEL32/ &&
+                     ($name =~ /^NtUser/ ||
+                      ($name !~ /^NtWow64Csr/ && $name !~ /Console/)))) {
+                    $skip{$name} = 1;
+                    next;
+                }
+            }
+
             if (defined($sysnums{$os,$sysnum}) &&
                 $sysnums{$os,$sysnum} ne $name) {
                 print "WARNING: duplicate for $ARGV[0]: $sysnum == ".
@@ -233,6 +250,8 @@ while ($#ARGV >= 0) {
 }
 
 foreach my $n (sort (keys %nums)) {
+    # These end up in the keys somehow so we have to skip again.
+    next if ($skip{$n});
     if ($n eq 'NtUserGetThreadDesktoa-SPECIALCASED') {
         # preserve the comment and extra entry
         $n = 'GetThreadDesktop';
