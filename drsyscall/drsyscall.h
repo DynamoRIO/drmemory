@@ -435,6 +435,8 @@ typedef struct _drsys_options_t {
      * This file is currently only honored on Windows.
      */
     const char *sysnum_file;
+    /** Whether to use internal syscall tables if they match the underlying kernel. */
+    bool skip_internal_tables;
 } drsys_options_t;
 
 /** The current version of the file specified by drsys_options_t.sysnum_file. */

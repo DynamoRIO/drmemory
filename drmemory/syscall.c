@@ -682,6 +682,7 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
         ASSERT(false, "failed to compute sysnum file path");
     } else
         ops.sysnum_file = sysnum_path;
+    ops.skip_internal_tables = !options.use_syscall_tables;
 #endif
     res = drsys_init(client_id, &ops);
 #ifdef WINDOWS

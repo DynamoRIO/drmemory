@@ -992,6 +992,33 @@ if (NOT APPLE AND NOT ARM)
       # i#1809: turn off ldmps from false pos curiosity
       "-dumpcore_mask;0x877d" OFF "")
   endif ()
+  if (WIN32)
+    # i#1908: Test using a syscall number text file by generating one and disabling
+    # our internal tables.
+    find_package(Perl)
+    if (NOT PERL_FOUND)
+      message(STATUS "Warning: perl not found: disabling syscall file tests")
+    else ()
+      # DrM looks in the bin dir:
+      set(syscall_file_path "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
+      add_custom_target(syscall_files ALL
+        DEPENDS "${syscall_file_path}/syscalls_x86.txt")
+      add_custom_command(
+        OUTPUT "${syscall_file_path}/syscalls_x86.txt"
+        DEPENDS "${PROJECT_SOURCE_DIR}/tools/mksyscalltxt.pl"
+        "${PROJECT_SOURCE_DIR}/drsyscall/drsyscall_numx.h"
+        "${PROJECT_SOURCE_DIR}/drsyscall/drsyscall_usercallx.h"
+        COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/mksyscalltxt.pl
+          ${syscall_file_path}
+        VERBATIM)
+      newtest_nobuild(syscall_file app_suite_tests
+        # Run enough tests to generate some errors w/o accurate syscall info.
+        # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
+        "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
+        "-no_use_syscall_tables;-ignore_kernel;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+        "-checklevel;1" OFF "")
+    endif (NOT PERL_FOUND)
+  endif ()
 endif ()
 
 # framework subdir is added at top level b/c wants DR cflags

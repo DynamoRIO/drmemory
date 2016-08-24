@@ -445,9 +445,6 @@ OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
 OPTION_CLIENT_BOOL(drmemscope, batch, false,
                    "Do not invoke notepad at the end",
                    "Do not launch notepad with the results file at application exit.")
-OPTION_CLIENT_BOOL(drmemscope, ignore_kernel, false,
-                   "Attempt execution on an unsupported kernel",
-                   "Continue past the normally-fatal usage error of running on an unsupported kernel version.  This risks false positives and potential tool failure due to unknown system call behavior.")
 OPTION_CLIENT_BOOL(drmemscope, summary, true,
                    "Display a summary of results to stderr",
                    "Display process startup information and a summary of errors to stderr at app exit.")
@@ -609,6 +606,12 @@ OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
 OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
                    "Ensure external processes terminated by this one exit cleanly",
                    "Ensure external processes terminated by this one exit cleanly.  Often applications forcibly terminate child processes, which can prevent proper leak checking and error and suppression summarization as well as generation of symbol and code cache files needed for performance.  When this option is enabled, every termination call to another process will be replaced with a directive to the Dr. Memory running in that process to perform a clean shutdown.  If there is no DynamoRIO-based tool in the target process, the regular termination call will be carried out.")
+OPTION_CLIENT_BOOL(drmemscope, ignore_kernel, false,
+                   "Attempt execution on an unsupported kernel",
+                   "Continue past the normally-fatal usage error of running on an unsupported kernel version.  This risks false positives and potential tool failure due to unknown system call behavior.")
+OPTION_CLIENT_BOOL(drmemscope, use_syscall_tables, true,
+                   "Use Dr. Memory's own syscall tables where possible",
+                   "On by default, this allows disabling the use of Dr. Memory's own syscall tables, in case the check for whether they match the underlying kernel is inaccurate.")
 OPTION_CLIENT_BOOL(drmemscope, coverage, false,
                    "Measure and provide code coverage information",
                    "Measure code coverage during application execution.  The resulting data is written to a separate file named with a 'drcov' prefix in the same directory as Dr. Memory's other results files.  The raw data can be turned into a human-readable format using the drcov2lcov utility.")

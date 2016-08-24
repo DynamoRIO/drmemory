@@ -730,6 +730,8 @@ drsyscall_os_init(void *drcontext)
     hashtable_init_ex(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!strdup*/, true/*synch*/, name2num_entry_free,
                       NULL, NULL);
+    if (sysnums != NULL && drsys_ops.skip_internal_tables)
+        sysnums = NULL;
     if (sysnums != NULL) {
         /* Check whether these match by spot-checking a few (we want to check
          * multiple in case some are hooked or in case an update ends up with
