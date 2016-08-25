@@ -376,8 +376,7 @@ print_prefix_to_console(void);
     IF_NOT_DRSYMS(ELOG(0, "FATAL ERROR: ")); \
     NOTIFY(__VA_ARGS__); \
     IF_DRSYMS(IF_DRMEM(ELOGF(0, f_results, __VA_ARGS__))); \
-    if (USE_MSGBOX) \
-        IF_WINDOWS(dr_messagebox(__VA_ARGS__)); \
+    IF_WINDOWS({if (USE_MSGBOX) dr_messagebox(__VA_ARGS__);})   \
 } while (0)
 #define NOTIFY_COND(cond, f, ...) do { \
     ELOGF(0, f, __VA_ARGS__); \

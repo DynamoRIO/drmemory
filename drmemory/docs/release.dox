@@ -61,7 +61,7 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.10.1 include:
- - Nothing yet: TBD.
+ - Added support for Mac OSX El Capitan.
 
 The changes between 1.10.1 and version 1.10.0 include:
  - Fixed problems with configuration directories on Android.

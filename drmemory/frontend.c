@@ -149,7 +149,7 @@ on_supported_version(void)
     if (uname(&uinfo) != 0)
         return false;
 #   define MIN_DARWIN_VERSION_SUPPORTED 11  /* OSX 10.7.x */
-#   define MAX_DARWIN_VERSION_SUPPORTED 14  /* OSX 10.9.x */
+#   define MAX_DARWIN_VERSION_SUPPORTED 15  /* OSX 10.11.x */
     return (dr_sscanf(uinfo.release, "%d", &kernel_major) == 1 &&
             kernel_major <= MAX_DARWIN_VERSION_SUPPORTED &&
             kernel_major >= MIN_DARWIN_VERSION_SUPPORTED);

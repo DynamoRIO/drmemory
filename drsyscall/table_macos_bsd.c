@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -121,6 +121,23 @@
 #endif
 #ifndef SYS_sem_destroy
 # define SYS_sem_destroy    276
+#endif
+
+/* Syscalls changed in El Capitan */
+#ifndef SYS___mac_get_lcid
+# define SYS___mac_get_lcid 391
+#endif
+#ifndef SYS___mac_get_lctx
+# define SYS___mac_get_lctx 392
+#endif
+#ifndef SYS___mac_set_lctx
+# define SYS___mac_set_lctx 393
+#endif
+#ifndef SYS_setlcid
+# define SYS_setlcid        394
+#endif
+#ifndef SYS_getlcid
+# define SYS_getlcid        395
 #endif
 
 #include "table_defines.h"

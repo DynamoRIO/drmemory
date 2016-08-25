@@ -446,7 +446,12 @@ endif ()
 
 if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
   set(cs2bug_res "cs2bug")
-  set(cs2bug_flags "")
+  # Avoid warnings on our deliberate errors
+  if (UNIX)
+    set(cs2bug_flags "-Wno-mismatched-new-delete")
+  else ()
+    set(cs2bug_flags "")
+  endif ()
 else ()
   # For /MTd and /MDd, or if on win8 (i#1161), we skip the
   # destructor mismatches, as they end up raising heap assertions
@@ -637,9 +642,9 @@ if (TOOL_DR_MEMORY)
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
     newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
   endif ()
-  if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+  if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
     # this test crashes on win8 so we only run it on older Windows
-    if (cs2bug_flags STREQUAL "")
+    if (NOT cs2bug_flags MATCHES "SKIP_MISMATCH_DTR")
       newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug.wrap")
     else ()
       # -no_replace_malloc raises unrecoverable heap errors (i#1161)
