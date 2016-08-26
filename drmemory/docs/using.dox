@@ -99,6 +99,9 @@ install using a standalone Dr. Memory package.
 Ensure your compiler is able to build 32-bit applications.  XCode by
 default is able to do so.
 
+Operating systems older than OSX 10.9 (Mavericks) are not officially
+supported.
+
 ********************
 \section sec_macos_install Installing
 

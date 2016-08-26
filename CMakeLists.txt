@@ -360,7 +360,7 @@ if (UNIX)
   else ()
     if (APPLE AND NOT CMAKE_COMPILER_IS_GNUCC)
       # Ensure our binaries can run on older OSX
-      set(EXTRA_FLAGS "-mmacosx-version-min=10.7")
+      set(EXTRA_FLAGS "-mmacosx-version-min=10.9")
     else ()
       set(EXTRA_FLAGS "")
     endif ()
