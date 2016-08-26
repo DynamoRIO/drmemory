@@ -168,8 +168,9 @@ directory as the results.txt file (compress it if large).
   <tr><td></td></tr></table></td></tr></table></td></tr></table>
 \endhtmlonly
 
-The Windows NSIS installer was created using a standard, unmodified version
-of NSIS.  The sources for NSIS can be obtained from:
+If this package contains a Windows NSIS .exe installer rather than an .msi
+installer, it was created using a standard, unmodified version of NSIS.
+The sources for NSIS can be obtained from:
 \code
   http://nsis.sourceforge.net/
 \endcode
