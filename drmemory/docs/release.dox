@@ -67,6 +67,7 @@ The changes between \TOOL_VERSION and version 1.10.1 include:
  - Added an option -ignore_kernel to attempt to continue on even when
    running on a kernel with unknown system call numbers.
  - Added support for Mac OSX El Capitan.
+ - Better international string support.
 
 The changes between 1.10.1 and version 1.10.0 include:
  - Fixed problems with configuration directories on Android.

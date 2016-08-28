@@ -364,7 +364,7 @@ should_fetch_symbols(const TCHAR *system_root, char *modpath)
      */
     char_to_tchar(modpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath));
     if (GetLongPathName(wmodpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath)) == 0) {
-        warn("GetLongPathName failed: %d", GetLastError());
+        warn("GetLongPathName failed for %s: %d", modpath, GetLastError());
     }
     /* We only fetch pdbs for system libraries.  Everything else was
      * probably built on the user's machine, so if the pdbs aren't there,

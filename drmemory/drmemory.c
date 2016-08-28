@@ -1845,7 +1845,7 @@ dr_init(client_id_t id)
     } else {
         app_base = data->start;
         app_end = data->end;
-        dr_snprintf(app_path, BUFFER_SIZE_ELEMENTS(app_path), data->full_path);
+        dr_snprintf(app_path, BUFFER_SIZE_ELEMENTS(app_path), "%s", data->full_path);
         NULL_TERMINATE_BUFFER(app_path);
         dr_free_module_data(data);
     }
