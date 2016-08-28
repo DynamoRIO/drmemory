@@ -2390,10 +2390,19 @@ handle_FsControlFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
         /* i#1827: the input struct has a BOOLEAN and thus padding */
         if (ii->arg->pre) {
             FILE_PIPE_WAIT_FOR_BUFFER *data = (FILE_PIPE_WAIT_FOR_BUFFER *) pt->sysarg[6];
+            FILE_PIPE_WAIT_FOR_BUFFER local;
             size_t data_sz = (size_t) pt->sysarg[7];
-            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)data,
-                                    offsetof(FILE_PIPE_WAIT_FOR_BUFFER, TimeoutSpecified),
-                                    "FILE_PIPE_WAIT_FOR_BUFFER Timeout+NameLength",
+            /* Timeout can be uninitialized if TimeoutSpecified is FALSE. */
+            if ((!safe_read((byte *)data, sizeof(local), &local) ||
+                 local.TimeoutSpecified) &&
+                !report_memarg_type(ii, 1, SYSARG_READ, (byte *)&data->Timeout,
+                                    sizeof(data->Timeout),
+                                    "FILE_PIPE_WAIT_FOR_BUFFER.Timeout",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)&data->NameLength,
+                                    sizeof(data->NameLength),
+                                    "FILE_PIPE_WAIT_FOR_BUFFER.NameLength",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
             if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)&data->TimeoutSpecified,

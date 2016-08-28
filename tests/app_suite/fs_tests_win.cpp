@@ -187,6 +187,11 @@ TEST(FSTests, SetIoCompletion) {
 }
 
 TEST(FSTests, NamedPipe) {
+    /* Test i#1827 */
     BOOL ret = WaitNamedPipeW(L"\\\\.\\pipe\\bogusname", 1);
+    EXPECT_EQ(ret, FALSE);
+
+    /* Test i#1891 */
+    ret = WaitNamedPipeW(L"\\\\.\\pipe\\bogusname", NMPWAIT_USE_DEFAULT_WAIT);
     EXPECT_EQ(ret, FALSE);
 }
