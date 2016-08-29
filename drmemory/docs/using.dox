@@ -367,10 +367,12 @@ request this.  These static libraries contain frame pointer optimizations
 but Dr. Memory automatically enables the \p -no_callstack_use_top_fp
 runtime option for MinGW applications.
 
-Here is a sample command line for MinGW:
+Here is a sample command line for MinGW, using the "mingw64-i686-gcc-g++:
+GCC for Win32 (i686-w64-mingw32) toolchain (C++)" Cygwin package (this is a
+32-bit compiler available for both 32-bit and 64-bit Cygwin):
 
 \verbatim
-i686-pc-mingw32-g++.exe -static-libgcc -static-libstdc++ -ggdb -o myapp.exe myfile1.cpp myfile2.cpp
+i686-w64-mingw32-g++.exe -static-libgcc -static-libstdc++ -ggdb -o myapp.exe myfile1.cpp myfile2.cpp
 \endverbatim
 
 ********************
