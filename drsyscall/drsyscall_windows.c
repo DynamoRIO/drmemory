@@ -969,7 +969,12 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
     arg->reg = DR_REG_NULL;
     switch (argnum) {
     case 0:
-        arg->reg = DR_REG_RCX;
+        /* The first arg was in rcx, but that's clobbered by OP_sysycall, so the
+         * wrapper copies it to r10.  We need to use r10 in case someone (incl
+         * our own instru) takes advantage of the dead rcx and clobbers it
+         * inside the wrapper (DRi#1901).
+         */
+        arg->reg = DR_REG_R10;
         break;
     case 1:
         arg->reg = DR_REG_RDX;
