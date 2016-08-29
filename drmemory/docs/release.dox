@@ -60,7 +60,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.10.1 include:
+The changes between \TOOL_VERSION and version 1.11.0 include:
+ - Nothing yet.
+
+The changes between version 1.11.0 and version 1.10.1 include:
  - Added support for Windows 10 1607.
  - Added support for loading system call numbers from a file, to make
    it easier to update for future major Windows 10 updates.
@@ -69,12 +72,12 @@ The changes between \TOOL_VERSION and version 1.10.1 include:
  - Added support for Mac OSX El Capitan.
  - Better international string support.
 
-The changes between 1.10.1 and version 1.10.0 include:
+The changes between version 1.10.1 and version 1.10.0 include:
  - Fixed problems with configuration directories on Android.
  - Fixed several bugs, including Windows false positives, ARM
    instrumentation issues, and VS2015 crashes.
 
-The changes between 1.10.0 and version 1.9.0 include:
+The changes between version 1.10.0 and version 1.9.0 include:
  - Added preliminary 64-bit Dr. Memory support for Windows and Linux (but
    not MacOS yet).  This does not yet include uninitialized read checking,
    so we still recommend compiling your application as 32-bit.
