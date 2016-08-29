@@ -129,11 +129,13 @@ you will need to <a href="http://drmemory.org">download the installer</a>.
 ********************
 \section sec_windows_system System Install
 
-Download the \p .exe version of Dr. Memory.  Run the downloaded file to
-launch the installer.  The installer automatically adds Dr. Memory to the
-PATH for the current user, to simplify use of the tool.  It also
-places a Dr. Memory icon on the desktop if you would like to run your
-applications under Dr. Memory by dragging and dropping.
+Download the \p .msi version of Dr. Memory and launch it to run the
+Dr. Memory installer.  The installer automatically adds Dr. Memory to the
+PATH for the current user, to simplify use of the tool (however, currently
+on Windows 10 the PATH is not propagated: manually applying an empty change
+to the PATH, or rebooting, will update the PATH for newly created shells).
+It also places a Dr. Memory icon on the desktop if you would like to run
+your applications under Dr. Memory by dragging and dropping.
 
 If you already have a prior version of Dr. Memory installed, uninstall it
 before installing a new version.  The uninstaller can be run either from

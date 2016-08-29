@@ -402,27 +402,13 @@ some bugs.  The missing features include:
  - Uninitialized read checking is not yet supported for 64-bit applications
    nor for ARM platforms.
  - Windows system call parameters are not all known, which can
-   result in false positives and false negatives, especially on Vista or
-   Windows 7+, or with code that interacts with the network.
+   result in false positives and false negatives, especially on graphical
+   applications on more recent versions of Windows.
    Often, these false positives are solely in system library code.
    Dr. Memory attempts to separate such errors into potential_errors.txt.
- - The malloc in the Cygwin C library is not yet tracked separately from
-   the Windows API malloc which can lead to false negatives.
  - Definedness is tracked at the byte level, not at the bit level,
    which when bitfields are in use can lead to false positives.
- - 64-bit uninitialized read support: we plan to add this in the future.
-   All other error types are detected in 64-bit applications.
- - 32-bit applications on 64-bit Windows have some limitations (these are
-   actually limitations of the current version of the underlying DynamoRIO
-   engine): if the app creates threads prior to image entry (as Cygwin apps
-   often do) and does not link user32.dll, Dr. Memory will not take over
-   early enough to avoid problems with the other thread(s).  On 32-bit
-   Windows this can be worked around by taking over from a parent process
-   (e.g., cmd.exe).  Instructions on how to do this will appear in an
-   upcoming version (basically you need to use DynamoRIO's drdeploy to set
-   up the child; in the future the drmemory front-end will support doing
-   that for you).
- - Multiple thread corner cases:
+ - Race corner cases:
    - Pathological races between mallocs and frees can result in Dr. Memory's
      shadow memory structures becoming mis-aligned with subsequent false
      positives.  However, such a scenario will always be preceded by
