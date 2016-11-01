@@ -682,9 +682,9 @@ OPTION_CLIENT_STRING(drmemscope, fuzz_corpus, "",
 OPTION_CLIENT_STRING(drmemscope, fuzz_corpus_out, "",
                      "Create and store the minimized corpus inputs from -fuzz_corpus to -fuzz_corpus_out",
                      "Create the minimized corpus inputs from -fuzz_corpus and dump them to the directory specified by -fuzz_corpus_out.")
-OPTION_CLIENT_BOOL(drmemscope, fuzz_bbcov, false,
-                   "Enable basic block coverage guided fuzzing. Not yet implemented.",
-                   "Enable basic block coverage guided fuzzing. Not yet implemented.")
+OPTION_CLIENT_BOOL(drmemscope, fuzz_coverage, false,
+                   "Enable basic block coverage guided fuzzing.",
+                   "Enable basic block coverage guided fuzzing for the default bit-flip based mutator.  A custom mutator that implements drfuzz_mutator_feedback must use this option to enable the coverage feedback guided mutation.")
 /* long comment includes HTML escape characters (http://www.doxygen.nl/htmlcmds.html) */
 OPTION_CLIENT_STRING(drmemscope, fuzz_target, "",
                      "Fuzz test the target program according to the specified descriptor"NL

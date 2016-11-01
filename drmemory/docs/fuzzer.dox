@@ -148,7 +148,9 @@ on each iteration.  A default mutator with a variety of options, including
 various random and sequential mutation strategies, is provided.  Dr. Memory
 exposes all of the options for Dr. Fuzz's default mutator as front-end
 options.  Please see the documentation under \ref sec_drfuzz_mutators as
-well as the -fuzz_mutator_* options listed under \ref page_options.
+well as the \p -fuzz_mutator_* options listed under \ref page_options.
+The option \p -fuzz_coverage must be specified for any custom mutator
+that implements feedback guided mutation.
 
 \section sec_dump_load Dumping and Loading Fuzz Input Data
 

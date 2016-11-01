@@ -142,6 +142,10 @@ LIB_EXPORT
  * If the meaning of \p feedback is not specified, 0 means neutral,
  * and the greater the value of \p feedback is, the more effective the last
  * mutation is.
+ *
+ * \note This function must be called to enable feedback guided mutation.
+ * For example, in Dr. Memory fuzz testing mode, the option -fuzz_coverage must
+ * be specified for any custom mutator that supports feedback guided mutation.
  */
 drmf_status_t
 LIBFUNC(drfuzz_mutator_feedback)(drfuzz_mutator_t *mutator, int feedback);

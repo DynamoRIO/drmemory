@@ -735,10 +735,9 @@ drfuzz_mutator_feedback(drfuzz_mutator_t *mutator_in, int feedback)
         return DRMF_SUCCESS;
     }
 
-    /* FIXME i#1734: take actions on mutator feedback:
-     * 1. iterate through all values of the current byte
-     * 2. use current input as base for mutation
-     */
+    /* use current input as base for future mutation */
+    if (TEST(MUTATOR_FLAG_SEED_CENTRIC, mutator->options.flags))
+        memcpy(mutator->input_seed, mutator->current_value, mutator->size);
     return DRMF_SUCCESS;
 }
 

@@ -149,7 +149,7 @@ typedef struct _fuzz_target_t {
     const char *singleton_input;
     drwrap_callconv_t callconv;
     const callconv_args_t *callconv_args;
-    bool use_bbcov;         /* use basic block coverage info for mutation */
+    bool use_coverage;      /* use basic block coverage info for mutation */
     /* fields that need fuzz_target_lock for synchronized update */
     thread_id_t tid;        /* the thread that performs fuzzing */
 } fuzz_target_t;
@@ -542,8 +542,8 @@ fuzzer_option_init()
     if (option_specified.fuzz_one_input)
         fuzzer_set_singleton_input(options.fuzz_one_input);
 
-    if (options.fuzz_bbcov)
-        fuzz_target.use_bbcov = true;
+    if (options.fuzz_coverage)
+        fuzz_target.use_coverage = true;
     fuzz_target.buffer_fixed_size = options.fuzz_buffer_fixed_size;
     fuzz_target.buffer_offset = options.fuzz_buffer_offset;
     fuzz_target.skip_initial = options.fuzz_skip_initial;
@@ -1388,7 +1388,7 @@ fuzzer_mutator_feedback(void *dcontext, generic_func_t target_pc,
                         fuzz_state_t *fuzz_state)
 {
     uint64 num_bbs;
-    if (!fuzz_target.use_bbcov ||
+    if (!fuzz_target.use_coverage ||
         drfuzz_get_target_num_bbs(target_pc, &num_bbs) != DRMF_SUCCESS)
         return;
     if (fuzz_state->repeat && (num_bbs - fuzz_state->num_bbs) > 0) {
@@ -1524,8 +1524,8 @@ pre_fuzz(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         fuzzer_mutator_init(dcontext, fuzz_state);
         if (fuzz_target.repeat_count == 0)
             goto pre_fuzz_done;
-        if (fuzz_target.use_bbcov) {
-            /* no mutation for the base input if using bbcov */
+        if (fuzz_target.use_coverage) {
+            /* no mutation for the base input if using coverage */
             goto pre_fuzz_done;
         }
         LOG(2, LOG_PREFIX" re-starting mutator\n");
