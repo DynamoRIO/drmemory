@@ -40,6 +40,7 @@
 #include "drfuzz.h"
 #include "drfuzz_internal.h"
 #include "drfuzz_mutator.h" /* default mutator */
+#include "../framework/drmf.h"
 
 #ifdef UNIX
 # include <signal.h>

@@ -37,7 +37,6 @@
 
 /* Framework-shared headers */
 #include "drmemory_framework.h"
-#include "../framework/drmf.h"
 #include "drwrap.h"
 #include "drfuzz_mutator.h" /* for drfuzz_mutator_t */
 
