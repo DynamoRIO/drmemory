@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /*
@@ -118,6 +118,8 @@ check_symbol_fetching()
     char symsrv_path[MAXIMUM_PATH];
     bool pdb_exists;
     drfront_status_t res;
+    int i;
+#   define MAX_TRIES 4
 
     if (drfront_get_absolute_path("../logs",
                                   symbol_dir, MAXIMUM_PATH) != DRFRONT_SUCCESS) {
@@ -131,7 +133,7 @@ check_symbol_fetching()
               dr_get_process_id());
 
     if (drfront_create_dir(symbol_dir) != DRFRONT_SUCCESS) {
-        fprintf(stderr, "drfront_create_dir failed\n");
+        fprintf(stderr, "drfront_create_dir |%s| failed\n", symbol_dir);
         fflush(stderr);
         dr_abort();
     }
@@ -152,12 +154,16 @@ check_symbol_fetching()
         dr_abort();
     }
 
-    /* Provide more info b/c this can fail if the test dir is moved or sthg */
-    res = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, symbol_dir,
-                                       MAXIMUM_PATH);
+    /* i#1925: the MS symbol server can be flaky, so we try several times. */
+    for (i = 0; i < MAX_TRIES; i++) {
+        res = drfront_fetch_module_symbols(SYMBOL_DLL_PATH, symbol_dir, MAXIMUM_PATH);
+        if (res == DRFRONT_SUCCESS)
+            break;
+    }
     if (res != DRFRONT_SUCCESS) {
-        fprintf(stderr, "drfront_fetch_module_symbols failed %d for |%s| in dir |%s|\n",
-               res, SYMBOL_DLL_PATH, symbol_dir);
+        /* Provide more info b/c this can fail if the test dir is moved or sthg */
+        fprintf(stderr, "drfront_fetch_module_symbols failed %d for |%s|\n",
+               res, SYMBOL_DLL_PATH);
         fflush(stderr);
         dr_abort();
     }

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -179,8 +179,9 @@ if (WIN32)
   add_dependencies(drstrace_unit_tests drsyscall)
   add_test(drstrace_unit_tests
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
-  # We increase test timeout in case of slow Internet connection
-  set_tests_properties(drstrace_unit_tests PROPERTIES TIMEOUT 120)
+  # We increase test timeout in case of slow Internet connection, esp now
+  # that we try multiple times (i#1925).
+  set_tests_properties(drstrace_unit_tests PROPERTIES TIMEOUT 240)
 
   if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     # i#1805: avoid tolower dup symbol errors
