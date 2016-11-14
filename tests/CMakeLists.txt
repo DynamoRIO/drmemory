@@ -28,6 +28,8 @@ include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 # that we do not want to fill pre-commit time with.
 option(TEST_LONG "run long set of tests")
 
+set(DEFAULT_TIMEOUT 120)
+
 # Restore global flags after all configure_DynamoRIO_client() calls.
 foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
   if ("${config}" STREQUAL "")
@@ -264,8 +266,8 @@ set(cmd_script -P "${PROJECT_BINARY_DIR}/tests/runtest.cmake")
 # whether to run the front-end with -results after the app is run.
 # The resbase arg support specifying a different .res and .out name
 # to use.
-function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resbase
-    exit_code path_append)
+function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postprocess resbase
+    exit_code path_append timeout)
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
@@ -356,9 +358,17 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
     -D exit_code:STRING=${exit_code}
     -D path_append:STRING=${path_append}
+    -D timeout:STRING=${timeout}
     # runtest.cmake will add the -profdir arg
     -D postcmd:STRING=${postcmd}
     ${cmd_script})
+  set_tests_properties(${test} PROPERTIES TIMEOUT ${timeout})
+endfunction(newtest_nobuild_allparams)
+
+function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resbase
+    exit_code path_append)
+  newtest_nobuild_allparams(${test} ${exe} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    "${postprocess}" "${resbase}" ${exit_code} "${path_append}" ${DEFAULT_TIMEOUT})
 endfunction(newtest_nobuild_ex)
 
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
@@ -978,19 +988,21 @@ if (NOT APPLE AND NOT ARM)
   else ()
     set(app_suite_ops "")
   endif ()
-  newtest_nobuild(app_suite app_suite_tests "${app_suite_ops}"
+  newtest_nobuild_allparams(app_suite app_suite_tests "${app_suite_ops}"
     "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
     # i#1309: turn off some DR debug checking to speed up the test, as it times out
     # on Dr. Heapstat w/ online symbolization.
     # i#1809: turn off ldmps from false pos curiosity
-    "-checklevel;1;-dumpcore_mask;0x877d" OFF "")
-  # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
-  set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
+    "-checklevel;1;-dumpcore_mask;0x877d" OFF "" 0 ""
+    # This test can take >120s in the suite.
+    240)
   if (TOOL_DR_MEMORY)
-    newtest_nobuild(app_suite.pattern app_suite_tests ""
+    newtest_nobuild_allparams(app_suite.pattern app_suite_tests ""
       "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
       # i#1809: turn off ldmps from false pos curiosity
-      "-dumpcore_mask;0x877d" OFF "")
+      "-dumpcore_mask;0x877d" OFF "" 0 ""
+      # This test can take >120s in the suite.
+      240)
   endif ()
   if (WIN32)
     # i#1908: Test using a syscall number text file by generating one and disabling

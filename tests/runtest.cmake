@@ -38,6 +38,7 @@
 # * exit_code = if set to "ANY", the app's exit code is ignored; else, the
 #     exit code must match the value passed in order for the test to pass.
 # * path_append = string to add to PATH before running cmd
+# * timeout = timeout value for the test
 #
 # these allow for parameterization for more portable tests (PR 544430)
 # env vars will override; else passed-in default settings will be used:
@@ -119,7 +120,11 @@ set(SLEEP_SHORT ${PERL} -e "select(undef, undef, undef, 0.1)")
 set(TIMEOUT_SHORT "100")  # *0.1 = 10 seconds
 set(TIMEOUT_SHORT_APP "200")  # *0.1 = 20 seconds
 set(SLEEP_LONG ${PERL} -e "select(undef, undef, undef, 2)")
-set(TIMEOUT_APP "120")
+if (DEFINED timeout)
+  set(TIMEOUT_APP "${timeout}")
+else ()
+  set(TIMEOUT_APP "120")
+endif ()
 
 # intra-arg space=@@ and inter-arg space=@
 set(cmd_with_at ${cmd})
@@ -683,6 +688,7 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
       -D DRMEMORY_CTEST_DR_DIR:STRING=${DRMEMORY_CTEST_DR_DIR}
       -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
       -D exit_code:STRING=0
+      -D timeout:STRING=${timeout}
       # runtest.cmake will add the -profdir arg
       -D postcmd:STRING=${postcmd}
       -P "./runtest.cmake" # CTEST_SCRIPT_NAME is not set: only for -S?
