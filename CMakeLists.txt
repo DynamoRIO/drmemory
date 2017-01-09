@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -1219,9 +1219,19 @@ else (USE_DRSYMS)
   set(client_target ${toolname})
 endif (USE_DRSYMS)
 
+macro(set_library_version target number)
+  # We only set the version/soversion on Windows to avoid many
+  # negatives (DRi#1374, DRi#2127, Android "adb push" not supporting
+  # symlinks, etc.) and very few positives on UNIX platforms.  DR's
+  # loader and the DRMF init code perform their own version checks for
+  # client compatibility.
+  if (WINDOWS)
+    set_target_properties(${target} PROPERTIES VERSION ${number})
+  endif ()
+endmacro()
+
 add_library(${client_target} SHARED ${srcs})
-set_target_properties(${client_target} PROPERTIES
-  VERSION ${TOOL_VERSION_NUMBER})
+set_library_version(${client_target} ${TOOL_VERSION_NUMBER})
 set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS
   # If we end up wanting this for other DEFINES uses above we'll have to set
   # client_target earlier.  For now we only need for the C code.

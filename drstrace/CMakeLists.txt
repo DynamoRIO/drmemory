@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -43,7 +43,7 @@ set(DynamoRIO_USE_LIBC ON)
 add_library(drstracelib SHARED ${srcs})
 
 # We share the framework version # for now
-set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
+set_library_version(drstracelib ${DRMF_VERSION_MAJOR_MINOR})
 
 if (WIN32)
   set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS
@@ -141,7 +141,7 @@ endif ()
 add_executable(drstrace ${front_srcs})
 configure_DynamoRIO_standalone(drstrace)
 target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
-set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
+set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
   get_filename_component(symfetch_name ${symfetch_path} NAME)
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS

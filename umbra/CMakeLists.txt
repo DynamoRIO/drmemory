@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -90,8 +90,7 @@ set(PREFERRED_BASE 0x78000000)
 configure_DynamoRIO_client(umbra)
 use_DynamoRIO_extension(umbra drmgr)
 use_DynamoRIO_extension(umbra drcontainers)
-set_target_properties(umbra PROPERTIES
-  VERSION ${DRMF_VERSION_MAJOR_MINOR})
+set_library_version(umbra ${DRMF_VERSION_MAJOR_MINOR})
 configure_umbra_target(umbra)
 export_umbra_target(umbra "drmgr")
 install(FILES umbra.h DESTINATION ${DRMF_INSTALL_INC})

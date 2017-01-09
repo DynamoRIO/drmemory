@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015-2016 Google, Inc.    All rights reserved.
+# Copyright (c) 2015-2017 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -90,7 +90,7 @@ add_library(drfuzz SHARED ${srcs} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 set(PREFERRED_BASE 0x79000000)
 configure_DynamoRIO_client(drfuzz)
-set_target_properties(drfuzz PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
+set_library_version(drfuzz ${DRMF_VERSION_MAJOR_MINOR})
 configure_drfuzz_target(drfuzz "drwrap" "drmgr")
 export_drfuzz_target(drfuzz "drwrap" "drmgr")
 install(FILES drfuzz.h drfuzz_mutator.h DESTINATION ${DRMF_INSTALL_INC})

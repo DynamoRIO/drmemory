@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -86,7 +86,7 @@ add_library(drsymcache SHARED ${srcs} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 set(PREFERRED_BASE 0x77800000)
 configure_DynamoRIO_client(drsymcache)
-set_target_properties(drsymcache PROPERTIES VERSION ${DRMF_VERSION_MAJOR_MINOR})
+set_library_version(drsymcache ${DRMF_VERSION_MAJOR_MINOR})
 configure_drsymcache_target(drsymcache "drmgr" "drsyms")
 export_drsymcache_target(drsymcache "drmgr" "drsyms")
 install(FILES drsymcache.h DESTINATION ${DRMF_INSTALL_INC})
