@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -291,6 +291,8 @@ mmx_test(void)
 
 /* i#1597: sub-dword xl8 sharing*/
 void xl8_share_subdword(char *undef, char *def);
+/* Test clearing sharing in slowpath */
+void xl8_share_slowpath(char *undef, char *def);
 
 static void
 sharing_test(void)
@@ -298,6 +300,7 @@ sharing_test(void)
     char undef[128];
     char def[128] = {0,};
     xl8_share_subdword(undef, def);
+    xl8_share_slowpath(undef, def);
 }
 
 int
@@ -1040,6 +1043,39 @@ GLOBAL_LABEL(FUNCNAME:)
     force_bb_i1597_backw_2_end:
         mov      cx, WORD [REG_XDX] /* restore to def */
         mov      WORD [6 + REG_XDX], cx
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME xl8_share_slowpath
+/* void xl8_share_slowpath(char *undef, char *def); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XDX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        END_PROLOG
+
+        /* Test clearing sharing in slowpath.  This gets complex!  The only way to
+         * test is to have a false negative if the xl8 is not cleared.  The reg
+         * holding the xl8 addr will point to the app pc if not cleared, so we want
+         * an app pc with 0 in its bottom 2 bits to fool the next instr into thinking
+         * its memref is defined when it's not.  But, sharing doesn't happen for
+         * sub-dword, so we have to read 4 bytes and then expand the bottom 2 bytes.
+         */
+        mov      ecx, DWORD [4 + REG_XAX]
+        lock xchg ecx, DWORD [0 + REG_XDX] /* undef => slowpath */
+        mov      eax, DWORD [0 + REG_XDX] /* propagate lock==0xf0 unless xl8 cleared */
+        movzx    eax, ax /* now 0x00==defined unless xl8 cleared */
+        cmp      eax, edx /* undef w/ proper clearing */
+
+        xor      ecx, ecx
+        mov      DWORD [0 + REG_XDX], ecx /* restore def */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP

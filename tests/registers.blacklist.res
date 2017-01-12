@@ -21,23 +21,23 @@
 #
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1306
+registers.c_asm.asm:1309
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1318
+registers.c_asm.asm:1321
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1331
+registers.c_asm.asm:1334
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1332
+registers.c_asm.asm:1335
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:609
+registers.c_asm.asm:612
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:621
+registers.c_asm.asm:624
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:634
+registers.c_asm.asm:637
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:635
+registers.c_asm.asm:638
 %endif
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes

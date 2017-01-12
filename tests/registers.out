@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -33,7 +33,7 @@ before addronly test!
 after addronly test!
 ~~Dr.M~~ ERRORS FOUND:
 ~~Dr.M~~       4 unique,     8 total unaddressable access(es)
-~~Dr.M~~      21 unique,    21 total uninitialized access(es)
+~~Dr.M~~      22 unique,    22 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
 ~~Dr.M~~       2 unique,     2 total,     30 byte(s) of leak(s)
