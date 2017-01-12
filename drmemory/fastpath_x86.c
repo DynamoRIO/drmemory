@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -36,6 +36,7 @@
 # include "alloc_drmem.h"
 # include "report.h"
 #endif
+#include "instru.h"
 #include "pattern.h"
 
 #ifdef UNIX
@@ -1791,6 +1792,11 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 (drcontext, OP_jne_short, opnd_create_instr(skip_fault)));
             PREXL8M(bb, inst, INSTR_XL8
                     (INSTR_CREATE_ud2a(drcontext), mi->xl8));
+            if (SHARING_XL8_ADDR(mi)) {
+                /* Clear address reg */
+                instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1.reg),
+                                     OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
+            }
             PRE(bb, inst, skip_fault);
             mi->need_slowpath = false;
         } else {
@@ -4580,8 +4586,6 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
     instr_t *app_inst;
     bb_saved_info_t *save;
     byte buf[5];
-    ptr_uint_t val;
-    reg_id_t reg1;
 
     /* quick check: must be preceded by jnz over load == 75 02.
      * since using ud2a now and not a fault (where we were checking
@@ -4596,8 +4600,11 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
                    BUFFER_SIZE_BYTES(buf), buf) ||
         buf[0] != CMP_OPCODE ||
         buf[2] != SHADOW_UNADDRESSABLE ||
-        buf[3] != JNZ_SHORT_OPCODE ||
-        buf[4] != UD2A_LENGTH)
+        buf[3] != JNZ_SHORT_OPCODE
+        /* We no longer check the jnz offset as the clear of the xl8 sharing
+         * is also skipped, leading to several possible offsets.
+         */
+        )
         return false;
 
     DOLOG(3, {
@@ -4623,18 +4630,9 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
     save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
     app_inst = restore_mcontext_on_shadow_fault(drcontext, raw_mc, mc, pc, save);
     instr_destroy(drcontext, app_inst);
-    reg1 = save->scratch1;
     hashtable_unlock(&bb_table);
 
     slow_path_with_mc(drcontext, mc->pc, dr_app_pc_for_decoding(mc->pc), mc);
-    /* slow_path_xl8_sharing went and wrote to spill slot under assumption
-     * return from slowpath will swap it w/ reg1
-     */
-    val = get_own_tls_value(SPILL_SLOT_1);
-    if (val != reg_get_value(reg1, mc)) {
-        set_own_tls_value(SPILL_SLOT_1, reg_get_value(reg1, mc));
-        reg_set_value(reg1, raw_mc, val);
-    }
 
     /* now resume by skipping ud2a */
     raw_mc->pc += UD2A_LENGTH;

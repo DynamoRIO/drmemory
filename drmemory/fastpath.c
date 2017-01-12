@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -50,7 +50,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
 {
     /* PR 493257: share shadow translation across multiple instrs */
     uint xl8_sharing_cnt;
-    app_pc pc, nxt_pc;
+    app_pc pc;
     bool translated = true;
     ASSERT(loc != NULL && loc->type == APP_LOC_PC, "invalid param");
     if (options.single_arg_slowpath) {
@@ -64,7 +64,6 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
         pc = loc->u.addr.pc;
     } else
         pc = loc_to_pc(loc);
-    nxt_pc = pc + inst_sz;
     xl8_sharing_cnt = (uint)(ptr_uint_t) hashtable_lookup(&xl8_sharing_table, pc);
     if (xl8_sharing_cnt > 0) {
         STATS_INC(xl8_shared_slowpath_count);
@@ -135,40 +134,16 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
         STATS_INC(xl8_shared_slowpath_instrs);
     }
 
-    /* For -single_arg_slowpath we don't want to xl8 so we always
-     * clear, assuming reg1 is scratch if not used for sharing.
+    /* We've clobbered the register holding the shared xl8 address, so we have to
+     * either restore or clear for subsequent sharers.  We end up clearing in all
+     * cases for simplicity (see the commit history for a big comment on how complex
+     * it gets to try and restore instead of just clearing).  That clear used to be
+     * done here, and it relied on writing to the spill slot xchg-ed back into the
+     * reg by the 2-step return.  Moving to drreg, we do not want to rely on spill
+     * slots being constant, and we want to eliminate the 2-step return, so we moved
+     * the reg clear to the inlined code in instrument_slowpath() where the reg to
+     * write to is known.
      */
-    if (!translated ||
-        hashtable_lookup(&xl8_sharing_table, nxt_pc) > 0) {
-        /* We're sharing w/ the next instr.  We had the addr in reg1 and we need
-         * to put it back there.  shared_slowpath will xchg slot1 w/ reg1.  We
-         * only support sharing w/ 1 memop so we ignore multiple here.
-         */
-        byte *addr;
-        byte *memref = opnd_is_null(memop) ? NULL : opnd_compute_address(memop, mc);
-        if (!ALIGNED(memref, sizeof(void*))) {
-            /* If we exited b/c unaligned, do not share => all subsequent instrs
-             * sharing this translation will exit to slowpath
-             */
-            addr = shadow_bitlevel_addr();
-        } else {
-            /* If all subsequent shared uses of this translation are stores, we
-             * can simply use shadow_translation_addr(memref) here.  But loads
-             * use an offset from the original translation: and if we're now in
-             * a new block (if we came to slowpath b/c we hit the redzone of
-             * shared addr's original block) we can't easily recover.  We could
-             * have loads update reg1 every time but that costs an extra instr
-             * in the fastpath; we could instead try to decode forward and see
-             * whether it's a load.  For now we take the simple route and
-             * disable subsequent sharing.  This will cause slowpath exits for
-             * all subsequent sharers, but we assume this first slowpath is rare
-             * enough.
-             */
-            addr = shadow_bitlevel_addr();
-        }
-        LOG(3, "slow_path_xl8_sharing for pc="PFX" addr="PFX"\n", nxt_pc, addr);
-        set_own_tls_value(SPILL_SLOT_1, (ptr_uint_t)addr);
-    }
 }
 
 /***************************************************************************

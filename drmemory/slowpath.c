@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1185,6 +1185,15 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
         }
         PRE(bb, inst, appinst);
+        /* If we entered the slowpath, we've clobbered the reg holding the address to
+         * share so we have to clear it.  Rather than slow_path_xl8_sharing() doing so,
+         * which requires a 2-step return and a fixed TLS slot to get it back into the
+         * per-call-site reg, we pay a little in inlined cache size and clear it here.
+         */
+        if (SHARING_XL8_ADDR(mi)) {
+            instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1.reg),
+                                 OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
+        }
 #else
         /* FIXME i#1726: add ARM port.  Some of the above code was
          * made cross-platform, but the per-scratch-reg code and some
