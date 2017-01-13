@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -47,6 +47,12 @@ extern reg_id_t seg_tls;
  * eflags itself (lahf+seto) here
  */
 #define SPILL_SLOT_EFLAGS_EAX SPILL_SLOT_3
+
+/* We separate the TLS slots we use to send params to the slowpath from those
+ * used for reg preservation, to make using drreg simpler.
+ */
+#define SPILL_SLOT_SLOW_PARAM SPILL_SLOT_5
+#define SPILL_SLOT_SLOW_RET   SPILL_SLOT_6
 
 int
 spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead);

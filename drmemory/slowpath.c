@@ -1173,12 +1173,12 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else {
                 instru_insert_mov_pc(drcontext, bb, inst,
                                      (r1 == SPILL_REG_NONE) ?
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_1) :
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM) :
                                      opnd_create_reg(s1->reg),
                                      decode_pc_opnd);
                 instru_insert_mov_pc(drcontext, bb, inst,
                                      (r2 == SPILL_REG_NONE) ?
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_2) :
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_RET) :
                                      opnd_create_reg(s2->reg),
                                      opnd_create_instr(appinst));
                 PRE(bb, inst, XINST_CREATE_jump(drcontext, opnd_create_pc(tgt)));
@@ -1228,16 +1228,46 @@ is_in_gencode(byte *pc)
 
 #ifdef X86 /* XXX i#1726: update for ARM */
 static void
-shared_slowpath_spill(void *drcontext, instrlist_t *ilist, int type, int slot)
+shared_slowpath_save_param(void *drcontext, instrlist_t *ilist, int type)
 {
-    if (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) {
-        PRE(ilist, NULL, INSTR_CREATE_xchg
-            (drcontext, spill_slot_opnd(drcontext, slot),
-             opnd_create_reg(DR_REG_XAX + (type - SPILL_REG_EAX))));
-    } else if (type >= SPILL_REG_EAX_DEAD && type <= SPILL_REG_EBX_DEAD) {
+    if ((type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ||
+        (type >= SPILL_REG_EAX_DEAD && type <= SPILL_REG_EBX_DEAD)) {
+        reg_id_t reg = (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ?
+            (DR_REG_XAX + (type - SPILL_REG_EAX)) :
+            (DR_REG_XAX + (type - SPILL_REG_EAX_DEAD));
+        /* Store from site-specific reg into TLS for clean call param */
         PRE(ilist, NULL, INSTR_CREATE_mov_st
-            (drcontext, spill_slot_opnd(drcontext, slot),
-             opnd_create_reg(DR_REG_XAX + (type - SPILL_REG_EAX_DEAD))));
+            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM),
+             opnd_create_reg(reg)));
+    } /* else param was put straight in tls slot */
+}
+
+static void
+shared_slowpath_save_retaddr(void *drcontext, instrlist_t *ilist, int type)
+{
+    if ((type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ||
+        (type >= SPILL_REG_EAX_DEAD && type <= SPILL_REG_EBX_DEAD)) {
+        reg_id_t reg = (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ?
+            (DR_REG_XAX + (type - SPILL_REG_EAX)) :
+            (DR_REG_XAX + (type - SPILL_REG_EAX_DEAD));
+        /* Store from site-specific reg into TLS for clean call ret */
+        PRE(ilist, NULL, INSTR_CREATE_mov_st
+            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_RET),
+             opnd_create_reg(reg)));
+    } /* else param was put straight in tls slot */
+}
+
+static void
+shared_slowpath_restore(void *drcontext, instrlist_t *ilist, int type, int slot)
+{
+    if ((type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ||
+        (type >= SPILL_REG_EAX_DEAD && type <= SPILL_REG_EBX_DEAD)) {
+        reg_id_t reg = (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) ?
+            (DR_REG_XAX + (type - SPILL_REG_EAX)) :
+            (DR_REG_XAX + (type - SPILL_REG_EAX_DEAD));
+        /* Restore app value to reg for emulation in slowpath */
+        PRE(ilist, NULL, INSTR_CREATE_mov_ld
+            (drcontext, opnd_create_reg(reg), spill_slot_opnd(drcontext, slot)));
     } /* else param was put straight in tls slot */
 }
 #endif
@@ -1264,13 +1294,11 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
     shared_slowpath_entry = pc;
     dr_insert_clean_call(drcontext, ilist, NULL,
                          (void *) slow_path, false, 2,
-                         spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                         spill_slot_opnd(drcontext, SPILL_SLOT_1));
+                         spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM),
+                         spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM));
     PRE(ilist, NULL,
         XINST_CREATE_jump_mem(drcontext, spill_slot_opnd
-                             (drcontext, whole_bb_spills_enabled() ?
-                              /* for whole-bb spills we need two-step return */
-                              SPILL_SLOT_5 : SPILL_SLOT_2)));
+                              (drcontext, SPILL_SLOT_SLOW_RET)));
     pc = instrlist_encode(drcontext, ilist, pc, false);
     instrlist_clear(drcontext, ilist);
 
@@ -1282,10 +1310,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                 /* for whole-bb, eflags is never restored here */
                 for (ef = 0; ef < (whole_bb_spills_enabled() ? 1 : SPILL_EFLAGS_NUM);
                      ef++) {
-                    instr_t *return_point = NULL;
-                    if (whole_bb_spills_enabled()) {
-                        return_point = INSTR_CREATE_label(drcontext);
-                    } else if (ef != SPILL_EFLAGS_NOSPILL) {
+                    if (!whole_bb_spills_enabled() && ef != SPILL_EFLAGS_NOSPILL) {
                         if (ef == SPILL_EFLAGS_6_EAX ||
                             ef == SPILL_EFLAGS_6_NOEAX) {
                             PRE(ilist, NULL, INSTR_CREATE_add
@@ -1300,7 +1325,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                         }
                     }
                     if (whole_bb_spills_enabled()) {
-                        shared_slowpath_spill(drcontext, ilist, r3, SPILL_SLOT_4);
+                        shared_slowpath_restore(drcontext, ilist, r3, SPILL_SLOT_4);
                     } else if (r3 != SPILL_REG3_NOSPILL) {
                         restore_reg(drcontext, ilist, NULL, SPILL_REG3_REG,
                                        spill_reg3_slot(ef == SPILL_EFLAGS_NOSPILL,
@@ -1311,7 +1336,8 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                                                        r2 >= SPILL_REG_EAX_DEAD &&
                                                        r2 <= SPILL_REG_EBX_DEAD));
                     }
-                    shared_slowpath_spill(drcontext, ilist, r2, SPILL_SLOT_2);
+                    shared_slowpath_save_retaddr(drcontext, ilist, r2);
+                    shared_slowpath_restore(drcontext, ilist, r2, SPILL_SLOT_2);
                     if (options.single_arg_slowpath) {
                         /* for jmp-to-slowpath optimization we don't have 2nd
                          * param, so pass 0 (PR 494769)
@@ -1334,71 +1360,11 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                                  OPND_CREATE_INT32(0)));
                         }
                     }
-                    shared_slowpath_spill(drcontext, ilist, r1, SPILL_SLOT_1);
-
-                    if (whole_bb_spills_enabled()) {
-                        /* we need to put the app's reg values back into the
-                         * whole-bb spill slots.  slow_path() doesn't know which
-                         * regs are being used, so we do it here via a two-step
-                         * return process.  if no regs are spilled we could
-                         * skip this: but would need to xfer from slot2 to slot5,
-                         * which would require a spill, so we don't bother.
-                         */
-                        instru_insert_mov_pc(drcontext, ilist, NULL,
-                                             spill_slot_opnd(drcontext, SPILL_SLOT_5),
-                                             opnd_create_instr(return_point));
-                    }
+                    shared_slowpath_save_param(drcontext, ilist, r1);
+                    shared_slowpath_restore(drcontext, ilist, r1, SPILL_SLOT_1);
                     PRE(ilist, NULL,
                         XINST_CREATE_jump(drcontext,
                                           opnd_create_pc(shared_slowpath_entry)));
-                    if (whole_bb_spills_enabled()) {
-                        bool tgt_in_reg;
-                        reg_id_t regtgt = REG_NULL;
-                        PRE(ilist, NULL, return_point);
-                        /* instrument_slowpath() re-arranges so the whole-bb
-                         * spills are always r1 and r2 (have to be, since using
-                         * slots 1 & 2)
-                         */
-                        if (r2 >= SPILL_REG_EAX && r2 <= SPILL_REG_EBX) {
-                            regtgt = DR_REG_XAX + (r2 - SPILL_REG_EAX);
-                            PRE(ilist, NULL,
-                                INSTR_CREATE_xchg
-                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_2),
-                                 opnd_create_reg(regtgt)));
-                            tgt_in_reg = true;
-                        } else
-                            tgt_in_reg = false;
-                        if (r1 >= SPILL_REG_EAX && r1 <= SPILL_REG_EBX) {
-                            /* we use xchg instead of mov_st to support
-                             * PR 493257 where slowpath put shared shadow addr
-                             * into slot1 and we restore it to reg1 here
-                             */
-                            PRE(ilist, NULL,
-                                INSTR_CREATE_xchg
-                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                 opnd_create_reg(DR_REG_XAX +
-                                                 (r1 - SPILL_REG_EAX))));
-                        } else if (r1 >= SPILL_REG_EAX_DEAD && r1 <= SPILL_REG_EBX_DEAD) {
-                            /* for PR 493257 we need to restore shared addr.
-                             * should we split up if many bbs don't need this?
-                             */
-                            PRE(ilist, NULL,
-                                XINST_CREATE_load
-                                (drcontext,
-                                 opnd_create_reg(DR_REG_XAX +
-                                                 (r1 - SPILL_REG_EAX_DEAD)),
-                                 spill_slot_opnd(drcontext, SPILL_SLOT_1)));
-                        }
-                        if (tgt_in_reg) {
-                            PRE(ilist, NULL,
-                                XINST_CREATE_jump_reg(drcontext, opnd_create_reg(regtgt)));
-                        } else {
-                            PRE(ilist, NULL,
-                                XINST_CREATE_jump_mem
-                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_2)));
-                        }
-                    }
-
                     if (whole_bb_spills_enabled())
                         shared_slowpath_entry_global[r1][r2][r3] = pc;
                     else
