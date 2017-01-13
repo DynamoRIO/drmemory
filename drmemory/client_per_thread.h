@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -49,7 +49,10 @@ typedef struct _cls_drmem_t {
 # endif
 #endif /* TOOL_DR_MEMORY */
 
-    /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
+    /* Was mostly used for jmp-to-slowpath optimization where we xl8
+     * to get app pc (PR 494769) which was now removed, but also used
+     * for logging.
+     */
     bool self_translating;
 
     /* for i#471 and i#1453: mem2mem via fp or mm reg heuristic */

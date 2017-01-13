@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -41,7 +41,6 @@
 
 /* we only need a little over 2 pages for whole_bb_spills_enabled(): could get
  * onto 2 pages by not emitting SPILL_REG_NONE.
- * -no_single_arg_slowpath needs only 10 pages.
  */
 #ifdef X64
 /* linux needs 14 pages, windows needs 16 pages */
@@ -153,9 +152,6 @@ extern uint slowpath_unaligned;
 extern uint slowpath_8_at_border;
 extern uint alloc_stack_count;
 extern uint delayed_free_bytes;
-extern uint app_instrs_fastpath;
-extern uint app_instrs_no_dup;
-extern uint xl8_app_for_slowpath;
 extern uint num_bbs;
 
 # ifdef X86

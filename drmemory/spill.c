@@ -408,8 +408,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
 
     /* Are we asking DR to translate just pc?  Then return true and ignore regs */
     if (cpt->self_translating) {
-        ASSERT(options.single_arg_slowpath || options.verbose >= 3,
-               "only used for single_arg_slowpath or -verbose 3+");
+        ASSERT(options.verbose >= 3, "only used for -verbose 3+");
         return true;
     }
 #endif

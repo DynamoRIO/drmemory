@@ -53,17 +53,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
     app_pc pc;
     bool translated = true;
     ASSERT(loc != NULL && loc->type == APP_LOC_PC, "invalid param");
-    if (options.single_arg_slowpath) {
-        /* We don't want to pay the xl8 cost every time so we have
-         * an additional entry for the cache pc and we only xl8 when
-         * that crosses the threshold.  This may be superior anyway since
-         * app pc can be duplicated in other bbs where it might behave
-         * differently (though seems unlikely).
-         */
-        translated = loc->u.addr.valid;
-        pc = loc->u.addr.pc;
-    } else
-        pc = loc_to_pc(loc);
+    pc = loc_to_pc(loc);
     xl8_sharing_cnt = (uint)(ptr_uint_t) hashtable_lookup(&xl8_sharing_table, pc);
     if (xl8_sharing_cnt > 0) {
         STATS_INC(xl8_shared_slowpath_count);

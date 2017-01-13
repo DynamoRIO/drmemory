@@ -858,10 +858,6 @@ OPTION_CLIENT_STRING(internal, libc_addrs, "",
 OPTION_CLIENT_BOOL(internal, check_push, true,
                    "Check that pushes are writing to unaddressable memory",
                    "Check that pushes are writing to unaddressable memory")
-OPTION_CLIENT_BOOL(internal, single_arg_slowpath, false,
-                   /* XXX: PR 494769: this feature is not yet finished */
-                   "Use single arg for jmp-to-slowpath and derive second",
-                   "Use single arg for jmp-to-slowpath and derive second")
 OPTION_CLIENT_BOOL(internal, repstr_to_loop, true,
                    "Add fastpath for rep string instrs by converting to normal loop",
                    "Add fastpath for rep string instrs by converting to normal loop")

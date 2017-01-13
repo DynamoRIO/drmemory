@@ -129,8 +129,6 @@ typedef struct _fastpath_info_t {
     reg_id_t reg3_8;
     /* is this instr using shared xl8? */
     bool use_shared;
-    /* for jmp-to-slowpath optimization (PR 494769) */
-    instr_t *appclone;
     instr_t *slow_store_retaddr;
     instr_t *slow_store_retaddr2; /* if takes 2 instrs */
     opnd_t slow_store_dst;
