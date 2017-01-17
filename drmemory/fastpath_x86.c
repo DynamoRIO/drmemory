@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -437,7 +437,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 } else
                     return false;
             } else if (opnd_is_memory_reference(mi->src[0].app)) {
-                if (memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*//*XXX i#111*/)) {
+                if (memop_ok_for_fastpath(mi->src[0].app,
+                                          false/*no 8-byte*//*XXX i#111*/)) {
                     mi->mem2mem = true;
                     return true;
                 } else
@@ -463,7 +464,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (opnd_is_reg(mi->dst[0].app)) {
             if (reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/)) {
                 mi->src[0].app = instr_get_src(inst, 1);
-                if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*//*XXX i#111*/))
+                if (!memop_ok_for_fastpath(mi->src[0].app,
+                                           false/*no 8-byte*//*XXX i#111*/))
                     return false;
                 if (!reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/))
                     mi->dst[0].app = mi->dst[0].app;
@@ -946,12 +948,12 @@ set_shadow_opnds(fastpath_info_t *mi)
     ASSERT(mi != NULL, "invalid args");
     if (opnd_is_memory_reference(mi->dst[0].app)) {
         if (mi->memsz <= 4)
-            mi->dst[0].shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+            mi->dst[0].shadow = OPND_CREATE_MEM8(mi->reg1, 0);
         else if (mi->memsz == 8)
-            mi->dst[0].shadow = OPND_CREATE_MEM16(mi->reg1.reg, 0);
+            mi->dst[0].shadow = OPND_CREATE_MEM16(mi->reg1, 0);
         else {
             ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
-            mi->dst[0].shadow = OPND_CREATE_MEM32(mi->reg1.reg, 0);
+            mi->dst[0].shadow = OPND_CREATE_MEM32(mi->reg1, 0);
         }
     } else if (mi->dst_reg != REG_NULL) {
         set_reg_shadow_opnds(mi, &mi->dst[0], mi->dst_reg);
@@ -968,12 +970,12 @@ set_shadow_opnds(fastpath_info_t *mi)
     if (opnd_is_memory_reference(mi->src[0].app)) {
         if (!options.check_uninitialized) {
             if (mi->memsz <= 4)
-                mi->src[0].shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+                mi->src[0].shadow = OPND_CREATE_MEM8(mi->reg1, 0);
             else if (mi->memsz == 8)
-                mi->src[0].shadow = OPND_CREATE_MEM16(mi->reg1.reg, 0);
+                mi->src[0].shadow = OPND_CREATE_MEM16(mi->reg1, 0);
             else {
                 ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
-                mi->src[0].shadow = OPND_CREATE_MEM32(mi->reg1.reg, 0);
+                mi->src[0].shadow = OPND_CREATE_MEM32(mi->reg1, 0);
             }
         } else if (mi->store && !mi->mem2mem) {
             /* must be alu */
@@ -990,7 +992,7 @@ set_shadow_opnds(fastpath_info_t *mi)
                 mi->src[0].shadow = opnd_create_reg(mi->reg2_16);
             else {
                 ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
-                mi->src[0].shadow = opnd_create_reg(reg_ptrsz_to_32(mi->reg2.reg));
+                mi->src[0].shadow = opnd_create_reg(reg_ptrsz_to_32(mi->reg2));
             }
         }
         mi->num_to_propagate++;
@@ -1449,14 +1451,14 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
              * regs are dead at which points, and to check assumptions
              */
             if (mi->store) {
-                base = mi->need_offs ? mi->reg3.reg : mi->reg2.reg;
+                base = mi->need_offs ? mi->reg3 : mi->reg2;
                 mark_scratch_reg_used(drcontext, bb, mi->bb,
                                       mi->need_offs ? &mi->reg3 : &mi->reg2);
             } else if (!SHARING_XL8_ADDR(mi)) {
-                base = mi->reg1.reg;
+                base = mi->reg1;
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
             } else {
-                base = mi->reg2.reg;
+                base = mi->reg2;
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             }
             /* all shadow de-refs need xl8 as Umbra uses page faults */
@@ -1476,8 +1478,8 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
                              OPND_CREATE_INT8(1)));
     } else {
         if (oi != NULL && oi->indir_size != OPSZ_NA) {
-            reg_id_t indir_tgt = reg_to_size(mi->reg3.reg, shadow_reg_indir_size(oi));
-            ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+            reg_id_t indir_tgt = reg_to_size(mi->reg3, shadow_reg_indir_size(oi));
+            ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
             load_reg_shadow_val(drcontext, bb, inst, mi, indir_tgt, oi);
             shadow_op = opnd_create_reg(indir_tgt);
@@ -1772,9 +1774,9 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             instr_destroy(drcontext, prev);
             prev = NULL;
             ASSERT((mi->store && opnd_is_base_disp(mi->dst[0].shadow) &&
-                    opnd_get_base(mi->dst[0].shadow) == mi->reg1.reg) ||
+                    opnd_get_base(mi->dst[0].shadow) == mi->reg1) ||
                    (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
-                    opnd_get_base(mi->src[0].shadow) == mi->reg1.reg),
+                    opnd_get_base(mi->src[0].shadow) == mi->reg1),
                    "assuming shadow addr is in reg1");
             /* N.B.: handle_slowpath_fault() checks for this exact sequence */
             PRE(bb, inst, INSTR_CREATE_jcc
@@ -1783,7 +1785,7 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     (INSTR_CREATE_ud2a(drcontext), mi->xl8));
             if (SHARING_XL8_ADDR(mi)) {
                 /* Clear address reg */
-                instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1.reg),
+                instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1),
                                      OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
             }
             PRE(bb, inst, skip_fault);
@@ -1876,11 +1878,11 @@ mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
 {
     scratch_reg_info_t *si = NULL;
     scratch_reg_info_t *si_local = NULL;
-    if (reg == mi->reg1.reg)
+    if (reg == mi->reg1)
         si = &mi->reg1;
-    else if (reg == mi->reg2.reg)
+    else if (reg == mi->reg2)
         si = &mi->reg2;
-    else if (reg == mi->reg3.reg)
+    else if (reg == mi->reg3)
         si = &mi->reg3;
     else
         ASSERT(false, "cannot find scratch reg");
@@ -1915,29 +1917,29 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                              OPND_CREATE_INT8((char)0xf0)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                              OPND_CREATE_INT8((char)0xfc)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                              OPND_CREATE_INT8((char)0xc0)));
     } else if (sz == 8) {
         /* check for half-undef to avoid slowpath (PR 504162) */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1, 0),
                              OPND_CREATE_INT16((short)0xff00)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1, 0),
                              OPND_CREATE_INT16((short)0x00ff)));
     } else {
         ASSERT(sz == 16 || sz == 10, "unknown memsz");
@@ -1945,37 +1947,37 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0xffffffff)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0xffff0000)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0x0000ffff)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0xff000000)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0x00ffffff)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0x000000ff)));
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1, 0),
                              OPND_CREATE_INT32((int)0xffffff00)));
     }
 }
@@ -2907,31 +2909,30 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 }
 #endif /* TOOL_DR_MEMORY */
 
-/* restores global regs but preserves mi->reg1.
- * clobbers reg2 and reg3 (so requires reg3 to be set up).
+/* Restores spilled regs for the lea but preserves mi->reg1 around it.
+ * Stores the address in reg3 (so requires reg3 to be set up).
  */
 static void
 insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
                         fastpath_info_t *mi, opnd_t memop)
 {
-    mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
-    if (mi->bb->reg1.reg != mi->reg1.reg &&
-        opnd_uses_reg(memop, mi->bb->reg1.reg))
-        insert_spill_global(drcontext, bb, inst, &mi->bb->reg1, false/*restore*/);
-    if (mi->bb->reg2.reg != mi->reg1.reg &&
-        opnd_uses_reg(memop, mi->bb->reg2.reg))
-        insert_spill_global(drcontext, bb, inst, &mi->bb->reg2, false/*restore*/);
+    IF_DEBUG(drreg_status_t res;)
+    ASSERT(mi->reg3 != DR_REG_NULL, "reg3 is not set up");
     /* mi->reg1 holds the first lea so we have to preserve it */
-    if (opnd_uses_reg(memop, mi->reg1.reg)) {
-        spill_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
-        if (mi->reg1.global)
-            insert_spill_global(drcontext, bb, inst, &mi->reg1, false/*restore*/);
-        else
-            restore_reg(drcontext, bb, inst, mi->reg1.reg, mi->reg1.slot);
-        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg, mi->reg2.reg);
-        restore_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
-    } else
-        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg, mi->reg2.reg);
+    if (opnd_uses_reg(memop, mi->reg1)) {
+        PRE(ilist, NULL, INSTR_CREATE_mov_st
+            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
+             opnd_create_reg(mi->reg1)));
+    }
+    IF_DEBUG(res =)
+        drreg_restore_app_values(drcontext, bb, inst, memop, NULL);
+    ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
+    insert_lea(drcontext, bb, inst, memop, mi->reg3, mi->reg2);
+    if (opnd_uses_reg(memop, mi->reg1)) {
+        PRE(ilist, NULL, INSTR_CREATE_mov_ld
+            (drcontext, opnd_create_reg(mi->reg1),
+             spill_slot_opnd(drcontext, SPILL_SLOT_1)));
+    }
 }
 
 /* Fast path for "normal" instructions with a single memory
@@ -2977,7 +2978,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     instr_t *marker1, *marker2;
     bool mark_defined;
 #endif
-    bool save_aflags;
 #ifdef TOOL_DR_MEMORY
     bool checked_src2 = false, checked_memsrc = false;
 #endif
@@ -2990,6 +2990,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool check_ignore_tls = true;
 #endif
     bool check_appval, need_reg3_for_appval;
+    drvector_t only_abcd;
 
     /* mi is memset to 0 so bools and pointers are false/NULL */
     mi->slowpath = INSTR_CREATE_label(drcontext);
@@ -3025,6 +3026,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* PR 425240: check just the bits involved for srcs => need a reg
              * to put offs in.  If we're not sharing we use reg1: else we need
              * a 3rd reg.
+NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should have unreserved reg1 by then
              */
             if (mi->use_shared || share_addr ||
                 /* We can only use reg1 if we can re-lea: we can't if mem op uses regs.
@@ -3054,8 +3056,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         (needs_shadow_op(inst) &&
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          (opc == OP_sar || opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0)))
+        //NOCHECKIN change to local reserve down where used
         mi->need_nonoffs_reg3 = true;
     if (mi->shadow_indir) {
+        //NOCHECKIN change to local reserve down where used
         /* We need a temp reg for indirected shadow memory */
         ASSERT(!mi->need_nonoffs_reg3, "spill overlap");
         mi->need_nonoffs_reg3 = true;
@@ -3069,40 +3073,34 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* to read the app value for and/test/or memop we need 3rd reg */
         check_appval && (mi->load || mi->store);
 
-    /* set up regs and spill info */
-    pick_scratch_regs(inst, mi,
-                      /*only pick a,b,c,d: need 8-bit for uninit or mem2mem */
-                      options.check_uninitialized || mi->mem2mem || mi->load2x,
-                      /* we need 3rd reg for temp to get offs while getting
-                       * shadow byte address, and also temp to set dest bits in
-                       * add_dst_shadow_write(); we also need to handle 2nd
-                       * memop for mem2mem or load2x.
-                       */
-                      mi->need_offs || mi->mem2mem || mi->load2x ||
-                      mi->need_offs_early || mi->need_nonoffs_reg3 ||
-                      /* to read the app value for and/test/or memop we need 3rd reg */
-                      need_reg3_for_appval,
-                      mi->need_offs || mi->need_offs_early,
-                      mi->memop,
-                      mi->mem2mem ? mi->src[0].app :
-                      (mi->load2x ? mi->src[1].app : opnd_create_null()));
-    mi->reg1_16 = reg_ptrsz_to_16(mi->reg1.reg);
-    mi->reg1_8 = reg_ptrsz_to_8(mi->reg1.reg);
-    mi->reg2_16 = reg_ptrsz_to_16(mi->reg2.reg);
-    mi->reg2_8 = reg_ptrsz_to_8(mi->reg2.reg);
-    mi->reg2_8h = reg_ptrsz_to_8h(mi->reg2.reg);
-    mi->reg3_8 = (mi->reg3.reg == REG_NULL) ? REG_NULL : reg_ptrsz_to_8(mi->reg3.reg);
+    /* set up constraints for scratch regs */
+    if (options.check_uninitialized || mi->mem2mem || mi->load2x) {
+        /* only pick a,b,c,d: need 8-bit for uninit or mem2mem */
+        drreg_init_and_fill_vector(&only_abcd, false);
+        drreg_set_vector_entry(&only_abcd, DR_REG_XAX, true);
+        drreg_set_vector_entry(&only_abcd, DR_REG_XBX, true);
+        drreg_set_vector_entry(&only_abcd, DR_REG_XCX, true);
+        drreg_set_vector_entry(&only_abcd, DR_REG_XDX, true);
+    } else
+        drreg_init_and_fill_vector(&only_abcd, true);
+
+    if (mi->use_shared || share_addr) {
+        if (mi->need_offs) /* avoid xcx for i#1590 */
+            drreg_set_vector_entry(&only_abcd, DR_REG_XCX, false);
+        reserve_shared_register(drcontext, bb, inst, &only_abcd, mi);
+        drreg_set_vector_entry(&only_abcd, DR_REG_XCX, true);
+    }
 
     /* i#1590: if our scratch regs are ecx and eax and we have sub-dword memrefs, we
      * can't share them, either w/ prior (mi->use_shared) or next (share_addr) inst.
      * XXX i#165: add whole-bb xl8-sharing analysis and measure the usage of the
      * 3rd-best scratch reg and if the extra spills+restores will be outweighed
-     * by the elimination of xl8 we should use edx or ebx as our 1st scratch.
+     * by the elimination of xl8 we should use another reg as bi->shared_reg.
      */
-    if ((mi->use_shared || share_addr) && mi->reg1.reg != mi->bb->reg1.reg) {
+    if ((mi->use_shared || share_addr) && mi->need_offs && mi->reg1 == DR_REG_XCX) {
         DOLOG(3, {
             LOG(3, "disabling sharing b/c reg1 is ");
-            opnd_disassemble(drcontext, opnd_create_reg(mi->reg1.reg),
+            opnd_disassemble(drcontext, opnd_create_reg(mi->reg1),
                              LOGFILE(PT_GET(drcontext)));
             LOG(3, "\n");
         });
@@ -3111,7 +3109,28 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         mi->use_shared = false;
         mi->bb->shared_memop = opnd_create_null();
         mi->bb->shared_disp_implicit = 0;
+        unreserve_shared_register(drcontext, bb, inst, mi->bb);
+        mi->reg1 = DR_REG_NULL;
     }
+
+    /* XXX i#1795: we're still reserving up front to minimize changes as we
+     * switch to drreg.  We should move these down below where they're used
+     * and make as local as possible.  Only reg1 that holds the address should
+     * span a bunch of code (and reg3 for 2nd address for mem2mem).
+     */
+    if (mi->reg1 == DR_REG_NULL)
+        reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg1);
+    reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg2);
+    /* we need 3rd reg for temp to get offs while getting
+     * shadow byte address, and also temp to set dest bits in
+     * add_dst_shadow_write(); we also need to handle 2nd
+     * memop for mem2mem or load2x.
+     */
+    if (mi->need_offs || mi->mem2mem || mi->load2x ||
+        mi->need_offs_early || mi->need_nonoffs_reg3 ||
+        /* to read the app value for and/test/or memop we need 3rd reg */
+        need_reg3_for_appval)
+        reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg3);
 
 #ifdef TOOL_DR_MEMORY
     /* point at the locations of shadow values for operands */
@@ -3194,28 +3213,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* leave a marker so we can insert spills once we know whether we need them */
     PRE(bb, inst, spill_location);
 
-    /* Before any of the leas, restore global spilled registers */
+    /* Before any of the leas, restore any spilled (and lazily restored) registers */
     /* not doing lea if sharing trans, and this restore will clobber shared addr */
     if (!mi->use_shared) {
-        if (mi->load || mi->store) {
-            /* XXX xref PR 494720: need a better system here.  The out-of-order
-             * top-of-bb aflags save uses xchg w/ a scratch reg if that reg
-             * has been used: but that varies based on when mark_eflags_used()
-             * is called vs mark_scratch_reg_used().  The restore here relies
-             * on mark_scratch_reg_used() having been called as well.  We won't
-             * have app correctness issues but we can get the wrong app value
-             * for our lea and exit to slowpath when we shouldn't, so we
-             * just mark reg1 and reg2 up front here since we know we'll need them.
-             */
-            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
-            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-        }
-        if (opnd_uses_reg(mi->memop, mi->bb->reg1.reg)) {
-            insert_spill_global(drcontext, bb, inst, &mi->bb->reg1, false/*restore*/);
-        }
-        if (opnd_uses_reg(mi->memop, mi->bb->reg2.reg)) {
-            insert_spill_global(drcontext, bb, inst, &mi->bb->reg2, false/*restore*/);
-        }
+        /* XXX i#1795: for ARM we'll need to change the NULL here */
+        IF_DEBUG(drreg_status_t res =)
+            drreg_restore_app_values(drcontext, bb, inst, mi->memop, NULL);
+        ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
     } else {
         ASSERT(!mi->mem2mem && !mi->load2x,
                "once share for mem2mem or load2x must spill for lea");
@@ -3223,7 +3227,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 #ifdef TOOL_DR_MEMORY
     if (!options.check_uninitialized && check_ignore_unaddr && check_ignore_tls) {
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         PRE(bb, inst,
             INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
                              OPND_CREATE_INT8(0)));
@@ -3231,6 +3235,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* i#1969: OP_jne_short does not always reach. */
             (drcontext, OP_jne, opnd_create_instr(fastpath_restore)));
         check_ignore_unaddr = false; /* can ignore from now on */
+        unreserve_aflags(drcontext, bb, inst);
     }
 #endif
 
@@ -3239,29 +3244,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (mi->use_shared && mi->memsz < 4) {
             /* i#1597: reg1 holds xl8 share, but we need addr to check dword bounds */
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-            insert_lea(drcontext, bb, inst, mi->memop, mi->reg2.reg, mi->reg3.reg);
+                insert_lea(drcontext, bb, inst, mi->memop, mi->reg2, mi->reg3);
         } else if (!mi->use_shared) { /* don't need lea if sharing trans */
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
-            insert_lea(drcontext, bb, inst, mi->memop, mi->reg1.reg, mi->reg3.reg);
+            insert_lea(drcontext, bb, inst, mi->memop, mi->reg1, mi->reg3);
         }
     }
     if (mi->mem2mem || mi->load2x) {
         opnd_t mem2 = mi->mem2mem ? mi->src[0].app : mi->src[1].app;
         insert_lea_preserve_reg(drcontext, bb, inst, mi, mem2);
-    }
-
-    /* don't need to save flags for things like rdtsc */
-    save_aflags = (!whole_bb_spills_enabled() &&
-                   (mi->load || mi->store ||
-                    mi->num_to_propagate > 0 ||
-                    mi->src_opsz != 4 ||
-#ifdef STATISTICS
-                    options.statistics ||
-#endif
-                    TESTANY(EFLAGS_READ_6, instr_get_eflags(inst, DR_QUERY_DEFAULT))));
-    /* we don't use dr_save_arith_flags so we can use seto only when necessary */
-    if (save_aflags && mi->aflags != EFLAGS_WRITE_6) {
-        insert_save_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
     }
 
     /* PR 530902: cmovcc should ignore src+dst unless eflags matches.  See full
@@ -3275,6 +3266,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc)) {
         int setcc_opc = instr_cmovcc_to_jcc(opc) - OP_jo + OP_seto;
+        //NOCHECKIN need new drreg API for this
         /* for whole-bb we have to restore and then re-save aflags.
          * optimization: we should avoid the restore+spill of eax
          */
@@ -3299,10 +3291,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_cmp(drcontext, opnd_create_shadow_eflags_slot(),
                              shadow_immed(sizeof(void*), SHADOW_DEFINED)));
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
-        ASSERT(save_aflags || whole_bb_spills_enabled(),
-               "must save aflags if instr reads eflags");
+        unreserve_aflags(drcontext, bb, inst);
     }
 #endif /* TOOL_DR_MEMORY */
 
@@ -3351,11 +3342,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         uint jcc_not_unaddr = OP_je;
 #endif
         bool check_alignment = options.check_uninitialized;
+        reserve_register(drcontext, bb, inst, NULL, &mi->reg3, mi);
         add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                 false/*val in reg1*/, false/*no offs*/, false/*no offs*/,
-                                mi->reg3.reg, mi->reg2.reg,
-                                mi->reg1.reg/*won't be touched!*/, check_alignment);
-        ASSERT(mi->reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
+                                mi->reg3, mi->reg2,
+                                mi->reg1/*won't be touched!*/, check_alignment);
 #ifdef TOOL_DR_MEMORY
         if (!options.check_uninitialized) {
             /* all shadow de-refs need xl8 as Umbra uses page faults */
@@ -3377,7 +3368,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext,
-                                 OPND_CREATE_MEM8(mi->reg3.reg, disp),
+                                 OPND_CREATE_MEM8(mi->reg3, disp),
                                  OPND_CREATE_INT8(1)));
             mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
             /* shouldn't be other srcs */
@@ -3444,7 +3435,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* cmp and avoid store can be faster than blindly storing */
             /* all shadow de-refs need xl8 as Umbra uses page faults */
             PREXL8M(bb, inst, INSTR_XL8
-                    (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
+                    (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3, 0),
                                       OPND_CREATE_INT8(0)),
                      mi->xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
@@ -3453,9 +3444,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  opnd_create_instr(fastpath_restore)));
         }
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
+            INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg3, 0),
                                 OPND_CREATE_INT8(1)));
 #endif
+        IF_DEBUG(res =)
+            drreg_unreserve_register(drcontext, bb, inst, NULL, &mi->reg3);
+        ASSERT(res == DRREG_SUCCESS, "failed to unreserve scratch reg");
     }
 
 #ifdef TOOL_DR_MEMORY
@@ -3479,7 +3473,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         bool need_value;
         /* we set mi->use_shared, share_addr, and mi->bb->shared_* above */
         IF_DEBUG(if (share_addr))
-            ASSERT(mi->reg1.reg == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
+            ASSERT(mi->reg1 == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
         need_value = options.check_uninitialized &&
             mi->load && !mi->pushpop && !share_addr;
 
@@ -3492,7 +3486,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                     true/*val in reg2*/,
                                     mi->need_offs || mi->need_offs_early,
                                     mi->zero_rest_of_offs,
-                                    mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
+                                    mi->reg1, mi->reg2, mi->reg3,
                                     check_alignment);
             /* For mi->need_offs, we assume that all uses of reg2 below are
              * low 8 bits only!
@@ -3507,7 +3501,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * deleting for now.  If address is re-used we simply won't share
              * so nothing that bad will happen.
              */
-            ASSERT(mi->reg1.reg == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
+            ASSERT(mi->reg1 == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
             diff = opnd_get_disp(mi->memop) -
                 (opnd_get_disp(mi->bb->shared_memop) + mi->bb->shared_disp_implicit);
             LOG(3, "  sharing shadow addr: disp = %d - (%d + %d) => %d /4 - %d\n",
@@ -3531,13 +3525,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 instr_t *adjust_sharing = INSTR_CREATE_label(drcontext);
                 instr_t *no_adjust_sharing = INSTR_CREATE_label(drcontext);
                 PRE(bb, inst,
-                    INSTR_CREATE_and(drcontext, opnd_create_reg(mi->reg2.reg),
+                    INSTR_CREATE_and(drcontext, opnd_create_reg(mi->reg2),
                                      /* 1-byte: check for mod 4 == 0 or 3;
                                       * 2-byte: check for mod 4 == 0,1 vs 2,3.
                                       */
                                      OPND_CREATE_INT8(mi->memsz == 2 ? 2 : 3)));
                 PRE(bb, inst,
-                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2.reg),
+                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2),
                                      OPND_CREATE_INT32(diff > 0 ?
                                                        (mi->memsz == 2 ? 0 : 0) :
                                                        (mi->memsz == 2 ? 2 : 3))));
@@ -3548,7 +3542,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_CREATE_jmp(drcontext, opnd_create_instr(no_adjust_sharing)));
                 PRE(bb, inst, adjust_sharing);
                 PRE(bb, inst,
-                    INSTR_CREATE_add(drcontext, opnd_create_reg(mi->reg1.reg),
+                    INSTR_CREATE_add(drcontext, opnd_create_reg(mi->reg1),
                                      OPND_CREATE_INT8(diff > 0 ? 1 : -1)));
                 PRE(bb, inst, no_adjust_sharing);
             }
@@ -3559,15 +3553,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             diff -= mi->bb->shared_disp_reg1;
             if (mi->load && !mi->pushpop && options.check_uninitialized) { /*want value*/
                 PREXL8M(bb, inst, INSTR_XL8
-                        (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
-                                            OPND_CREATE_MEM8(mi->reg1.reg, diff)),
+                        (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2),
+                                            OPND_CREATE_MEM8(mi->reg1, diff)),
                          mi->xl8));
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             } else {
                 mi->bb->shared_disp_reg1 += diff;
                 /* No reason to avoid eflags since will use cmp below anyway */
                 mark_eflags_used(drcontext, bb, mi->bb);
-                insert_add_to_reg(drcontext, bb, inst, mi->reg1.reg, diff);
+                insert_add_to_reg(drcontext, bb, inst, mi->reg1, diff);
             }
         }
         if (!share_addr) {
@@ -3606,8 +3600,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(mi->reg1.used && mi->reg2.used, "internal reg spill error");
         ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
         PREXL8M(bb, inst, INSTR_XL8
-                (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
-                                    OPND_CREATE_MEM8(mi->reg1.reg, 0)), mi->xl8));
+                (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2),
+                                    OPND_CREATE_MEM8(mi->reg1, 0)), mi->xl8));
     }
 
     /* check definedness of sources, if necessary.
@@ -3653,12 +3647,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                               opnd_create_instr(src2_defined)));
             if (mi->load || mi->store) {
                 /* re-lea */
-                ASSERT(mi->reg3.reg != REG_NULL, "need reg3");
+                ASSERT(mi->reg3 != REG_NULL, "need reg3");
                 ASSERT(!(mi->need_offs || mi->mem2mem || mi->load2x ||
                          mi->need_offs_early || mi->need_nonoffs_reg3),
                        "shouldn't need reg3 for any other reason");
                 insert_lea_preserve_reg(drcontext, bb, inst, mi, mi->memop);
-                app_val = opnd_create_base_disp(mi->reg3.reg, REG_NULL, 0, 0,
+                app_val = opnd_create_base_disp(mi->reg3, REG_NULL, 0, 0,
                                                 opnd_get_size(mi->memop));
             } else {
                 app_val = mi->src[0].app;
@@ -3793,7 +3787,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
-                                     opnd_create_base_disp(mi->reg2.reg, idx,
+                                     opnd_create_base_disp(mi->reg2, idx,
                                                            1, disp, OPSZ_1),
                                      OPND_CREATE_INT8(1)));
             } else {
@@ -3801,7 +3795,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
-                                     OPND_CREATE_MEM8(mi->reg2.reg, disp),
+                                     OPND_CREATE_MEM8(mi->reg2, disp),
                                      OPND_CREATE_INT8(1)));
             }
         } else {
@@ -3824,7 +3818,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else {
                 ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
                 PRE(bb, inst,
-                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2.reg),
+                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2),
                                      OPND_CREATE_INT32(SHADOW_DQWORD_DEFINED)));
             }
         }
@@ -3837,7 +3831,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             mi->need_slowpath = true;
             heap_unaddr_shadow = opnd_create_reg(mi->memsz <= 4 ? mi->reg2_8 :
                                                  (mi->memsz == 8 ? mi->reg2_16 :
-                                                  reg_ptrsz_to_32(mi->reg2.reg)));
+                                                  reg_ptrsz_to_32(mi->reg2)));
         } else {
             add_jcc_slowpath(drcontext, bb, inst,
                              check_ignore_unaddr ? (jcc_unaddr == OP_jne ? OP_jne : OP_je)
@@ -3857,7 +3851,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (options.check_push) {
                 ASSERT(mi->reg1.used, "internal reg spill error");
                 PRE(bb, inst,
-                    INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                    INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
                 add_jcc_slowpath(drcontext, bb, inst,
                                  (check_ignore_unaddr || mi->memsz < 4) ?
@@ -3897,16 +3891,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                  */
                 if (mi->need_offs) {
                     ASSERT(mi->reg3.used, "reg spill incorrect assumption");
-                    scratch = mi->reg3.reg;
+                    scratch = mi->reg3;
                 } else {
                     mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-                    scratch = mi->reg2.reg;
+                    scratch = mi->reg2;
                 }
                 PREXL8M(bb, inst, INSTR_XL8
                         (INSTR_CREATE_movzx(drcontext, opnd_create_reg(scratch),
-                                            OPND_CREATE_MEM8(mi->reg1.reg, 0)), mi->xl8));
+                                            OPND_CREATE_MEM8(mi->reg1, 0)), mi->xl8));
                 /* optimization: avoid redundant load below for mi->num_to_propagate>1 */
-                if (opnd_same(mi->src[0].shadow, OPND_CREATE_MEM8(mi->reg1.reg, 0)))
+                if (opnd_same(mi->src[0].shadow, OPND_CREATE_MEM8(mi->reg1, 0)))
                     mi->src[0].shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));
                 if (mi->memsz < 4 && mi->need_offs) {
                     /* PR 503782: check just the bytes referenced.  We've zeroed the
@@ -3955,9 +3949,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 instr_t *ok_to_write = INSTR_CREATE_label(drcontext);
                 ASSERT(mi->reg1.used, "internal reg spill error");
                 PRE(bb, inst, INSTR_CREATE_cmp
-                    (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1.reg, 0) :
-                     (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1.reg, 0) :
-                      OPND_CREATE_MEM32(mi->reg1.reg, 0)),
+                    (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1, 0) :
+                     (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1, 0) :
+                      OPND_CREATE_MEM32(mi->reg1, 0)),
                      shadow_immed(mi->memsz, SHADOW_DEFINED)));
                 /* for slow_path we do not propagate src shadow vals to dst when
                  * check_definedness, but here we always bail to slow path if
@@ -3975,9 +3969,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                      * out any byte being unaddressable so we require all-undefined
                      */
                     PRE(bb, inst, INSTR_CREATE_cmp
-                        (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1.reg, 0) :
-                         (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1.reg, 0) :
-                          OPND_CREATE_MEM32(mi->reg1.reg, 0)),
+                        (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1, 0) :
+                         (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1, 0) :
+                          OPND_CREATE_MEM32(mi->reg1, 0)),
                          shadow_immed(mi->memsz, SHADOW_UNDEFINED)));
                     add_check_partial_undefined(drcontext, bb, inst, mi, false/*dst*/,
                                                 ok_to_write);
@@ -3999,7 +3993,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         opnd_info_t dst, src;
         initialize_opnd_info(&dst);
         initialize_opnd_info(&src);
-        dst.shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+        dst.shadow = OPND_CREATE_MEM8(mi->reg1, 0);
         src.shadow = OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE);
         ASSERT(mi->reg2.used, "internal reg spill error");
         add_dst_shadow_write(drcontext, bb, inst, mi, dst, src, mi->src_opsz,
@@ -4021,20 +4015,20 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* Combine sources and write result to the dests, including eflags.
      */
 
-    if (opnd_uses_reg(mi->dst[0].shadow, mi->reg1.reg) ||
-        opnd_uses_reg(mi->src[0].shadow, mi->reg2.reg)) {
-        ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg2.reg), "scratch reg error");
-        scratch = reg_to_size(mi->reg2.reg, (mi->opsz > 8) ? OPSZ_4 :
+    if (opnd_uses_reg(mi->dst[0].shadow, mi->reg1) ||
+        opnd_uses_reg(mi->src[0].shadow, mi->reg2)) {
+        ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg2), "scratch reg error");
+        scratch = reg_to_size(mi->reg2, (mi->opsz > 8) ? OPSZ_4 :
                               ((mi->opsz == 8) ? OPSZ_2 : OPSZ_1));
         si = &mi->reg2;
     } else {
-        ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg1.reg), "scratch reg error");
-        scratch = reg_to_size(mi->reg1.reg, (mi->opsz > 8) ? OPSZ_4 :
+        ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg1), "scratch reg error");
+        scratch = reg_to_size(mi->reg1, (mi->opsz > 8) ? OPSZ_4 :
                               ((mi->opsz == 8) ? OPSZ_2 : OPSZ_1));
         si = &mi->reg1;
     }
-    scratch3 = mi->reg3.reg == REG_NULL ? REG_NULL :
-        reg_to_size(mi->reg3.reg, (mi->opsz > 8) ? OPSZ_4 :
+    scratch3 = mi->reg3 == REG_NULL ? REG_NULL :
+        reg_to_size(mi->reg3, (mi->opsz > 8) ? OPSZ_4 :
                     ((mi->opsz == 8) ? OPSZ_2 : OPSZ_1));
     if (mi->src_opsz > 4 && !mi->check_definedness/*eflags*/ &&
         mi->num_to_propagate > 0) {
@@ -4091,7 +4085,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0], mi->src_opsz,
                                mi->opsz, scratch3, &mi->reg3, true, false);
-        ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
+        ASSERT(!mi->reg3.used || mi->reg3 != REG_NULL, "spill error");
     } else {
         /* combine the N sources and then write to the dest + eflags.
          * in general we want U+D=>U, U+U=>U, and D+D=>D: so we want bitwise or.
@@ -4150,12 +4144,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                    mi->src[1].indir_size != OPSZ_NA,
                    "combining srcs w/ different sub-dword offs NYI");
             if (mi->src[1].indir_size != OPSZ_NA) {
-                ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+                ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
                 PRE(bb, inst,
-                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3.reg),
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3),
                                         mi->src[1].shadow));
-                mi->src[1].shadow = shadow_reg_indir_opnd(&mi->src[1], mi->reg3.reg);
+                mi->src[1].shadow = shadow_reg_indir_opnd(&mi->src[1], mi->reg3);
             }
             merge_src_shadows(drcontext, bb, mi, inst, mi->src[1].shadow,
                               src_val_reg, &mi->reg3);
@@ -4163,12 +4157,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 ASSERT(opnd_same(mi->src[2].offs, mi->src[0].offs),
                        "combining srcs w/ different sub-dword offs NYI");
                 if (mi->src[2].indir_size != OPSZ_NA) {
-                    ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+                    ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
                     mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
                     PRE(bb, inst,
-                        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3.reg),
+                        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3),
                                             mi->src[2].shadow));
-                    mi->src[2].shadow = shadow_reg_indir_opnd(&mi->src[2], mi->reg3.reg);
+                    mi->src[2].shadow = shadow_reg_indir_opnd(&mi->src[2], mi->reg3);
                 }
                 merge_src_shadows(drcontext, bb, mi, inst, mi->src[2].shadow,
                                   src_val_reg, &mi->reg3);
@@ -4177,12 +4171,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
                                mi->src_opsz, mi->opsz, scratch3, &mi->reg3,
                                true, alu_uncombined);
-        ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
+        ASSERT(!mi->reg3.used || mi->reg3 != REG_NULL, "spill error");
 
         /* FIXME: for insert_shadow_op() for shifts, need to
          * either do the bitwise or into mi->reg1_8, then call:
          *   insert_shadow_op(drcontext, bb, inst, mi->reg1_8,
-         *                    reg_ptrsz_to_8h(mi->reg1.reg));
+         *                    reg_ptrsz_to_8h(mi->reg1));
          * and then store into dst_reg?  lots of work if not a shift, so have
          * insert_shadow_op() handle both mem8 or reg8?
          */
@@ -4190,7 +4184,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #else /* TOOL_DR_MEMORY */
     add_shadow_table_lookup(drcontext, bb, inst, mi, false/*addr not value*/,
                             false, false/*!need_offs*/, false/*!zero_rest*/,
-                            mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
+                            mi->reg1, mi->reg2, mi->reg3,
                             true/*check_alignment*/);
     ASSERT(mi->reg1_8 != REG_NULL && mi->reg1.used, "reg spill error");
     /* shadow lookup left reg1 holding address */
@@ -4199,7 +4193,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* cmp and avoid store can be faster than blindly storing */
         /* all shadow de-refs need xl8 as Umbra uses page faults */
         PREXL8M(bb, inst, INSTR_XL8
-                (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                                   OPND_CREATE_INT8(0)),
                  mi->xl8));
         mark_eflags_used(drcontext, bb, mi->bb);
@@ -4209,7 +4203,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              opnd_create_instr(fastpath_restore)));
     }
     PRE(bb, inst,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                             OPND_CREATE_INT8(1)));
 #endif /* TOOL_DR_MEMORY */
 
@@ -4371,6 +4365,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst, mi->slowpath);
     }
     PRE(bb, inst, nextinstr);
+    drvector_delete(&only_abcd);
 }
 
 /***************************************************************************

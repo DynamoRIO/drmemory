@@ -816,7 +816,8 @@ OPTION_CLIENT_BOOL(internal, loads_use_table, true,
 OPTION_CLIENT_BOOL(internal, stores_use_table, true,
                    "Use a table lookup to stay on fastpath",
                    "Use a table lookup to check store addressability and stay on fastpath more often")
-OPTION_CLIENT(internal, num_spill_slots, uint, 6, 0, 16,
+/* The shared esp fastpath uses 3 slots.  Shared slowpath uses 2. */
+OPTION_CLIENT(internal, num_spill_slots, uint, 3, 0, 16,
               "How many of our own spill slots to use",
               "How many of our own spill slots to use")
 OPTION_CLIENT_BOOL(internal, check_ignore_unaddr, true,

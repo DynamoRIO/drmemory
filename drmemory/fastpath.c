@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -443,6 +443,95 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
     return true;
 }
 #endif
+
+void
+fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
+{
+    instr_t *inst = instrlist_first(bb);
+#ifdef DEBUG
+    /* We look at instr pc, not the tag, to handle displaced code such
+     * as for the vsyscall hook.
+     */
+    app_pc prev_pc = instr_get_app_pc(instrlist_first_app(bb));
+    ASSERT(prev_pc != NULL, "bb first app pc must not be NULL");
+    /* i#260 and i#1466: bbs must be contiguous */
+    if (inst != NULL && whole_bb_spills_enabled() &&
+        /* bi->is_repstr_to_loop is set in app2app and may mess up the instr pc */
+        !bi->is_repstr_to_loop) {
+        for (; inst != NULL; inst = instr_get_next_app(inst)) {
+            app_pc cur_pc = instr_get_app_pc(inst);
+            if (cur_pc == NULL)
+                continue;
+            /* relax the check here instead of "cur_pc == prev_pc + instr_length"
+             * to allow client adding fake app instr
+             */
+            ASSERT(cur_pc >= prev_pc, "bb is not contiguous");
+            prev_pc = cur_pc;
+        }
+        inst = instrlist_first(bb);
+    }
+#endif
+    bi->shared_reg = DR_REG_NULL;
+}
+
+void
+fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
+                      bb_info_t *bi, bool added_instru, bool translating,
+                      bool check_ignore_unaddr)
+{
+    bb_saved_info_t *save;
+    ASSERT(!added_instru || instrlist_first(bb) != NULL, "can't add instru w/o instrs");
+
+    if (!translating) {
+        /* Add to table so we can restore on slowpath or a fault */
+        save = (bb_saved_info_t *) global_alloc(sizeof(*save), HEAPSTAT_PERBB);
+        memset(save, 0, sizeof(*save));
+        /* We store the pc of the last instr, since everything is restored
+         * already (and NOT present in our tls slots) if have a fault in that
+         * instr: unless it's a transformed repstr, in which case the final
+         * OP_loop won't fault, so a fault will be before the restores (i#532).
+         */
+        if (bi->is_repstr_to_loop)
+            save->last_instr = NULL;
+        else
+            save->last_instr = bi->last_app_pc;
+        /* i#1466: remember the first_restore_pc for restore state in pattern mode */
+        save->first_restore_pc = bi->first_restore_pc;
+        save->check_ignore_unaddr = check_ignore_unaddr;
+        /* i#826: share_xl8_max_diff can change, save it. */
+        save->share_xl8_max_diff = bi->share_xl8_max_diff;
+        /* store style of instru rather than ask DR to store xl8.
+         * XXX DRi#772: could add flush callback and avoid this save
+         */
+        save->pattern_4byte_check_only = bi->pattern_4byte_check_only;
+
+        /* we store the size and assume bbs are contiguous so we can free (i#260) */
+        ASSERT(bi->first_app_pc != NULL, "first instr should have app pc");
+        ASSERT(bi->last_app_pc != NULL, "last instr should have app pc");
+        if (bi->is_repstr_to_loop) /* first is +1 hack */
+            bi->first_app_pc = bi->last_app_pc;
+        else {
+            ASSERT(bi->last_app_pc >= bi->first_app_pc,
+                   "bb should be contiguous w/ increasing pcs");
+        }
+        save->bb_size = decode_next_pc(drcontext, bi->last_app_pc) - bi->first_app_pc;
+
+        /* PR 495787: Due to non-precise flushing we can have a flushed bb
+         * removed from the htables and then a new bb created before we received
+         * the deletion event.  We can't tell this apart from duplication due to
+         * thread-private copies: but this mechanism should handle that as well,
+         * since our saved info should be deterministic and identical for each
+         * copy.  Note that we do not want a new "unreachable event" b/c we need
+         * to keep our bb info around in case the semi-flushed bb hits a fault.
+         */
+        hashtable_lock(&bb_table);
+        bb_save_add_entry(tag, save);
+        hashtable_unlock(&bb_table);
+    }
+
+    if (options.pattern == 0)
+        unreserve_shared_register(drcontext, bb, instrlist_last(bb), bi);
+}
 
 /***************************************************************************
  * For PR 578892: fastpath heap routine unaddr accesses

@@ -28,7 +28,7 @@
 #include "drmemory.h"
 #include "slowpath.h"
 #include "spill.h"
-#include "fastpath.h"
+//NOCHECKIN: prob don't need anymore? #include "fastpath.h"
 #include "stack.h"
 #include "stack_arch.h"
 #include "shadow.h"
@@ -258,6 +258,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     if (options.shared_slowpath) {
         instr_t *retaddr = INSTR_CREATE_label(drcontext);
+        //NOCHECKIN port to drreg
         scratch_reg_info_t si1 = {
             ESP_SLOW_SCRATCH1, true, false, false, REG_NULL, SPILL_SLOT_1
         };
@@ -400,8 +401,8 @@ handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
 /* Inserts stack zeroing loop for -leaks_only */
 static void
 insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    bb_info_t *bi, fastpath_info_t *mi, reg_id_t reg_mod,
-                    esp_adjust_t type, instr_t *retaddr, bool eflags_live)
+                    bb_info_t *bi, reg_id_t reg_scratch, reg_id_t reg_mod,
+                    esp_adjust_t type, instr_t *retaddr)
 {
     instr_t *loop_repeat = INSTR_CREATE_label(drcontext);
     /* since we statically know we don't need slowpath (even if unaligned:
@@ -409,12 +410,9 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
      * direction and don't need address translation, the loop is small
      * enough to inline
      */
-    if (whole_bb_spills_enabled())
-        mark_eflags_used(drcontext, bb, bi);
-    else if (eflags_live)
-        insert_save_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
+    reserve_aflags(drcontext, bb, inst);
     PRE(bb, inst,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg1.reg),
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg_scratch),
                             opnd_create_reg(REG_XSP)));
     ASSERT(type != ESP_ADJUST_RET_IMMED, "ret ignored for -leaks_only");
     if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_ABSOLUTE_POSTPOP &&
@@ -422,7 +420,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* calculate the end of the loop */
         PRE(bb, inst,
             INSTR_CREATE_add(drcontext, opnd_create_reg(reg_mod),
-                             opnd_create_reg(mi->reg1.reg)));
+                             opnd_create_reg(reg_scratch)));
     }
     /* only zero if allocating stack, not when deallocating */
     PRE(bb, inst,
@@ -444,10 +442,10 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP ||
         type == ESP_ADJUST_AND/*abs passed to us*/) {
         PRE(bb, inst,
-            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi->reg1.reg),
+            INSTR_CREATE_sub(drcontext, opnd_create_reg(reg_scratch),
                              opnd_create_reg(reg_mod)));
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg1.reg),
+            INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg_scratch),
                              OPND_CREATE_INT32(options.stack_swap_threshold)));
 #ifdef STATISTICS
         if (options.statistics) {
@@ -471,16 +469,16 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif
         /* Restore xsp to reg1 */
         PRE(bb, inst,
-            INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg1.reg),
+            INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg_scratch),
                                 opnd_create_reg(REG_XSP)));
     }
 
     PRE(bb, inst, loop_repeat);
     PRE(bb, inst,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi->reg1.reg),
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg_scratch),
                          OPND_CREATE_INT8(4)));
     PRE(bb, inst,
-        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg1.reg),
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg_scratch),
                          opnd_create_reg(reg_mod)));
     PRE(bb, inst,
         INSTR_CREATE_jcc(drcontext, OP_jb_short, opnd_create_instr(retaddr)));
@@ -488,14 +486,13 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
      * in handle_zeroing_fault()
      */
     PREXL8M(bb, inst,
-            INSTR_XL8(INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+            INSTR_XL8(INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(reg_scratch, 0),
                                           OPND_CREATE_INT32(0)),
                       instr_get_app_pc(inst)));
     PRE(bb, inst,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(loop_repeat)));
     PRE(bb, inst, retaddr);
-    if (eflags_live)
-        insert_restore_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
+    unreserve_aflags(drcontext, bb, inst);
 }
 
 /* Instrument an esp modification that is not also a read or write
@@ -511,11 +508,10 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     int opc = instr_get_opcode(inst);
     opnd_t arg;
     instr_t *retaddr;
-    fastpath_info_t mi;
     bool negate = false;
     bool eflags_live;
     esp_adjust_t type = get_esp_adjust_type(inst, false/*!mangled*/);
-    reg_id_t reg_mod;
+    reg_id_t reg1, reg2, reg_mod;
     instr_t *skip;
 
     if (!needs_esp_adjust(inst, sp_action))
@@ -549,66 +545,45 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi, sp_action);
     }
 
-    memset(&mi, 0, sizeof(mi));
-    mi.bb = bi;
-
     skip = INSTR_CREATE_label(drcontext);
     if (opc_is_cmovcc(opc))
         instrument_esp_cmovcc_adjust(drcontext, bb, inst, skip, bi);
 
     /* set up regs and spill info */
     if (sp_action == SP_ADJUST_ACTION_ZERO) {
-        pick_scratch_regs(inst, &mi, false/*anything*/, false/*2 args only*/,
-                          false/*3rd must be ecx*/, arg, opnd_create_null());
-        reg_mod = mi.reg2.reg;
-        mark_scratch_reg_used(drcontext, bb, bi, &mi.reg2);
-        insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, true/*save*/, false);
+        reserve_register(drcontext, ilist, app, NULL, &reg1, NULL);
+        reserve_register(drcontext, ilist, app, NULL, &reg_mod, NULL);
     } else {
-        /* we can't have ecx using SPILL_SLOT_EFLAGS_EAX since shared fastpath
-         * will use it, so we communicate that via mi.eax.
-         * for whole_bb_spills_enabled() we also have to rule out eax, since
-         * shared fastpath assumes edx, ebx, and ecx are the scratch regs.
-         * FIXME: opt: we should we xchg w/ whole-bb like we do for esp slowpath:
-         * then allow eax and xchg w/ it.  Must be careful about spill
-         * ordering w/ arg retrieval if arg uses regs.
-         */
-        mi.eax.used = true;
-        mi.eax.dead = false;
-        pick_scratch_regs(inst, &mi, true/*must be abcd*/, true/*need 3rd reg*/,
-                          true/*3rd must be ecx*/, arg,
-                          opnd_create_reg(DR_REG_XAX)/*no eax*/);
-        reg_mod = mi.reg3.reg;
-        ASSERT(mi.reg3.reg == DR_REG_XCX, "shared_esp_fastpath reg error");
-        ASSERT((mi.reg2.reg == DR_REG_XBX && mi.reg1.reg == DR_REG_XDX) ||
-               (mi.reg2.reg == DR_REG_XDX && mi.reg1.reg == DR_REG_XBX),
+        drvector_t allowed;
+        drreg_init_and_fill_vector(&allowed, false);
+        drreg_set_vector_entry(&allowed, DR_REG_XBX, true);
+        drreg_set_vector_entry(&allowed, DR_REG_XDX, true);
+        reserve_register(drcontext, ilist, app, &allowed, &reg1, NULL);
+        reserve_register(drcontext, ilist, app, &allowed, &reg2, NULL);
+        ASSERT((reg2 == DR_REG_XBX && reg1 == DR_REG_XDX) ||
+               (reg2 == DR_REG_XDX && reg1 == DR_REG_XBX),
                "shared_esp_fastpath reg error");
-        mark_scratch_reg_used(drcontext, bb, bi, &mi.reg3);
-        insert_spill_or_restore(drcontext, bb, inst, &mi.reg3, true/*save*/, false);
-        if (whole_bb_spills_enabled())
-            mark_eflags_used(drcontext, bb, bi);
+        drreg_set_vector_entry(&allowed, DR_REG_XBX, false);
+        drreg_set_vector_entry(&allowed, DR_REG_XDX, false);
+        drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
+        reserve_register(drcontext, ilist, app, &allowed, &reg_mod, NULL);
+        drvector_delete(&allowed);
+        ASSERT(reg_mod == DR_REG_XCX, "shared_esp_fastpath reg error");
+        reserve_aflags(drcontext, ilist, app);
     }
-    eflags_live = (!whole_bb_spills_enabled() && mi.aflags != EFLAGS_WRITE_6);
-    if (sp_action != SP_ADJUST_ACTION_ZERO) {
-        ASSERT(!eflags_live || mi.reg3.slot != SPILL_SLOT_EFLAGS_EAX,
-               "shared_esp_fastpath slot error");
-    }
-    /* for whole-bb we can't use the SPILL_SLOT_EFLAGS_EAX */
-    ASSERT(!whole_bb_spills_enabled() || !eflags_live, "eflags spill conflict");
 
     retaddr = INSTR_CREATE_label(drcontext);
 
-    if (whole_bb_spills_enabled() && !opnd_is_immed_int(arg)) {
-        /* restore from spill slot so we read app values for arg */
-        if (opnd_uses_reg(arg, bi->reg1.reg)) {
-            insert_spill_global(drcontext, bb, inst, &bi->reg1, false/*restore*/);
-        } else if (opnd_uses_reg(arg, bi->reg2.reg)) {
-            insert_spill_global(drcontext, bb, inst, &bi->reg2, false/*restore*/);
-        }
+    if (!opnd_is_immed_int(arg)) {
+        /* restore from spill slots so we read app values for arg */
+        /* XXX i#1795: for ARM we'll need to change the NULL here */
+        IF_DEBUG(drreg_status_t res =)
+            drreg_restore_app_values(drcontext, bb, inst, arg, NULL);
+        ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
+        //NOCHECKIN how prevent clobbering bi->shared_reg?  how prevented before?
+        ASSERT(bi->shared_reg == DR_REG_NULL || !opnd_uses_reg(arg, bi->shared_reg),
+               "xl8 sharing vs esp fastpath conflict");
     }
-
-    mark_scratch_reg_used(drcontext, bb, bi, &mi.reg1);
-    if (sp_action != SP_ADJUST_ACTION_ZERO)
-        mark_scratch_reg_used(drcontext, bb, bi, &mi.reg2);
 
     /* get arg first in case it uses another reg we're going to clobber */
     if (opc == OP_lea) {
@@ -638,8 +613,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, true/*save*/, false);
     if (sp_action == SP_ADJUST_ACTION_ZERO) {
-        insert_zeroing_loop(drcontext, bb, inst, bi, &mi, reg_mod, type,
-                            retaddr, eflags_live);
+        insert_zeroing_loop(drcontext, bb, inst, bi, &mi, reg_mod, type, retaddr);
     } else {
         /* should we trade speed for space and move this spill/restore into
          * shared_fastpath? then need to nail down which of reg2 vs reg1 is which.
@@ -654,17 +628,17 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX, "sp_action OOB");
         PRE(bb, inst,
             INSTR_CREATE_jmp(drcontext,
-                             opnd_create_pc(shared_esp_fastpath
-                                            [sp_action]
-                                            /* don't trust true always being 1 */
-                                            [eflags_live ? 1 : 0]
-                                            [type])));
+                             opnd_create_pc(shared_esp_fastpath[sp_action][type])));
         PRE(bb, inst, retaddr);
     }
 
-    insert_spill_or_restore(drcontext, bb, inst, &mi.reg3, false/*restore*/, false);
-    insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, false/*restore*/, false);
-    insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, false/*restore*/, false);
+    unreserve_register(drcontext, ilist, app, reg1, NULL);
+    unreserve_register(drcontext, ilist, app, reg_mod, NULL);
+    if (sp_action != SP_ADJUST_ACTION_ZERO) {
+        unreserve_register(drcontext, ilist, app, reg2, NULL);
+        unreserve_aflags(drcontext, ilist, app);
+    }
+
     PRE(bb, inst, skip);
     return true;
 }
@@ -674,11 +648,16 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
  */
 void
 generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
-                                    bool eflags_live,
                                     sp_adjust_action_t sp_action,
                                     esp_adjust_t type)
 {
-    fastpath_info_t mi;
+    /* XXX: pre-drreg we had a "bool eflags_live" dimension to avoid spilling
+     * when dead.  It's hard to do that with drreg without requiring an extra
+     * TLS slot among our own (to avoid drreg conflicts) so we switched to
+     * asking drreg to reserve aflags inline.  This shouldn't be much overhead
+     * as often aflags are already reserved within the bb.
+     */
+    instr_t *slowpath;
     instr_t *loop_push, *loop_done, *restore;
     instr_t *loop_next_shadow, *loop_shadow_lookup, *shadow_lookup;
     instr_t *pop_one_block, *push_one_block;
@@ -706,6 +685,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     ASSERT(type != ESP_ADJUST_ABSOLUTE_POSTPOP || BEYOND_TOS_REDZONE_SIZE == 0,
            "handling OP_leave properly with a stack redzone in fastpath is NYI");
 
+    reg_id_t reg1 = DR_REG_XDX;
+    reg_id_t reg2 = DR_REG_XBX;
+    reg_id_t reg3 = DR_REG_XCX;
+
+    slowpath = INSTR_CREATE_label(drcontext);
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);
     push_one_done = INSTR_CREATE_label(drcontext);
@@ -721,21 +705,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     pop_one_block = INSTR_CREATE_label(drcontext);
     push_one_block = INSTR_CREATE_label(drcontext);
 
-    memset(&mi, 0, sizeof(mi));
-    mi.slowpath = INSTR_CREATE_label(drcontext);
-    /* we do not optimize for OF */
-    mi.aflags = (!eflags_live ? 0 : EFLAGS_WRITE_6);
-    mi.eax.reg = DR_REG_XAX;
-    mi.eax.used = true;
-    mi.eax.dead = false;
-    mi.eax.xchg = REG_NULL;
-    /* for whole-bb we shouldn't end up using this spill slot */
-    mi.eax.slot = SPILL_SLOT_EFLAGS_EAX;
-    mi.reg1.reg = DR_REG_XDX;
-    mi.reg2.reg = DR_REG_XBX;
-    mi.reg3.reg = DR_REG_XCX;
-    mi.memsz = 4;
-
     /* save the 2 args for retrieval at end */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st
@@ -746,8 +715,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)),
          opnd_create_reg(DR_REG_XDX))); /* holds retaddr */
 
-    if (eflags_live)
-        insert_save_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
     /* spilling eax is a relic from when I had rep_stos here, but it
      * works well as a 3rd scratch reg so I'm leaving it: before I had
      * to do some local spills below anyway so same amount of mem traffic
@@ -758,12 +725,12 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 
     /* the initial address to look up in the shadow table is cur esp */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg1.reg),
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg1),
                             opnd_create_reg(DR_REG_XSP)));
     if (type == ESP_ADJUST_RET_IMMED) {
         /* pop of retaddr happens first (handled in definedness routines) */
         PRE(bb, NULL,
-            INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg),
+            INSTR_CREATE_add(drcontext, opnd_create_reg(reg1),
                              OPND_CREATE_INT8(4)));
     }
 
@@ -771,18 +738,18 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP ||
         type == ESP_ADJUST_AND/*abs passed to us*/) {
         PRE(bb, NULL,
-            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
-                             opnd_create_reg(mi.reg1.reg)));
+            INSTR_CREATE_sub(drcontext, opnd_create_reg(reg3),
+                             opnd_create_reg(reg1)));
         /* Treat as a stack swap if a large change.
          * We assume a swap would not happen w/ a relative adjustment.
          */
         PRE(bb, NULL,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg3.reg),
+            INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3),
                              OPND_CREATE_INT32(options.stack_swap_threshold)));
         /* We need to verify whether it's a real swap */
         add_jcc_slowpath(drcontext, bb, NULL, OP_jg/*short doesn't reach*/, &mi);
         PRE(bb, NULL,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg3.reg),
+            INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3),
                              OPND_CREATE_INT32(-options.stack_swap_threshold)));
         /* We need to verify whether it's a real swap */
         add_jcc_slowpath(drcontext, bb, NULL, OP_jl/*short doesn't reach*/, &mi);
@@ -790,11 +757,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 
     /* Ensure the size is 4-aligned so our loop works out */
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3),
                           OPND_CREATE_INT32(0x3)));
     add_jcc_slowpath(drcontext, bb, NULL, OP_jnz/*short doesn't reach*/, &mi);
     /* div by 4 */
-    PRE(bb, NULL, INSTR_CREATE_sar(drcontext, opnd_create_reg(mi.reg3.reg),
+    PRE(bb, NULL, INSTR_CREATE_sar(drcontext, opnd_create_reg(reg3),
                                    OPND_CREATE_INT8(2)));
 
     PRE(bb, NULL, loop_shadow_lookup);
@@ -802,24 +769,24 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      * instead of decrementing the translation
      */
     PRE(bb, NULL,
-        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg3.reg), OPND_CREATE_INT32(0)));
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT32(0)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jg_short, opnd_create_instr(shadow_lookup)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_je, opnd_create_instr(loop_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT8(4)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT8(4)));
     PRE(bb, NULL, shadow_lookup);
     /* for looping back through the xl8 addr is not DR_REG_XSP so we cannot recover
      * it and must preserve across the table lookup in eax
      */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX),
-                            opnd_create_reg(mi.reg1.reg)));
+                            opnd_create_reg(reg1)));
     /* we don't need a 3rd scratch for the lookup, and we rely on reg3 being preserved */
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
-                            mi.reg1.reg, mi.reg2.reg, REG_NULL, true/*check alignment*/);
+                            reg1, reg2, REG_NULL, true/*check alignment*/);
 
     /* now addr of shadow byte is in reg1.
      * we want offs within shadow block in reg2: but storing displacement
@@ -827,23 +794,23 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      * the offs so we must compute it ourselves.
      */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi.reg2.reg),
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg2),
                             opnd_create_reg(REG_XAX)));
     /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
     /* compute offs within shadow block */
     PRE(bb, NULL,
-        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
-                           opnd_create_reg(reg_ptrsz_to_16(mi.reg2.reg))));
+        INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg2),
+                           opnd_create_reg(reg_ptrsz_to_16(reg2))));
     PRE(bb, NULL,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg2), OPND_CREATE_INT8(2)));
     /* calculate start of shadow block */
-    PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
-    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
-                                   opnd_create_reg(mi.reg1.reg)));
+    PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(reg2)));
+    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(reg2),
+                                   opnd_create_reg(reg1)));
 
     /* we need separate loops for inc vs dec */
     PRE(bb, NULL,
-        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg3.reg), OPND_CREATE_INT32(0)));
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT32(0)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jl, opnd_create_instr(loop_push)));
     /* we tested equality above */
@@ -865,7 +832,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      * it since it's faster on everything else.
      */
     /* calculate end of shadow block: reg2 holds start currently */
-    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
+    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(reg2),
                                    OPND_CREATE_INT32(get_shadow_block_size())));
     /* loop for increasing stack addresses = pop */
     /* FIXME: would it be more efficient to compute by aligning the app addr
@@ -873,46 +840,39 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
     /* calculate iters until hit end of shadow block in reg2 */
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg),
-                         opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
     PRE(bb, NULL,
-        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg2.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jae_short, opnd_create_instr(pop_one_block)));
     /* reaches beyond shadow block: put remaining iters in reg2 */
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
-                         opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL,
-        INSTR_CREATE_xchg(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_xchg(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL, INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(pop_unaligned)));
     PRE(bb, NULL, pop_one_block);
     /* within this shadow block: zero remaining iters in reg2 */
     PRE(bb, NULL,
-        INSTR_CREATE_xor(drcontext, opnd_create_reg(mi.reg2.reg),
-                         opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_xor(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg2)));
 
     /* first loop until edi is aligned */
     PRE(bb, NULL, pop_unaligned);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(pop_one_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg1.reg),
-                          OPND_CREATE_INT32(0x3)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(0x3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(pop_aligned)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(reg1, 0),
                             OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_inc(drcontext, opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_inc(drcontext, opnd_create_reg(reg1)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(pop_unaligned)));
 
@@ -921,49 +881,43 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 
     /* Save our count so we can finish off any unaligned iters after our dword loop */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX),
-                            opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX), opnd_create_reg(reg3)));
 
     PRE(bb, NULL,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg3.reg),
-                         OPND_CREATE_INT8(2)));
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT8(2)));
     PRE(bb, NULL, pop_aligned_loop);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(pop_aligned_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(reg1, 0),
                             OPND_CREATE_INT32(SHADOW_DQWORD_UNADDRESSABLE)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT32(4)));
+        INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(4)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(pop_aligned_loop)));
     PRE(bb, NULL, pop_aligned_done);
 
     /* now finish off any unaligned iters */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi.reg3.reg),
-                            opnd_create_reg(REG_XAX)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg3), opnd_create_reg(REG_XAX)));
     PRE(bb, NULL,
-        INSTR_CREATE_and(drcontext, opnd_create_reg(mi.reg3.reg),
-                         OPND_CREATE_INT32(0x00000003)));
+        INSTR_CREATE_and(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT32(0x00000003)));
     PRE(bb, NULL, pop_unaligned_loop);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(pop_unaligned_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(reg1, 0),
                             OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_inc(drcontext, opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_inc(drcontext, opnd_create_reg(reg1)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(pop_unaligned_loop)));
     PRE(bb, NULL, pop_unaligned_done);
@@ -971,13 +925,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     PRE(bb, NULL, pop_one_done);
 
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg2.reg),
-                          opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg2)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_je, opnd_create_instr(loop_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi.reg3.reg),
-                            opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL, INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(loop_next_shadow)));
 
 
@@ -992,39 +944,33 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
     /* the initial address to look up in the shadow table is cur esp */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg1.reg),
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg1),
                             opnd_create_reg(DR_REG_XSP)));
     if (type == ESP_ADJUST_RET_IMMED) {
         /* pop of retaddr happens first (handled in definedness routines) */
         PRE(bb, NULL,
-            INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg),
-                             OPND_CREATE_INT8(4)));
+            INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT8(4)));
     }
     if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP) {
         /* TLS slot holds abs esp so re-compute orig delta */
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld
-            (drcontext, opnd_create_reg(mi.reg2.reg),
+            (drcontext, opnd_create_reg(reg2),
              spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
         PRE(bb, NULL,
-            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg),
-                             opnd_create_reg(mi.reg1.reg)));
+            INSTR_CREATE_sub(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
         PRE(bb, NULL,
-            INSTR_CREATE_add
-            (drcontext, opnd_create_reg(mi.reg1.reg), opnd_create_reg(mi.reg2.reg)));
+            INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), opnd_create_reg(reg2)));
     } else {
         PRE(bb, NULL,
             INSTR_CREATE_add
-            (drcontext, opnd_create_reg(mi.reg1.reg),
+            (drcontext, opnd_create_reg(reg1),
              spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
     }
-    PRE(bb, NULL, INSTR_CREATE_shl(drcontext, opnd_create_reg(mi.reg3.reg),
-                                   OPND_CREATE_INT8(2)));
+    PRE(bb, NULL, INSTR_CREATE_shl(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT8(2)));
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg),
-                         opnd_create_reg(mi.reg3.reg)));
-    PRE(bb, NULL, INSTR_CREATE_sar(drcontext, opnd_create_reg(mi.reg3.reg),
-                                   OPND_CREATE_INT8(2)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg1), opnd_create_reg(reg3)));
+    PRE(bb, NULL, INSTR_CREATE_sar(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT8(2)));
     PRE(bb, NULL, INSTR_CREATE_jmp(drcontext,
                                    opnd_create_instr(loop_shadow_lookup)));
 
@@ -1035,51 +981,44 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* calculate iters until hit start of shadow block in reg2 */
     /* must dec since our loop decs after and we already -4 xsp */
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg2)));
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg),
-                         opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
     PRE(bb, NULL,
-        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg2.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jbe_short, opnd_create_instr(push_one_block)));
     /* reaches beyond shadow block: put remaining iters in reg2 */
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
-                         opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL,
-        INSTR_CREATE_xchg(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_xchg(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL, INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(push_unaligned)));
     PRE(bb, NULL, push_one_block);
     /* within this shadow block: zero remaining iters in reg2 */
     PRE(bb, NULL,
-        INSTR_CREATE_xor(drcontext, opnd_create_reg(mi.reg2.reg),
-                         opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_xor(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg2)));
 
     /* first loop until edi is aligned */
     PRE(bb, NULL, push_unaligned);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(push_one_done)));
     /* much easier to detect aligned, so we have an extra iter on a match to
      * get back far enough for a 4-byte forward write
      */
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg1.reg),
-                          OPND_CREATE_INT32(0x3)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(0x3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(push_aligned)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(reg1, 0),
                             OPND_CREATE_INT8((char)shadow_dword_newmem)));
     PRE(bb, NULL,
-        INSTR_CREATE_inc(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_inc(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg1)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(push_unaligned)));
     /* now do aligned portion: save count away and div by 4.
@@ -1087,30 +1026,27 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
     PRE(bb, NULL, push_aligned);
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(reg1, 0),
                             OPND_CREATE_INT8((char)shadow_dword_newmem)));
     PRE(bb, NULL,
-        INSTR_CREATE_inc(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_inc(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT8(4)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT8(4)));
 
     /* We can't overshoot so sar is not sufficient (e.g., -17 >> 2 == -5,
      * and we want -4).  We could add 3 and then sar, but simpler to neg
      * + sar/shr and count down.
      */
     PRE(bb, NULL,
-        INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_neg(drcontext, opnd_create_reg(reg3)));
     /* Save the count for the unaligned iters after: simpler to save as positive */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX),
-                            opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX), opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_sar(drcontext, opnd_create_reg(mi.reg3.reg),
-                         OPND_CREATE_INT8(2)));
+        INSTR_CREATE_sar(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT8(2)));
     PRE(bb, NULL, push_aligned_loop);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(push_aligned_done)));
     /* I measured cmp-and-store-if-no-match on speck2k gcc and it was
@@ -1118,51 +1054,46 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      * are writing new shadow values.
      */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(reg1, 0),
                             OPND_CREATE_INT32(shadow_dqword_newmem)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT32(4)));
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(4)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(push_aligned_loop)));
     PRE(bb, NULL, push_aligned_done);
 
     /* now finish off any unaligned iters. count is still positive. */
     PRE(bb, NULL,
-        INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT8(3)));
+        INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT8(3)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi.reg3.reg),
-                            opnd_create_reg(REG_XAX)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg3), opnd_create_reg(REG_XAX)));
     PRE(bb, NULL,
-        INSTR_CREATE_and(drcontext, opnd_create_reg(mi.reg3.reg),
-                         OPND_CREATE_INT32(0x00000003)));
+        INSTR_CREATE_and(drcontext, opnd_create_reg(reg3), OPND_CREATE_INT32(0x00000003)));
     PRE(bb, NULL, push_unaligned_loop);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
-                          opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg3)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(push_unaligned_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(reg1, 0),
                             OPND_CREATE_INT8((char)shadow_dword_newmem)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg3.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg3)));
     PRE(bb, NULL,
-        INSTR_CREATE_dec(drcontext, opnd_create_reg(mi.reg1.reg)));
+        INSTR_CREATE_dec(drcontext, opnd_create_reg(reg1)));
     PRE(bb, NULL,
         INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(push_unaligned_loop)));
     PRE(bb, NULL, push_unaligned_done);
 
     PRE(bb, NULL, push_one_done);
     PRE(bb, NULL,
-        INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg2.reg),
-                          opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_test(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg2)));
     PRE(bb, NULL,
         INSTR_CREATE_jcc(drcontext, OP_jz_short, opnd_create_instr(loop_done)));
     PRE(bb, NULL,
-        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi.reg3.reg),
-                            opnd_create_reg(mi.reg2.reg)));
+        INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg3), opnd_create_reg(reg2)));
     PRE(bb, NULL, INSTR_CREATE_jmp(drcontext, opnd_create_instr(loop_next_shadow)));
 
     PRE(bb, NULL, loop_done);
@@ -1210,8 +1141,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         PRE(bb, NULL, INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(DR_REG_XAX),
              spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2)));
-        if (eflags_live)
-            insert_restore_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
         PRE(bb, NULL,
             INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_esp_slowpath_shadow)));
     } else {
@@ -1227,8 +1156,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     PRE(bb, NULL, INSTR_CREATE_mov_ld
         (drcontext, opnd_create_reg(DR_REG_XAX),
          spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2)));
-    if (eflags_live)
-        insert_restore_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
     PRE(bb, NULL, INSTR_CREATE_jmp_ind
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/))));
 }

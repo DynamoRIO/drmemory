@@ -39,31 +39,12 @@
 #endif /* DEBUG */
 extern reg_id_t seg_tls;
 
-/***************************************************************************
- * REGISTER SPILLING
- */
-
-/* eflags eax and up-front save use this slot, and whole-bb spilling stores
- * eflags itself (lahf+seto) here
- */
-#define SPILL_SLOT_EFLAGS_EAX SPILL_SLOT_3
-
 /* We separate the TLS slots we use to send params to the slowpath from those
  * used for reg preservation, to make using drreg simpler.
+ * These are slots within our own TLS.
  */
-#define SPILL_SLOT_SLOW_PARAM SPILL_SLOT_5
-#define SPILL_SLOT_SLOW_RET   SPILL_SLOT_6
-
-int
-spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead);
-
-void
-spill_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-          dr_spill_slot_t slot);
-
-void
-restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-            dr_spill_slot_t slot);
+#define SPILL_SLOT_SLOW_PARAM SPILL_SLOT_1
+#define SPILL_SLOT_SLOW_RET   SPILL_SLOT_2
 
 opnd_t
 spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
@@ -71,8 +52,9 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
 byte *
 get_own_seg_base(void);
 
-uint
-num_own_spill_slots(void);
+/***************************************************************************
+ * These are all for our own slots as distinct from drreg.
+ */
 
 ptr_uint_t
 get_own_tls_value(uint index);
@@ -101,53 +83,41 @@ instru_tls_thread_init(void *drcontext);
 void
 instru_tls_thread_exit(void *drcontext);
 
+//NOCHECKIN only used for drreg -- should drreg provide these
+bool
+instr_is_spill(instr_t *inst);
+
+bool
+instr_is_restore(instr_t *inst);
+
+bool
+instr_at_pc_is_restore(void *drcontext, byte *pc);
+
 /***************************************************************************
- * SCRATCH REGISTERS
+ * drreg wrappers that assert on failure and update fastpath_info_t.
  */
 
-bool
-instr_needs_eflags_restore(instr_t *inst, uint aflags_liveness);
+void
+reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 
 void
-insert_spill_or_restore(void *drcontext, instrlist_t *bb, instr_t *inst,
-                        scratch_reg_info_t *si, bool spill, bool just_xchg);
-
-bool
-insert_spill_global(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    scratch_reg_info_t *si, bool spill);
+unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 
 void
-pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3,
-                  bool reg3_must_be_ecx, opnd_t no_overlap1, opnd_t no_overlap2);
-
-/* insert aflags save code sequence w/o spill: lahf; seto %al; */
-void
-insert_save_aflags_nospill(void *drcontext, instrlist_t *ilist,
-                           instr_t *inst, bool save_oflag);
-
-/* insert aflags restore code sequence w/o spill: add %al, 0x7f; sahf; */
-void
-insert_restore_aflags_nospill(void *drcontext, instrlist_t *ilist,
-                              instr_t *inst, bool restore_oflag);
+reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                 drvector_t *reg_allowed, OUT reg_id_t *reg, INOUT fastpath_info_t *mi);
 
 void
-insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
-                   scratch_reg_info_t *si, int aflags);
+unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
+                   INOUT fastpath_info_t *mi);
+
+/* For translation sharing we reserve the same register across the whole bb. */
+void
+reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                        drvector_t *reg_allowed, INOUT fastpath_info_t *mi);
 
 void
-insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
-                      scratch_reg_info_t *si, int aflags);
-
-uint
-get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
-                            bool aflags_only);
-
-void
-save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    fastpath_info_t *mi, bb_info_t *bi);
-
-void
-restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
-                       fastpath_info_t *mi, bb_info_t *bi);
+unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                          INOUT fastpath_info_t *mi);
 
 #endif /* _SPILL_H_ */

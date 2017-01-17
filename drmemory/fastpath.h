@@ -47,18 +47,6 @@ enum {
 #endif
 #define  REG_START         IF_X64_ELSE(REG_START_64, REG_START_32)
 
-typedef struct _scratch_reg_info_t {
-    reg_id_t reg;
-    bool used;
-    bool dead;
-    bool global; /* spilled across whole bb (PR 489221) */
-    /* we spill if used && !dead, either via xchg w/ a dead reg or via
-     * a tls spill slot
-     */
-    reg_id_t xchg;
-    int slot;
-} scratch_reg_info_t;
-
 struct _bb_info_t; /* forward decl */
 typedef struct _bb_info_t bb_info_t;
 
@@ -115,11 +103,9 @@ typedef struct _fastpath_info_t {
     bool need_slowpath;
     instr_t *slowpath;
     /* scratch registers */
-    int aflags; /* plus eax for aflags */
-    scratch_reg_info_t eax;
-    scratch_reg_info_t reg1;
-    scratch_reg_info_t reg2;
-    scratch_reg_info_t reg3;
+    reg_id_t reg1;
+    reg_id_t reg2;
+    reg_id_t reg3;
     /* cached sub-scratch-regs */
     reg_id_t reg1_16;
     reg_id_t reg1_8;
@@ -162,14 +148,8 @@ typedef struct _elide_reg_cover_info_t {
 
 /* Share inter-instruction info across whole bb */
 struct _bb_info_t {
-    /* whole-bb spilling (PR 489221) */
-    int aflags;
-    int aflags_where;
-    bool eax_dead;
-    bool eflags_used;
     bool is_repstr_to_loop;
-    scratch_reg_info_t reg1;
-    scratch_reg_info_t reg2;
+    reg_id_t shared_reg;
     /* the instr after which we should spill global regs */
     instr_t *spill_after;
     /* elide redundant addressable checks for base/index registers */
@@ -221,12 +201,8 @@ struct _bb_info_t {
 
 /* Info per bb we need to save in order to restore app state */
 typedef struct _bb_saved_info_t {
-    reg_id_t scratch1;
-    reg_id_t scratch2;
     /* This is used to handle non-precise flushing */
     byte ignore_next_delete;
-    bool aflags_in_eax:1;
-    bool eflags_saved:1;
     /* For PR 578892, to avoid DR having to store translations */
     bool check_ignore_unaddr:1;
     /* store style of instru rather than ask DR to store xl8.
@@ -308,15 +284,6 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
 /***************************************************************************
  * Utility routines
  */
-
-bool
-instr_is_spill(instr_t *inst);
-
-bool
-instr_is_restore(instr_t *inst);
-
-bool
-instr_at_pc_is_restore(void *drcontext, byte *pc);
 
 #ifdef ARM
 dr_isa_mode_t

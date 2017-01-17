@@ -370,22 +370,8 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
 int
 esp_spill_slot_base(sp_adjust_action_t sp_action)
 {
-    /* for whole-bb, we can end up using 1-3 for whole-bb and 4-5 for
-     * the required ecx+edx for these shared routines
-     * FIXME: opt: we should we xchg w/ whole-bb in
-     * instrument_esp_adjust_fastpath() like we do for esp slowpath,
-     * and thus make use of a global eax: then should have at most
-     * slot 4 used so can always use 5 here
-     */
-    if (whole_bb_spills_enabled())
-        return SPILL_SLOT_6;
-    else if (sp_action != SP_ADJUST_ACTION_ZERO) {
-        /* we don't have shared_esp_fastpath, and instrument slowpath only
-         * uses slots 1 and 2
-         */
-        return SPILL_SLOT_3;
-    } else
-        return SPILL_SLOT_5;
+    /* We now separate gencode slots from drreg slots so we can start at 0. */
+    return SPILL_SLOT_1;
 }
 
 /* N.B.: mcontext is not in consistent app state, for efficiency.
