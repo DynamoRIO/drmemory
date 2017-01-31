@@ -114,6 +114,19 @@ extern syscall_QueryInformationFile_info[];
 extern syscall_QueryInformationPort_info[];
 extern syscall_QueryIoCompletion_info[];
 extern syscall_QueryMutant_info[];
+extern syscall_SetVolumeInformationFile_info[];
+extern syscall_AlpcQueryInformation_info[];
+extern syscall_AlpcQueryInformationMessage_info[];
+extern syscall_AlpcSetInformation_info[];
+extern syscall_QueryInformationEnlistment_info[];
+extern syscall_QueryInformationResourceManager_info[];
+extern syscall_QueryInformationTransaction_info[];
+extern syscall_QueryInformationTransactionManager_info[];
+extern syscall_SetInformationEnlistment_info[];
+extern syscall_SetInformationResourceManager_info[];
+extern syscall_SetInformationTransaction_info[];
+extern syscall_SetInformationTransactionManager_info[];
+extern syscall_SetTimerEx_info[];
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -2287,14 +2300,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetVolumeInformationFile", OK, RNTST, 5,
+    {{0,0},"NtSetVolumeInformationFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {2, -3, R},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-     }
+         {4,}
+     }, (drsys_sysnum_t *)syscall_SetVolumeInformationFile_info
     },
     {{0,0},"NtShutdownSystem", OK, RNTST, 1,
      {
@@ -2740,24 +2749,15 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcQueryInformation", OK, RNTST, 5,
+    {{0,0},"NtAlpcQueryInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_AlpcQueryInformation_info
     },
-    {{0,0},"NtAlpcQueryInformationMessage", OK, RNTST, 6,
+    {{0,0},"NtAlpcQueryInformationMessage", OK|SYSINFO_SECONDARY_TABLE, RNTST, 6,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-         {2, sizeof(ALPC_MESSAGE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {3, -4, W|HT, DRSYS_TYPE_STRUCT},
-         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {2,}
+     }, (drsys_sysnum_t *)syscall_AlpcQueryInformationMessage_info
     },
     {{0,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3,
      {
@@ -2784,13 +2784,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtAlpcSetInformation", OK, RNTST, 4,
+    {{0,0},"NtAlpcSetInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_AlpcSetInformation_info
     },
     {{0,0},"NtCancelIoFileEx", OK, RNTST, 3,
      {
@@ -3098,45 +3095,25 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,0},"NtPullTransaction", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtQueryInformationEnlistment", OK, RNTST, 5,
+    {{0,0},"NtQueryInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
-         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationEnlistment_info
     },
-    {{0,0},"NtQueryInformationResourceManager", OK, RNTST, 5,
+    {{0,0},"NtQueryInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
-         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationResourceManager_info
     },
-    {{0,0},"NtQueryInformationTransaction", OK, RNTST, 5,
+    {{0,0},"NtQueryInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
-         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_QueryInformationTransaction_info
     },
-    {{0,0},"NtQueryInformationTransactionManager", OK, RNTST, 5,
+    {{0,0},"NtQueryInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
-         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     },  (drsys_sysnum_t *)syscall_QueryInformationTransactionManager_info
     },
     {{0,0},"NtQueryInformationWorkerFactory", OK, RNTST, 5,
      {
@@ -3223,37 +3200,25 @@ syscall_info_t syscall_ntdll_info[] = {
     },
     {{0,0},"NtSavepointComplete", UNKNOWN, RNTST, 2, },
     {{0,0},"NtSavepointTransaction", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtSetInformationEnlistment", OK, RNTST, 4,
+    {{0,0},"NtSetInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationEnlistment_info
     },
-    {{0,0},"NtSetInformationResourceManager", OK, RNTST, 4,
+    {{0,0},"NtSetInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationResourceManager_info
     },
-    {{0,0},"NtSetInformationTransaction", OK, RNTST, 4,
+    {{0,0},"NtSetInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationTransaction_info
     },
-    {{0,0},"NtSetInformationTransactionManager", OK, RNTST, 4,
+    {{0,0},"NtSetInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     },
+         {1,}
+     }, (drsys_sysnum_t *)syscall_SetInformationTransactionManager_info
     },
     {{0,0},"NtSetInformationWorkerFactory", OK, RNTST, 4,
      {
@@ -3427,13 +3392,10 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{WIN7,0},"NtSetTimerEx", OK, RNTST, 4,
+    {{WIN7,0},"NtSetTimerEx", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
-         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(TIMER_SET_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R|W|HT, DRSYS_TYPE_STRUCT},
-         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {1, }
+     }, (drsys_sysnum_t *)syscall_SetTimerEx_info
     },
     {{WIN7,0},"NtUmsThreadYield", OK, RNTST, 1,
      {

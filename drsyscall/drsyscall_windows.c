@@ -552,7 +552,7 @@ get_primary_syscall_num(void *drcontext, const module_data_t *info,
 }
 
 /* user should set is_secondary flag to add syscall in secondary hashtable */
-static void
+static bool
 add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
                   const char *optional_prefix, bool add_name2num, bool is_secondary)
 {
@@ -565,7 +565,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     } else {
         result = get_primary_syscall_num(drcontext, info, syslist, optional_prefix);
         if (!result)
-            return;
+            return false;
         dr_recurlock_lock(systable_lock);
         IF_DEBUG(ok =)
             hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
@@ -593,6 +593,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         /* Add the Zw variant */
         name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/, false);
     }
+    return true;
 }
 
 /* The routine adds secondary syscall entries in the separate hashtable.
@@ -605,7 +606,9 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
     uint entry_index;
     uint second_entry_num = 0;
     bool is_ntoskrnl = false;
+    IF_DEBUG(bool ok;)
     const char *skip_primary;
+
     syscall_info_t *syscall_info_second = (syscall_info_t *)syslist->num_out;
     if (cb == NULL)
         is_ntoskrnl = true;
@@ -630,9 +633,11 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
         syscall_info_second[entry_index].num.secondary = second_entry_num;
         /* already have primary num */
         syscall_info_second[entry_index].num.number = syslist->num.number;
-        add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
-                          is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
-                          true/*add syscall in secondary hashtable*/);
+        IF_DEBUG(ok =)
+            add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
+                              is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
+                              true/*add syscall in secondary hashtable*/);
+        ASSERT(ok, "failed to add new syscall in the secondary table");
     }
 
     entry_index++; /* base entry placed after SECONDARY_TABLE_ENTRY_MAX_NUMBER */
@@ -641,9 +646,11 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
     /* already have primary num */
     syscall_info_second[entry_index].num.number = syslist->num.number;
     /* add base entry */
-    add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
-                      is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
-                      true/*add syscall in secondary hashtable*/);
+    IF_DEBUG(ok =)
+        add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
+                          is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
+                          true/*add syscall in secondary hashtable*/);
+    ASSERT(ok, "failed to add base entry syscall in the secondary table");
 }
 
 drmf_status_t
@@ -651,6 +658,7 @@ drsyscall_os_init(void *drcontext)
 {
     drmf_status_t res = DRMF_SUCCESS, subres;
     uint i;
+    bool ok;
     module_data_t *data;
     bool nums_from_file = false;
     const int *sysnums = NULL; /* array of primary syscall numbers */
@@ -799,8 +807,9 @@ drsyscall_os_init(void *drcontext)
      */
     for (i = 0; i < num_ntdll_syscalls(); i++) {
         /* check whether syscall has additional entries */
-        add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true, false);
-        if (TEST(SYSINFO_SECONDARY_TABLE, syscall_ntdll_info[i].flags))
+        ok = add_syscall_entry(drcontext, data, &syscall_ntdll_info[i],
+                               NULL, true, false);
+        if (TEST(SYSINFO_SECONDARY_TABLE, syscall_ntdll_info[i].flags) && ok)
             secondary_syscall_setup(drcontext, data, &syscall_ntdll_info[i], NULL);
         DODEBUG({ check_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL); });
     }
@@ -824,9 +833,9 @@ drsyscall_os_init(void *drcontext)
             /* We ignore SYSINFO_IMM32_DLL here.  We check vs dlls in
              * drsyscall_os_module_load().
              */
-            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
+            ok = add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
                               false/*already added*/, false);
-            if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
+            if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags) && ok) {
                 secondary_syscall_setup(drcontext, data, &syscall_user32_info[i],
                                         wingdi_get_secondary_syscall_num);
             }
