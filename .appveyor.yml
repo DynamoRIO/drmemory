@@ -82,6 +82,8 @@ before_build:
   - cd c:\projects\drmemory
 
 build_script:
+  # Unlike Travis, AppVeyor doesn't do a submodule update for us.
+  - git submodule update --init --recursive
   - mkdir build
   - cd build
   - echo %PATH%
