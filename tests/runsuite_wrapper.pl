@@ -101,7 +101,7 @@ foreach my $line (@lines) {
 }
 if (!$should_print) {
     print "Error: RESULTS line not found\n";
-    exit_code++;
+    $exit_code++;
 }
 
 exit $exit_code;
