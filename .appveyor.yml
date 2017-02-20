@@ -87,9 +87,6 @@ build_script:
   - mkdir build
   - cd build
   - echo %PATH%
-  # TEMPORARY: trying to get more diagnostics on mingw failures:
-  - C:\MinGW\bin\mingw32-g++.exe -v
-  - C:\MinGW\bin\mingw32-g++.exe C:/projects/drmemory/tests/cs2bug.cpp
   # AppVeyor does not have the 64-bit toolchain installed for 2010.
   # Given that, and the lack of parallel builds for free, we shorten
   # the total time by not running the tests for 2010.
