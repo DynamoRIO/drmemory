@@ -113,6 +113,7 @@ if (APPLE)
 endif ()
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
+if (arg_travis)
   # XXX i#1900: under clang we have several failing tests.  Until those are
   # fixed, our Travis clang suite only builds and does not run tests.
   if (UNIX AND NOT APPLE AND "$ENV{CC}" MATCHES "clang")
@@ -187,7 +188,8 @@ set(base_cache "BUILDING_PACKAGE:BOOL=ON")
 
 if (arg_travis AND WIN32)
   # XXX i#1938: AppVeyor's MinGW g++ crashes for as-yet-unknown reasons.
-  set(base_cache "${base_cache} BUILD_MINGW:BOOL=OFF")
+  set(base_cache "${base_cache}
+                  BUILD_MINGW:BOOL=OFF")
 endif ()
 
 set(tools "")
