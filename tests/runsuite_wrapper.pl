@@ -99,5 +99,9 @@ foreach my $line (@lines) {
     }
     print "$line\n" if ($should_print);
 }
+if (!$should_print) {
+    print "Error: RESULTS line not found\n";
+    exit_code++;
+}
 
 exit $exit_code;
