@@ -116,7 +116,7 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 if (arg_travis)
   # XXX i#1900: under clang we have several failing tests.  Until those are
   # fixed, our Travis clang suite only builds and does not run tests.
-  if (NOT APPLE AND DEFINED ENV{CC} AND $ENV{CC} MATCHES "clang")
+  if (UNIX AND NOT APPLE AND "$ENV{CC}" MATCHES "clang")
     set(run_tests OFF)
     message("Detected a Travis clang suite: disabling running of tests")
   endif ()
