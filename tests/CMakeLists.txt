@@ -776,6 +776,7 @@ if (TOOL_DR_MEMORY)
           "-no_replace_malloc" "" OFF operators 0 "")
     endif (USE_DRSYMS)
 
+    set(GCC OFF)#TEMPORARY
     if (GCC)
       # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)
       # With i#805, -no_callstack_use_top_fp is set automatically
