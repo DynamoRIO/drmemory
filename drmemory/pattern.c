@@ -138,9 +138,9 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
 {
     instr_t *label;
     app_pc pc = instr_get_app_pc(app);
+    IF_DEBUG(drreg_status_t res;)
 #ifdef ARM
     uint i;
-    IF_DEBUG(drreg_status_t res;)
     reg_id_t scratch, scratch2;
     dr_pred_type_t pred = instr_get_predicate(app);
     instr_t *in;
@@ -150,6 +150,9 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     label = INSTR_CREATE_label(drcontext);
     /* cmp ref, pattern */
 #ifdef X86
+    IF_DEBUG(res =)
+        drreg_restore_app_values(drcontext, ilist, app, ref, NULL);
+    ASSERT(res == DRREG_SUCCESS, "should restore memref regs");
     PREXL8M(ilist, app,
             INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, pattern), pc));
 #elif defined(ARM)
@@ -745,6 +748,7 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
 {
     instr_t *jecxz = NULL, *mov_1 = NULL, *jmp_skip = NULL;
     IF_DEBUG(instr_t *jmp_iter = NULL;)
+    IF_DEBUG(drreg_status_t res;)
     instr_t *stringop = NULL, *loop = NULL, *post_loop, *instr, *jmp;
     instr_t *check = NULL;
     app_pc next_pc;
@@ -809,12 +813,15 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     instr_set_target(jmp_skip, opnd_create_instr(post_loop));
     /* insert checks */
     /* the pattern checks will suspend their own aflags saves b/c it's not insert phase */
-    /* XXX DRi#511: drmem's own aflags code was superior as it would keep aflags
-     * in eax, vs drreg which today spills aflags to TLS.  We'd want to add a
-     * drreg API for instru2instru that takes in both the save and restore
-     * points at once.
-     */
-    drreg_reserve_aflags(drcontext, ilist, stringop);
+    IF_DEBUG(res =)
+        drreg_reserve_aflags(drcontext, ilist, stringop);
+    ASSERT(res == DRREG_SUCCESS, "should reserve aflags");
+    /* As we're in instru2instru, we have to manually restore app-used regs. */
+    if (instr_uses_reg(stringop, DR_REG_XAX)) {
+        IF_DEBUG(res =)
+            drreg_get_app_value(drcontext, ilist, stringop, DR_REG_XAX, DR_REG_XAX);
+        ASSERT(res == DRREG_SUCCESS, "should restore xax");
+    }
     check = pattern_instrument_check
         (drcontext, ilist, stringop, bi, translating);
     ASSERT(check != NULL, "check label must not be NULL");
@@ -826,7 +833,9 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     next_pc = instr_get_app_pc(stringop) +
         instr_length(drcontext, stringop) + 1 /* rep prefix */;
     /* restore aflags before post_loop if necessary */
-    drreg_unreserve_aflags(drcontext, ilist, post_loop);
+    IF_DEBUG(res =)
+        drreg_unreserve_aflags(drcontext, ilist, post_loop);
+    ASSERT(res == DRREG_SUCCESS, "should unreserve aflags");
     /* jmp next_pc */
     jmp = INSTR_XL8(INSTR_CREATE_jmp(drcontext, opnd_create_pc(next_pc)),
                     instr_get_app_pc(loop));
