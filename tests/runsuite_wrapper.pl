@@ -132,8 +132,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                     $fail = 1;
                 }
             } else {
-                last if ($line =~ /^\S/);
-                $fail = 1;
+                last if ($lines[$j] =~ /^\S/);
             }
         }
         $line =~ s/: \*/, but ignoring $num_ignore for i1938: */;
