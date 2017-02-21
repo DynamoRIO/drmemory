@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -116,7 +116,7 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 if (arg_travis)
   # XXX i#1900: under clang we have several failing tests.  Until those are
   # fixed, our Travis clang suite only builds and does not run tests.
-  if (NOT APPLE AND $ENV{CC} MATCHES "clang")
+  if (UNIX AND NOT APPLE AND "$ENV{CC}" MATCHES "clang")
     set(run_tests OFF)
     message("Detected a Travis clang suite: disabling running of tests")
   endif ()
@@ -186,6 +186,12 @@ endforeach ()
 # i#1099: avoid absolute path complaint on package build step
 set(base_cache "BUILDING_PACKAGE:BOOL=ON")
 
+if (arg_travis AND WIN32)
+  # XXX i#1938: AppVeyor's MinGW g++ crashes for as-yet-unknown reasons.
+  set(base_cache "${base_cache}
+                  BUILD_MINGW:BOOL=OFF")
+endif ()
+
 set(tools "")
 # build drmemory last, so our package is a drmem package
 if (NOT arg_drmemory_only)
@@ -215,7 +221,7 @@ foreach (tool ${tools})
          CMAKE_BUILD_TYPE:STRING=Debug
          " OFF ON "")
       testbuild_ex("${name}-rel-64" ON "
-        ${base_cache}
+         ${base_cache}
          ${tool}
          ${DR_entry}
          CMAKE_BUILD_TYPE:STRING=Release
@@ -227,12 +233,15 @@ foreach (tool ${tools})
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Debug
       " ${dbg_tests_only_in_long} ON "")
-    testbuild_ex("${name}-rel-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Release
-      " ON ON "") # no release tests in short suite
+    # Skipping drheap rel to speed up AppVeyor.
+    if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
+      testbuild_ex("${name}-rel-32" OFF "
+        ${base_cache}
+        ${tool}
+        ${DR_entry}
+        CMAKE_BUILD_TYPE:STRING=Release
+        " ON ON "") # no release tests in short suite
+    endif ()
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)

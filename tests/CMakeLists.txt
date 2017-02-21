@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -58,7 +58,8 @@ include_directories("../third_party/valgrind")
 # Restore original flags from before configure_DynamoRIO_client plus
 # add_subdirectory(dynamorio) cleared global cflags.
 
-if (WIN32)
+option(BUILD_MINGW "Build test with MinGW if present" ON)
+if (WIN32 AND BUILD_MINGW)
   # if MinGW gcc is available, we do some extra tests
   # (we do not yet support Cygwin)
   # Look for version installed with Cygwin first just b/c my machines have a
@@ -80,7 +81,10 @@ if (WIN32)
     get_filename_component(mingw_path ${mingwlib} PATH)
     message(STATUS "Found ${mingwlib}, enabling shared lib MinGW test")
   endif ()
-endif (WIN32)
+else ()
+  set(GCC OFF)
+  message(STATUS "Disabling MinGW tests as requested")
+endif ()
 
 function(append_compile_flags target newflags)
   get_target_property(cur_flags ${target} COMPILE_FLAGS)
