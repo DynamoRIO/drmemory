@@ -233,12 +233,15 @@ foreach (tool ${tools})
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Debug
       " ${dbg_tests_only_in_long} ON "")
-    testbuild_ex("${name}-rel-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Release
-      " ON ON "") # no release tests in short suite
+    # Skipping drheap rel to speed up AppVeyor.
+    if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
+      testbuild_ex("${name}-rel-32" OFF "
+        ${base_cache}
+        ${tool}
+        ${DR_entry}
+        CMAKE_BUILD_TYPE:STRING=Release
+        " ON ON "") # no release tests in short suite
+    endif ()
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
