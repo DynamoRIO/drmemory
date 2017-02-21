@@ -186,7 +186,7 @@ iterate_exports(const module_data_t *info, bool add)
             }, { /* EXCEPT */
                 func = NULL;
             });
-            NOTIFY(1, "export %s indirected from "PFX" to "PFX"NL,
+            NOTIFY(1, "export %s indirected from "PFX" to "PFX NL,
                    sym->name, sym->addr, func);
         }
 #endif
@@ -197,7 +197,7 @@ iterate_exports(const module_data_t *info, bool add)
                 IF_DEBUG(bool ok =)
                     drwrap_wrap_ex(func, lib_entry, NULL, (void *) sym->name, 0);
                 ASSERT(ok, "wrap request failed");
-                NOTIFY(2, "wrapping export %s!%s @"PFX"NL,
+                NOTIFY(2, "wrapping export %s!%s @"PFX NL,
                        dr_module_preferred_name(info), sym->name, func);
             } else {
                 IF_DEBUG(bool ok =)
