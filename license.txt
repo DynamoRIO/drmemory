@@ -484,9 +484,9 @@ DAMAGES.
 ===========================================================================
 BSD License
 
-The drfuzz module is separately licensed under the following BSD license:
+The drfuzz and drltrace modules are separately licensed under the following BSD license:
 
-Copyright (c) 2015 Google, Inc. licensed under the terms of the BSD.  All other rights reserved.
+Copyright (c) 2017 Google, Inc. licensed under the terms of the BSD.  All other rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
