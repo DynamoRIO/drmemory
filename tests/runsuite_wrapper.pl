@@ -76,6 +76,7 @@ if ($child) {
     # We rely on runsuite_common_post.cmake extracting configure and build error
     # details from the xml files, as they don't show up with one V.
     system("ctest --output-on-failure -V -S \"${mydir}/runsuite.cmake${args}\" 2>&1");
+    exit 0;
 }
 
 my @lines = split('\n', $res);
@@ -112,6 +113,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                   'drstrace_unit_tests' => 1);
         my %ignore_failures_64 = ('handle' => 1,
                                   'app_suite' => 1,
+                                  'app_suite.pattern' => 1,
                                   'drstrace_unit_tests' => 1);
         # Read ahead to examine the test failures:
         $fail = 0;
