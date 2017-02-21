@@ -24,11 +24,11 @@
 # while pattern mode reports "writing 1 byte(s)" error.
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1309
+registers.c_asm.asm:1318
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1321
+registers.c_asm.asm:1330
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1334
+registers.c_asm.asm:1343
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
