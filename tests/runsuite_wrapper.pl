@@ -120,11 +120,11 @@ for (my $i = 0; $i < $#lines; ++$i) {
         my $num_ignore = 0;
         for (my $j = $i+1; $j < $#lines; ++$j) {
             my $test;
-            if ($lines[$j] =~ /^\s+(\S+)\s/) {
+            if ($lines[$j] =~ /^\t(\S+)\s/) {
                 $test = $1;
                 if (($is_32 && $ignore_failures_32{$test}) ||
                     (!$is_32 && $ignore_failures_64{$test})) {
-                    $lines[$j] = "\t(ignore: i#2145) " . $lines[$j];
+                    $lines[$j] = "\t(ignore: i#1938) " . $lines[$j];
                     $num_ignore++;
                 } elsif ($test =~ /_FLAKY$/) {
                     # Don't count toward failure.
@@ -132,11 +132,11 @@ for (my $i = 0; $i < $#lines; ++$i) {
                     $fail = 1;
                 }
             } else {
-                last if ($lines[$j] =~ /^\S/);
+                last if ($line =~ /^\S/);
                 $fail = 1;
             }
         }
-        $line =~ s/tests failed/tests failed, but ignoring $num_ignore for i2145/;
+        $line =~ s/: \*/, but ignoring $num_ignore for i1938: */;
     }
     if ($fail) {
         $exit_code++;
