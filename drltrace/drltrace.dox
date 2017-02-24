@@ -35,9 +35,9 @@
 ***************************************************************************
 \page page_drltrace Library Tracing Tool
 
-drltrace is a DynamoRIO client tool that records calls to shared libraries.
-It reports all invocations of exported functions in all shared libraries
-loaded into the target process.
+drltrace is a standalone tool for Windows based on the Dr. Memory framework that records
+calls to shared libraries. It reports all invocations of exported functions in all shared
+libraries loaded into the target process.
 
 The runtime options for this tool include:
  - \b -only_from_app:
@@ -52,7 +52,7 @@ The runtime options for this tool include:
 Here is an example:
 
 \code
-bin32/drrun -t drltrace -only_from_app -- hello.exe
+drltrace.exe -only_from_app -- hello.exe
 \endcode
 
 Here is a portion of the output from the above command:

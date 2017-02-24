@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.    All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.    All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.    All rights reserved.
 # **********************************************************
 
@@ -31,48 +31,86 @@
 
 cmake_minimum_required(VERSION 2.6)
 
-# We do not need libc, and we avoid a 10x size increase in both our
-# dll and pdb (plus we avoid stressing private library isolation) by
-# not using it (i#714).
-set(DynamoRIO_USE_LIBC OFF)
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
-add_library(drltrace SHARED drltrace.c)
-configure_DynamoRIO_client(drltrace)
-use_DynamoRIO_extension(drltrace drmgr)
-use_DynamoRIO_extension(drltrace drwrap)
-use_DynamoRIO_extension(drltrace drx)
-# We keep our shared libs in the lib dir, not the bin dir:
-place_shared_lib_in_lib_dir(drltrace)
+##################################################
+# drltracelib
 
-# ensure we rebuild if includes change
-add_dependencies(drltrace api_headers)
+set(srcs
+    drltrace.c)
 
-# Provide a hint for how to use the client
-if (NOT DynamoRIO_INTERNAL OR NOT "${CMAKE_GENERATOR}" MATCHES "Ninja")
-  add_custom_command(TARGET drltrace
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND}
-    ARGS -E echo "Usage: pass to drconfig or drrun: -t drltrace"
-    VERBATIM)
+set(external_srcs ../framework/drmf_utils.c)
+
+if (WIN32)
+  set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRLTRACE)
+  # We set DR libc option on b/c this is needed to link with drsyms_static
+  # on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
+  set(DynamoRIO_USE_LIBC ON)
 endif ()
 
-install_target(drltrace ${INSTALL_CLIENTS_LIB})
+add_library(drltracelib SHARED ${srcs} ${external_srcs})
 
-set(INSTALL_DRLTRACE_CONFIG ${INSTALL_CLIENTS_BASE})
+# We share the framework version # for now
+set_library_version(drltracelib ${DRMF_VERSION_MAJOR_MINOR})
 
-if (X64)
-  set(CONFIG ${PROJECT_BINARY_DIR}/drltrace.drrun64)
-else (X64)
-  set(CONFIG ${PROJECT_BINARY_DIR}/drltrace.drrun32)
-endif (X64)
+if (WIN32)
+  set_property(TARGET drltracelib PROPERTY COMPILE_DEFINITIONS
+    "${DEFINES_NO_D};RC_IS_DRLTRACELIB")
+else ()
+  set_property(TARGET drltracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+endif ()
 
-file(WRITE  ${CONFIG} "# drltrace tool config file\n")
-file(APPEND ${CONFIG} "# DynamoRIO options: may as well optimize the bb lock\n")
-file(APPEND ${CONFIG} "DR_OP=-nop_initial_bblock\n")
-file(APPEND ${CONFIG} "# client tool path\n")
-file(APPEND ${CONFIG} "CLIENT_REL=${INSTALL_CLIENTS_LIB}/${LIB_PFX}drltrace${LIB_EXT}\n")
-file(APPEND ${CONFIG} "# client tool options\n")
-file(APPEND ${CONFIG} "TOOL_OP=\n")
+set_target_properties(drltracelib PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
-DR_install(FILES "${CONFIG}" DESTINATION ${INSTALL_DRLTRACE_CONFIG})
-register_tool_file("drltrace")
+configure_DynamoRIO_client(drltracelib)
+
+use_DynamoRIO_extension(drltracelib drsyms_static)
+use_DynamoRIO_extension(drltracelib drmgr_static)
+use_DynamoRIO_extension(drltracelib drwrap_static)
+use_DynamoRIO_extension(drltracelib drx_static)
+# ensure we rebuild if includes change
+add_dependencies(drltracelib api_headers)
+
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  # i#1805: to avoid strtol dup symbol errors (libcmt vs ntdll_imports) we just
+  # force the link.  Alternatives include splitting ntdll_imports into Nt+Rtl vs
+  # libc, dropping support for cmake < 3, or dropping non-Ninja support.
+  append_property_string(TARGET drltracelib LINK_FLAGS "/force:multiple")
+endif ()
+
+install(TARGETS drltracelib
+  RUNTIME DESTINATION "${INSTALL_LIB}" # dll
+  LIBRARY DESTINATION "${INSTALL_LIB}" # .so
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  WORLD_READ WORLD_EXECUTE)
+
+
+##################################################
+# drltrace frontend
+
+set(front_srcs drltrace_frontend.cpp)
+if (WIN32)
+  set(front_srcs ${front_srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
+endif ()
+
+add_executable(drltrace ${front_srcs})
+
+configure_DynamoRIO_standalone(drltrace)
+
+target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib)
+
+set_library_version(drltrace ${DRMF_VERSION})
+
+if (WIN32)
+  set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS
+               ${DEFINES_NO_D} RC_IS_DRLTRACE)
+else ()
+  set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+endif ()
+
+install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  WORLD_READ WORLD_EXECUTE)
+

@@ -108,6 +108,14 @@
 # define FILE_NAME "vs_external_tool.exe"
 # define FILE_DESCRIPTION "External Tool installer"
 # define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRLTRACE)
+# define FILE_NAME "drltrace.exe"
+# define FILE_DESCRIPTION "Library call tracing tool"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRLTRACELIB)
+# define FILE_NAME "drltracelib.dll"
+# define FILE_DESCRIPTION "Library call tracer library"
+# define FILE_TYPE VFT_DLL
 #else
 # error must define an RC_IS_xxx define
 #endif
