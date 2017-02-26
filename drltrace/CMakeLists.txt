@@ -43,7 +43,6 @@ set(external_srcs ../framework/drmf_utils.c)
 
 if (WIN32)
   set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRLTRACE)
   # We set DR libc option on b/c this is needed to link with drsyms_static
   # on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
   set(DynamoRIO_USE_LIBC ON)
@@ -61,6 +60,7 @@ else ()
   set_property(TARGET drltracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
 
+set(DynamoRIO_RPATH ON)
 set_target_properties(drltracelib PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
@@ -74,9 +74,7 @@ use_DynamoRIO_extension(drltracelib drx_static)
 add_dependencies(drltracelib api_headers)
 
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  # i#1805: to avoid strtol dup symbol errors (libcmt vs ntdll_imports) we just
-  # force the link.  Alternatives include splitting ntdll_imports into Nt+Rtl vs
-  # libc, dropping support for cmake < 3, or dropping non-Ninja support.
+  # i#1805: see comment in drstrace/CMakeLists.txt
   append_property_string(TARGET drltracelib LINK_FLAGS "/force:multiple")
 endif ()
 
@@ -113,4 +111,3 @@ endif ()
 install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
-

@@ -837,6 +837,19 @@ test_one_bit_set(uint x)
     return (x > 0) && (x & (x-1)) == 0;
 }
 
+static inline generic_func_t
+cast_to_func(void *p)
+{
+#ifdef WINDOWS
+#  pragma warning(push)
+#  pragma warning(disable : 4055)
+#endif
+    return (generic_func_t) p;
+#ifdef WINDOWS
+#  pragma warning(pop)
+#endif
+}
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

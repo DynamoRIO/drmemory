@@ -54,28 +54,41 @@
     exit(1); \
 } while (0)
 
+#define DRLTRACE_INFO(level, msg, ...) do { \
+    if (op_verbose.get_value() >= level) {\
+        fprintf(stderr, "INFO: " msg "\n", ##__VA_ARGS__);    \
+        fflush(stderr); \
+    }\
+} while (0)
+
 static droption_t<std::string> op_logdir
 (DROPTION_SCOPE_ALL, "logdir", ".", "Log directory to print library call data",
- "Specify log directory where library call data will be written, in a separate file per \
-process. The default value is \".\" (current dir) If set to \"-\", data for all \
-processes are printed to stderr (warning: this can be slow).");
+ "Specify log directory where library call data will be written, in a separate file per "
+ "process.  The default value is \".\" (current dir).  If set to \"-\", data for all "
+ "processes are printed to stderr (warning: this can be slow).");
+
 static droption_t<bool> op_only_from_app
 (DROPTION_SCOPE_CLIENT, "only_from_app", false, "Reports only library calls from the app",
- "Only reports library calls from the application itself, as opposed to all calls even \
-from other libraries or within the same library.");
+ "Only reports library calls from the application itself, as opposed to all calls even "
+ "from other libraries or within the same library.");
+
 static droption_t<bool> op_no_follow_children
 (DROPTION_SCOPE_FRONTEND, "no_follow_children", false, "Do not trace child processes",
-"(overrides the default, which is to trace all children).");
+ "(overrides the default, which is to trace all children).");
+
 static droption_t<bool> op_ignore_underscore
-(DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names \
-starting with \"_\".", "Ignores library routine names starting with \"_\".");
+(DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
+ "starting with \"_\".", "Ignores library routine names starting with \"_\".");
+
 static droption_t<bool> op_help
 (DROPTION_SCOPE_FRONTEND, "help", false, "Print this message.", "Print this message");
+
 static droption_t<bool> op_version
 (DROPTION_SCOPE_FRONTEND, "version", 0, "Print version number.", "Print version number.");
+
 static droption_t<unsigned int> op_verbose
-(DROPTION_SCOPE_ALL, "verbose", 1, "Change verbosity (default 1).",
-"Change verbosity (default 1).");
+(DROPTION_SCOPE_ALL, "verbose", 1, "Change verbosity.", "Change verbosity.");
+
 static droption_t<std::string> op_ltracelib_ops
 (DROPTION_SCOPE_CLIENT, "ltracelib_ops",
  DROPTION_FLAG_SWEEP | DROPTION_FLAG_ACCUMULATE | DROPTION_FLAG_INTERNAL,
@@ -84,19 +97,20 @@ static droption_t<std::string> op_ltracelib_ops
 
 /* check that drltracelib.dll, dynamorio.dll and target executable exist */
 static void
-check_input_files(const char *targer_app_full_name, char *dr_root, char *drltrace_path) {
+check_input_files(const char *target_app_full_name, char *dr_root, char *drltrace_path) {
     bool result = false;
 
-    /* check that the target applicaton exist */
-    if (targer_app_full_name[0] == '\0')
+    /* check that the target application exists */
+    if (target_app_full_name[0] == '\0')
         DRLTRACE_ERROR("target application is not specified");
-    if (drfront_access(targer_app_full_name, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
-        DRLTRACE_ERROR("cannot find target application at %s", targer_app_full_name);
-    if (!result)
+    if (drfront_access(target_app_full_name, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
+        DRLTRACE_ERROR("cannot find target application at %s", target_app_full_name);
+    if (!result) {
         DRLTRACE_ERROR("cannot open target application for read at %s",
-                       targer_app_full_name);
+                       target_app_full_name);
+    }
 
-    /* check that dynamorio's root dir exist and accessible */
+    /* check that dynamorio's root dir exists and is accessible */
     if (drfront_access(dr_root, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("cannot find DynamoRIO's root dir at %s", dr_root);
     if (!result)
@@ -136,7 +150,7 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
     dr_option[0] = '\0';
 
     if (op_no_follow_children.get_value() == true)
-        _snprintf(dr_option, strlen("-no_follow_children") + 1, "-no_follow_children");
+        dr_snprintf(dr_option, MAX_DR_CMDLINE, "-no_follow_children");
     NULL_TERMINATE_BUFFER(dr_option);
 
 #ifdef UNIX
@@ -149,7 +163,7 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
             std::string("failed to create process for \"") + app_name + "\"";
 #ifdef WINDOWS
         char buf[MAXIMUM_PATH];
-        int sofar = _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s", msg.c_str());
+        int sofar = dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s", msg.c_str());
         FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                       NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                       (LPTSTR) buf + sofar,
@@ -202,9 +216,9 @@ _tmain(int argc, const TCHAR *targv[])
     static const char *libname = "libdrltracelib.so";
 #endif
 #ifdef DEBUG
-    sprintf(drlibpath, "debug/%s", libname);
+    dr_snprintf(drlibpath, BUFFER_SIZE_ELEMENTS(drlibpath), "debug/%s", libname);
 #else
-    sprintf(drlibpath, "release/%s", libname);
+    dr_snprintf(drlibpath, BUFFER_SIZE_ELEMENTS(drlibpath), "release/%s", libname);
 #endif
     void *inject_data;
     int exitcode;
@@ -232,9 +246,10 @@ _tmain(int argc, const TCHAR *targv[])
 #endif
 
     if (!droption_parser_t::parse_argv(DROPTION_SCOPE_FRONTEND, argc, (const char **)argv,
-                                       &parse_err, &last_index) || argc < 2)
+                                       &parse_err, &last_index) || argc < 2) {
         DRLTRACE_ERROR("Usage error: %s\n Usage:\n%s\n", parse_err.c_str(),
-              droption_parser_t::usage_short(DROPTION_SCOPE_ALL).c_str());
+                       droption_parser_t::usage_short(DROPTION_SCOPE_ALL).c_str());
+    }
 
     if (op_version.get_value()) {
         print_version();
@@ -252,40 +267,44 @@ _tmain(int argc, const TCHAR *targv[])
     }
     sc = drfront_get_app_full_path(target_app_name, full_target_app_path,
                                    BUFFER_SIZE_ELEMENTS(full_target_app_path));
-    if (sc != DRFRONT_SUCCESS)
+    if (sc != DRFRONT_SUCCESS) {
         DRLTRACE_ERROR("drfront_get_app_full_path failed on %s, error code = %d\n",
                        target_app_name, sc);
+    }
 
     /* get DR's root directory and drltracelib.dll full path */
     sc = drfront_get_app_full_path(argv[0], full_frontend_path,
                                    BUFFER_SIZE_ELEMENTS(full_frontend_path));
-    if (sc != DRFRONT_SUCCESS)
+    if (sc != DRFRONT_SUCCESS) {
         DRLTRACE_ERROR("drfront_get_app_full_path failed on %s, error code = %d\n",
                        argv[0], sc);
+    }
 
     tmp = full_frontend_path + strlen(full_frontend_path) - 1;
 
+    /* we assume that default root for our executable is <root>/bin/drltrace.exe */
     while (*tmp != DIRSEP && *tmp != ALT_DIRSEP && tmp > full_frontend_path)
         tmp--;
     *(tmp+1) = '\0';
-    _snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path) +
-              BUFFER_SIZE_ELEMENTS("../dynamorio"),
-              "%s../dynamorio", full_frontend_path);
+
+    dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s../dynamorio",
+                full_frontend_path);
 
     sc = drfront_get_absolute_path(tmp_path, full_dr_root_path,
                                    BUFFER_SIZE_ELEMENTS(tmp_path));
+    NULL_TERMINATE_BUFFER(full_dr_root_path);
+
     if (sc != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("drfront_get_absolute_path failed, error code = %d\n", sc);
 
-    _snprintf(full_drlibtrace_path, BUFFER_SIZE_ELEMENTS(full_frontend_path) +
-              BUFFER_SIZE_ELEMENTS(drlibpath) + BUFFER_SIZE_ELEMENTS(".dll"),
-              "%s%s", full_frontend_path, drlibpath);
-    NULL_TERMINATE_BUFFER(full_dr_root_path);
+    dr_snprintf(full_drlibtrace_path, BUFFER_SIZE_ELEMENTS(full_drlibtrace_path),
+                "%s%s", full_frontend_path, drlibpath);
     NULL_TERMINATE_BUFFER(full_drlibtrace_path);
 
-    if (op_logdir.get_value().c_str() != NULL)
+    if (op_logdir.get_value().c_str() != NULL) {
         /* check access to logdir */
         check_logdir_path(op_logdir.get_value().c_str());
+    }
 
     check_input_files(full_target_app_path, full_dr_root_path, full_drlibtrace_path);
 
@@ -300,7 +319,7 @@ _tmain(int argc, const TCHAR *targv[])
     if (!dr_inject_process_run(inject_data))
         DRLTRACE_ERROR("unable to execute target application");
 
-    printf("%s sucessfully started, waiting app for exit\n", full_target_app_path);
+    DRLTRACE_INFO(1, "%s sucessfully started, waiting app for exit", full_target_app_path);
 
     dr_inject_wait_for_child(inject_data, 0/*wait forever*/);
 
