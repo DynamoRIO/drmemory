@@ -318,7 +318,7 @@ options_init(client_id_t id)
                 USAGE_CHECK(res == 1, "invalid -verbose number");
             }
         } else {
-            VNOTIFY(1, "UNRECOGNIZED OPTION: \"%s\""NL, token);
+            NOTIFY("UNRECOGNIZED OPTION: \"%s\""NL, token);
             USAGE_CHECK(false, "invalid option");
         }
     }

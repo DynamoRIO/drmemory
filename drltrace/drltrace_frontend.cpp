@@ -72,8 +72,8 @@ static droption_t<bool> op_only_from_app
  "Only reports library calls from the application itself, as opposed to all calls even "
  "from other libraries or within the same library.");
 
-static droption_t<bool> op_no_follow_children
-(DROPTION_SCOPE_FRONTEND, "no_follow_children", false, "Do not trace child processes",
+static droption_t<bool> op_follow_children
+(DROPTION_SCOPE_FRONTEND, "follow_children", true, "Do not trace child processes",
  "(overrides the default, which is to trace all children).");
 
 static droption_t<bool> op_ignore_underscore
@@ -103,6 +103,11 @@ check_input_files(const char *target_app_full_name, char *dr_root, char *drltrac
     /* check that the target application exists */
     if (target_app_full_name[0] == '\0')
         DRLTRACE_ERROR("target application is not specified");
+
+    /* FIXME: We need to use drfront_appdata_logdir to handle specific situations when
+     * we can't write log in specific dirs (such as root dir on Android or Program Files
+     * in Windows).
+     */
     if (drfront_access(target_app_full_name, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("cannot find target application at %s", target_app_full_name);
     if (!result) {
@@ -149,8 +154,8 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
     char dr_option[MAX_DR_CMDLINE];
     dr_option[0] = '\0';
 
-    if (op_no_follow_children.get_value() == true)
-        dr_snprintf(dr_option, MAX_DR_CMDLINE, "-no_follow_children");
+    if (op_follow_children.get_value() == false)
+        dr_snprintf(dr_option, BUFFER_SIZE_ELEMENTS(dr_option), "-no_follow_children");
     NULL_TERMINATE_BUFFER(dr_option);
 
 #ifdef UNIX
