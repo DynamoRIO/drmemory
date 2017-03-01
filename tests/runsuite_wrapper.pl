@@ -75,7 +75,7 @@ if ($child) {
     # to work with we omit a second V and instead use --output-on-failure.
     # We rely on runsuite_common_post.cmake extracting configure and build error
     # details from the xml files, as they don't show up with one V.
-    system("ctest --output-on-failure -VV -S \"${mydir}/runsuite.cmake${args}\" 2>&1");
+    system("ctest --output-on-failure -V -S \"${mydir}/runsuite.cmake${args}\" 2>&1");
     exit 0;
 }
 

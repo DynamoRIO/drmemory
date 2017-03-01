@@ -43,10 +43,9 @@ set(external_srcs ../framework/drmf_utils.c)
 
 if (WIN32)
   set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  # We set DR libc option on b/c this is needed to link with drsyms_static
-  # on VS2010. It has a downside of increase in pdb and dll size (xref DRi#714).
-  set(DynamoRIO_USE_LIBC ON)
 endif ()
+
+set(DynamoRIO_USE_LIBC OFF)
 
 add_library(drltracelib SHARED ${srcs} ${external_srcs})
 
@@ -66,7 +65,6 @@ set_target_properties(drltracelib PROPERTIES
 
 configure_DynamoRIO_client(drltracelib)
 
-use_DynamoRIO_extension(drltracelib drsyms_static)
 use_DynamoRIO_extension(drltracelib drmgr_static)
 use_DynamoRIO_extension(drltracelib drwrap_static)
 use_DynamoRIO_extension(drltracelib drx_static)

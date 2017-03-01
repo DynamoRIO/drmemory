@@ -217,7 +217,9 @@ _tmain(int argc, const TCHAR *targv[])
     char drlibpath[MAXIMUM_PATH];
 #ifdef WINDOWS
     static const char *libname = "drltracelib.dll";
-#else
+#elif MACOS
+    static const char *libname = "libdrltracelib.dylib";
+#elif LINUX
     static const char *libname = "libdrltracelib.so";
 #endif
 #ifdef DEBUG
