@@ -73,7 +73,7 @@ static droption_t<bool> op_only_from_app
  "from other libraries or within the same library.");
 
 static droption_t<bool> op_follow_children
-(DROPTION_SCOPE_FRONTEND, "follow_children", true, "Do not trace child processes",
+(DROPTION_SCOPE_FRONTEND, "follow_children", true, "Trace child processes",
  "(overrides the default, which is to trace all children).");
 
 static droption_t<bool> op_ignore_underscore
@@ -104,9 +104,9 @@ check_input_files(const char *target_app_full_name, char *dr_root, char *drltrac
     if (target_app_full_name[0] == '\0')
         DRLTRACE_ERROR("target application is not specified");
 
-    /* FIXME: We need to use drfront_appdata_logdir to handle specific situations when
-     * we can't write log in specific dirs (such as root dir on Android or Program Files
-     * in Windows).
+    /* FIXME i#1944: We need to use drfront_appdata_logdir to handle specific situations
+     * when we can't write log in specific dirs (such as root dir on Android or Program
+     * Files in Windows).
      */
     if (drfront_access(target_app_full_name, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("cannot find target application at %s", target_app_full_name);
