@@ -76,6 +76,10 @@
 # define FILE_NAME "drstrace.exe"
 # define FILE_DESCRIPTION "System call tracer"
 # define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRSTRACE_UNIT_TESTS)
+# define FILE_NAME "drstrace_unit_tests.exe"
+# define FILE_DESCRIPTION "System call tracer unit tests"
+# define FILE_TYPE VFT_APP
 #elif defined(RC_IS_DRSTRACELIB)
 # define FILE_NAME "drstracelib.dll"
 # define FILE_DESCRIPTION "System call tracer library"
@@ -83,7 +87,7 @@
 #elif defined(RC_IS_DRSTRACE_SYMFETCH_LIB)
 # define FILE_NAME "symfetch.dll"
 # define FILE_DESCRIPTION "Fake library to fetch symbol info"
-# define FILE_TYPE_VFT_DLL
+# define FILE_TYPE VFT_DLL
 #elif defined(RC_IS_DRSYMCACHE)
 # define FILE_NAME "drsymcachelib.dll"
 # define FILE_DESCRIPTION "Symbol caching library"
@@ -108,6 +112,14 @@
 # define FILE_NAME "vs_external_tool.exe"
 # define FILE_DESCRIPTION "External Tool installer"
 # define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRLTRACE)
+# define FILE_NAME "drltrace.exe"
+# define FILE_DESCRIPTION "Library call tracing tool"
+# define FILE_TYPE VFT_APP
+#elif defined(RC_IS_DRLTRACELIB)
+# define FILE_NAME "drltracelib.dll"
+# define FILE_DESCRIPTION "Library call tracer library"
+# define FILE_TYPE VFT_DLL
 #else
 # error must define an RC_IS_xxx define
 #endif
@@ -175,7 +187,7 @@ BEGIN
             VALUE "CompanyName", COMPANY_NAME ASCIIZ
             VALUE "FileDescription", FILE_DESCRIPTION ASCIIZ
             VALUE "InternalName", FILE_NAME ASCIIZ
-            VALUE "LegalCopyright", "Copyright (C) " COMPANY_NAME " 2007-2014" ASCIIZ
+            VALUE "LegalCopyright", "Copyright (C) " COMPANY_NAME " 2007-2017" ASCIIZ
             VALUE "LegalTrademarks", "" ASCIIZ
             VALUE "OriginalFilename", FILE_NAME ASCIIZ
             VALUE "PrivateBuild", PRIVATE_BUILD_DESC ASCIIZ

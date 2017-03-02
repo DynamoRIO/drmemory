@@ -33,7 +33,6 @@ set(srcs
 
 if (WIN32)
   set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRSTRACE)
 endif ()
 
 # We set DR libc option on b/c this is needed to link with drsyms_static
@@ -162,7 +161,8 @@ if (WIN32)
 
   set_property(TARGET drstrace_unit_tests PROPERTY COMPILE_DEFINITIONS
     # We pass the absolute build dir path here as unit tests never move
-    ${DEFINES_NO_D} DRSTRACE_UNIT_TESTS SYMBOL_DLL_PATH="${symfetch_path}")
+    ${DEFINES_NO_D} DRSTRACE_UNIT_TESTS RC_IS_DRSTRACE_UNIT_TESTS
+    SYMBOL_DLL_PATH="${symfetch_path}")
   configure_DynamoRIO_standalone(drstrace_unit_tests)
   use_DynamoRIO_extension(drstrace_unit_tests drsyscall_static)
   use_DynamoRIO_extension(drstrace_unit_tests drmgr_static)

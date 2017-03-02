@@ -1850,6 +1850,8 @@ if (TOOL_DR_MEMORY AND WIN32)
   add_subdirectory(drstrace)
 endif (TOOL_DR_MEMORY AND WIN32)
 
+add_subdirectory(drltrace)
+
 add_subdirectory(framework/samples)
 
 ###########################################################################

@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -50,7 +50,7 @@
 #include "drmgr.h"
 #include "drwrap.h"
 #include "drx.h"
-#include "../common/utils.h"
+#include "utils.h"
 #include <string.h>
 
 /* XXX i#1349: features to add:
@@ -74,10 +74,12 @@
 
 static uint verbose;
 
-#define NOTIFY(level, fmt, ...) do {          \
-    if (verbose >= (level))                   \
-        dr_fprintf(STDERR, fmt, __VA_ARGS__); \
+#define VNOTIFY(level, ...) do {          \
+    NOTIFY_COND(verbose >= level, f_global, __VA_ARGS__); \
 } while (0)
+
+/* Checks for both debug and release builds: */
+#define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
 
@@ -186,7 +188,7 @@ iterate_exports(const module_data_t *info, bool add)
             }, { /* EXCEPT */
                 func = NULL;
             });
-            NOTIFY(1, "export %s indirected from "PFX" to "PFX NL,
+            VNOTIFY(2, "export %s indirected from "PFX" to "PFX NL,
                    sym->name, sym->addr, func);
         }
 #endif
@@ -197,7 +199,7 @@ iterate_exports(const module_data_t *info, bool add)
                 IF_DEBUG(bool ok =)
                     drwrap_wrap_ex(func, lib_entry, NULL, (void *) sym->name, 0);
                 ASSERT(ok, "wrap request failed");
-                NOTIFY(2, "wrapping export %s!%s @"PFX NL,
+                VNOTIFY(2, "wrapping export %s!%s @"PFX NL,
                        dr_module_preferred_name(info), sym->name, func);
             } else {
                 IF_DEBUG(bool ok =)
@@ -252,7 +254,8 @@ open_log_file(void)
                                           DR_FILE_ALLOW_LARGE,
                                           buf, BUFFER_SIZE_ELEMENTS(buf));
         ASSERT(outf != INVALID_FILE, "failed to open log file");
-        NOTIFY(1, "log file is %s"NL, buf);
+        VNOTIFY(0, "drltrace log file is %s"NL, buf);
+
     }
 }
 
@@ -281,11 +284,10 @@ options_init(client_id_t id)
     const char *opstr = dr_get_options(id);
     const char *s;
     char token[OPTION_MAX_LENGTH];
-
     /* default values */
     dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
     options.all_args = 2;
-
+    op_print_stderr = true;
     for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
          s != NULL;
          s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token))) {
@@ -316,7 +318,7 @@ options_init(client_id_t id)
                 USAGE_CHECK(res == 1, "invalid -verbose number");
             }
         } else {
-            NOTIFY(0, "UNRECOGNIZED OPTION: \"%s\""NL, token);
+            NOTIFY("UNRECOGNIZED OPTION: \"%s\""NL, token);
             USAGE_CHECK(false, "invalid option");
         }
     }
@@ -328,7 +330,7 @@ dr_init(client_id_t id)
     module_data_t *exe;
     IF_DEBUG(bool ok;)
 
-    dr_set_client_name("DrLTrace", "http://dynamorio.org/issues");
+    dr_set_client_name("Dr. LTrace", "http://drmemory.org/issues");
 
     options_init(id);
 
@@ -364,6 +366,5 @@ dr_init(client_id_t id)
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
-
     open_log_file();
 }
