@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -138,6 +138,14 @@
 #endif
 #ifndef SYS_getlcid
 # define SYS_getlcid        395
+#endif
+
+/* Syscalls changed in Sierra */
+#ifndef SYS_chud
+# define SYS_chud           185
+#endif
+#ifndef SYS_stack_snapshot
+# define SYS_stack_snapshot 365
 #endif
 
 #include "table_defines.h"
