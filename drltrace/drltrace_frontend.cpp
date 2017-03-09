@@ -90,7 +90,7 @@ static droption_t<bool> op_only_from_app
 
 static droption_t<bool> op_follow_children
 (DROPTION_SCOPE_FRONTEND, "follow_children", true, "Trace child processes",
- "(Trace child processes created by a target application. Specify -no_follow_children "
+ "Trace child processes created by a target application. Specify -no_follow_children "
  "to disable.");
 
 static droption_t<bool> op_ignore_underscore
@@ -238,7 +238,7 @@ check_logdir_path(char *logdir, size_t logdir_len) {
                                 alter_logdir_path,
                                 BUFFER_SIZE_ELEMENTS(alter_logdir_path));
     if (sc != DRFRONT_SUCCESS)
-        DRLTRACE_ERROR("drfront_get_absolute_path failed, error code = %d\n", sc);
+        DRLTRACE_ERROR("drfront_appdata_logdir failed, error code = %d\n", sc);
     if (!use_root) {
         DRLTRACE_WARN("cannot write log file into %s, writing log into %s instead",
                       absolute_logdir_path, alter_logdir_path);
@@ -250,6 +250,7 @@ check_logdir_path(char *logdir, size_t logdir_len) {
     else {
         dr_snprintf(logdir, logdir_len, "%s", absolute_logdir_path);
     }
+    NULL_TERMINATE_BUFFER(logdir);
 }
 
 int
