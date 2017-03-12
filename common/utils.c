@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -141,9 +141,7 @@ safe_read(void *base, size_t size, void *out_buf)
      * setjmp overhead (i#265).
      * Xref the same problem with leak_safe_read_heap (PR 570839).
      */
-    size_t bytes_read = 0;
-    return (dr_safe_read(base, size, out_buf, &bytes_read) &&
-            bytes_read == size);
+    return dr_safe_read(base, size, out_buf, NULL);
 }
 
 /* if returns false, calls instr_free() on inst first */

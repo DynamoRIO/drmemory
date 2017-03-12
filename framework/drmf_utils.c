@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -86,9 +86,7 @@ nonheap_free(void *p, size_t size, heapstat_t type)
 bool
 safe_read(void *base, size_t size, void *out_buf)
 {
-    size_t bytes_read = 0;
-    return (dr_safe_read(base, size, out_buf, &bytes_read) &&
-            bytes_read == size);
+    return dr_safe_read(base, size, out_buf, NULL);
 }
 
 #if DEBUG

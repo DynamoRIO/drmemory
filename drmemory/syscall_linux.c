@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -250,13 +250,12 @@ handle_pre_execve(void *drcontext)
     char logdir[MAXIMUM_PATH]; /* one reason we're not inside os_post_syscall() */
     size_t bytes_read = 0;
     /* Not using safe_read() since we want a partial read if hits page boundary */
-    if (dr_safe_read((void *) dr_syscall_get_param(drcontext, 0),
-                     BUFFER_SIZE_BYTES(logdir), logdir, &bytes_read)) {
-        if (bytes_read < BUFFER_SIZE_BYTES(logdir))
-            logdir[bytes_read] = '\0';
-        NULL_TERMINATE_BUFFER(logdir);
-        ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
-    }
+    dr_safe_read((void *) dr_syscall_get_param(drcontext, 0),
+                 BUFFER_SIZE_BYTES(logdir), logdir, &bytes_read);
+    if (bytes_read < BUFFER_SIZE_BYTES(logdir))
+        logdir[bytes_read] = '\0';
+    NULL_TERMINATE_BUFFER(logdir);
+    ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
 #endif
 }
 
