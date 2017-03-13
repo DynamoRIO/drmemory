@@ -37,12 +37,10 @@ git config branch.autosetuprebase always
 
 # Aliases for our workflow:
 git config alias.newbranch "!sh -c \"git checkout --track -b \$1 origin/master\""
-git config alias.pullall "!sh -c \"git pull --rebase && git submodule update --init\""
-# Shell aliases always run from the root dir.  Use "$@" to preserve quoting.
-git config alias.review "!sh -c \"git push origin \$(git symbolic-ref -q HEAD)\""
-git config alias.review-deprecated "!myf() { make/git/git_review.sh -u \"\$@\"; }; myf"
-git config alias.dcommit-deprecated "!myf() { make/git/git_review.sh -c \"\$@\" && git push origin HEAD:master; }; myf"
 git config alias.split "!sh -c \"git checkout -b \$1 \$2 && git branch --set-upstream-to=origin/master \$1\""
+# Shell aliases always run from the root dir.  Use "$@" to preserve quoting.
+git config alias.review "!myf() { make/git/git_review.sh \"\$@\"; }; myf"
+git config alias.pullall "!myf() { make/git/git_pullall.sh \"\$@\"; }; myf"
 
 # Commit template
 git config commit.template make/git/commit-template.txt
