@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -450,7 +450,6 @@ handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                 if (drsys_ops.syscall_sentinels) {
                     for (j=0; j<cpt->sysarg_sz[i]; j++) {
                         if (is_byte_undefined(start + j)) {
-                            size_t written;
                             /* Detect writes to data that happened to have the same
                              * value beforehand (happens often with 0) by writing
                              * a sentinel.
@@ -463,8 +462,7 @@ handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                             if (s_at == NULL)
                                 s_at = start + j;
                             if (!dr_safe_write(start + j, 1,
-                                               &UNKNOWN_SYSVAL_SENTINEL, &written) ||
-                                written != 1) {
+                                               &UNKNOWN_SYSVAL_SENTINEL, NULL)) {
                                 /* if page is read-only then assume rest is not OUT */
                                 LOG(1, "WARNING: unable to write sentinel value @"PFX"\n",
                                     start + j);
@@ -545,10 +543,9 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                                 /* kernel didn't write so restore app value that
                                  * we clobbered w/ our sentinel.
                                  */
-                                size_t written;
                                 LOG(4, "restoring app sysval @"PFX"\n", pc);
                                 if (!dr_safe_write(pc, 1, &cpt->sysarg_val[i][j],
-                                                   &written) || written != 1) {
+                                                   NULL)) {
                                     LOG(1, "WARNING: unable to restore app sysval @"PFX"\n",
                                         pc);
                                 }
