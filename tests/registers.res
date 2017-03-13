@@ -115,7 +115,7 @@ registers.c_asm.asm:1773
 Error #25: UNINITIALIZED READ: reading 2 byte(s)
 registers.c_asm.asm:1787
 Error #26: UNINITIALIZED READ: reading register eax
-registers.c_asm.asm:1821
+registers.c_asm.asm:1822
 %endif
 %if UNIX
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
@@ -127,7 +127,7 @@ registers.c_asm.asm:1092
 Error #25: UNINITIALIZED READ: reading 2 byte(s)
 registers.c_asm.asm:1106
 Error #26: UNINITIALIZED READ: reading register eax
-registers.c_asm.asm:1075
+registers.c_asm.asm:1076
 %endif
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
