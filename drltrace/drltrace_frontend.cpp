@@ -54,6 +54,11 @@
     exit(1); \
 } while (0)
 
+#define DRLTRACE_WARN(msg, ...) do { \
+    fprintf(stderr, "WARNING: " msg "\n", ##__VA_ARGS__);    \
+    fflush(stderr); \
+} while (0)
+
 #define DRLTRACE_INFO(level, msg, ...) do { \
     if (op_verbose.get_value() >= level) {\
         fprintf(stderr, "INFO: " msg "\n", ##__VA_ARGS__);    \
@@ -61,8 +66,19 @@
     }\
 } while (0)
 
+#undef BUFPRINT
+#define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
+    drfront_status_t sc = drfront_bufprint(buf, bufsz, &(sofar), &(len), ##__VA_ARGS__); \
+    if (sc != DRFRONT_SUCCESS) \
+        DRLTRACE_ERROR("drfront_bufprint failed: %d\n", sc); \
+    NULL_TERMINATE_BUFFER(buf); \
+} while (0)
+
+/* Frontend scope is defined here because if logdir is a forbidden path we have to change
+ * it and provide for our client manually.
+ */
 static droption_t<std::string> op_logdir
-(DROPTION_SCOPE_ALL, "logdir", ".", "Log directory to print library call data",
+(DROPTION_SCOPE_FRONTEND, "logdir", ".", "Log directory to print library call data",
  "Specify log directory where library call data will be written, in a separate file per "
  "process.  The default value is \".\" (current dir).  If set to \"-\", data for all "
  "processes are printed to stderr (warning: this can be slow).");
@@ -74,7 +90,8 @@ static droption_t<bool> op_only_from_app
 
 static droption_t<bool> op_follow_children
 (DROPTION_SCOPE_FRONTEND, "follow_children", true, "Trace child processes",
- "(overrides the default, which is to trace all children).");
+ "Trace child processes created by a target application. Specify -no_follow_children "
+ "to disable.");
 
 static droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
@@ -104,10 +121,6 @@ check_input_files(const char *target_app_full_name, char *dr_root, char *drltrac
     if (target_app_full_name[0] == '\0')
         DRLTRACE_ERROR("target application is not specified");
 
-    /* FIXME i#1944: We need to use drfront_appdata_logdir to handle specific situations
-     * when we can't write log in specific dirs (such as root dir on Android or Program
-     * Files in Windows).
-     */
     if (drfront_access(target_app_full_name, DRFRONT_READ, &result) != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("cannot find target application at %s", target_app_full_name);
     if (!result) {
@@ -142,21 +155,33 @@ print_version() {
 
 static void
 configure_application(char *app_name, char **app_argv, void **inject_data,
-                      const char *dr_root, const char *lib_path)
+                      const char *dr_root, const char *lib_path, const char *log_dir)
 {
     bool is_debug = false;
 #ifdef DEBUG
     is_debug = true;
 #endif
     int errcode;
+    drfront_status_t sc;
+    ssize_t len;
+    size_t sofar = 0;
     char *process;
     process_id_t pid;
     char dr_option[MAX_DR_CMDLINE];
+    char drltrace_option[MAX_DR_CMDLINE];
     dr_option[0] = '\0';
 
     if (op_follow_children.get_value() == false)
         dr_snprintf(dr_option, BUFFER_SIZE_ELEMENTS(dr_option), "-no_follow_children");
     NULL_TERMINATE_BUFFER(dr_option);
+
+    BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len, "%s ",
+             op_ltracelib_ops.get_value().c_str());
+
+    if (log_dir[0] != '\0') {
+        BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
+                 "-logdir `%s` ", log_dir);
+    }
 
 #ifdef UNIX
     errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, inject_data);
@@ -189,26 +214,43 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
     }
 
     if (dr_register_client(process, pid, false, DR_PLATFORM_DEFAULT, 0, 0, lib_path,
-                           op_ltracelib_ops.get_value().c_str()) != DR_SUCCESS) {
+                           drltrace_option) != DR_SUCCESS) {
         DRLTRACE_ERROR("failed to register DynamoRIO client configuration");
     }
 }
 
 static void
-check_logdir_path(const char *logdir) {
+check_logdir_path(char *logdir, size_t logdir_len) {
     drfront_status_t sc;
     char absolute_logdir_path[MAXIMUM_PATH];
-    bool result;
+    char alter_logdir_path[MAXIMUM_PATH];
+    bool result, use_root;
 
     sc = drfront_get_absolute_path(logdir, absolute_logdir_path,
                                    BUFFER_SIZE_ELEMENTS(absolute_logdir_path));
     if (sc != DRFRONT_SUCCESS)
         DRLTRACE_ERROR("drfront_get_absolute_path failed, error code = %d\n", sc);
 
-    if (drfront_access(absolute_logdir_path, DRFRONT_WRITE, &result) != DRFRONT_SUCCESS)
-        DRLTRACE_ERROR("cannot find logdir %s", absolute_logdir_path);
-    if (!result)
-        DRLTRACE_ERROR("cannot write log file into %s", absolute_logdir_path);
+    if (!dr_directory_exists(absolute_logdir_path))
+        DRLTRACE_ERROR("specified logdir doesn't exist");
+
+    sc = drfront_appdata_logdir(absolute_logdir_path, "Dr. LTrace", &use_root,
+                                alter_logdir_path,
+                                BUFFER_SIZE_ELEMENTS(alter_logdir_path));
+    if (sc != DRFRONT_SUCCESS)
+        DRLTRACE_ERROR("drfront_appdata_logdir failed, error code = %d\n", sc);
+    if (!use_root) {
+        DRLTRACE_WARN("cannot write log file into %s, writing log into %s instead",
+                      absolute_logdir_path, alter_logdir_path);
+        dr_snprintf(logdir, logdir_len, "%s", alter_logdir_path);
+        /* if folder doesn't exist, create it */
+        if (!dr_directory_exists(alter_logdir_path) && !dr_create_dir(alter_logdir_path))
+            DRLTRACE_ERROR("failed to create a folder at %s", alter_logdir_path);
+    }
+    else {
+        dr_snprintf(logdir, logdir_len, "%s", absolute_logdir_path);
+    }
+    NULL_TERMINATE_BUFFER(logdir);
 }
 
 int
@@ -238,6 +280,7 @@ _tmain(int argc, const TCHAR *targv[])
     char full_frontend_path[MAXIMUM_PATH];
     char full_dr_root_path[MAXIMUM_PATH];
     char full_drlibtrace_path[MAXIMUM_PATH];
+    char logdir[MAXIMUM_PATH];
 
     int last_index;
     std::string parse_err;
@@ -308,17 +351,25 @@ _tmain(int argc, const TCHAR *targv[])
                 "%s%s", full_frontend_path, drlibpath);
     NULL_TERMINATE_BUFFER(full_drlibtrace_path);
 
-    if (op_logdir.get_value().c_str() != NULL) {
-        /* check access to logdir */
-        check_logdir_path(op_logdir.get_value().c_str());
-    }
-
     check_input_files(full_target_app_path, full_dr_root_path, full_drlibtrace_path);
+
+    if (op_logdir.get_value().c_str() != NULL) {
+        dr_snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s",
+                    op_logdir.get_value().c_str());
+        NULL_TERMINATE_BUFFER(logdir);
+        /* check logdir access rights, convert in absolute path and replace if it is
+         * required.
+         */
+        check_logdir_path(logdir, BUFFER_SIZE_ELEMENTS(logdir));
+        NULL_TERMINATE_BUFFER(logdir); /* logdir has been replaced */
+    } else {
+        logdir[0] = '\0';
+    }
 
     dr_standalone_init();
 
     configure_application(full_target_app_path, &argv[last_index],
-                          &inject_data, full_dr_root_path, full_drlibtrace_path);
+                          &inject_data, full_dr_root_path, full_drlibtrace_path, logdir);
 
     if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL))
         DRLTRACE_ERROR("unable to inject");

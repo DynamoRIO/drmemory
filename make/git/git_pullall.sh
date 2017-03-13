@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # **********************************************************
-# Copyright (c) 2014-2017 Google, Inc.    All rights reserved.
+# Copyright (c) 2017 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -30,26 +30,22 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
 
+# Our goal is to update the current branch, pulling in changes from both
+# upstream master and the corresponding upstream feature branch, if any.
+
 branch=$(git symbolic-ref -q HEAD)
 branch=${branch##*/}
 
-prefix=${branch%%-*}
-if [ "${prefix}" == "${branch}" ] ||
-   [ "${prefix:0:1}" != "i" ] ||
-    !([ "${prefix}" == "iX" ] ||
-      # Check whether a number.
-      [ "${prefix:1}" -eq "${prefix:1}" ] 2>/dev/null); then
-    echo "ERROR: please use the branch naming conventions documented at "
-    echo "https://github.com/DynamoRIO/drmemory/wiki/Workflow#branch-naming-conventions"
-    exit 1
-fi
+has_remote=$(git ls-remote origin ${branch})
 
-count=$(git rev-list --count origin/master..)
-if [ "${count}" -eq "1" ]; then
-    echo "Pushing ${branch} to remote.  Please visit https://github.com/DynamoRIO/drmemory"
-    echo "and create a pull request to compare ${branch} to master."
+if test -z "${has_remote}"; then
+    echo "No remote: updating with rebase from master."
+    git pull --rebase --prune
+    git submodule update --init
 else
-    echo "Pushing new commits on ${branch} to remote."
+    echo "First, updating with rebase from remote ${branch}."
+    git pull --rebase origin ${branch}
+    echo -e "\nNow, merging changes from master."
+    git pull --no-rebase --prune
+    git submodule update --init
 fi
-
-git push origin ${branch}
