@@ -161,7 +161,8 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
             dr_fprintf(outf, "<invalid memory>");
             /* Just keep going */
         });
-        dr_fprintf(outf, ")");
+        dr_fprintf(outf, ") thread id: "TIDFMT" and return to "PFX"",
+                   dr_get_thread_id(drcontext), drwrap_get_retaddr(wrapcxt));
     }
     dr_fprintf(outf, "\n");
     if (mod != NULL)
