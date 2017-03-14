@@ -1069,7 +1069,8 @@ GLOBAL_LABEL(FUNCNAME:)
          * sub-dword, so we have to read 4 bytes and then expand the bottom 2 bytes.
          */
         mov      ecx, DWORD [4 + REG_XAX]
-        lock xchg ecx, DWORD [0 + REG_XDX] /* undef => slowpath */
+        /* "lock" is automatic here, and adding it can cause ml to fail (i#1952) */
+        xchg ecx, DWORD [0 + REG_XDX] /* undef => slowpath */
         mov      eax, DWORD [0 + REG_XDX] /* propagate lock==0xf0 unless xl8 cleared */
         movzx    eax, ax /* now 0x00==defined unless xl8 cleared */
         cmp      eax, edx /* undef w/ proper clearing */

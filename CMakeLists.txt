@@ -523,17 +523,27 @@ if (WIN32)
   # 5.2 does not work (it's not just slower w/o SymSearch: it fails).
   # Haven't tested in between.
   # WINDDK/3790.1830/bin/x86/dbghelp.dll is 6.3.
-  if (X64)
-    set(PROGFILES "$ENV{PROGRAMW6432}") # cmake is 32-bit
-    set(PROGFILES32 "$ENV{PROGRAMFILES}")
-    set(ARCH_SFX "x64")
-    set(DDK_SFX "amd64")
-  else (X64)
+  # Older CMake binaries are 32-bit but newer ones can be 64-bit so we
+  # cannot rely on one or the other.
+  if ("$ENV{PROGRAMW6432}" STREQUAL "")
+    if (X64)
+      message(FATAL_ERROR "On 32-bit Windows: 64-bit build not supported")
+    endif ()
     set(PROGFILES "$ENV{PROGRAMFILES}")
     set(PROGFILES32 "$ENV{PROGRAMFILES}")
     set(ARCH_SFX "x86")
     set(DDK_SFX "i386")
-  endif (X64)
+  else ()
+    set(PROGFILES "$ENV{PROGRAMW6432}")
+    set(PROGFILES32 "$ENV{PROGRAMFILES(x86)}")
+    if (X64)
+      set(ARCH_SFX "x64")
+      set(DDK_SFX "amd64")
+    else (X64)
+      set(ARCH_SFX "x86")
+      set(DDK_SFX "i386")
+    endif (X64)
+  endif ()
   # Even the VS2005 copy is 6.5 (despite its headers being < 6.3) so we can
   # use those as well as the later SDK and standalone DTFW versions.
   set(dbghelp_paths

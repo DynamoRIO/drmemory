@@ -63,11 +63,11 @@ elseif (WIN32)
   # i#1283 set _WIN32_WINNT for app_suite power_tests_win test
   # XXX: we did not do every-version-set to avoid over-specifying, however,
   # we could hit similar problems of different win-versions in the future
-  if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
+  if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.1")
     # pre-win7, set _WIN32_WINNT to be _WIN32_WINNT_WINXP
     append_compile_flags(app_suite_tests "-D_WIN32_WINNT=0x0501")
   else ()
-    # pre-win7, set _WIN32_WINNT to be _WIN32_WINNT_WIN7
+    # win7+: set _WIN32_WINNT to be _WIN32_WINNT_WIN7
     append_compile_flags(app_suite_tests "-D_WIN32_WINNT=0x0601")
   endif ()
   if (NOT CMAKE_C_COMPILER_VERSION VERSION_LESS 18.0)

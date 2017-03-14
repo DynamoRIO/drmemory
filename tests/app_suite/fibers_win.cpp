@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2004 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -52,6 +52,10 @@
 
 #include "gtest/gtest.h"
 #include <windows.h>
+#include <ntverp.h>
+#if VER_PRODUCTBUILD >= 9200 /* win8+ SDK */
+# include "fibersapi.h"
+#endif
 #include "stdio.h"
 
 static DWORD flsA_index;

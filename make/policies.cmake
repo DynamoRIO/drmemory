@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -20,6 +20,7 @@
 
 if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
     "${CMAKE_VERSION}" VERSION_GREATER "3.1")
+  cmake_policy(SET CMP0053 OLD)
   cmake_policy(SET CMP0054 OLD)
 endif ()
 
