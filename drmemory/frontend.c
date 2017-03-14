@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -478,6 +478,7 @@ static const TCHAR * const known_libs[] = {
     L"advapi32.dll",
     L"sechost.dll",
     L"msvcrt.dll",
+    L"ucrtbase.dll",
     L"drmemory.exe",
     L"dynamorio.dll",
     L"dbghelp.dll",
