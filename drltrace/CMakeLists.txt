@@ -68,8 +68,6 @@ configure_DynamoRIO_client(drltracelib)
 use_DynamoRIO_extension(drltracelib drmgr_static)
 use_DynamoRIO_extension(drltracelib drwrap_static)
 use_DynamoRIO_extension(drltracelib drx_static)
-# ensure we rebuild if includes change
-add_dependencies(drltracelib api_headers)
 
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # i#1805: see comment in drstrace/CMakeLists.txt
