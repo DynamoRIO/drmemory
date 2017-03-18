@@ -551,8 +551,8 @@ if (WIN32)
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
-    # For Visual Studio 2010+, x64 dbghelp.dll resides in Program
-    # Files (x86) rather than Program Files.
+    # In case if SDK is not installed and we have Visual Studio, dbghelp.dll may be found in the
+    # Visual Studio's directory in subfolder Remote Debugger/x86 or /x64 folders (xref i#1956).
     "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
   if (X64)
     set(dbghelp_paths ${dbghelp_paths}
@@ -600,8 +600,8 @@ if (WIN32)
   set(symsrv_paths
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
-    # For Visual Studio 2010+, x64 symsrv.dll resides in Program
-    # Files (x86) rather than Program Files.
+    # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
+    # Visual Studio's directory in subfolder Remote Debugger/x86 or /x64 folders (xref i#1956).
     "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll")
   if (X64)
     set(symsrv_paths ${symsrv_paths}
