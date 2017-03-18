@@ -109,8 +109,11 @@ install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
   WORLD_READ WORLD_EXECUTE)
 
 ##################################################
-# drltrace test
+# drltrace tests
 
+# XXX i#1960: add more tests for drltrace that checks the output contains
+# expected library calls.
+#
 if (BUILD_TOOL_TESTS)
   get_target_property(app_path drsyscall_app LOCATION${location_suffix})
   get_target_property(drltrace_path drltrace LOCATION${location_suffix})
