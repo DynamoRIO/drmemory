@@ -3039,7 +3039,7 @@ malloc_entry_redzone_size(malloc_entry_t *e)
 static void
 malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info OUT)
 {
-    info->struct_size = sizeof(info);
+    info->struct_size = sizeof(*info);
     info->base = e->start;
     info->request_size = e->end - e->start;
     info->pad_size = info->request_size + e->usable_extra -
