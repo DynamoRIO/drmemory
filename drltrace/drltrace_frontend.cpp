@@ -250,7 +250,7 @@ check_logdir_path(char *logdir, size_t logdir_len) {
     else {
         dr_snprintf(logdir, logdir_len, "%s", absolute_logdir_path);
     }
-    NULL_TERMINATE_BUFFER(logdir);
+    logdir[logdir_len - 1] = '\0';
 }
 
 int

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -40,25 +40,37 @@
 /***************************************************************************
  * x64 Shadow Memory Mapping Scheme Description:
  *
- * The usual application memory layout as below:
- * Windows:
- * app1: [0x00000000'00000000, 0x00000010'00000000): exec, heap, data
- * On Win7
+ * The usual application memory layout is shown below:
+ * Windows 8 and below:
+ *   app1: [0x00000000'00000000, 0x00000010'00000000): exec, heap, data
  *   app2: [0x000007F0'00000000, 0x00000800'00000000): lib ...
- * or on Win8.1
- *   app2: [0x00007FF0'00000000, 0x00008000'00000000): lib ...
  * 1B-to-1B mapping:
  *   SHDW(app) = (app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000)
  * and the result:
- * shdw1 = SHDW(app1): [0x00000020'00000000, 0x00000030'00000000)
- * shdw2 = SHDW(app2): [0x00000110'00000000, 0x00000120'00000000)
+ *   shdw1 = SHDW(app1): [0x00000020'00000000, 0x00000030'00000000)
+ *   shdw2 = SHDW(app2): [0x00000110'00000000, 0x00000120'00000000)
  * and
- * shdw1'= SHDW(shdw1): [0x00000040'00000000, 0x00000050'00000000)
- * shdw2'= SHDW(shdw2): [0x00000030'00000000, 0x00000040'00000000)
- *
+ *   shdw1'= SHDW(shdw1): [0x00000040'00000000, 0x00000050'00000000)
+ *   shdw2'= SHDW(shdw2): [0x00000030'00000000, 0x00000040'00000000)
  * Here we call [0x00000000'00000000, 0x00000100'00000000) a unit, and each unit
  * has 16 (NUM_SEGMENTS = 0x100'00000000/0x10'00000000) segments
  * with size of 0x10'00000000.
+ *
+ * Windows 8.1 and above have locale.nls and stacks at locations above
+ * 0x10' (i#1810): they carve out two regions inside 0x10'-0x300' which
+ * we merge with the bottom region:
+ *   app1: [0x00000000'00000000, 0x00000300'00000000): exec, heap, data
+ *   app2: [0x00007FF0'00000000, 0x00008000'00000000): libs
+ * 1B-to-1B mapping:
+ *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000400'00000000)
+ * and the result:
+ *   shdw1 = SHDW(app1): [0x00000400'00000000, 0x00000700'00000000)
+ *   shdw2 = SHDW(app2): [0x000013f0'00000000, 0x00001400'00000000)
+ * and
+ *   shdw1'= SHDW(shdw1): [0x00000800'00000000, 0x00000b00'00000000)
+ *   shdw2'= SHDW(shdw2): [0x000007f0'00000000, 0x00000800'00000000)
+ * Here we call [0x00000000'00000000, 0x00001000'00000000) a unit, and each
+ * unit has 16 segments with size of 0x100'00000000.
  *
  * Linux:
  * app1: [0x00000000'00000000, 0x00000100'00000000): exec, heap, data
@@ -234,17 +246,38 @@
  * the segment size is: 0x10'00000000, i.e., 36 bits.
  * and there are 16 (0x100'00000000/0x10'00000000) segments per unit.
  */
-# define NUM_SEG_BITS     36
+# define NUM_SEG_BITS_WIN8     36
+# define NUM_SEG_BITS_WIN8_1   40
+#endif
+
+static uint num_seg_bits;
+
+#ifdef WINDOWS
+static dr_os_version_info_t os_version = {sizeof(os_version),};
 #endif
 
 /* Each unit has 16 segments, which could be used for app or shadow. */
-#define NUM_SEGMENTS      16 /* 16 segements per unit */
-#define SEG_INDEX_MASK    ((ptr_uint_t)(NUM_SEGMENTS - 1) << NUM_SEG_BITS)
+#define NUM_SEGMENTS      16 /* 16 segments per unit */
 
-#define SEGMENT_SIZE      ((ptr_uint_t)0x1 << NUM_SEG_BITS)
-#define SEGMENT_MASK      (SEGMENT_SIZE - 1)
-#define SEGMENT_INDEX(pc) (((ptr_uint_t)(pc) & SEG_INDEX_MASK) >> NUM_SEG_BITS)
-#define SEGMENT_BASE(pc)  ((ptr_uint_t)(pc) & ~SEGMENT_MASK)
+static ptr_uint_t seg_index_mask(uint num_seg_bits)
+{
+    return (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits;
+}
+
+static ptr_uint_t segment_size(uint num_seg_bits)
+{
+    return (ptr_uint_t)0x1 << num_seg_bits;
+}
+
+static ptr_uint_t segment_mask(uint num_seg_bits)
+{
+    return segment_size(num_seg_bits) - 1;
+}
+
+static ptr_uint_t segment_base(uint num_seg_bits, app_pc pc)
+{
+    return (ptr_uint_t)pc & ~segment_mask(num_seg_bits);
+}
 
 /* we pick 64KB because it is the minmal Windows kernel alloc size */
 #define ALLOC_UNIT_SIZE   (1 << 16) /* 64KB */
@@ -284,11 +317,13 @@ typedef struct _app_segment_t {
 
 static ptr_uint_t map_disp[] = {
 #ifdef WINDOWS
-    (2*SEGMENT_SIZE)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
-    (2*SEGMENT_SIZE)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
-    (2*SEGMENT_SIZE)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
-    (2*SEGMENT_SIZE),    /* UMBRA_MAP_SCALE_SAME_1X */
-    (3*SEGMENT_SIZE)>>1, /* UMBRA_MAP_SCALE_UP_2X */
+# define WIN8_BASE_DISP  0x02000000000
+    /* These are for up through Win8. */
+    (WIN8_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
+    (WIN8_BASE_DISP)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
+    (WIN8_BASE_DISP)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
+    (WIN8_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
+    (0x03000000000)>>1,  /* UMBRA_MAP_SCALE_UP_2X */
 #else /* UNIX */
     0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_8X */
     0x0000440000000000,  /* UMBRA_MAP_SCALE_DOWN_4X */
@@ -297,6 +332,17 @@ static ptr_uint_t map_disp[] = {
     PIE_DEF_SEG_2X_DISP, /* UMBRA_MAP_SCALE_UP_2X */
 #endif
 };
+
+#ifdef WINDOWS
+# define WIN81_BASE_DISP 0x40000000000
+static ptr_uint_t map_disp_win81[] = {
+    (WIN81_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
+    (WIN81_BASE_DISP)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
+    (WIN81_BASE_DISP)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
+    (WIN81_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
+    (WIN81_BASE_DISP)>>1, /* UMBRA_MAP_SCALE_UP_2X */
+};
+#endif
 
 /* List all the mappings we support, no other app segment is allowed.
  * We check conflicts later when creating shadow memory.
@@ -390,7 +436,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
     seg->shadow_end[seg_map_idx]  =
         umbra_xl8_app_to_shadow(map, seg->app_end);
     ASSERT(seg->shadow_end[seg_map_idx] > seg->shadow_base[seg_map_idx],
-           "wrong shadow semgent range");
+           "wrong shadow segment range");
     size = seg->shadow_end[seg_map_idx] - seg->shadow_base[seg_map_idx];
     size = size / map->shadow_block_size / BIT_PER_BYTE;
     seg->shadow_bitmap[seg_map_idx] = global_alloc(size, HEAPSTAT_SHADOW);
@@ -423,7 +469,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
-                     " conflicts with app segseg ["PFX", "PFX")\n",
+                     " conflicts with app seg ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end,
                      app_segments[i].app_base, app_segments[i].app_end);
                 return false;
@@ -445,7 +491,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
-                     "["PFX", "PFX") conflicts with app segseg ["PFX", "PFX")\n",
+                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end, base, end,
                      app_segments[i].app_base, app_segments[i].app_end);
                 return false;
@@ -466,7 +512,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].shadow_base[map_idx],
                                 app_segments[i].shadow_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s reserve segment "
-                     "["PFX", "PFX") conflicts with app segment ["PFX", "PFX")\n",
+                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end, base, end,
                      app_segments[i].app_base, app_segments[i].app_end);
                 return false;
@@ -501,14 +547,17 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
                 }
             } else {
                 /* we do not support a memory range span multiple segments */
-                if ((SEGMENT_BASE(base) != SEGMENT_BASE(base + size)) &&
-                    (SEGMENT_BASE(base) + SEGMENT_SIZE != (ptr_uint_t)base + size)) {
+                if ((segment_base(num_seg_bits, base) !=
+                     segment_base(num_seg_bits, base + size)) &&
+                    (segment_base(num_seg_bits, base) +
+                     segment_size(num_seg_bits) != (ptr_uint_t)base + size)) {
                     LOG(1, "memory ["PFX", "PFX") spanning multiple segments "
                         "is not supported\n", base, base + size);
                     return false;
                 }
-                app_segments[i].app_base = (app_pc)SEGMENT_BASE(base);
-                app_segments[i].app_end = (app_pc)app_segments[i].app_base + SEGMENT_SIZE;
+                app_segments[i].app_base = (app_pc)segment_base(num_seg_bits, base);
+                app_segments[i].app_end = (app_pc)app_segments[i].app_base +
+                    segment_size(num_seg_bits);
                 /* Adding a not pre-defined segment.
                  * We call umbra_add_shadow_segment to check if it is valid.
                  */
@@ -618,6 +667,17 @@ umbra_shadow_block_exist(umbra_map_t *map, app_pc shdw_addr)
 drmf_status_t
 umbra_arch_init()
 {
+#ifdef WINDOWS
+    if (!dr_get_os_version(&os_version))
+        return DRMF_ERROR;
+    if (os_version.version >= DR_WINDOWS_VERSION_8_1) {
+        num_seg_bits = NUM_SEG_BITS_WIN8_1;
+    } else {
+        num_seg_bits = NUM_SEG_BITS_WIN8;
+    }
+#else
+    num_seg_bits = NUM_SEG_BITS;
+#endif
     if (!umbra_address_space_init())
         return DRMF_ERROR;
     return DRMF_SUCCESS;
@@ -644,15 +704,16 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     ASSERT(map->shadow_block_size >= ALLOC_UNIT_SIZE &&
            map->app_block_size    >= ALLOC_UNIT_SIZE,
            "block size too small");
-    map->mask = SEGMENT_MASK | SEG_INDEX_MASK;
-    map->disp = map_disp[map->options.scale];
+    map->mask = segment_mask(num_seg_bits) | seg_index_mask(num_seg_bits);
+    map->disp = IF_WINDOWS((os_version.version >= DR_WINDOWS_VERSION_8_1) ?
+                           map_disp_win81[map->options.scale] :)
+        map_disp[map->options.scale];
     if (map->index > 0) {
         /* 2 units apart from two mappings, xref comment at top about
          * multiple maps.
          */
-        map->disp += umbra_map_scale_shadow_to_app(map,
-                                                   map->index *
-                                                   2*NUM_SEGMENTS*SEGMENT_SIZE);
+        map->disp += umbra_map_scale_shadow_to_app
+            (map, map->index * 2*NUM_SEGMENTS*segment_size(num_seg_bits));
     }
     /* now we add shadow memory segment */
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
