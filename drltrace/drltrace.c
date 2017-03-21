@@ -82,6 +82,7 @@ static uint verbose;
 #define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
+#define MAX_PREFIX 20
 
 typedef struct _drltrace_options_t {
     char logdir[MAXIMUM_PATH];
@@ -89,6 +90,7 @@ typedef struct _drltrace_options_t {
     bool ignore_underscore;
     char only_to_lib[MAXIMUM_PATH];
     uint all_args;
+    bool print_ret_addr;
 } drltrace_options_t;
 
 static drltrace_options_t options;
@@ -113,10 +115,13 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     const char *modname = NULL;
     app_pc func = drwrap_get_func(wrapcxt);
     module_data_t *mod;
+    thread_id_t tid;
+
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
+
     if (options.only_from_app) {
         /* For just this option, the modxfer approach might be better */
         app_pc retaddr =  NULL;
-        void *drcontext = drwrap_get_drcontext(wrapcxt);
         DR_TRY_EXCEPT(drcontext, {
             retaddr = drwrap_get_retaddr(wrapcxt);
         }, { /* EXCEPT */
@@ -145,6 +150,13 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     mod = dr_lookup_module(func);
     if (mod != NULL)
         modname = dr_module_preferred_name(mod);
+
+    tid = dr_get_thread_id(drcontext);
+    if (tid != INVALID_THREAD_ID)
+        dr_fprintf(outf, "~~%d~~ ", tid);
+    else
+        dr_fprintf(outf, "~~Dr.L~~ ");
+
     dr_fprintf(outf, "%s%s%s%s", (outf == STDERR ? STDERR_PREFIX : ""),
                modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
@@ -161,8 +173,9 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
             dr_fprintf(outf, "<invalid memory>");
             /* Just keep going */
         });
-        dr_fprintf(outf, ") thread id: "TIDFMT" and return to "PFX"",
-                   dr_get_thread_id(drcontext), drwrap_get_retaddr(wrapcxt));
+        dr_fprintf(outf,
+                   (options.print_ret_addr == true) ? ") and return to "PFX: ")",
+                   drwrap_get_retaddr(wrapcxt));
     }
     dr_fprintf(outf, "\n");
     if (mod != NULL)
@@ -318,7 +331,9 @@ options_init(client_id_t id)
                 int res = dr_sscanf(token, "%u", &verbose);
                 USAGE_CHECK(res == 1, "invalid -verbose number");
             }
-        } else {
+        } else if (strcmp(token, "-print_ret_addr") == 0)
+            options.print_ret_addr = true;
+        else {
             NOTIFY("UNRECOGNIZED OPTION: \"%s\""NL, token);
             USAGE_CHECK(false, "invalid option");
         }

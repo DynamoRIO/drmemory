@@ -111,7 +111,7 @@ install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
 ##################################################
 # drltrace tests
 
-# XXX i#1960: add more tests for drltrace that checks the output contains
+# XXX i#1960: add more tests for drltrace that check the output contains
 # expected library calls.
 #
 if (BUILD_TOOL_TESTS)
