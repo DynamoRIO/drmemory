@@ -3195,7 +3195,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
                              OPND_CREATE_INT8(0)));
         PRE(bb, inst, INSTR_CREATE_jcc
-            (drcontext, OP_jne_short, opnd_create_instr(fastpath_restore)));
+            /* i#1969: OP_jne_short does not always reach. */
+            (drcontext, OP_jne, opnd_create_instr(fastpath_restore)));
         check_ignore_unaddr = false; /* can ignore from now on */
     }
 #endif

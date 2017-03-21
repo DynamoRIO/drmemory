@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -114,7 +114,15 @@ opc_is_in_syscall_wrapper(uint opc)
              * 77941593 b825000000      mov     eax,25h
              * 77941598 0f05            syscall
              */
-            IF_X64(opc == OP_mov_ld ||)
+            /* 64-bit Windows 10 TH2 has a jne:
+             * 00007ff8`34e763c8 f604250803fe7f01 test    byte ptr [SharedUserData+0x308 (00000000`7ffe0308)],1
+             * 00007ff8`34e763d0 7503            jne     ntdll!NtAllocateVirtualMemory+0x15 (00007ff8`34e763d5)
+             * 00007ff8`34e763d2 0f05            syscall
+             * 00007ff8`34e763d4 c3              ret
+             * 00007ff8`34e763d5 cd2e            int     2Eh
+             * 00007ff8`34e763d7 c3              ret
+             */
+            IF_X64(opc == OP_mov_ld || opc == OP_test || opc == OP_jne_short ||)
             /* w/ DR Ki hooks before dr_init we have to walk over the
              * native_exec_syscall hooks */
             opc == OP_jmp);

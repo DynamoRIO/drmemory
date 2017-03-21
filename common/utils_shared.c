@@ -98,7 +98,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type)
     /* deliberately not calling strlen on src since may be quite long */
     const char *c;
     size_t sz;
-    for (c = src; c != '\0' && (c - src < max); c++)
+    for (c = src; *c != '\0' && (c - src < max); c++)
         ; /* nothing */
     sz = (c - src < max) ? c -src : max;
     if (src != NULL) {
