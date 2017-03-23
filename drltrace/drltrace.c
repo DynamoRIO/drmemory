@@ -173,8 +173,12 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
             dr_fprintf(outf, "<invalid memory>");
             /* Just keep going */
         });
+        /* XXX: we have to print a module id + offset here instead of an
+         * absolute address and provide a dump a module list at the end of
+         * execution to translate the module ids to paths.
+         */
         dr_fprintf(outf,
-                   (options.print_ret_addr == true) ? ") and return to "PFX: ")",
+                   options.print_ret_addr ? ") and return to " PFX: ")",
                    drwrap_get_retaddr(wrapcxt));
     }
     dr_fprintf(outf, "\n");
@@ -302,6 +306,7 @@ options_init(client_id_t id)
     dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
     options.all_args = 2;
     op_print_stderr = true;
+    /* XXX: we have to use droption here instead of manual parsing */
     for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
          s != NULL;
          s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token))) {
