@@ -93,6 +93,10 @@ static droption_t<bool> op_follow_children
  "Trace child processes created by a target application. Specify -no_follow_children "
  "to disable.");
 
+static droption_t<bool> op_print_ret_addr
+(DROPTION_SCOPE_CLIENT, "print_ret_addr", false, "Print library call's return address",
+ "Print return addresses of library calls.");
+
 static droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
  "starting with \"_\".", "Ignores library routine names starting with \"_\".");
