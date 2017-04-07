@@ -51,6 +51,7 @@
 #include "drwrap.h"
 #include "drx.h"
 #include "utils.h"
+#include "drsyscall_os.h"
 #include <string.h>
 
 /* XXX i#1349: features to add:
@@ -62,7 +63,8 @@
  * + Add argument values and return values.  The number and type of each
  *   argument and return would likely come from the filter configuration
  *   file, or from querying debug information.
- *   Today we have simple type-blind printing via -all_args.
+ *   Today we have simple type-blind printing via -all_args and usage of
+ *   drsyscall to print symbolic arguments for known library calls.
  *
  * + Add 2 more modes, both gathering statistics rather than a full
  *   trace: one mode that counts total calls, and one that just
@@ -82,7 +84,6 @@ static uint verbose;
 #define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
-#define MAX_PREFIX 20
 
 typedef struct _drltrace_options_t {
     char logdir[MAXIMUM_PATH];
@@ -103,6 +104,134 @@ static app_pc exe_start;
 
 /* runtest.cmake assumes this is the prefix, so update both when changing it */
 #define STDERR_PREFIX "~~~~ "
+
+/* Table that maps syscall names to syscall_info_t structure */
+#define NAME2ENTRY_TABLE_HASH_BITS 13 /* 1.5K of them, x2 for no-prefix entries + Zw */
+static hashtable_t name2entry;
+
+/* Table that maps address (found when dll is loading) to the syscall_info_t structure */
+#define ADDR2ENTRY_TABLE_HASH_BITS 8
+static hashtable_t addr2entry_table;
+
+/* XXX: We need to add support of printing from secondary table (e.g. ioctl) (xref i#1549) */
+#ifdef WINDOWS
+extern dr_os_version_info_t win_ver; /* already defined in drsyscall_windows.c */
+extern syscall_info_t syscall_ntdll_info[];
+extern size_t num_ntdll_syscalls(void);
+extern syscall_info_t syscall_kernel32_info[];
+extern size_t num_kernel32_syscalls(void);
+extern syscall_info_t syscall_user32_info[];
+extern size_t num_user32_syscalls(void);
+extern syscall_info_t syscall_gdi32_info[];
+extern size_t num_gdi32_syscalls(void);
+#elif MACOS
+extern syscall_info_t syscall_info_bsd[];
+extern size_t count_syscall_info_bsd;
+#else /* LINUX */
+extern syscall_info_t syscall_info[];
+extern size_t count_syscall_info;
+#endif
+
+/* XXX: The functions print_simple_value and print_arg were taken from drstrace.
+ * It would be better to move them in drsyscall and import in drstrace and here.
+ */
+void
+print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
+{
+    bool pointer = !TEST(DRSYS_PARAM_INLINED, arg->mode);
+    dr_fprintf(outf, pointer ? PFX : (leading_zeroes ? PFX : PIFX), arg->value);
+    if (pointer && ((arg->pre && TEST(DRSYS_PARAM_IN, arg->mode)) ||
+                    (!arg->pre && TEST(DRSYS_PARAM_OUT, arg->mode)))) {
+        ptr_uint_t deref = 0;
+        ASSERT(arg->size <= sizeof(deref), "too-big simple type");
+        /* We assume little-endian */
+        if (dr_safe_read((void *)arg->value, arg->size, &deref, NULL))
+            dr_fprintf(outf, (leading_zeroes ? " => " PFX : " => " PIFX), deref);
+    }
+}
+
+static void
+print_arg(drsys_arg_t *arg)
+{
+    dr_fprintf(outf, "\n    arg %d: ", arg->ordinal);
+    switch (arg->type) {
+    case DRSYS_TYPE_VOID:         print_simple_value(arg, true); break;
+    case DRSYS_TYPE_POINTER:      print_simple_value(arg, true); break;
+    case DRSYS_TYPE_BOOL:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_INT:          print_simple_value(arg, false); break;
+    case DRSYS_TYPE_SIGNED_INT:   print_simple_value(arg, false); break;
+    case DRSYS_TYPE_UNSIGNED_INT: print_simple_value(arg, false); break;
+    case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
+    case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
+    case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+    default: {
+        if (arg->value == 0)
+            dr_fprintf(outf, "<null>");
+        else
+            dr_fprintf(outf, PFX, arg->value);
+    }
+    }
+
+    dr_fprintf(outf, " (%s%s%stype=%s%s, size=" PIFX ")",
+              (arg->arg_name == NULL) ? "" : "name=",
+              (arg->arg_name == NULL) ? "" : arg->arg_name,
+              (arg->arg_name == NULL) ? "" : ", ",
+              (arg->type_name == NULL) ? "\"\"" : arg->type_name,
+              (arg->type_name == NULL ||
+              TESTANY(DRSYS_PARAM_INLINED|DRSYS_PARAM_RETVAL, arg->mode)) ? "" : "*",
+              arg->size);
+}
+
+static bool
+drlib_iter_arg_cb(drsys_arg_t *arg, void *wrapcxt)
+{
+    if (arg->ordinal == -1)
+        return true;
+    arg->value = (ptr_uint_t)drwrap_get_arg(wrapcxt, arg->ordinal);
+
+    print_arg(arg);
+    return true; /* keep going */
+}
+
+syscall_info_t *lookup_entry(app_pc func)
+{
+    return (syscall_info_t *)hashtable_lookup(&addr2entry_table, func);
+}
+
+void print_args(app_pc func, void *wrapcxt)
+{
+    uint i;
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
+    dr_fprintf(outf, "(");
+    DR_TRY_EXCEPT(drcontext, {
+        for (i = 0; i < options.all_args; i++) {
+            dr_fprintf(outf, "%s" PFX, (i != 0) ? ", " : "",
+                       drwrap_get_arg(wrapcxt, i));
+        }
+    }, {
+        dr_fprintf(outf, "<invalid memory>");
+        /* Just keep going */
+    });
+    dr_fprintf(outf, ")");
+}
+
+void print_symbolic_args(app_pc func, void *wrapcxt)
+{
+    drmf_status_t res;
+    syscall_info_t *libcall_entry;
+    libcall_entry = lookup_entry(func);
+    if (libcall_entry != NULL) {
+        /* drsys_iterate_arg_types employs static enumeration. */
+        res = drsys_iterate_arg_types((drsys_syscall_t *)libcall_entry,
+                                      drlib_iter_arg_cb, wrapcxt);
+        if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
+            ASSERT(false, "drsys_iterate_arg_types failed in lib_entry");
+        dr_fprintf(outf,  options.print_ret_addr ? "\n   ": "");
+    } else {
+        /* use standard type-blind scheme */
+        print_args(func, wrapcxt);
+    }
+}
 
 /****************************************************************************
  * Library entry wrapping
@@ -160,30 +289,113 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     dr_fprintf(outf, "%s%s%s%s", (outf == STDERR ? STDERR_PREFIX : ""),
                modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
-    if (options.all_args > 0) {
-        uint i;
-        void *drcontext = drwrap_get_drcontext(wrapcxt);
-        dr_fprintf(outf, "(");
-        DR_TRY_EXCEPT(drcontext, {
-            for (i = 0; i < options.all_args; i++) {
-                dr_fprintf(outf, "%s"PFX, (i != 0) ? ", " : "",
-                           drwrap_get_arg(wrapcxt, i));
-            }
-        }, {
-            dr_fprintf(outf, "<invalid memory>");
-            /* Just keep going */
-        });
-        /* XXX: we have to print a module id + offset here instead of an
-         * absolute address and provide a dump a module list at the end of
-         * execution to translate the module ids to paths.
-         */
-        dr_fprintf(outf,
-                   options.print_ret_addr ? ") and return to " PFX: ")",
-                   drwrap_get_retaddr(wrapcxt));
-    }
+
+    /* XXX: We employ two schemes of arguments printing. drsyscall is used
+     * to get a symbolic representation of arguments for known library calls.
+     * For the rest of library calls as well as for other OSs we use type-blind
+     * printing using -all_args to get a count of arguments to print. It would be
+     * great to have the one scheme for all supported OSs.
+     */
+    if (options.all_args > 0)
+        print_symbolic_args(func, wrapcxt);
+
+    /* XXX: we have to print a module id + offset here instead of an
+     * absolute address and provide a dump a module list at the end of
+     * execution to translate the module ids to paths.
+     */
+    dr_fprintf(outf,
+               options.print_ret_addr ? " and return to " PFX: "",
+               drwrap_get_retaddr(wrapcxt));
     dr_fprintf(outf, "\n");
     if (mod != NULL)
         dr_free_module_data(mod);
+}
+
+static void
+hashtable_add_new_name_entry(syscall_info_t entry, void *entry_pointer)
+{
+#ifdef WINDOWS
+    IF_DEBUG(bool ok;)
+    if (win_ver.version < entry.num.number)
+        return; /* newer Windows */
+    if (win_ver.version > entry.num.secondary && entry.num.secondary != 0)
+        return; /* older Windows */
+#endif
+    VNOTIFY(3, "adding %s in the name2entry hashtable" NL, entry.name);
+    /* XXX: we have duplicates in our syscall tables for Linux (e.g. lstat).
+     * We need some solution to handle this issue.
+     */
+#ifdef WINDOWS
+    IF_DEBUG(ok = )
+#endif
+        hashtable_add(&name2entry, (void *)entry.name, entry_pointer);
+#ifdef WINDOWS
+    ASSERT(ok, "unable to add a new entry in the hashtable");
+#endif
+}
+
+static void
+init_hashtable_syscalls()
+{
+    int i;
+    /* init hashtable libcall name -> &sys_table_entry */
+    hashtable_init(&name2entry, NAME2ENTRY_TABLE_HASH_BITS, HASH_STRING_NOCASE,
+                   false);
+#ifdef WINDOWS
+    for (i = 0; i < num_kernel32_syscalls(); i++)
+        hashtable_add_new_name_entry(syscall_kernel32_info[i], &syscall_kernel32_info[i]);
+    for (i = 0; i < num_user32_syscalls(); i++)
+        hashtable_add_new_name_entry(syscall_user32_info[i], &syscall_user32_info[i]);
+    for (i = 0; i < num_gdi32_syscalls(); i++)
+        hashtable_add_new_name_entry(syscall_gdi32_info[i], &syscall_gdi32_info[i]);
+    for (i = 0; i < num_ntdll_syscalls(); i++)
+        hashtable_add_new_name_entry(syscall_ntdll_info[i], &syscall_ntdll_info[i]);
+#elif MACOS
+    for (i = 0; i < count_syscall_info_bsd; i++)
+        hashtable_add_new_name_entry(syscall_info_bsd[i], &syscall_info_bsd[i]);
+#else /* LINUX */
+    for (i = 0; i < count_syscall_info; i++)
+        hashtable_add_new_name_entry(syscall_info[i], &syscall_info[i]);
+#endif
+}
+
+static void
+init_hashtable_libcalls()
+{
+    init_hashtable_syscalls();
+    /* init hashtable libcall address -> &sys_table_entry (filled at runtime) */
+    hashtable_init(&addr2entry_table, NAME2ENTRY_TABLE_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+}
+
+static void
+drltrace_add_hashtable_entry(const char *libcall_name, app_pc libcall_addr)
+{
+#ifdef WINDOWS
+    IF_DEBUG(bool ok;)
+#endif
+    syscall_info_t *libcall_entry;
+    /* get a pointer to sys_table_entry from name2entry hashtable */
+    libcall_entry = (syscall_info_t *)hashtable_lookup(&name2entry, (void *)libcall_name);
+    if (libcall_entry == NULL)
+        return; /* it's ok, we simply don't have symbols for this libcall name */
+    VNOTIFY(3, "adding %s in the hashtable found at 0x%x" NL, libcall_name, libcall_addr);
+    /* XXX: we have duplicates in Linux (e.g. lseek/llseek, ftruncate/ftruncate64).
+     * Additional analysis is required.
+     */
+#ifdef WINDOWS
+    IF_DEBUG(ok = )
+#endif
+        hashtable_add(&addr2entry_table, libcall_addr, libcall_entry);
+#ifdef WINDOWS
+    ASSERT(ok, "unable to add an entry into hashtable");
+#endif
+}
+
+static void
+drltrace_remove_hashtable_entry(app_pc addr)
+{
+    hashtable_remove(&addr2entry_table, addr);
 }
 
 static void
@@ -206,7 +418,7 @@ iterate_exports(const module_data_t *info, bool add)
             }, { /* EXCEPT */
                 func = NULL;
             });
-            VNOTIFY(2, "export %s indirected from "PFX" to "PFX NL,
+            VNOTIFY(2, "export %s indirected from " PFX " to " PFX NL,
                    sym->name, sym->addr, func);
         }
 #endif
@@ -217,12 +429,16 @@ iterate_exports(const module_data_t *info, bool add)
                 IF_DEBUG(bool ok =)
                     drwrap_wrap_ex(func, lib_entry, NULL, (void *) sym->name, 0);
                 ASSERT(ok, "wrap request failed");
-                VNOTIFY(2, "wrapping export %s!%s @"PFX NL,
+                VNOTIFY(2, "wrapping export %s!%s @" PFX NL,
                        dr_module_preferred_name(info), sym->name, func);
+                if (options.all_args > 0)
+                    drltrace_add_hashtable_entry(sym->name, sym->addr);
             } else {
                 IF_DEBUG(bool ok =)
                     drwrap_unwrap(func, lib_entry, NULL);
                 ASSERT(ok, "unwrap request failed");
+                if (options.all_args > 0)
+                    drltrace_remove_hashtable_entry(sym->addr);
             }
         }
     }
@@ -289,6 +505,10 @@ event_fork(void *drcontext)
 static void
 event_exit(void)
 {
+    if (options.all_args > 0) {
+        hashtable_delete(&name2entry);
+        hashtable_delete(&addr2entry_table);
+    }
     if (outf != STDERR)
         dr_close_file(outf);
     drx_exit();
@@ -386,6 +606,11 @@ dr_init(client_id_t id)
 
 #ifdef WINDOWS
     dr_enable_console_printing();
+    IF_DEBUG(ok = )
+        dr_get_os_version(&win_ver);
+    ASSERT(ok, "unable to get Windows version");
 #endif
+    if (options.all_args > 0)
+        init_hashtable_libcalls();
     open_log_file();
 }
