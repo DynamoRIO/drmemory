@@ -97,11 +97,15 @@ static droption_t<bool> op_print_ret_addr
 (DROPTION_SCOPE_CLIENT, "print_ret_addr", false, "Print library call's return address",
  "Print return addresses of library calls.");
 
-static droption_t<uint> op_all_args
-(DROPTION_SCOPE_CLIENT, "all_args", 2, "Number of library call arguments to print",
- "Number of library call arguments to print. Specify 0 to disable. Drltrace will print "
- "symbolic representation of arguments in case of known library call including all "
- "known arguments.");
+static droption_t<uint> op_unknown_args
+(DROPTION_SCOPE_CLIENT, "num_unknown_args", 2, "Number of unknown libcall args to print",
+ "Number of arguments to print for unknown library calls.  Specify 0 to disable "
+ "unknown args printing.");
+
+static droption_t<uint> op_max_args
+(DROPTION_SCOPE_CLIENT, "num_max_args", 6, "Maximum number of arguments to print",
+ "Maximum number of arguments to print.  This option allows to limit the number of "
+ "arguments to be printed.  Specify 0 to disable args printing (including unknown).");
 
 static droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
