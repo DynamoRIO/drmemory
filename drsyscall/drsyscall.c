@@ -231,6 +231,9 @@ drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
     drsys_sysnum_t sysnum;
     syscall_info_t *sysinfo;
     bool ok;
+#ifdef DEBUG
+    uint offset = 0;
+#endif
 
     if (name == NULL || syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
@@ -247,13 +250,21 @@ drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
         ASSERT(false, "name2num should return num in systable");
         return DRMF_ERROR_NOT_FOUND;
     }
+
 #ifdef DEBUG
-    ASSERT(stri_eq(sysinfo->name, name)
+    /* ignore possible Nt/Zw mismatch */
+    if (((sysinfo->name[0] == 'N' && sysinfo->name[1] == 't') ||
+        (sysinfo->name[0] == 'Z' && sysinfo->name[1] == 'w')) &&
+        ((name[0] == 'N' && name[1] == 't') || (name[0] == 'Z' && name[1] == 'w')))
+        offset = 2;
+
+    ASSERT(stri_eq(sysinfo->name + offset, name + offset)
            IF_WINDOWS(||
                       /* account for NtUser*, etc. prefix differences, but only on
                        * Windows b/c strcasestr's tolower is undef on Linux
                        */
-                      strcasestr(sysinfo->name, name) != NULL), "name<->num mismatch");
+                      strcasestr(sysinfo->name + offset, name + offset) != NULL),
+                                 "name<->num mismatch");
 #endif
     *syscall = (drsys_syscall_t *) sysinfo;
     return DRMF_SUCCESS;

@@ -62,8 +62,8 @@
  * + Add argument values and return values.  The number and type of each
  *   argument and return would likely come from the filter configuration
  *   file, or from querying debug information.
- *   Today we have simple type-blind printing via -all_args and usage of
- *   drsyscall to print symbolic arguments for known library calls.
+ *   Today we have simple type-blind printing via -num_unknown_args and
+ *   usage of drsyscall to print symbolic arguments for known library calls.
  *
  * + Add 2 more modes, both gathering statistics rather than a full
  *   trace: one mode that counts total calls, and one that just
@@ -89,7 +89,7 @@ typedef struct _drltrace_options_t {
     bool only_from_app;
     bool ignore_underscore;
     char only_to_lib[MAXIMUM_PATH];
-    uint unknown_args;
+    uint num_unknown_args;
     uint max_args;
     bool print_ret_addr;
 } drltrace_options_t;
@@ -105,9 +105,7 @@ static app_pc exe_start;
 /* runtest.cmake assumes this is the prefix, so update both when changing it */
 #define STDERR_PREFIX "~~~~ "
 
-#define MAX_LIBCALL_NAME 255
-
-/* XXX: The functions print_simple_value and print_arg were taken from drstrace.
+/* XXX i#1978: The functions print_simple_value and print_arg were taken from drstrace.
  * It would be better to move them in drsyscall and import in drstrace and here.
  */
 static void
@@ -176,17 +174,17 @@ print_args_unknown_call(app_pc func, void *wrapcxt)
 {
     uint i;
     void *drcontext = drwrap_get_drcontext(wrapcxt);
-    dr_fprintf(outf, "(");
     DR_TRY_EXCEPT(drcontext, {
-        for (i = 0; i < options.unknown_args; i++) {
-            dr_fprintf(outf, "%s" PFX, (i != 0) ? ", " : "",
+        for (i = 0; i < options.num_unknown_args; i++) {
+            dr_fprintf(outf, "\n    arg %d: " PFX, i,
                        drwrap_get_arg(wrapcxt, i));
         }
     }, {
         dr_fprintf(outf, "<invalid memory>");
         /* Just keep going */
     });
-    dr_fprintf(outf, ")");
+    /* all args have been sucessfully printed */
+    dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
 }
 
 static void
@@ -194,27 +192,22 @@ print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
 {
     drmf_status_t res;
     drsys_syscall_t *syscall;
-    char syscall_name[MAX_LIBCALL_NAME];
 
-    if (options.max_args > 0) {
-        if (name[0] == 'Z' && name[1] == 'w')
-            dr_snprintf(syscall_name, BUFFER_SIZE_ELEMENTS(syscall_name), "Nt%s", name+2);
-        else
-            dr_snprintf(syscall_name, BUFFER_SIZE_ELEMENTS(syscall_name), "%s", name);
+    if (options.max_args == 0)
+        return;
 
-        res = drsys_name_to_syscall(syscall_name, &syscall);
-        if (res == DRMF_SUCCESS) {
-            res = drsys_iterate_arg_types(syscall, drlib_iter_arg_cb, wrapcxt);
-            if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
-                ASSERT(false, "drsys_iterate_arg_types failed in print_symbolic_args");
-            /* all args have been sucessfully printed */
-            dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
-            return;
-        } else {
-            /* use standard type-blind scheme */
-            if (options.unknown_args > 0)
-                print_args_unknown_call(func, wrapcxt);
-        }
+    res = drsys_name_to_syscall(name, &syscall);
+    if (res == DRMF_SUCCESS) {
+        res = drsys_iterate_arg_types(syscall, drlib_iter_arg_cb, wrapcxt);
+        if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
+            ASSERT(false, "drsys_iterate_arg_types failed in print_symbolic_args");
+        /* all args have been sucessfully printed */
+        dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
+        return;
+    } else {
+        /* use standard type-blind scheme */
+        if (options.num_unknown_args > 0)
+            print_args_unknown_call(func, wrapcxt);
     }
 }
 
@@ -277,12 +270,12 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
 
     /* XXX: We employ two schemes of arguments printing. drsyscall is used
      * to get a symbolic representation of arguments for known library calls.
-     * For the rest of library calls we use type-blind printing and -unknown_args
+     * For the rest of library calls we use type-blind printing and -num_unknown_args
      * to get a count of arguments to print.
      */
     print_symbolic_args(name, wrapcxt, func);
 
-    /* XXX: we have to print a module id + offset here instead of an
+    /* XXX i#1979: we have to print a module id + offset here instead of an
      * absolute address and provide a list of modules at the end of
      * execution to translate the module ids to paths.
      */
@@ -416,7 +409,7 @@ options_init(client_id_t id)
     /* default values */
     dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
     options.max_args = 6;
-    options.unknown_args = 2;
+    options.num_unknown_args = 2;
     op_print_stderr = true;
     /* XXX: we have to use droption here instead of manual parsing */
     for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
@@ -438,8 +431,8 @@ options_init(client_id_t id)
             s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
             USAGE_CHECK(s != NULL, "missing -num_unknown_args number");
             if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.unknown_args);
-                USAGE_CHECK(res == 1, "invalid -all_args number");
+                int res = dr_sscanf(token, "%u", &options.num_unknown_args);
+                USAGE_CHECK(res == 1, "invalid -num_unknown_args number");
             }
         } else if (strcmp(token, "-num_max_args") == 0) {
             s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
@@ -448,8 +441,7 @@ options_init(client_id_t id)
                 int res = dr_sscanf(token, "%u", &options.max_args);
                 USAGE_CHECK(res == 1, "invalid -num_max_args number");
             }
-        }
-        else if (strcmp(token, "-verbose") == 0) {
+        } else if (strcmp(token, "-verbose") == 0) {
             s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
             USAGE_CHECK(s != NULL, "missing -verbose number");
             if (s != NULL) {
