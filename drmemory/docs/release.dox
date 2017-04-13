@@ -65,6 +65,7 @@ The changes between \TOOL_VERSION and version 1.11.0 include:
    checking) support for Linux.
  - Added preliminary support for the Windows Subsystem for Linux
    environment with the regular Dr. Memory Linux package.
+ - Added support for Windows 10 1703.
 
 The changes between version 1.11.0 and version 1.10.1 include:
  - Added support for Windows 10 1607.

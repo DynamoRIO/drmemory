@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -3174,6 +3174,32 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN12,0},"NtGdiGetEntry", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN12,0},"NtGdiGetProcessSessionFonts", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN12,0},"NtGdiGetPublicFontTableChangeCookie", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    /* Added in Windows 10 1703 */
+    /* FIXME i#1750: fill in details */
+    {{WIN13,0},"NtGdiAddInitialFonts", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDICreateHwContext", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDICreateHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIDestroyHwContext", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIDestroyHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetAllocationPriority", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetMemoryBudgetTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetMultiPlaneOverlayCaps", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetPostCompositionCaps", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetProcessSchedulingPriorityBand", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDIGetYieldPercentage", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISetMemoryBudgetTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISetProcessSchedulingPriorityBand", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISetYieldPercentage", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISubmitCommandToHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISubmitSignalSyncObjectsToHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiDdDDISubmitWaitForSyncObjectsToHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiGetAppliedDeviceGammaRamp", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiGetBitmapDpiScaleValue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiGetDCDpiScaleValue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiGetGammaRampCapability", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiScaleRgn", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiScaleValues", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtGdiSetPrivateDeviceGammaRamp", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_GDI32_SYSCALLS \

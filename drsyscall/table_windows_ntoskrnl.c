@@ -3527,6 +3527,14 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN12,0},"NtQuerySecurityPolicy", UNKNOWN, RNTST, 6, },
     {{WIN12,0},"NtRollbackRegistryTransaction", UNKNOWN, RNTST, 2, },
     {{WIN12,0},"NtSetCachedSigningLevel2", UNKNOWN, RNTST, 6, },
+    /* Added in Windows 10 1703 */
+    /* FIXME i#1750: fill in details */
+    {{WIN13,0},"NtAcquireProcessActivityReference", UNKNOWN, RNTST, 3, },
+    {{WIN13,0},"NtCompareSigningLevels", UNKNOWN, RNTST, 2, },
+    {{WIN13,0},"NtConvertBetweenAuxiliaryCounterAndPerformanceCounter,NONE,", UNKNOWN, RNTST, 1, },
+    {{WIN13,0},"NtLoadHotPatch", UNKNOWN, RNTST, 2, },
+    {{WIN13,0},"NtQueryAuxiliaryCounterFrequency", UNKNOWN, RNTST, 1, },
+    {{WIN13,0},"NtQueryInformationByName", UNKNOWN, RNTST, 5, },
 };
 
 #define NUM_NTDLL_SYSCALLS \

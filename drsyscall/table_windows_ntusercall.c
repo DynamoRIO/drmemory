@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -158,9 +158,11 @@ syscall_info_t syscall_UserCallOneParam_info[] = {
     {{WIN8,0},"NtUserCallOneParam.ISTHREADMESSAGEQUEUEATTACHED", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{WIN81,0},"NtUserCallOneParam.POSTUIACTIONS", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {{WIN12,0},"NtUserCallOneParam.SETINPUTSERVICESTATE", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
+    {{WIN13,0},"NtUserCallOneParam.FORCEENABLENUMPADTRANSLATION", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallOneParam.UNKNOWN", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 2, },
 };
+
 syscall_info_t syscall_UserCallHwnd_info[] = {
     {{0,0},"NtUserCallHwnd.DEREGISTERSHELLHOOKWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
     {{0,0},"NtUserCallHwnd.DWP_GETENABLEDPOPUP", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
@@ -169,6 +171,7 @@ syscall_info_t syscall_UserCallHwnd_info[] = {
     {{0,0},"NtUserCallHwnd.UNKNOWNA", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {{WIN10,0},"NtUserCallHwnd.UNKNOWNB", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {{WIN12,0},"NtUserCallHwnd.UNKNOWNC", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
+    {{WIN13,0},"NtUserCallHwnd.UNKNOWND", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
     {SECONDARY_TABLE_ENTRY_MAX_NUMBER},
     {{0,0},"NtUserCallHwnd.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
 };
