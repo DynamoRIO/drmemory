@@ -51,6 +51,7 @@
 #include "drwrap.h"
 #include "drx.h"
 #include "utils.h"
+#include "drcovlib.h"
 #include <string.h>
 
 /* XXX i#1349: features to add:
@@ -223,6 +224,9 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     app_pc func = drwrap_get_func(wrapcxt);
     module_data_t *mod;
     thread_id_t tid;
+    uint mod_id;
+    app_pc mod_start, ret_addr;
+    drcovlib_status_t res;
 
     void *drcontext = drwrap_get_drcontext(wrapcxt);
 
@@ -275,13 +279,15 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
      */
     print_symbolic_args(name, wrapcxt, func);
 
-    /* XXX i#1979: we have to print a module id + offset here instead of an
-     * absolute address and provide a list of modules at the end of
-     * execution to translate the module ids to paths.
-     */
-    dr_fprintf(outf,
-               options.print_ret_addr ? " and return to " PFX: "",
-               drwrap_get_retaddr(wrapcxt));
+    if (options.print_ret_addr) {
+        ret_addr = drwrap_get_retaddr(wrapcxt);
+        res = drmodtrack_lookup(drcontext, ret_addr, &mod_id, &mod_start);
+        if (res == DRCOVLIB_SUCCESS) {
+            dr_fprintf(outf,
+                       options.print_ret_addr ? " and return to module id:%d, offset:" PIFX : "",
+                       mod_id, ret_addr - mod_start);
+        }
+    }
     dr_fprintf(outf, "\n");
     if (mod != NULL)
         dr_free_module_data(mod);
@@ -393,11 +399,16 @@ event_exit(void)
     if (options.max_args > 0)
         drsys_exit();
 
-    if (outf != STDERR)
+    if (outf != STDERR) {
+        if (options.print_ret_addr)
+            drmodtrack_dump(outf);
         dr_close_file(outf);
+    }
     drx_exit();
     drwrap_exit();
     drmgr_exit();
+    if (options.print_ret_addr)
+        drmodtrack_exit();
 }
 
 static void
@@ -477,6 +488,11 @@ dr_init(client_id_t id)
     IF_DEBUG(ok = )
         drx_init();
     ASSERT(ok, "drx failed to initialize");
+    if (options.print_ret_addr) {
+        IF_DEBUG(ok = )
+            drmodtrack_init();
+        ASSERT(ok == DRCOVLIB_SUCCESS, "drmodtrack failed to initialize");
+    }
 
     exe = dr_get_main_module();
     if (exe != NULL)
