@@ -62,7 +62,8 @@
  * + Add argument values and return values.  The number and type of each
  *   argument and return would likely come from the filter configuration
  *   file, or from querying debug information.
- *   Today we have simple type-blind printing via -all_args.
+ *   Today we have simple type-blind printing via -num_unknown_args and
+ *   usage of drsyscall to print symbolic arguments for known library calls.
  *
  * + Add 2 more modes, both gathering statistics rather than a full
  *   trace: one mode that counts total calls, and one that just
@@ -82,14 +83,14 @@ static uint verbose;
 #define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
-#define MAX_PREFIX 20
 
 typedef struct _drltrace_options_t {
     char logdir[MAXIMUM_PATH];
     bool only_from_app;
     bool ignore_underscore;
     char only_to_lib[MAXIMUM_PATH];
-    uint all_args;
+    uint num_unknown_args;
+    uint max_args;
     bool print_ret_addr;
 } drltrace_options_t;
 
@@ -103,6 +104,112 @@ static app_pc exe_start;
 
 /* runtest.cmake assumes this is the prefix, so update both when changing it */
 #define STDERR_PREFIX "~~~~ "
+
+/* XXX i#1978: The functions print_simple_value and print_arg were taken from drstrace.
+ * It would be better to move them in drsyscall and import in drstrace and here.
+ */
+static void
+print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
+{
+    bool pointer = !TEST(DRSYS_PARAM_INLINED, arg->mode);
+    dr_fprintf(outf, pointer ? PFX : (leading_zeroes ? PFX : PIFX), arg->value);
+    if (pointer && ((arg->pre && TEST(DRSYS_PARAM_IN, arg->mode)) ||
+                    (!arg->pre && TEST(DRSYS_PARAM_OUT, arg->mode)))) {
+        ptr_uint_t deref = 0;
+        ASSERT(arg->size <= sizeof(deref), "too-big simple type");
+        /* We assume little-endian */
+        if (dr_safe_read((void *)arg->value, arg->size, &deref, NULL))
+            dr_fprintf(outf, (leading_zeroes ? " => " PFX : " => " PIFX), deref);
+    }
+}
+
+static void
+print_arg(drsys_arg_t *arg)
+{
+    dr_fprintf(outf, "\n    arg %d: ", arg->ordinal);
+    switch (arg->type) {
+    case DRSYS_TYPE_VOID:         print_simple_value(arg, true); break;
+    case DRSYS_TYPE_POINTER:      print_simple_value(arg, true); break;
+    case DRSYS_TYPE_BOOL:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_INT:          print_simple_value(arg, false); break;
+    case DRSYS_TYPE_SIGNED_INT:   print_simple_value(arg, false); break;
+    case DRSYS_TYPE_UNSIGNED_INT: print_simple_value(arg, false); break;
+    case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
+    case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
+    case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+    default: {
+        if (arg->value == 0)
+            dr_fprintf(outf, "<null>");
+        else
+            dr_fprintf(outf, PFX, arg->value);
+    }
+    }
+
+    dr_fprintf(outf, " (%s%s%stype=%s%s, size=" PIFX ")",
+              (arg->arg_name == NULL) ? "" : "name=",
+              (arg->arg_name == NULL) ? "" : arg->arg_name,
+              (arg->arg_name == NULL) ? "" : ", ",
+              (arg->type_name == NULL) ? "\"\"" : arg->type_name,
+              (arg->type_name == NULL ||
+              TESTANY(DRSYS_PARAM_INLINED|DRSYS_PARAM_RETVAL, arg->mode)) ? "" : "*",
+              arg->size);
+}
+
+static bool
+drlib_iter_arg_cb(drsys_arg_t *arg, void *wrapcxt)
+{
+    if (arg->ordinal == -1)
+        return true;
+    if (arg->ordinal >= options.max_args)
+        return false; /* limit number of arguments to be printed */
+
+    arg->value = (ptr_uint_t)drwrap_get_arg(wrapcxt, arg->ordinal);
+
+    print_arg(arg);
+    return true; /* keep going */
+}
+
+static void
+print_args_unknown_call(app_pc func, void *wrapcxt)
+{
+    uint i;
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
+    DR_TRY_EXCEPT(drcontext, {
+        for (i = 0; i < options.num_unknown_args; i++) {
+            dr_fprintf(outf, "\n    arg %d: " PFX, i,
+                       drwrap_get_arg(wrapcxt, i));
+        }
+    }, {
+        dr_fprintf(outf, "<invalid memory>");
+        /* Just keep going */
+    });
+    /* all args have been sucessfully printed */
+    dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
+}
+
+static void
+print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
+{
+    drmf_status_t res;
+    drsys_syscall_t *syscall;
+
+    if (options.max_args == 0)
+        return;
+
+    res = drsys_name_to_syscall(name, &syscall);
+    if (res == DRMF_SUCCESS) {
+        res = drsys_iterate_arg_types(syscall, drlib_iter_arg_cb, wrapcxt);
+        if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
+            ASSERT(false, "drsys_iterate_arg_types failed in print_symbolic_args");
+        /* all args have been sucessfully printed */
+        dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
+        return;
+    } else {
+        /* use standard type-blind scheme */
+        if (options.num_unknown_args > 0)
+            print_args_unknown_call(func, wrapcxt);
+    }
+}
 
 /****************************************************************************
  * Library entry wrapping
@@ -160,27 +267,21 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     dr_fprintf(outf, "%s%s%s%s", (outf == STDERR ? STDERR_PREFIX : ""),
                modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
-    if (options.all_args > 0) {
-        uint i;
-        void *drcontext = drwrap_get_drcontext(wrapcxt);
-        dr_fprintf(outf, "(");
-        DR_TRY_EXCEPT(drcontext, {
-            for (i = 0; i < options.all_args; i++) {
-                dr_fprintf(outf, "%s"PFX, (i != 0) ? ", " : "",
-                           drwrap_get_arg(wrapcxt, i));
-            }
-        }, {
-            dr_fprintf(outf, "<invalid memory>");
-            /* Just keep going */
-        });
-        /* XXX: we have to print a module id + offset here instead of an
-         * absolute address and provide a dump a module list at the end of
-         * execution to translate the module ids to paths.
-         */
-        dr_fprintf(outf,
-                   options.print_ret_addr ? ") and return to " PFX: ")",
-                   drwrap_get_retaddr(wrapcxt));
-    }
+
+    /* XXX: We employ two schemes of arguments printing. drsyscall is used
+     * to get a symbolic representation of arguments for known library calls.
+     * For the rest of library calls we use type-blind printing and -num_unknown_args
+     * to get a count of arguments to print.
+     */
+    print_symbolic_args(name, wrapcxt, func);
+
+    /* XXX i#1979: we have to print a module id + offset here instead of an
+     * absolute address and provide a list of modules at the end of
+     * execution to translate the module ids to paths.
+     */
+    dr_fprintf(outf,
+               options.print_ret_addr ? " and return to " PFX: "",
+               drwrap_get_retaddr(wrapcxt));
     dr_fprintf(outf, "\n");
     if (mod != NULL)
         dr_free_module_data(mod);
@@ -206,7 +307,7 @@ iterate_exports(const module_data_t *info, bool add)
             }, { /* EXCEPT */
                 func = NULL;
             });
-            VNOTIFY(2, "export %s indirected from "PFX" to "PFX NL,
+            VNOTIFY(2, "export %s indirected from " PFX " to " PFX NL,
                    sym->name, sym->addr, func);
         }
 #endif
@@ -217,7 +318,7 @@ iterate_exports(const module_data_t *info, bool add)
                 IF_DEBUG(bool ok =)
                     drwrap_wrap_ex(func, lib_entry, NULL, (void *) sym->name, 0);
                 ASSERT(ok, "wrap request failed");
-                VNOTIFY(2, "wrapping export %s!%s @"PFX NL,
+                VNOTIFY(2, "wrapping export %s!%s @" PFX NL,
                        dr_module_preferred_name(info), sym->name, func);
             } else {
                 IF_DEBUG(bool ok =)
@@ -289,6 +390,9 @@ event_fork(void *drcontext)
 static void
 event_exit(void)
 {
+    if (options.max_args > 0)
+        drsys_exit();
+
     if (outf != STDERR)
         dr_close_file(outf);
     drx_exit();
@@ -304,7 +408,8 @@ options_init(client_id_t id)
     char token[OPTION_MAX_LENGTH];
     /* default values */
     dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
-    options.all_args = 2;
+    options.max_args = 6;
+    options.num_unknown_args = 2;
     op_print_stderr = true;
     /* XXX: we have to use droption here instead of manual parsing */
     for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
@@ -322,12 +427,19 @@ options_init(client_id_t id)
             USAGE_CHECK(s != NULL, "missing library name");
         } else if (strcmp(token, "-ignore_underscore") == 0) {
             options.ignore_underscore = true;
-        } else if (strcmp(token, "-all_args") == 0) {
+        } else if (strcmp(token, "-num_unknown_args") == 0) {
             s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -all_args number");
+            USAGE_CHECK(s != NULL, "missing -num_unknown_args number");
             if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.all_args);
-                USAGE_CHECK(res == 1, "invalid -all_args number");
+                int res = dr_sscanf(token, "%u", &options.num_unknown_args);
+                USAGE_CHECK(res == 1, "invalid -num_unknown_args number");
+            }
+        } else if (strcmp(token, "-num_max_args") == 0) {
+            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
+            USAGE_CHECK(s != NULL, "missing -num_max_args number");
+            if (s != NULL) {
+                int res = dr_sscanf(token, "%u", &options.max_args);
+                USAGE_CHECK(res == 1, "invalid -num_max_args number");
             }
         } else if (strcmp(token, "-verbose") == 0) {
             s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
@@ -349,6 +461,7 @@ DR_EXPORT void
 dr_init(client_id_t id)
 {
     module_data_t *exe;
+    drsys_options_t ops = { sizeof(ops), 0, };
     IF_DEBUG(bool ok;)
 
     dr_set_client_name("Dr. LTrace", "http://drmemory.org/issues");
@@ -387,5 +500,8 @@ dr_init(client_id_t id)
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
+    if (options.max_args > 0)
+        drsys_init(id, &ops);
+
     open_log_file();
 }
