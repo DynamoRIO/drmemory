@@ -69,6 +69,7 @@ use_DynamoRIO_extension(drltracelib drmgr_static)
 use_DynamoRIO_extension(drltracelib drwrap_static)
 use_DynamoRIO_extension(drltracelib drx_static)
 use_DynamoRIO_extension(drltracelib drsyscall_static)
+use_DynamoRIO_extension(drltracelib drcovlib_static)
 
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # i#1805: see comment in drstrace/CMakeLists.txt
