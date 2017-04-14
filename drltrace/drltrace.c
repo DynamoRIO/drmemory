@@ -284,7 +284,7 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
         res = drmodtrack_lookup(drcontext, ret_addr, &mod_id, &mod_start);
         if (res == DRCOVLIB_SUCCESS) {
             dr_fprintf(outf,
-                       options.print_ret_addr ? " and return to module id:%d, offset:" PIFX: "",
+                       options.print_ret_addr ? " and return to module id:%d, offset:" PIFX : "",
                        mod_id, ret_addr - mod_start);
         }
     }
