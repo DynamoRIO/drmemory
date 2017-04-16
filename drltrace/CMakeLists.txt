@@ -37,9 +37,7 @@ include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 # drltracelib
 
 set(srcs
-    drltrace.c)
-
-set(external_srcs ../framework/drmf_utils.c)
+    drltrace.cpp)
 
 if (WIN32)
   set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
@@ -47,7 +45,7 @@ endif ()
 
 set(DynamoRIO_USE_LIBC OFF)
 
-add_library(drltracelib SHARED ${srcs} ${external_srcs})
+add_library(drltracelib SHARED ${srcs})
 
 # We share the framework version # for now
 set_library_version(drltracelib ${DRMF_VERSION_MAJOR_MINOR})
@@ -70,7 +68,12 @@ use_DynamoRIO_extension(drltracelib drwrap_static)
 use_DynamoRIO_extension(drltracelib drx_static)
 use_DynamoRIO_extension(drltracelib drsyscall_static)
 use_DynamoRIO_extension(drltracelib drcovlib_static)
+use_DynamoRIO_extension(drltracelib droption)
 
+if (UNIX)
+  # to avoid conflicts with new declaration with "C" linkage in utils.h
+  append_property_string(TARGET drltracelib COMPILE_FLAGS "-DNOLINK_STRCASESTR")
+endif()
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # i#1805: see comment in drstrace/CMakeLists.txt
   append_property_string(TARGET drltracelib LINK_FLAGS "/force:multiple")

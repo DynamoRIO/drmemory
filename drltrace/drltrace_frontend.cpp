@@ -41,7 +41,7 @@
 #include "dr_inject.h"
 #include "dr_config.h"
 #include "dr_frontend.h"
-#include "droption.h"
+#include "drltrace_options.h"
 #undef TESTANY
 #include "utils.h"
 #include <string.h>
@@ -73,58 +73,6 @@
         DRLTRACE_ERROR("drfront_bufprint failed: %d\n", sc); \
     NULL_TERMINATE_BUFFER(buf); \
 } while (0)
-
-/* Frontend scope is defined here because if logdir is a forbidden path we have to change
- * it and provide for our client manually.
- */
-static droption_t<std::string> op_logdir
-(DROPTION_SCOPE_FRONTEND, "logdir", ".", "Log directory to print library call data",
- "Specify log directory where library call data will be written, in a separate file per "
- "process.  The default value is \".\" (current dir).  If set to \"-\", data for all "
- "processes are printed to stderr (warning: this can be slow).");
-
-static droption_t<bool> op_only_from_app
-(DROPTION_SCOPE_CLIENT, "only_from_app", false, "Reports only library calls from the app",
- "Only reports library calls from the application itself, as opposed to all calls even "
- "from other libraries or within the same library.");
-
-static droption_t<bool> op_follow_children
-(DROPTION_SCOPE_FRONTEND, "follow_children", true, "Trace child processes",
- "Trace child processes created by a target application. Specify -no_follow_children "
- "to disable.");
-
-static droption_t<bool> op_print_ret_addr
-(DROPTION_SCOPE_CLIENT, "print_ret_addr", false, "Print library call's return address",
- "Print return addresses of library calls.");
-
-static droption_t<uint> op_unknown_args
-(DROPTION_SCOPE_CLIENT, "num_unknown_args", 2, "Number of unknown libcall args to print",
- "Number of arguments to print for unknown library calls.  Specify 0 to disable "
- "unknown args printing.");
-
-static droption_t<uint> op_max_args
-(DROPTION_SCOPE_CLIENT, "num_max_args", 6, "Maximum number of arguments to print",
- "Maximum number of arguments to print.  This option allows to limit the number of "
- "arguments to be printed.  Specify 0 to disable args printing (including unknown).");
-
-static droption_t<bool> op_ignore_underscore
-(DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
- "starting with \"_\".", "Ignores library routine names starting with \"_\".");
-
-static droption_t<bool> op_help
-(DROPTION_SCOPE_FRONTEND, "help", false, "Print this message.", "Print this message");
-
-static droption_t<bool> op_version
-(DROPTION_SCOPE_FRONTEND, "version", 0, "Print version number.", "Print version number.");
-
-static droption_t<unsigned int> op_verbose
-(DROPTION_SCOPE_ALL, "verbose", 1, "Change verbosity.", "Change verbosity.");
-
-static droption_t<std::string> op_ltracelib_ops
-(DROPTION_SCOPE_CLIENT, "ltracelib_ops",
- DROPTION_FLAG_SWEEP | DROPTION_FLAG_ACCUMULATE | DROPTION_FLAG_INTERNAL,
- "", "(For internal use: sweeps up drltracelib options)",
- "This is an internal option that sweeps up other options to pass to the drltracelib.");
 
 /* check that drltracelib.dll, dynamorio.dll and target executable exist */
 static void

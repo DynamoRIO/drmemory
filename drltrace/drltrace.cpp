@@ -34,25 +34,24 @@
  *
  * Records calls to exported library routines.
  *
- * The runtime options for this client include:
- *
- * -logdir <dir>       Sets log directory, which by default is "-".
- *                     If set to "-", the tool prints to stderr.
- * -only_from_app      Only reports library calls from the application itself.
- * -only_to_lib <lib>  Only reports calls to the library <lib>.
- * -ignore_underscore  Ignores library routine names starting with "_".
- * -all_args <N>       Prints N arg values for every library call.
- *                     Set to 2 by default.
- * -verbose <N>        For debugging the tool itself.
+ * The runtime options for this client is specified in drltrace_options.h,
+ * see DROPTION_SCOPE_CLIENT options.
  */
-
 #include "dr_api.h"
+#include "drltrace_options.h"
 #include "drmgr.h"
 #include "drwrap.h"
 #include "drx.h"
-#include "utils.h"
 #include "drcovlib.h"
 #include <string.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+#undef TESTANY
+#include "utils.h"
+#ifdef __cplusplus
+}
+#endif
 
 /* XXX i#1349: features to add:
  *
@@ -74,14 +73,9 @@
  *   the library entries.
  */
 
-static uint verbose;
-
 #define VNOTIFY(level, ...) do {          \
-    NOTIFY_COND(verbose >= level, f_global, __VA_ARGS__); \
+    NOTIFY_COND(op_verbose.get_value() >= level, f_global, __VA_ARGS__); \
 } while (0)
-
-/* Checks for both debug and release builds: */
-#define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
 
@@ -91,7 +85,7 @@ typedef struct _drltrace_options_t {
     bool ignore_underscore;
     char only_to_lib[MAXIMUM_PATH];
     uint num_unknown_args;
-    uint max_args;
+    int max_args;
     bool print_ret_addr;
 } drltrace_options_t;
 
@@ -341,7 +335,7 @@ library_matches_filter(const module_data_t *info)
 {
     if (options.only_to_lib[0] != '\0') {
         const char *libname = dr_module_preferred_name(info);
-        return (libname != NULL && strstr(libname, options.only_to_lib) != NULL);
+        return (libname != NULL && strcasestr(libname, options.only_to_lib) != NULL);
     }
     return true;
 }
@@ -414,58 +408,23 @@ event_exit(void)
 static void
 options_init(client_id_t id)
 {
-    const char *opstr = dr_get_options(id);
-    const char *s;
-    char token[OPTION_MAX_LENGTH];
-    /* default values */
-    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
-    options.max_args = 6;
-    options.num_unknown_args = 2;
+    std::string parse_err;
+    if (!dr_parse_options(id, &parse_err, NULL))
+        ASSERT(false, "unable to parse options specified for drltracelib");
+
     op_print_stderr = true;
-    /* XXX: we have to use droption here instead of manual parsing */
-    for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
-         s != NULL;
-         s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token))) {
-        if (strcmp(token, "-logdir") == 0) {
-            s = dr_get_token(s, options.logdir,
-                             BUFFER_SIZE_ELEMENTS(options.logdir));
-            USAGE_CHECK(s != NULL, "missing logdir path");
-        } else if (strcmp(token, "-only_from_app") == 0) {
-            options.only_from_app = true;
-        } else if (strcmp(token, "-only_to_lib") == 0) {
-            s = dr_get_token(s, options.only_to_lib,
-                             BUFFER_SIZE_ELEMENTS(options.only_to_lib));
-            USAGE_CHECK(s != NULL, "missing library name");
-        } else if (strcmp(token, "-ignore_underscore") == 0) {
-            options.ignore_underscore = true;
-        } else if (strcmp(token, "-num_unknown_args") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -num_unknown_args number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.num_unknown_args);
-                USAGE_CHECK(res == 1, "invalid -num_unknown_args number");
-            }
-        } else if (strcmp(token, "-num_max_args") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -num_max_args number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.max_args);
-                USAGE_CHECK(res == 1, "invalid -num_max_args number");
-            }
-        } else if (strcmp(token, "-verbose") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -verbose number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &verbose);
-                USAGE_CHECK(res == 1, "invalid -verbose number");
-            }
-        } else if (strcmp(token, "-print_ret_addr") == 0)
-            options.print_ret_addr = true;
-        else {
-            NOTIFY("UNRECOGNIZED OPTION: \"%s\""NL, token);
-            USAGE_CHECK(false, "invalid option");
-        }
-    }
+
+    /* to avoid numerous get_value() calls we copy all options here */
+    options.ignore_underscore = op_ignore_underscore.get_value();
+    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "%s",
+                op_logdir.get_value().c_str());
+    options.max_args = op_max_args.get_value();
+    options.num_unknown_args = op_unknown_args.get_value();
+    options.only_from_app = op_only_from_app.get_value();
+    dr_snprintf(options.only_to_lib, BUFFER_SIZE_ELEMENTS(options.logdir), "%s",
+                op_only_to_lib.get_value().c_str());
+    options.print_ret_addr = op_print_ret_addr.get_value();
+
 }
 
 DR_EXPORT void
@@ -504,7 +463,8 @@ dr_init(client_id_t id)
      * Fast cleancalls is safe b/c we're only wrapping func entry and
      * we don't care about the app context.
      */
-    drwrap_set_global_flags(DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS);
+    drwrap_set_global_flags((drwrap_global_flags_t)
+                                (DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS));
 
     dr_register_exit_event(event_exit);
 #ifdef UNIX
