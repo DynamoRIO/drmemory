@@ -20,6 +20,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef _UTILS_H_
 #define _UTILS_H_ 1
 
@@ -1087,3 +1091,7 @@ void
 utils_thread_set_file(void *drcontext, file_t f);
 
 #endif /* _UTILS_H_ */
+
+#ifdef __cplusplus
+}
+#endif

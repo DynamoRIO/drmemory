@@ -109,6 +109,11 @@ else ()
   set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
 
+if (UNIX)
+  # to avoid conflicts with new declaration with "C" linkage in utils.h
+  append_property_string(TARGET drltrace COMPILE_FLAGS "-DNOLINK_STRCASESTR")
+endif()
+
 install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)

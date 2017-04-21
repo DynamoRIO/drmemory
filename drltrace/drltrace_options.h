@@ -59,7 +59,7 @@ static droption_t<uint> op_unknown_args
  "Number of arguments to print for unknown library calls.  Specify 0 to disable "
  "unknown args printing.");
 
-static droption_t<uint> op_max_args
+static droption_t<int> op_max_args
 (DROPTION_SCOPE_CLIENT, "num_max_args", 6, "Maximum number of arguments to print",
  "Maximum number of arguments to print.  This option allows to limit the number of "
  "arguments to be printed.  Specify 0 to disable args printing (including unknown).");
@@ -69,7 +69,7 @@ static droption_t<bool> op_ignore_underscore
  "starting with \"_\".", "Ignores library routine names starting with \"_\".");
 
 static droption_t<std::string> op_only_to_lib
-(DROPTION_SCOPE_CLIENT, "only_to_lib", "\0", "Only reports calls to the library <lib_name>. ",
+(DROPTION_SCOPE_CLIENT, "only_to_lib", "", "Only reports calls to the library <lib_name>. ",
  "Only reports calls to the library <lib_name>. Argument is case insensitive.");
 
 static droption_t<bool> op_help
