@@ -70,7 +70,7 @@ static droption_t<bool> op_ignore_underscore
 
 static droption_t<std::string> op_only_to_lib
 (DROPTION_SCOPE_CLIENT, "only_to_lib", "", "Only reports calls to the library <lib_name>. ",
- "Only reports calls to the library <lib_name>. Argument is case insensitive.");
+ "Only reports calls to the library <lib_name>. Argument is case insensitive on Windows.");
 
 static droption_t<bool> op_help
 (DROPTION_SCOPE_FRONTEND, "help", false, "Print this message.", "Print this message");

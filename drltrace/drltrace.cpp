@@ -316,7 +316,7 @@ iterate_exports(const module_data_t *info, bool add)
 static bool
 library_matches_filter(const module_data_t *info)
 {
-    if (op_only_to_lib.get_value().c_str()[0] != '\0') {
+    if (!op_only_to_lib.get_value().empty()) {
         const char *libname = dr_module_preferred_name(info);
 #ifdef WINDOWS
         return (libname != NULL && strcasestr(libname,
@@ -351,7 +351,7 @@ static void
 open_log_file(void)
 {
     char buf[MAXIMUM_PATH];
-    if (strcmp(op_logdir.get_value().c_str(), "-") == 0)
+    if (op_logdir.get_value().compare("-") == 0)
         outf = STDERR;
     else {
         outf = drx_open_unique_appid_file(op_logdir.get_value().c_str(),
