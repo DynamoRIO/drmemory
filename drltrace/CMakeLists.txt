@@ -122,5 +122,29 @@ if (BUILD_TOOL_TESTS)
   get_target_path_for_execution(drltrace_path drltrace)
   get_target_path_for_execution(app_path drsyscall_app)
   prefix_cmd_if_necessary(drltrace_path OFF ${drltrace_path})
+
   add_test(drltrace ${drltrace_path} -- ${app_path})
+  add_test(drltrace_libcalls ${drltrace_path} -logdir - -print_ret_addr -- ${app_path})
+  add_test(drltrace_symargs ${drltrace_path} -logdir - -num_max_args 4 -- ${app_path})
+
+  #regex strings for libcalls and arguments printing test
+  set(libcall_args1_01 "    arg 0: 0x([0-9a-f]+)\n    arg 1: 0x([0-9a-f]+)\n")
+  set(libcall_ret "    and return to module id:([0-9]+), offset:0x([0-9a-f]+)\n")
+if (WIN32)
+  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=HANDLE, size=0x4\\)\n")
+  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=int, size=0x4\\)\n")
+
+  set(libcall_name1 "~~([0-9a-f]+)~~ KERNELBASE.dll!VirtualQueryEx\n")
+  set(libcall_name2 "~~([0-9a-f]+)~~ ntdll.dll!ZwQueryInformationProcess\n")
+else ()
+  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=char \\*\\*, size=0x8\\)\n")
+  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=<unknown>\\*, size=0x8\\)\n")
+
+  set(libcalls_libcall_name1 "~~([0-9a-f]+)~~ libc.so.6!puts\n")
+  set(libcalls_libcall_name2 "~~([0-9a-f]+)~~ libc.so.6!open\n")
+endif(WIN32)
+  set_tests_properties(drltrace_libcalls PROPERTIES PASS_REGULAR_EXPRESSION
+                       ${libcall_name1}${libcall_args1_01}${libcall_ret})
+  set_tests_properties(drltrace_symargs PROPERTIES PASS_REGULAR_EXPRESSION
+                       ${libcall_name2}${libcall_args2_0}${libcall_args2_1})
 endif (BUILD_TOOL_TESTS)
