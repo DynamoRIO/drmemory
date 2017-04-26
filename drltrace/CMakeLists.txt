@@ -81,8 +81,8 @@ install(TARGETS drltracelib
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
-
-
+copy_target_to_device(drltracelib)
+copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} drltracelib)
 ##################################################
 # drltrace frontend
 
@@ -109,15 +109,18 @@ endif ()
 install(TARGETS drltrace DESTINATION "${INSTALL_BIN}"
   PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
-
+copy_target_to_device(drltrace)
+copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} drltrace)
 ##################################################
 # drltrace tests
 
 # XXX i#1960: add more tests for drltrace that check the output contains
 # expected library calls.
 #
+
 if (BUILD_TOOL_TESTS)
-  get_target_property(app_path drsyscall_app LOCATION${location_suffix})
-  get_target_property(drltrace_path drltrace LOCATION${location_suffix})
+  get_target_path_for_execution(drltrace_path drltrace)
+  get_target_path_for_execution(app_path drsyscall_app)
+  prefix_cmd_if_necessary(drltrace_path OFF ${drltrace_path})
   add_test(drltrace ${drltrace_path} -- ${app_path})
 endif (BUILD_TOOL_TESTS)
