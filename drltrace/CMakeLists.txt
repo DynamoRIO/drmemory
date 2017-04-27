@@ -117,7 +117,6 @@ copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} drltrace)
 # XXX i#1960: add more tests for drltrace that check the output contains
 # expected library calls.
 #
-
 if (BUILD_TOOL_TESTS)
   get_target_path_for_execution(drltrace_path drltrace)
   get_target_path_for_execution(app_path drsyscall_app)
@@ -131,14 +130,14 @@ if (BUILD_TOOL_TESTS)
   set(libcall_args1_01 "    arg 0: 0x([0-9a-f]+)\n    arg 1: 0x([0-9a-f]+)\n")
   set(libcall_ret "    and return to module id:([0-9]+), offset:0x([0-9a-f]+)\n")
 if (WIN32)
-  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=HANDLE, size=0x4\\)\n")
-  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=int, size=0x4\\)\n")
+  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=HANDLE, size=0x([0-9a-f]+)\\)\n")
+  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=int, size=0x([0-9a-f]+)\\)\n")
 
-  set(libcall_name1 "~~([0-9a-f]+)~~ KERNELBASE.dll!VirtualQueryEx\n")
+  set(libcall_name1 "~~([0-9a-f]+)~~ KERNELBASE.dll!VirtualQuery\n")
   set(libcall_name2 "~~([0-9a-f]+)~~ ntdll.dll!ZwQueryInformationProcess\n")
 else ()
-  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=char \\*\\*, size=0x8\\)\n")
-  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=<unknown>\\*, size=0x8\\)\n")
+  set(libcall_args2_0 "    arg 0: 0x([0-9a-f]+) \\(type=char \\*\\*, size=0x([0-9a-f]+)\\)\n")
+  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=<unknown>\\*, size=0x([0-9a-f]+)\\)\n")
 
   set(libcalls_libcall_name1 "~~([0-9a-f]+)~~ libc.so.6!puts\n")
   set(libcalls_libcall_name2 "~~([0-9a-f]+)~~ libc.so.6!open\n")
