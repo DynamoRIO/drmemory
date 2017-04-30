@@ -103,9 +103,6 @@ static file_t outf;
 /* Avoid exe exports, as on Linux many apps have a ton of global symbols. */
 static app_pc exe_start;
 
-/* runtest.cmake assumes this is the prefix, so update both when changing it */
-#define STDERR_PREFIX "~~~~ "
-
 /* XXX i#1978: The functions print_simple_value and print_arg were taken from drstrace.
  * It would be better to move them in drsyscall and import in drstrace and here.
  */
@@ -267,9 +264,7 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
         dr_fprintf(outf, "~~%d~~ ", tid);
     else
         dr_fprintf(outf, "~~Dr.L~~ ");
-
-    dr_fprintf(outf, "%s%s%s%s", (outf == STDERR ? STDERR_PREFIX : ""),
-               modname == NULL ? "" : modname,
+    dr_fprintf(outf, "%s%s%s", modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
 
     /* XXX: We employ two schemes of arguments printing. drsyscall is used
