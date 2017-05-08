@@ -1862,7 +1862,9 @@ if (TOOL_DR_MEMORY AND WIN32)
   add_subdirectory(drstrace)
 endif (TOOL_DR_MEMORY AND WIN32)
 
-add_subdirectory(drltrace)
+if (NOT APPLE)
+  add_subdirectory(drltrace)
+endif()
 
 add_subdirectory(framework/samples)
 
