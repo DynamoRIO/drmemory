@@ -35,7 +35,7 @@
  * it and provide for our client manually.
  */
 static droption_t<std::string> op_logdir
-(DROPTION_SCOPE_FRONTEND, "logdir", ".", "Log directory to print library call data",
+(DROPTION_SCOPE_ALL, "logdir", ".", "Log directory to print library call data",
  "Specify log directory where library call data will be written, in a separate file per "
  "process.  The default value is \".\" (current dir).  If set to \"-\", data for all "
  "processes are printed to stderr (warning: this can be slow).");
