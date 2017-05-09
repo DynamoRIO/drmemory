@@ -1862,6 +1862,7 @@ if (TOOL_DR_MEMORY AND WIN32)
   add_subdirectory(drstrace)
 endif (TOOL_DR_MEMORY AND WIN32)
 
+# FIXME i#1987: enable support of drltrace under MacOS
 if (NOT APPLE)
   add_subdirectory(drltrace)
 endif()
