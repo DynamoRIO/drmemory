@@ -188,6 +188,9 @@ check_logdir_path(char *logdir, size_t logdir_len) {
     char alter_logdir_path[MAXIMUM_PATH];
     bool result, use_root;
 
+    if (strcmp(logdir, "-") == 0)
+        return; /* logdir is stderr */
+
     sc = drfront_get_absolute_path(logdir, absolute_logdir_path,
                                    BUFFER_SIZE_ELEMENTS(absolute_logdir_path));
     if (sc != DRFRONT_SUCCESS)
