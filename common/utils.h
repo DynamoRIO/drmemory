@@ -20,12 +20,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef _UTILS_H_
+#define _UTILS_H_ 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#ifndef _UTILS_H_
-#define _UTILS_H_ 1
 
 #ifdef WINDOWS
 /* DRi#1424: avoid pulling in features from recent versions to keep compatibility */
@@ -1090,8 +1090,8 @@ utils_thread_exit(void *drcontext);
 void
 utils_thread_set_file(void *drcontext, file_t f);
 
-#endif /* _UTILS_H_ */
-
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _UTILS_H_ */
