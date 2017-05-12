@@ -70,6 +70,7 @@ else (UNIX)
     table_windows_ntusercall.c
     table_windows_ntgdi.c
     table_windows_kernel32.c
+    table_windows_kernel32_libcalls.c
     drsyscall_wingdi.c
     drsyscall_fileparse.c)
   if (SYSCALL_DRIVER)

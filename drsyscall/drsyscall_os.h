@@ -373,6 +373,9 @@ extern void *systable_lock;
 drmf_status_t
 drsyscall_os_init(void *drcontext);
 
+drmf_status_t
+drsyscall_os_init_libcalls(void *drcontext);
+
 void
 drsyscall_os_exit(void);
 

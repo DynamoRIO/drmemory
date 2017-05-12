@@ -2192,6 +2192,15 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
     if (res != DRMF_SUCCESS && res != DRMF_WARNING_UNSUPPORTED_KERNEL)
         return res;
 
+/* XXX: Currently, library calls are supported only for Windows (xref i#1948) */
+#ifdef WINDOWS
+    if (ops->init_libcalls) {
+        res = drsyscall_os_init_libcalls(drcontext);
+        if (res != DRMF_SUCCESS && res != DRMF_WARNING_UNSUPPORTED_KERNEL)
+            return res;
+    }
+#endif
+
     /* We used to handle all the gory details of Windows pre- and
      * post-syscall hooking ourselves, including system call parameter
      * bases varying by syscall type, and post-syscall hook complexity.
