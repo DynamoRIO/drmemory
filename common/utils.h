@@ -23,6 +23,10 @@
 #ifndef _UTILS_H_
 #define _UTILS_H_ 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef WINDOWS
 /* DRi#1424: avoid pulling in features from recent versions to keep compatibility */
 # ifndef _WIN32_WINNT
@@ -1085,5 +1089,9 @@ utils_thread_exit(void *drcontext);
 
 void
 utils_thread_set_file(void *drcontext, file_t f);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _UTILS_H_ */

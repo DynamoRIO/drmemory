@@ -34,25 +34,18 @@
  *
  * Records calls to exported library routines.
  *
- * The runtime options for this client include:
- *
- * -logdir <dir>       Sets log directory, which by default is "-".
- *                     If set to "-", the tool prints to stderr.
- * -only_from_app      Only reports library calls from the application itself.
- * -only_to_lib <lib>  Only reports calls to the library <lib>.
- * -ignore_underscore  Ignores library routine names starting with "_".
- * -all_args <N>       Prints N arg values for every library call.
- *                     Set to 2 by default.
- * -verbose <N>        For debugging the tool itself.
+ * The runtime options for this client are specified in drltrace_options.h,
+ * see DROPTION_SCOPE_CLIENT options.
  */
-
 #include "dr_api.h"
+#include "drltrace_options.h"
 #include "drmgr.h"
 #include "drwrap.h"
 #include "drx.h"
-#include "utils.h"
 #include "drcovlib.h"
 #include <string.h>
+#undef TESTANY
+#include "utils.h"
 
 /* XXX i#1349: features to add:
  *
@@ -74,28 +67,11 @@
  *   the library entries.
  */
 
-static uint verbose;
-
 #define VNOTIFY(level, ...) do {          \
-    NOTIFY_COND(verbose >= level, f_global, __VA_ARGS__); \
+    NOTIFY_COND(op_verbose.get_value() >= level, f_global, __VA_ARGS__); \
 } while (0)
 
-/* Checks for both debug and release builds: */
-#define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
-
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
-
-typedef struct _drltrace_options_t {
-    char logdir[MAXIMUM_PATH];
-    bool only_from_app;
-    bool ignore_underscore;
-    char only_to_lib[MAXIMUM_PATH];
-    uint num_unknown_args;
-    uint max_args;
-    bool print_ret_addr;
-} drltrace_options_t;
-
-static drltrace_options_t options;
 
 /* Where to write the trace */
 static file_t outf;
@@ -158,7 +134,7 @@ drlib_iter_arg_cb(drsys_arg_t *arg, void *wrapcxt)
 {
     if (arg->ordinal == -1)
         return true;
-    if (arg->ordinal >= options.max_args)
+    if (arg->ordinal >= op_max_args.get_value())
         return false; /* limit number of arguments to be printed */
 
     arg->value = (ptr_uint_t)drwrap_get_arg(wrapcxt, arg->ordinal);
@@ -173,7 +149,7 @@ print_args_unknown_call(app_pc func, void *wrapcxt)
     uint i;
     void *drcontext = drwrap_get_drcontext(wrapcxt);
     DR_TRY_EXCEPT(drcontext, {
-        for (i = 0; i < options.num_unknown_args; i++) {
+        for (i = 0; i < op_unknown_args.get_value(); i++) {
             dr_fprintf(outf, "\n    arg %d: " PFX, i,
                        drwrap_get_arg(wrapcxt, i));
         }
@@ -182,7 +158,7 @@ print_args_unknown_call(app_pc func, void *wrapcxt)
         /* Just keep going */
     });
     /* all args have been sucessfully printed */
-    dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
+    dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
 }
 
 static void
@@ -191,7 +167,7 @@ print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
     drmf_status_t res;
     drsys_syscall_t *syscall;
 
-    if (options.max_args == 0)
+    if (op_max_args.get_value() == 0)
         return;
 
     res = drsys_name_to_syscall(name, &syscall);
@@ -200,11 +176,11 @@ print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
         if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
             ASSERT(false, "drsys_iterate_arg_types failed in print_symbolic_args");
         /* all args have been sucessfully printed */
-        dr_fprintf(outf, options.print_ret_addr ? "\n   ": "");
+        dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
         return;
     } else {
         /* use standard type-blind scheme */
-        if (options.num_unknown_args > 0)
+        if (op_unknown_args.get_value() > 0)
             print_args_unknown_call(func, wrapcxt);
     }
 }
@@ -227,7 +203,7 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
 
     void *drcontext = drwrap_get_drcontext(wrapcxt);
 
-    if (options.only_from_app) {
+    if (op_only_from_app.get_value()) {
         /* For just this option, the modxfer approach might be better */
         app_pc retaddr =  NULL;
         DR_TRY_EXCEPT(drcontext, {
@@ -274,12 +250,13 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
      */
     print_symbolic_args(name, wrapcxt, func);
 
-    if (options.print_ret_addr) {
+    if (op_print_ret_addr.get_value()) {
         ret_addr = drwrap_get_retaddr(wrapcxt);
         res = drmodtrack_lookup(drcontext, ret_addr, &mod_id, &mod_start);
         if (res == DRCOVLIB_SUCCESS) {
             dr_fprintf(outf,
-                       options.print_ret_addr ? " and return to module id:%d, offset:" PIFX : "",
+                       op_print_ret_addr.get_value() ?
+                       " and return to module id:%d, offset:" PIFX : "",
                        mod_id, ret_addr - mod_start);
         }
     }
@@ -312,7 +289,7 @@ iterate_exports(const module_data_t *info, bool add)
                    sym->name, sym->addr, func);
         }
 #endif
-        if (options.ignore_underscore && strstr(sym->name, "_") == sym->name)
+        if (op_ignore_underscore.get_value() && strstr(sym->name, "_") == sym->name)
             func = NULL;
         if (func != NULL) {
             if (add) {
@@ -334,9 +311,15 @@ iterate_exports(const module_data_t *info, bool add)
 static bool
 library_matches_filter(const module_data_t *info)
 {
-    if (options.only_to_lib[0] != '\0') {
+    if (!op_only_to_lib.get_value().empty()) {
         const char *libname = dr_module_preferred_name(info);
-        return (libname != NULL && strstr(libname, options.only_to_lib) != NULL);
+#ifdef WINDOWS
+        return (libname != NULL && strcasestr(libname,
+                                              op_only_to_lib.get_value().c_str()) != NULL);
+#else
+        return (libname != NULL && strstr(libname,
+                                          op_only_to_lib.get_value().c_str()) != NULL);
+#endif
     }
     return true;
 }
@@ -363,10 +346,11 @@ static void
 open_log_file(void)
 {
     char buf[MAXIMUM_PATH];
-    if (strcmp(options.logdir, "-") == 0)
+    if (op_logdir.get_value().compare("-") == 0)
         outf = STDERR;
     else {
-        outf = drx_open_unique_appid_file(options.logdir, dr_get_process_id(),
+        outf = drx_open_unique_appid_file(op_logdir.get_value().c_str(),
+                                          dr_get_process_id(),
                                           "drltrace", "log",
 #ifndef WINDOWS
                                           DR_FILE_CLOSE_ON_FORK |
@@ -391,80 +375,23 @@ event_fork(void *drcontext)
 static void
 event_exit(void)
 {
-    if (options.max_args > 0)
+    if (op_max_args.get_value() > 0)
         drsys_exit();
 
     if (outf != STDERR) {
-        if (options.print_ret_addr)
+        if (op_print_ret_addr.get_value())
             drmodtrack_dump(outf);
         dr_close_file(outf);
     }
     drx_exit();
     drwrap_exit();
     drmgr_exit();
-    if (options.print_ret_addr)
+    if (op_print_ret_addr.get_value())
         drmodtrack_exit();
 }
 
-static void
-options_init(client_id_t id)
-{
-    const char *opstr = dr_get_options(id);
-    const char *s;
-    char token[OPTION_MAX_LENGTH];
-    /* default values */
-    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
-    options.max_args = 6;
-    options.num_unknown_args = 2;
-    op_print_stderr = true;
-    /* XXX: we have to use droption here instead of manual parsing */
-    for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
-         s != NULL;
-         s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token))) {
-        if (strcmp(token, "-logdir") == 0) {
-            s = dr_get_token(s, options.logdir,
-                             BUFFER_SIZE_ELEMENTS(options.logdir));
-            USAGE_CHECK(s != NULL, "missing logdir path");
-        } else if (strcmp(token, "-only_from_app") == 0) {
-            options.only_from_app = true;
-        } else if (strcmp(token, "-only_to_lib") == 0) {
-            s = dr_get_token(s, options.only_to_lib,
-                             BUFFER_SIZE_ELEMENTS(options.only_to_lib));
-            USAGE_CHECK(s != NULL, "missing library name");
-        } else if (strcmp(token, "-ignore_underscore") == 0) {
-            options.ignore_underscore = true;
-        } else if (strcmp(token, "-num_unknown_args") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -num_unknown_args number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.num_unknown_args);
-                USAGE_CHECK(res == 1, "invalid -num_unknown_args number");
-            }
-        } else if (strcmp(token, "-num_max_args") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -num_max_args number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &options.max_args);
-                USAGE_CHECK(res == 1, "invalid -num_max_args number");
-            }
-        } else if (strcmp(token, "-verbose") == 0) {
-            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
-            USAGE_CHECK(s != NULL, "missing -verbose number");
-            if (s != NULL) {
-                int res = dr_sscanf(token, "%u", &verbose);
-                USAGE_CHECK(res == 1, "invalid -verbose number");
-            }
-        } else if (strcmp(token, "-print_ret_addr") == 0)
-            options.print_ret_addr = true;
-        else {
-            NOTIFY("UNRECOGNIZED OPTION: \"%s\""NL, token);
-            USAGE_CHECK(false, "invalid option");
-        }
-    }
-}
-
 DR_EXPORT void
-dr_init(client_id_t id)
+dr_client_main(client_id_t id, int argc, const char *argv[])
 {
     module_data_t *exe;
     drsys_options_t ops = { sizeof(ops), 0, };
@@ -472,7 +399,11 @@ dr_init(client_id_t id)
 
     dr_set_client_name("Dr. LTrace", "http://drmemory.org/issues");
 
-    options_init(id);
+    if (!droption_parser_t::parse_argv(DROPTION_SCOPE_CLIENT, argc, argv,
+                                       NULL, NULL))
+        ASSERT(false, "unable to parse options specified for drltracelib");
+
+    op_print_stderr = true;
 
     IF_DEBUG(ok = )
         drmgr_init();
@@ -483,7 +414,7 @@ dr_init(client_id_t id)
     IF_DEBUG(ok = )
         drx_init();
     ASSERT(ok, "drx failed to initialize");
-    if (options.print_ret_addr) {
+    if (op_print_ret_addr.get_value()) {
         IF_DEBUG(ok = )
             drmodtrack_init();
         ASSERT(ok == DRCOVLIB_SUCCESS, "drmodtrack failed to initialize");
@@ -499,7 +430,8 @@ dr_init(client_id_t id)
      * Fast cleancalls is safe b/c we're only wrapping func entry and
      * we don't care about the app context.
      */
-    drwrap_set_global_flags(DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS);
+    drwrap_set_global_flags((drwrap_global_flags_t)
+                            (DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS));
 
     dr_register_exit_event(event_exit);
 #ifdef UNIX
@@ -511,7 +443,7 @@ dr_init(client_id_t id)
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
-    if (options.max_args > 0)
+    if (op_max_args.get_value() > 0)
         drsys_init(id, &ops);
 
     open_log_file();
