@@ -70,6 +70,9 @@ use_DynamoRIO_extension(drltracelib drsyscall_static)
 use_DynamoRIO_extension(drltracelib drcovlib_static)
 use_DynamoRIO_extension(drltracelib droption)
 
+# XXX i#2429: DR's droption.h includes both <string.h> and <string.h>
+# we should remove <string.h> and replace the strcmp comparison with
+# a std::string. Then we can remove special if here and below.
 if (UNIX)
   # to avoid conflicts with new declaration with "C" linkage in utils.h
   append_property_string(TARGET drltracelib COMPILE_FLAGS "-DNOLINK_STRCASESTR")
@@ -109,6 +112,7 @@ else ()
   set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
 
+# XXX: see DR's i#2429 and comment above.
 if (UNIX)
   # to avoid conflicts with new declaration with "C" linkage in utils.h
   append_property_string(TARGET drltrace COMPILE_FLAGS "-DNOLINK_STRCASESTR")
