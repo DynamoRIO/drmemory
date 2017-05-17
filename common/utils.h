@@ -466,7 +466,7 @@ extern int tls_idx_util;
 #ifdef DEBUG
 # define ASSERT(x, msg) do { \
     if (!(x)) { \
-        NOTIFY_ERROR("ASSERT FAILURE (thread "TIDFMT"): %s:%d: %s (%s)" NL,  \
+        NOTIFY_ERROR("ASSERT FAILURE (thread " TIDFMT "): %s:%d: %s (%s)" NL,  \
                      (dr_get_current_drcontext() == NULL ? 0 :      \
                       dr_get_thread_id(dr_get_current_drcontext())),\
                      __FILE__,  __LINE__, #x, msg); \
@@ -993,7 +993,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
  * STRINGS
  */
 
-#define END_MARKER "\terror end"NL
+#define END_MARKER "\terror end" NL
 
 /* DR_MAX_OPTIONS_LENGTH is the maximum client options string length that DR
  * will give us.  by making each individual option buffer this long, we won't
