@@ -358,7 +358,7 @@ open_log_file(void)
                                           DR_FILE_ALLOW_LARGE,
                                           buf, BUFFER_SIZE_ELEMENTS(buf));
         ASSERT(outf != INVALID_FILE, "failed to open log file");
-        VNOTIFY(0, "drltrace log file is %s"NL, buf);
+        VNOTIFY(0, "drltrace log file is %s" NL, buf);
 
     }
 }
