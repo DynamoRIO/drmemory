@@ -27,11 +27,6 @@ if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
   cmake_policy(SET CMP0022 OLD)
 endif ()
 
-# We do not need libc, and we avoid a 10x size increase in both our
-# dll and pdb (plus we avoid stressing private library isolation) by
-# not using it (i#714).
-set(DynamoRIO_USE_LIBC OFF)
-
 set_output_dirs(${framework_bindir})
 
 set(srcs
