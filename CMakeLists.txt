@@ -956,11 +956,13 @@ if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
 endif (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
 
 # Shrink binaries and pdbs (/Gy should already be there)
-foreach (var CMAKE_EXE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
-    CMAKE_MODULE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
-    CMAKE_SHARED_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
-  set(${var} "${${var}} /opt:ref /opt:icf /pdbcompress")
-endforeach ()
+if (WIN32)
+  foreach (var CMAKE_EXE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_MODULE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_SHARED_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
+    set(${var} "${${var}} /opt:ref /opt:icf /pdbcompress")
+  endforeach ()
+endif ()
 
 if (APPLE)
   # install_name_tool needs write access (i#1372)
