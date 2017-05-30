@@ -48,8 +48,9 @@ image: Visual Studio 2013
 build:
   verbosity: detailed
 
+# We stick with just one config (we've dropped VS2010 support) to speed
+# up the build (xref DRi#2406).
 configuration:
-  - 2010
   - 2013
 
 install:
@@ -77,7 +78,6 @@ install:
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
 
 before_build:
-  - if "%configuration%"=="2010" call "c:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86
   - if "%configuration%"=="2013" call "c:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" x86
   - cd c:\projects\drmemory
 
@@ -87,9 +87,5 @@ build_script:
   - mkdir build
   - cd build
   - echo %PATH%
-  # AppVeyor does not have the 64-bit toolchain installed for 2010.
-  # Given that, and the lack of parallel builds for free, we shorten
-  # the total time by not running the tests for 2010.
-  - if "%configuration%"=="2010" set EXTRA_ARGS=32_only;build_only
   # The perl in c:\perl can't open a pipe so we use cygwin perl.
   - c:\cygwin\bin\perl ../tests/runsuite_wrapper.pl travis use_ninja %EXTRA_ARGS%
