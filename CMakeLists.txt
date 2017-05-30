@@ -955,6 +955,13 @@ if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
   endforeach ()
 endif (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
 
+# Shrink binaries and pdbs (/Gy should already be there)
+foreach (var CMAKE_EXE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+    CMAKE_MODULE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+    CMAKE_SHARED_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
+  set(${var} "${${var}} /opt:ref /opt:icf /pdbcompress")
+endforeach ()
+
 if (APPLE)
   # install_name_tool needs write access (i#1372)
   set(owner_access OWNER_READ OWNER_WRITE)
@@ -1326,6 +1333,8 @@ if (WIN32)
 
   # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
   # and VS generators seem to set it already, so we add here for Ninja).
+  # XXX: DRi#2167 is adding this for all clients so we can remove this once
+  # we update to a recent DR.
   set(new_flags "${new_flags} /opt:ref")
   if (NOT DEBUG_BUILD)
     # Match DR's settings, though again it's not clear the benefit w/o /Gy.
