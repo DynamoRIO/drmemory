@@ -391,7 +391,7 @@ DR_EXPORT
  * DRMF_ERROR_NOT_ENOUGH_REGS is returned.
  *
  * \note: This method destroys aflags. Be sure to save and restore aflags before
- * and after this method is called, i.e. with \p drreg_reserve_aflags.
+ * and after this method is called, e.g. with \p drreg_reserve_aflags().
  */
 drmf_status_t
 umbra_insert_app_to_shadow(IN  void        *drcontext,
