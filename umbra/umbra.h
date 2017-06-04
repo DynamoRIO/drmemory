@@ -389,6 +389,9 @@ DR_EXPORT
  * \note: \p num_scratch_regs must not be smaller than the value returned from
  * umbra_num_scratch_regs_for_translation, otherwise error code
  * DRMF_ERROR_NOT_ENOUGH_REGS is returned.
+ *
+ * \note: This method destroys aflags. Be sure to save and restore aflags before
+ * and after this method is called, e.g. with \p drreg_reserve_aflags().
  */
 drmf_status_t
 umbra_insert_app_to_shadow(IN  void        *drcontext,
