@@ -437,6 +437,12 @@ typedef struct _drsys_options_t {
     const char *sysnum_file;
     /** Whether to use internal syscall tables if they match the underlying kernel. */
     bool skip_internal_tables;
+    /**
+     * Dr. Syscall is able to provide information for library calls through
+     * drsys_name_to_syscall(). A client should first setup this option for drsys_init()
+     * to be able to use this functionality (supported only in Windows).
+     */
+    bool init_libcalls;
 } drsys_options_t;
 
 /** The current version of the file specified by drsys_options_t.sysnum_file. */

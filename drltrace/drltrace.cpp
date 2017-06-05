@@ -443,8 +443,10 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
-    if (op_max_args.get_value() > 0)
+    if (op_max_args.get_value() > 0) {
+        ops.init_libcalls = true; /* init libcalls */
         drsys_init(id, &ops);
+    }
 
     open_log_file();
 }

@@ -412,6 +412,9 @@ extern size_t num_user32_syscalls(void);
 extern syscall_info_t syscall_gdi32_info[];
 extern size_t num_gdi32_syscalls(void);
 
+extern size_t num_libcall_kernel32_info(void);
+extern syscall_info_t libcall_kernel32_info[];
+
 /* The initial set of entries in drsyscall_numx for which we check the ntdll wrappers
  * to ensure our table is correct.
  */
@@ -554,7 +557,8 @@ get_primary_syscall_num(void *drcontext, const module_data_t *info,
 /* user should set is_secondary flag to add syscall in secondary hashtable */
 static bool
 add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
-                  const char *optional_prefix, bool add_name2num, bool is_secondary)
+                  const char *optional_prefix, bool add_name2num, bool is_secondary,
+                  bool is_libcall)
 {
     IF_DEBUG(bool ok;)
     bool result = false;
@@ -563,9 +567,11 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         IF_DEBUG(ok =)
             hashtable_add(&secondary_systable, (void *) &syslist->num, (void *) syslist);
     } else {
-        result = get_primary_syscall_num(drcontext, info, syslist, optional_prefix);
-        if (!result)
-            return false;
+        if (!is_libcall) { /* we don't need to resolve syscall nums for library calls */
+            result = get_primary_syscall_num(drcontext, info, syslist, optional_prefix);
+            if (!result)
+                return false;
+        }
         dr_recurlock_lock(systable_lock);
         IF_DEBUG(ok =)
             hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
@@ -636,7 +642,7 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
         IF_DEBUG(ok =)
             add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
                               is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
-                              true/*add syscall in secondary hashtable*/);
+                              true/*add syscall in secondary hashtable*/, false);
         ASSERT(ok, "failed to add new syscall in the secondary table");
     }
 
@@ -649,7 +655,7 @@ secondary_syscall_setup(void *drcontext, const module_data_t *info,
     IF_DEBUG(ok =)
         add_syscall_entry(drcontext, info, &syscall_info_second[entry_index], NULL,
                           is_ntoskrnl,/* add ntoskrnl syscalls into name2num table */
-                          true/*add syscall in secondary hashtable*/);
+                          true/*add syscall in secondary hashtable*/, false);
     ASSERT(ok, "failed to add base entry syscall in the secondary table");
 }
 
@@ -808,7 +814,7 @@ drsyscall_os_init(void *drcontext)
     for (i = 0; i < num_ntdll_syscalls(); i++) {
         /* check whether syscall has additional entries */
         ok = add_syscall_entry(drcontext, data, &syscall_ntdll_info[i],
-                               NULL, true, false);
+                               NULL, true, false, false);
         if (TEST(SYSINFO_SECONDARY_TABLE, syscall_ntdll_info[i].flags) && ok)
             secondary_syscall_setup(drcontext, data, &syscall_ntdll_info[i], NULL);
         DODEBUG({ check_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL); });
@@ -816,7 +822,7 @@ drsyscall_os_init(void *drcontext)
     if (!syscall_numbers_unknown) {
         for (i = 0; i < num_kernel32_syscalls(); i++) {
             add_syscall_entry(drcontext, NULL, &syscall_kernel32_info[i], NULL,
-                              false/*already added*/, false);
+                              false/*already added*/, false, false);
         }
     }
 
@@ -834,7 +840,7 @@ drsyscall_os_init(void *drcontext)
              * drsyscall_os_module_load().
              */
             ok = add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
-                              false/*already added*/, false);
+                              false/*already added*/, false, false);
             if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags) && ok) {
                 secondary_syscall_setup(drcontext, data, &syscall_user32_info[i],
                                         wingdi_get_secondary_syscall_num);
@@ -842,13 +848,30 @@ drsyscall_os_init(void *drcontext)
         }
         for (i = 0; i < num_gdi32_syscalls(); i++) {
             add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",
-                              false/*already added*/, false);
+                              false/*already added*/, false, false);
         }
     }
 
     dr_free_module_data(data);
 
     return res;
+}
+
+drmf_status_t
+drsyscall_os_init_libcalls(void *drcontext) {
+    IF_DEBUG(bool ok;)
+    int i;
+    for (i = 0; i < num_libcall_kernel32_info(); i++) {
+        /* We use a special pre-defined bit (DR_LIBCALLS) and increase the syscall
+         * number by one for each entry to be able to distinguish libcalls from syscalls.
+         */
+        libcall_kernel32_info[i].num.number += i;
+        IF_DEBUG(ok = )
+            add_syscall_entry(drcontext, NULL, &libcall_kernel32_info[i],
+                              NULL, true, false, true /*init libcalls*/);
+        ASSERT(ok, "Unable to add library call into hashtable");
+    }
+    return DRMF_SUCCESS;
 }
 
 void
@@ -890,7 +913,7 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
         for (i = 0; i < num_kernel32_syscalls(); i++) {
             if (syscall_numbers_unknown) {
                 add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL,
-                                  true, false);
+                                  true, false, false);
             }
             DODEBUG({
                 check_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
@@ -903,7 +926,7 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
         for (i = 0; i < num_user32_syscalls(); i++) {
             if (syscall_numbers_unknown) {
                 add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser",
-                                  true, false);
+                                  true, false, false);
                 if (TEST(SYSINFO_SECONDARY_TABLE, syscall_user32_info[i].flags)) {
                     secondary_syscall_setup(drcontext, info, &syscall_user32_info[i],
                                             wingdi_get_secondary_syscall_num);
@@ -935,7 +958,7 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
         for (i = 0; i < num_gdi32_syscalls(); i++) {
             if (syscall_numbers_unknown) {
                 add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi",
-                                  true, false);
+                                  true, false, false);
             }
             DODEBUG({
                 check_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
