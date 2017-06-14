@@ -46,8 +46,9 @@
 #include <string.h>
 #undef TESTANY
 #include "utils.h"
+#include <algorithm>
 
-/* XXX i#1349: features to add:
+/* XXX i#1948: features to add:
  *
  * + Add filtering of which library routines to trace.
  *   This would likely be via a configuration file.
@@ -79,6 +80,276 @@ static file_t outf;
 /* Avoid exe exports, as on Linux many apps have a ton of global symbols. */
 static app_pc exe_start;
 
+/****************************************************************************
+ * Routines to support libcalls hashtable
+ */
+
+#define LIBCALLS_TABLE_HASH_BITS 6
+/* We init the following hashtable to be able to get library call arguments when
+ * it is required for printing.
+ */
+static hashtable_t libcalls_table;
+
+static void
+free_args_list(void *p) {
+    std::vector<drsys_arg_t *> *args_list = (std::vector<drsys_arg_t *> *) p;
+    std::vector<drsys_arg_t *>::iterator it;
+    for (it = args_list->begin(); it != args_list->end(); it++)
+        global_free(*it, sizeof(drsys_arg_t), HEAPSTAT_MISC);
+
+    delete args_list;
+}
+
+static void
+init_libcalls_hashtable() {
+    hashtable_init_ex(&libcalls_table, LIBCALLS_TABLE_HASH_BITS, HASH_STRING_NOCASE,
+                      false/*!strdup*/, false, free_args_list, NULL, NULL);
+}
+
+static void
+libcalls_hashtable_delete() {
+    return hashtable_delete(&libcalls_table);
+}
+
+static std::vector<drsys_arg_t *> *
+libcalls_search(const char *name) {
+    return (std::vector<drsys_arg_t *> *) hashtable_lookup(&libcalls_table, (void *)name);
+}
+
+static bool
+libcalls_hashtable_insert(const char *name, std::vector<drsys_arg_t *> *args_list) {
+    return hashtable_add(&libcalls_table, (void *)name, (void *) args_list);
+}
+
+/****************************************************************************
+ * Config file parsing routines
+ */
+
+static drsys_arg_t *
+config_parse_type(std::string type_name, uint index) {
+
+    ASSERT(type_name.empty() == false, "an empty type name was provided");
+
+    drsys_arg_t *arg = (drsys_arg_t *)global_alloc(sizeof(drsys_arg_t), HEAPSTAT_MISC);
+
+    /* sanitize input type*/
+    std::transform(type_name.begin(), type_name.end(), type_name.begin(), ::tolower);
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), ' '),
+                    type_name.end());
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\r'),
+                    type_name.end());
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\n'),
+                    type_name.end());
+
+    /* init arg */
+    arg->type = DRSYS_TYPE_UNKNOWN;
+    arg->ordinal = index;
+    arg->size = 0;
+    arg->arg_name = NULL;
+    arg->type_name = NULL;
+    arg->pre = true;
+    arg->mode = DRSYS_PARAM_INLINED; /* considering inlined param by default */
+
+    /* i#1948: Currently, we have only few cross-platform libcalls in the config
+     * file which is possible to use both for Windows and Linux. However, we
+     * need to separate them into two configs and fix CMAKE accordingly.
+     * Moreover, we have to provide two different interfaces for type parsing
+     * in Windows and Linux.
+     */
+
+    /* i#1948: We have to extend a list of supported types here. */
+    if (type_name.compare("void") == 0)
+        arg->type_name = "void";
+    else if (type_name.compare("int") == 0) {
+        arg->type_name = "int";
+        arg->size = sizeof(int);
+    }
+#ifdef WINDOWS
+    else if (type_name.compare("uint") == 0) {
+        arg->type_name = "uint";
+        arg->size = sizeof(UINT);
+    } else if (type_name.compare("dword") == 0) {
+        arg->type_name = "DWORD";
+        arg->size = sizeof(DWORD);
+    } else if (type_name.compare("word") == 0) {
+        arg->type_name = "WORD";
+        arg->size = sizeof(WORD);
+    } else if (type_name.compare("byte") == 0) {
+        arg->type_name = "BYTE";
+        arg->size = sizeof(BYTE);
+    } else if (type_name.compare("bool") == 0) {
+        arg->type_name = "BOOL";
+        arg->size = sizeof(BOOL);
+    }
+#endif
+    else if (type_name.compare("char*") == 0) {
+        arg->type_name = "char ";
+        arg->mode = DRSYS_PARAM_IN;
+        arg->type = DRSYS_TYPE_CSTRING;
+    } else if (type_name.compare("wchar*") == 0) {
+        arg->type_name = "wchar_t ";
+        arg->mode = DRSYS_PARAM_IN;
+        arg->type = DRSYS_TYPE_CWSTRING;
+    } else if (type_name.find("*") != std::string::npos) {
+        arg->size = sizeof(void *);
+        arg->mode = DRSYS_PARAM_IN;
+        arg->type_name = "<unknown> ";
+        VNOTIFY(2, "found pointer to unknown type %s in the config file" NL,
+                type_name.c_str());
+    } else {
+        arg->type_name = "<unknown>";
+        arg->mode = DRSYS_PARAM_IN;
+        VNOTIFY(2, "found unknown type %s in the config file" NL, type_name.c_str());
+    }
+
+    return arg;
+}
+
+static int
+split(char *line, const char *delim, std::vector<char *> *tokens_list) {
+    char *token = NULL;
+    int count = 0;
+
+    token = strtok(line, delim);
+    while (token != NULL) {
+        tokens_list->push_back(strdup(token));
+        token = strtok(NULL, delim);
+        count++;
+    }
+    return count;
+}
+
+static bool
+parse_line(char *line, int line_num) {
+    drsys_arg_t *tmp_arg;
+    char *func_name = NULL;
+    int elem_index = 0, tokens_count = 0;
+
+    if (line == NULL)
+        return false;
+
+    if (strlen(line) <= 0 || line[0] == '\n' || line[0] == '\r')
+        return false;
+
+    if (line[0] == ';') /* just a comment */
+        return true;
+
+    std::vector<char*> *tokens = new std::vector<char*>();
+    tokens_count = split(line, ",", tokens);
+
+    if (tokens_count <= 0) {
+        VNOTIFY(1, "unable to parse config file at line %d: %s" NL, line_num, line);
+        delete (tokens);
+        return false;
+    }
+
+    std::vector<drsys_arg_t *> *args_vector = new std::vector<drsys_arg_t *>();
+    std::vector<char*>::iterator it;
+    for (it = tokens->begin(); it != tokens->end(); it++) {
+        /* i#1948: Currently, we don't support ret value printing and
+         * skipping it here. */
+        if (elem_index >= 2) {
+            tmp_arg = config_parse_type(*it, elem_index - 2);
+            args_vector->push_back(tmp_arg);
+        } else if (elem_index == 1)
+            func_name = *it;
+
+        elem_index++;
+    }
+
+    delete tokens;
+
+    if (func_name == NULL || args_vector->size() <= 0) {
+        VNOTIFY(1, "unable to parse config file at line %d: %s" NL, line_num, line);
+        return false;
+    }
+
+    VNOTIFY(2, "adding %s from config file with %d arguments in the hashtable" NL,
+            func_name, args_vector->size());
+    IF_DEBUG(bool ok =)
+        libcalls_hashtable_insert(strdup(func_name), args_vector);
+    ASSERT(ok, "failed to add libcall in the hashtable");
+
+    return true;
+}
+
+static void
+parse_config(void) {
+    uint64 size_to_read = 0;
+    size_t size_read = 0;
+    file_t file_desc = INVALID_FILE;
+    int lines_count = 0, line_num = 1;
+    char *buf = NULL;
+
+    if (op_disable_config.get_value() == true)
+        return;
+
+    /* open and read config file */
+    file_desc = dr_open_file(op_config_file.get_value().c_str(), DR_FILE_READ);
+    if (file_desc == INVALID_FILE) {
+        VNOTIFY(0, "unable to open config file at %s, config is not used" NL,
+                    op_config_file.get_value().c_str());
+        op_disable_config.set_value(true);
+        return;
+    }
+
+    if (dr_file_size(file_desc, &size_to_read) == false) {
+        VNOTIFY(0, "unable to open config file at %s, config is not used" NL,
+                    op_config_file.get_value().c_str());
+        op_disable_config.set_value(true);
+        dr_close_file(file_desc);
+        return;
+    }
+
+    buf = (char *)global_alloc(size_to_read, HEAPSTAT_MISC);
+
+    size_read = dr_read_file(file_desc, buf, size_to_read);
+    dr_close_file(file_desc);
+    if (size_read <= 0) {
+        VNOTIFY(0, "unable to open config file at %s, config is not used" NL,
+                    op_config_file.get_value().c_str());
+        global_free(buf, size_to_read, HEAPSTAT_MISC);
+        op_disable_config.set_value(true);
+        return;
+    }
+    buf[size_read - 1] = '\0';
+
+    std::vector<char *> *lines_list = new std::vector<char *> ();
+    lines_count = split(buf, "\r\n", lines_list); /* split buffer by lines */
+
+    global_free(buf, size_to_read, HEAPSTAT_MISC);
+
+    if (lines_count <= 0) {
+        VNOTIFY(1, "An empty config file was specified, config is not used" NL);
+        op_disable_config.set_value(true);
+        delete lines_list;
+        return;
+    }
+
+    init_libcalls_hashtable();
+
+    std::vector<char *>::iterator it;
+    for (it = lines_list->begin(); it != lines_list->end(); it++) {
+        if (*it == NULL)
+            continue;
+        /* XXX: we have to describe a format of the config file in the drltrace's
+         * documentation as well as list supported types.
+         */
+        if (parse_line(*it, line_num) == false) {
+            VNOTIFY(1, "incorrect format for the line %s in config file" NL, *it);
+            op_disable_config.set_value(true);
+            libcalls_hashtable_delete();
+            break;
+        }
+        line_num ++;
+    }
+    delete lines_list;
+}
+
+/****************************************************************************
+ * Arguments printing
+ */
+
 /* XXX i#1978: The functions print_simple_value and print_arg were taken from drstrace.
  * It would be better to move them in drsyscall and import in drstrace and here.
  */
@@ -98,6 +369,15 @@ print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
 }
 
 static void
+print_string(void *pointer_str, bool is_wide)
+{
+    if (pointer_str == NULL)
+        dr_fprintf(outf, "<null>");
+    else
+        dr_fprintf(outf, is_wide ? "%S" : "%s", pointer_str);
+}
+
+static void
 print_arg(drsys_arg_t *arg)
 {
     dr_fprintf(outf, "\n    arg %d: ", arg->ordinal);
@@ -111,6 +391,8 @@ print_arg(drsys_arg_t *arg)
     case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
     case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
     case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_CSTRING:      print_string((void *)arg->value, false); break;
+    case DRSYS_TYPE_CWSTRING:     print_string((void *)arg->value, true); break;
     default: {
         if (arg->value == 0)
             dr_fprintf(outf, "<null>");
@@ -161,15 +443,38 @@ print_args_unknown_call(app_pc func, void *wrapcxt)
     dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
 }
 
+static bool
+print_libcall_args(std::vector<drsys_arg_t*> *args_vec, void *wrapcxt) {
+    if (args_vec == NULL || args_vec->size() <= 0)
+        return false;
+
+    std::vector<drsys_arg_t*>::iterator it;
+    for (it = args_vec->begin(); it != args_vec->end(); it++) {
+        if (drlib_iter_arg_cb(*it, wrapcxt) == false)
+            break;
+    }
+    return true;
+}
+
 static void
 print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
 {
     drmf_status_t res;
     drsys_syscall_t *syscall;
+    std::vector<drsys_arg_t *> *args_vec;
 
     if (op_max_args.get_value() == 0)
         return;
 
+    if (op_disable_config.get_value() == false) {
+        /* looking for libcall in libcalls hashtable */
+        args_vec = libcalls_search(name);
+        if (print_libcall_args(args_vec, wrapcxt) == true) {
+            dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
+            return; /* we found libcall and sucessfully printed all arguments */
+        }
+    }
+    /* trying to find a prototype of the libcall using drsyscall */
     res = drsys_name_to_syscall(name, &syscall);
     if (res == DRMF_SUCCESS) {
         res = drsys_iterate_arg_types(syscall, drlib_iter_arg_cb, wrapcxt);
@@ -243,10 +548,11 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     dr_fprintf(outf, "%s%s%s", modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
 
-    /* XXX: We employ two schemes of arguments printing. drsyscall is used
+    /* XXX: We employ three schemes of arguments printing. drsyscall is used
      * to get a symbolic representation of arguments for known library calls.
-     * For the rest of library calls we use type-blind printing and -num_unknown_args
-     * to get a count of arguments to print.
+     * For the rest of library calls we are looking for prototypes in config file
+     * specified by user. If there is no info in both sources we employ type-blind
+     * printing and use -num_unknown_args to get a count of arguments to print.
      */
     print_symbolic_args(name, wrapcxt, func);
 
@@ -378,6 +684,9 @@ event_exit(void)
     if (op_max_args.get_value() > 0)
         drsys_exit();
 
+    if (op_disable_config.get_value() == false)
+        libcalls_hashtable_delete();
+
     if (outf != STDERR) {
         if (op_print_ret_addr.get_value())
             drmodtrack_dump(outf);
@@ -443,8 +752,10 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
-    if (op_max_args.get_value() > 0)
+    if (op_max_args.get_value() > 0) {
         drsys_init(id, &ops);
+        parse_config();
+    }
 
     open_log_file();
 }

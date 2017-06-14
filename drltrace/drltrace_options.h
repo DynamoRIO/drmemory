@@ -64,6 +64,12 @@ static droption_t<int> op_max_args
  "Maximum number of arguments to print.  This option allows to limit the number of "
  "arguments to be printed.  Specify 0 to disable args printing (including unknown).");
 
+static droption_t<std::string> op_config_file
+(DROPTION_SCOPE_CLIENT, "config", "./drltrace.config", "A path to drltrace's config file",
+ "Specify a path where config is located. The default value is \"./drltrace.conf\""
+ "(current dir).  Config file describes a prototype of library functions to be able"
+ "to print libcall arguments.  See drltrace documentation for more details.");
+
 static droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
  "starting with \"_\".", "Ignores library routine names starting with \"_\".");
@@ -80,6 +86,10 @@ static droption_t<bool> op_version
 
 static droption_t<unsigned int> op_verbose
 (DROPTION_SCOPE_ALL, "verbose", 1, "Change verbosity.", "Change verbosity.");
+
+static droption_t<bool> op_disable_config
+(DROPTION_SCOPE_CLIENT, "disable_config", false, "Disable config file usage",
+ "This option is used to disable config file usage for libcall arguments printing");
 
 static droption_t<std::string> op_ltracelib_ops
 (DROPTION_SCOPE_CLIENT, "ltracelib_ops",
