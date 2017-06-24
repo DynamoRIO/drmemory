@@ -37,7 +37,9 @@ include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 # drltracelib
 
 set(srcs
-    drltrace.cpp)
+    drltrace.cpp
+    drltrace_libcalls.cpp
+    drltrace_options.cpp)
 
 if (WIN32)
   set(srcs ${srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
@@ -92,7 +94,9 @@ copy_and_adjust_drpaths(${CMAKE_RUNTIME_OUTPUT_DIRECTORY} drltracelib)
 ##################################################
 # drltrace frontend
 
-set(front_srcs drltrace_frontend.cpp)
+set(front_srcs
+    drltrace_frontend.cpp
+    drltrace_options.cpp)
 if (WIN32)
   set(front_srcs ${front_srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
 endif ()
@@ -133,18 +137,17 @@ if (BUILD_TOOL_TESTS)
   get_target_path_for_execution(drltrace_path drltrace)
   get_target_path_for_execution(app_path drsyscall_app)
   prefix_cmd_if_necessary(drltrace_path OFF ${drltrace_path})
-
   add_test(drltrace ${drltrace_path} -- ${app_path})
   add_test(drltrace_libcalls ${drltrace_path} -logdir - -print_ret_addr -- ${app_path})
   add_test(drltrace_symargs ${drltrace_path} -logdir - -num_max_args 4 -- ${app_path})
 
-  set(path_to_config ${CMAKE_CURRENT_BINARY_DIR}/bin/drltrace.config)
+  set(path_to_config ${INSTALL_BIN}/drltrace.config)
 
   # copy drltrace.config required to test libcall arguments printing
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/drltrace.config ${path_to_config} COPYONLY)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/drltrace.config
+                 ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drltrace.config COPYONLY)
 
-  add_test(drltrace_libargs ${drltrace_path} -logdir - -only_from_app
-  -config ${path_to_config} -- ${app_path})
+  add_test(drltrace_libargs ${drltrace_path} -logdir - -only_from_app -- ${app_path})
 
   #regex strings for libcalls and arguments printing test
   set(libcall_args1_01 "    arg 0: 0x([0-9a-f]+)\n    arg 1: 0x([0-9a-f]+)\n")

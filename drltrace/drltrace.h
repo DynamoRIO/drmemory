@@ -30,21 +30,27 @@
  * DAMAGE.
  */
 
-#include "droption.h"
+#include "dr_api.h"
+#include "drltrace_options.h"
+#include "drmgr.h"
+#include "drwrap.h"
+#include "drx.h"
+#include "drcovlib.h"
+#include <string.h>
+#include <vector>
+#undef TESTANY
+#include "utils.h"
 
-#define DEFAULT_CONFIG_DIR "<install_dir>/drltrace.config"
+/* XXX: VNOTIFY prints in console only for debug build, however we have
+ * some important user notifications that would be good to keep visible
+ * in release build as well.
+ */
+#define VNOTIFY(level, ...) do {          \
+    NOTIFY_COND(op_verbose.get_value() >= level, f_global, __VA_ARGS__); \
+} while (0)
 
-extern droption_t<std::string> op_logdir;
-extern droption_t<bool> op_only_from_app;
-extern droption_t<bool> op_follow_children;
-extern droption_t<bool> op_print_ret_addr;
-extern droption_t<unsigned int> op_unknown_args;
-extern droption_t<int> op_max_args;
-extern droption_t<std::string> op_config_file;
-extern droption_t<bool> op_ignore_underscore;
-extern droption_t<std::string> op_only_to_lib;
-extern droption_t<bool> op_help;
-extern droption_t<bool> op_version;
-extern droption_t<unsigned int> op_verbose;
-extern droption_t<bool> op_use_config;
-extern droption_t<std::string> op_ltracelib_ops;
+#define OPTION_MAX_LENGTH MAXIMUM_PATH
+
+void parse_config(void);
+std::vector<drsys_arg_t *> *libcalls_search(const char *name);
+void libcalls_hashtable_delete();

@@ -117,7 +117,8 @@ print_version() {
 
 static void
 configure_application(char *app_name, char **app_argv, void **inject_data,
-                      const char *dr_root, const char *lib_path, const char *log_dir)
+                      const char *dr_root, const char *lib_path, const char *log_dir,
+                      const char *config_dir)
 {
     bool is_debug = false;
 #ifdef DEBUG
@@ -133,7 +134,7 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
     char drltrace_option[MAX_DR_CMDLINE];
     dr_option[0] = '\0';
 
-    if (op_follow_children.get_value() == false)
+    if (!op_follow_children.get_value())
         dr_snprintf(dr_option, BUFFER_SIZE_ELEMENTS(dr_option), "-no_follow_children");
     NULL_TERMINATE_BUFFER(dr_option);
 
@@ -143,6 +144,10 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
     if (log_dir[0] != '\0') {
         BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
                  "-logdir `%s` ", log_dir);
+    }
+    if (config_dir[0] != '\0') {
+        BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
+                 "-config `%s` ", config_dir);
     }
 
 #ifdef UNIX
@@ -246,6 +251,7 @@ _tmain(int argc, const TCHAR *targv[])
     char full_dr_root_path[MAXIMUM_PATH];
     char full_drlibtrace_path[MAXIMUM_PATH];
     char logdir[MAXIMUM_PATH];
+    char config_dir[MAXIMUM_PATH];
 
     int last_index;
     std::string parse_err;
@@ -302,11 +308,25 @@ _tmain(int argc, const TCHAR *targv[])
         tmp--;
     *(tmp+1) = '\0';
 
+    /* in case of default config option, we use drltrace's install path */
+    if (op_config_file.get_value().compare(DEFAULT_CONFIG_DIR) == 0) {
+        dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s/drltrace.config",
+                    full_frontend_path /*install dir*/);
+        sc = drfront_get_absolute_path(tmp_path, config_dir,
+                                       BUFFER_SIZE_ELEMENTS(config_dir));
+        if (sc != DRFRONT_SUCCESS)
+            DRLTRACE_ERROR("drfront_get_absolute_path failed, error code = %d\n", sc);
+    } else {
+        dr_snprintf(config_dir, BUFFER_SIZE_ELEMENTS(config_dir), "%s",
+                    op_config_file.get_value().c_str());
+    }
+    NULL_TERMINATE_BUFFER(config_dir);
+
     dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s../dynamorio",
                 full_frontend_path);
 
     sc = drfront_get_absolute_path(tmp_path, full_dr_root_path,
-                                   BUFFER_SIZE_ELEMENTS(tmp_path));
+                                   BUFFER_SIZE_ELEMENTS(full_dr_root_path));
     NULL_TERMINATE_BUFFER(full_dr_root_path);
 
     if (sc != DRFRONT_SUCCESS)
@@ -334,7 +354,8 @@ _tmain(int argc, const TCHAR *targv[])
     dr_standalone_init();
 
     configure_application(full_target_app_path, &argv[last_index],
-                          &inject_data, full_dr_root_path, full_drlibtrace_path, logdir);
+                          &inject_data, full_dr_root_path, full_drlibtrace_path, logdir,
+                          config_dir);
 
     if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL))
         DRLTRACE_ERROR("unable to inject");
