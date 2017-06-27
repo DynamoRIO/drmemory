@@ -160,6 +160,8 @@ if (WIN32)
   set(libcall_name1 "~~([0-9a-f]+)~~ KERNELBASE.dll!VirtualQuery\n")
   set(libcall_name2 "~~([0-9a-f]+)~~ ntdll.dll!ZwQueryInformationProcess\n")
   set(libcall_printf "arg 0: done\n \\(type=char \\*, size=0x([0-9a-f]+)\\)\n")
+  # some machines use WriteFile instead of printf, trying to handle both
+  set(libcall_WriteFile "arg 2: 0x([0-9a-f]+) \\(type=DWORD, size=0x([0-9a-f]+)\\)\n")
 else ()
   set(libcall_args2_0 "    arg 0: /dev/null \\(type=char \\*\\*, size=0x([0-9a-f]+)\\)\n")
   set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=<unknown>\\*, size=0x([0-9a-f]+)\\)\n")
@@ -174,5 +176,6 @@ endif(WIN32)
                        ${libcall_name2}${libcall_args2_0}${libcall_args2_1})
   set_tests_properties(drltrace_libargs PROPERTIES PASS_REGULAR_EXPRESSION
                        ${libcall_printf})
+  set_property(TEST drltrace_libargs APPEND PROPERTY DEPENDS ${libcall_WriteFile})
 
 endif (BUILD_TOOL_TESTS)

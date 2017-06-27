@@ -126,7 +126,10 @@ config_parse_type(std::string type_name, uint index)
         arg->size = sizeof(int);
     }
 #ifdef WINDOWS
-    else if (type_name.compare("UINT") == 0) {
+    else if (type_name.compare("HANDLE") == 0) {
+        arg->type_name = "HANDLE";
+        arg->size = sizeof(HANDLE);
+    } else if (type_name.compare("UINT") == 0) {
         arg->type_name = "uint";
         arg->size = sizeof(UINT);
     } else if (type_name.compare("DWORD") == 0) {
@@ -198,7 +201,7 @@ parse_line(const char *line, int line_num)
     if (strlen(line) <= 0 || line[0] == '\n' || line[0] == '\r')
         return true; /* just an empty line */
 
-    tokens_count = split(line, ',', &tokens);
+    tokens_count = split(line, '|', &tokens);
 
     if (tokens_count <= 0) {
         VNOTIFY(0, "unable to parse config file at line %d: %s" NL, line_num, line);

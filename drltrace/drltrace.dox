@@ -43,9 +43,9 @@ to print them in a log file.
 Similar to Linux ltrace tool, drltrace supports an external configuration file where a
 user may describe his/her own function prototypes for printing. The configuration file
 provides a simple syntax to add new functions; it's enough to specify each element
-(return type, function name, arguments) of the function separated by commas in a separated
-line. See drltrace.conf for more details and examples. The configuration file should be in
-ASCII.
+(return type, function name, arguments) of the function separated by a pipe | symbol in a
+separated line. See drltrace.conf for more details and examples. The configuration file
+should be in ASCII.
 
 
 The usefull runtime options for this tool include:
