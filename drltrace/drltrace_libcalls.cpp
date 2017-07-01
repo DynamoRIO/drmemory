@@ -111,14 +111,14 @@ config_parse_type(std::string type_name, uint index)
     arg->pre = true;
     arg->mode = DRSYS_PARAM_INLINED; /* considering inlined param by default */
 
-    /* i#1948: Currently, we have only few cross-platform libcalls in the config
+    /* FIXME i#1948: Currently, we have only few cross-platform libcalls in the config
      * file which is possible to use both for Windows and Linux. However, we
      * need to separate them into two configs and fix CMAKE accordingly.
      * Moreover, we have to provide two different interfaces for type parsing
      * in Windows and Linux.
      */
 
-    /* i#1948: We have to extend a list of supported types here. */
+    /* XXX i#1948: We have to extend a list of supported types here. */
     if (type_name.compare("VOID") == 0)
         arg->type_name = "void";
     else if (type_name.compare("INT") == 0) {
@@ -170,7 +170,7 @@ config_parse_type(std::string type_name, uint index)
 }
 
 static int
-split(const char *buf, const char delim, std::vector<const char *> *tokens_list)
+split(const char *buf, const char delim, std::vector<std::string> *tokens_list)
 {
     int count = 0;
     std::stringstream ss;
@@ -178,7 +178,7 @@ split(const char *buf, const char delim, std::vector<const char *> *tokens_list)
 
     ss.str(buf);
     while (std::getline(ss, item, delim)) {
-        tokens_list->push_back(strdup(item.c_str()));
+        tokens_list->push_back(item);
         count++;
     }
     return count;
@@ -187,7 +187,7 @@ split(const char *buf, const char delim, std::vector<const char *> *tokens_list)
 static bool
 parse_line(const char *line, int line_num)
 {
-    std::vector<const char *> tokens;
+    std::vector<std::string> tokens;
     drsys_arg_t *tmp_arg;
     const char *func_name = NULL;
     int elem_index = 0, tokens_count = 0;
@@ -209,16 +209,16 @@ parse_line(const char *line, int line_num)
     }
 
     std::vector<drsys_arg_t *> *args_vector = new std::vector<drsys_arg_t *>();
-    std::vector<const char *>::iterator it;
+    std::vector<std::string>::iterator it;
     for (it = tokens.begin(); it != tokens.end(); ++it) {
-        /* i#1948: Currently, we don't support ret value printing and
+        /* FIXME i#1948: Currently, we don't support ret value printing and
          * skipping it here.
          */
         if (elem_index >= 2) {
             tmp_arg = config_parse_type(*it, elem_index - 2);
             args_vector->push_back(tmp_arg);
         } else if (elem_index == 1)
-            func_name = *it;
+            func_name = it->c_str();
 
         elem_index++;
     }
@@ -246,7 +246,7 @@ parse_config(void)
     file_t file_desc = INVALID_FILE;
     int lines_count = 0, line_num = 1;
     bool res = false;
-    std::vector<const char *> lines_list;
+    std::vector<std::string> lines_list;
 
     if (!op_use_config.get_value())
         return;
@@ -286,14 +286,14 @@ parse_config(void)
 
     init_libcalls_hashtable();
 
-    std::vector<const char *>::iterator it;
+    std::vector<std::string>::iterator it;
     for (it = lines_list.begin(); it != lines_list.end(); it++) {
         /* XXX: we have to describe a format of the config file in the drltrace's
          * documentation as well as list supported types.
          */
-        if (!parse_line(*it, line_num)) {
+        if (!parse_line(it->c_str(), line_num)) {
             VNOTIFY(0, "incorrect format for the line %d: %s in config file" NL,
-                    line_num, *it);
+                    line_num, it->c_str());
             op_use_config.set_value(false);
             libcalls_hashtable_delete();
             break;

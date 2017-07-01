@@ -161,6 +161,7 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
 #ifdef WINDOWS
         char buf[MAXIMUM_PATH];
         int sofar = dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s", msg.c_str());
+        NULL_TERMINATE_BUFFER(buf);
         FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                       NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                       (LPTSTR) buf + sofar,
@@ -239,6 +240,8 @@ _tmain(int argc, const TCHAR *targv[])
 #else
     dr_snprintf(drlibpath, BUFFER_SIZE_ELEMENTS(drlibpath), "release/%s", libname);
 #endif
+    NULL_TERMINATE_BUFFER(drlibpath);
+
     void *inject_data;
     int exitcode;
     char **argv;
@@ -293,7 +296,7 @@ _tmain(int argc, const TCHAR *targv[])
                        target_app_name, sc);
     }
 
-    /* get DR's root directory and drltracelib.dll full path */
+    /* get DR's root directory and drltrace.exe full path */
     sc = drfront_get_app_full_path(argv[0], full_frontend_path,
                                    BUFFER_SIZE_ELEMENTS(full_frontend_path));
     if (sc != DRFRONT_SUCCESS) {
@@ -308,10 +311,11 @@ _tmain(int argc, const TCHAR *targv[])
         tmp--;
     *(tmp+1) = '\0';
 
-    /* in case of default config option, we use drltrace's install path */
-    if (op_config_file.get_value().compare(DEFAULT_CONFIG_DIR) == 0) {
+    /* in case of default config option, we use drltrace's frontend path */
+    if (op_config_file_default.get_value()) {
         dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s/drltrace.config",
-                    full_frontend_path /*install dir*/);
+                    full_frontend_path /* binary path */);
+        NULL_TERMINATE_BUFFER(tmp_path);
         sc = drfront_get_absolute_path(tmp_path, config_dir,
                                        BUFFER_SIZE_ELEMENTS(config_dir));
         if (sc != DRFRONT_SUCCESS)
@@ -324,6 +328,7 @@ _tmain(int argc, const TCHAR *targv[])
 
     dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s../dynamorio",
                 full_frontend_path);
+    NULL_TERMINATE_BUFFER(tmp_path);
 
     sc = drfront_get_absolute_path(tmp_path, full_dr_root_path,
                                    BUFFER_SIZE_ELEMENTS(full_dr_root_path));

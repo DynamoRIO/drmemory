@@ -66,12 +66,16 @@ droption_t<int> op_max_args
  "Maximum number of arguments to print.  This option allows to limit the number of "
  "arguments to be printed.  Specify 0 to disable args printing (including unknown).");
 
+droption_t<bool> op_config_file_default
+(DROPTION_SCOPE_FRONTEND, "default_config", true, "Use default config file.",
+ "Use config file that comes with drltrace and located in the same path. Specify "
+ "no_use_config and provide a path to custom config file using -config option.");
+
 droption_t<std::string> op_config_file
-(DROPTION_SCOPE_ALL, "config", DEFAULT_CONFIG_DIR, "The path to drltrace's"
- " config file.",  "Specify a path where config is located. The default value is"
- " \"<install_dir>/drltrace.conf\" (install dir).  The config file describes the "
- " prototype of library functions for printing library call arguments.  See drltrace"
- " documentation for more details.");
+(DROPTION_SCOPE_ALL, "config", "", "The path to drltrace's config file.",
+ "Specify a custom path where config is located. The config file describes the prototype"
+ " of library functions for printing library call arguments.  See drltrace documentation"
+ " for more details.");
 
 droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "
