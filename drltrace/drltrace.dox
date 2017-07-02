@@ -35,47 +35,69 @@
 ***************************************************************************
 \page page_drltrace Library Tracing Tool
 
-drltrace is a standalone tool for Windows based on the Dr. Memory framework that records
-calls to shared libraries. It reports all invocations of exported functions in all shared
-libraries loaded into the target process.
+drltrace is a standalone tool based on the Dr. Memory framework that records calls to
+shared libraries and their arguments and return values. It reports all invocations of
+exported functions in all shared libraries loaded into the target process.
 
-The runtime options for this tool include:
+Similarly to the Linux ltrace tool, drltrace supports an external configuration file where
+a user may describe his/her own function prototypes for printing. The configuration file
+provides a simple syntax to add new functions; it's enough to specify each element
+(return type, function name, arguments) of the function separated by a pipe | symbol in a
+separated line. See drltrace.conf for more details and examples. The configuration file
+should be in ASCII.
+
+
+The usefull runtime options for this tool include:
  - \b -only_from_app:
     Only reports library calls from the application itself, as opposed to
     all calls even from other libraries or within the same library.
  - \b -logdir dir:
-    Sets the log directory, which by default is "-".
+    Sets the log directory, which by default is ".".
     If set to "-", the tool prints to stderr.
  - \b -ignore_underscore:
     Ignores library routine names starting with "_".
-
+ - \b -follow_children:
+    Trace child processes created by a target application.
+ - \b -print_ret_addr
+    Print library call's return address.
+ - \b -num_unknown_args:
+    Number of unknown library call arguments to print.
+ - \b -num_max_args:
+    Maximum number of arguments to print.
+ - \b -config dir:
+    A path where config file is located.
+ - \b -use_config:
+    Use config file for library call arguments printing.
 Here is an example:
 
 \code
-drltrace.exe -only_from_app -- hello.exe
+drltrace.exe -only_from_app -logdir - -- drsyscall_app.exe
 \endcode
 
 Here is a portion of the output from the above command:
 
 \code
-~~~~ ntdll.dll!RtlDecodePointer
-~~~~ ntdll.dll!RtlEnterCriticalSection
-~~~~ ntdll.dll!RtlEnterCriticalSection
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ ntdll.dll!RtlEnterCriticalSection
-~~~~ ntdll.dll!RtlEnterCriticalSection
-~~~~ KERNEL32.dll!WriteFile
-Hello world!
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ ntdll.dll!RtlEnterCriticalSection
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ KERNEL32.dll!HeapFree
-~~~~ ntdll.dll!RtlLeaveCriticalSection
-~~~~ KERNEL32.dll!GetModuleHandleW
-~~~~ KERNELBASE.dll!GetModuleHandleW
-~~~~ KERNEL32.dll!ExitProcess
+~~3584~~ MSVCR110.dll!__getmainargs
+    arg 0: 0x000000013f103028
+    arg 1: 0x000000013f103030
+~~3584~~ MSVCR110.dll!malloc
+    arg 0: 0x0000000000000008
+    arg 1: 0x00000000004245a0
+~~3584~~ KERNEL32.dll!VirtualQuery
+    arg 0: 0x0000000000427600
+    arg 1: 0x000000000030fe30
+~~3584~~ KERNELBASE.dll!VirtualQuery
+    arg 0: 0x0000000000427600
+    arg 1: 0x000000000030fe30
+~~3584~~ MSVCR110.dll!free
+    arg 0: 0x0000000000427c70
+    arg 1: 0x0000000000000000
+~~3584~~ MSVCR110.dll!printf
+    arg 0: done (type=char *, size=0x0)
+done
+~~3584~~ MSVCR110.dll!exit
+    arg 0: 0x0000000000000000
+    arg 1: 0x000007fef147c5d0
 \endcode
 
 */

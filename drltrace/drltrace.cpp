@@ -37,17 +37,9 @@
  * The runtime options for this client are specified in drltrace_options.h,
  * see DROPTION_SCOPE_CLIENT options.
  */
-#include "dr_api.h"
-#include "drltrace_options.h"
-#include "drmgr.h"
-#include "drwrap.h"
-#include "drx.h"
-#include "drcovlib.h"
-#include <string.h>
-#undef TESTANY
-#include "utils.h"
+#include "drltrace.h"
 
-/* XXX i#1349: features to add:
+/* XXX i#1948: features to add:
  *
  * + Add filtering of which library routines to trace.
  *   This would likely be via a configuration file.
@@ -67,17 +59,15 @@
  *   the library entries.
  */
 
-#define VNOTIFY(level, ...) do {          \
-    NOTIFY_COND(op_verbose.get_value() >= level, f_global, __VA_ARGS__); \
-} while (0)
-
-#define OPTION_MAX_LENGTH MAXIMUM_PATH
-
 /* Where to write the trace */
 static file_t outf;
 
 /* Avoid exe exports, as on Linux many apps have a ton of global symbols. */
 static app_pc exe_start;
+
+/****************************************************************************
+ * Arguments printing
+ */
 
 /* XXX i#1978: The functions print_simple_value and print_arg were taken from drstrace.
  * It would be better to move them in drsyscall and import in drstrace and here.
@@ -98,7 +88,21 @@ print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
 }
 
 static void
-print_arg(drsys_arg_t *arg)
+print_string(void *drcontext, void *pointer_str, bool is_wide)
+{
+    if (pointer_str == NULL)
+        dr_fprintf(outf, "<null>");
+    else {
+        DR_TRY_EXCEPT(drcontext, {
+            dr_fprintf(outf, is_wide ? "%S" : "%s", pointer_str);
+        }, {
+            dr_fprintf(outf, "<invalid memory>");
+        });
+    }
+}
+
+static void
+print_arg(void *drcontext, drsys_arg_t *arg)
 {
     dr_fprintf(outf, "\n    arg %d: ", arg->ordinal);
     switch (arg->type) {
@@ -111,6 +115,12 @@ print_arg(drsys_arg_t *arg)
     case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
     case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
     case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_CSTRING:
+        print_string(drcontext, (void *)arg->value, false);
+        break;
+    case DRSYS_TYPE_CWSTRING:
+        print_string(drcontext, (void *)arg->value, true);
+        break;
     default: {
         if (arg->value == 0)
             dr_fprintf(outf, "<null>");
@@ -139,7 +149,7 @@ drlib_iter_arg_cb(drsys_arg_t *arg, void *wrapcxt)
 
     arg->value = (ptr_uint_t)drwrap_get_arg(wrapcxt, arg->ordinal);
 
-    print_arg(arg);
+    print_arg(drwrap_get_drcontext(wrapcxt), arg);
     return true; /* keep going */
 }
 
@@ -161,15 +171,39 @@ print_args_unknown_call(app_pc func, void *wrapcxt)
     dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
 }
 
+static bool
+print_libcall_args(std::vector<drsys_arg_t*> *args_vec, void *wrapcxt)
+{
+    if (args_vec == NULL || args_vec->size() <= 0)
+        return false;
+
+    std::vector<drsys_arg_t*>::iterator it;
+    for (it = args_vec->begin(); it != args_vec->end(); ++it) {
+        if (!drlib_iter_arg_cb(*it, wrapcxt))
+            break;
+    }
+    return true;
+}
+
 static void
 print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
 {
     drmf_status_t res;
     drsys_syscall_t *syscall;
+    std::vector<drsys_arg_t *> *args_vec;
 
     if (op_max_args.get_value() == 0)
         return;
 
+    if (op_use_config.get_value()) {
+        /* looking for libcall in libcalls hashtable */
+        args_vec = libcalls_search(name);
+        if (print_libcall_args(args_vec, wrapcxt)) {
+            dr_fprintf(outf, op_print_ret_addr.get_value() ? "\n   ": "");
+            return; /* we found libcall and sucessfully printed all arguments */
+        }
+    }
+    /* trying to find a prototype of the libcall using drsyscall */
     res = drsys_name_to_syscall(name, &syscall);
     if (res == DRMF_SUCCESS) {
         res = drsys_iterate_arg_types(syscall, drlib_iter_arg_cb, wrapcxt);
@@ -243,10 +277,11 @@ lib_entry(void *wrapcxt, INOUT void **user_data)
     dr_fprintf(outf, "%s%s%s", modname == NULL ? "" : modname,
                modname == NULL ? "" : "!", name);
 
-    /* XXX: We employ two schemes of arguments printing. drsyscall is used
+    /* XXX: We employ three schemes of arguments printing. drsyscall is used
      * to get a symbolic representation of arguments for known library calls.
-     * For the rest of library calls we use type-blind printing and -num_unknown_args
-     * to get a count of arguments to print.
+     * For the rest of library calls we are looking for prototypes in config file
+     * specified by user. If there is no info in both sources we employ type-blind
+     * printing and use -num_unknown_args to get a count of arguments to print.
      */
     print_symbolic_args(name, wrapcxt, func);
 
@@ -378,6 +413,9 @@ event_exit(void)
     if (op_max_args.get_value() > 0)
         drsys_exit();
 
+    if (op_use_config.get_value())
+        libcalls_hashtable_delete();
+
     if (outf != STDERR) {
         if (op_print_ret_addr.get_value())
             drmodtrack_dump(outf);
@@ -443,8 +481,10 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 #ifdef WINDOWS
     dr_enable_console_printing();
 #endif
-    if (op_max_args.get_value() > 0)
+    if (op_max_args.get_value() > 0) {
         drsys_init(id, &ops);
+        parse_config();
+    }
 
     open_log_file();
 }
