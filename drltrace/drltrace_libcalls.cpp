@@ -195,7 +195,7 @@ parse_line(const char *line, int line_num)
     if (line == NULL)
         return false;
 
-    if (line[0] == ';') /* just a comment */
+    if (line[0] == '#') /* just a comment */
         return true;
 
     if (strlen(line) <= 0 || line[0] == '\n' || line[0] == '\r')
