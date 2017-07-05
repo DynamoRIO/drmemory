@@ -65,7 +65,7 @@ The usefull runtime options for this tool include:
  - \b -num_max_args:
     Maximum number of arguments to print.
  - \b -config dir:
-    A path where config file is located.
+    A path where a custom user defined config file is located.
  - \b -use_config:
     Use config file for library call arguments printing.
 Here is an example:
