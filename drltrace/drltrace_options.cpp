@@ -72,7 +72,7 @@ droption_t<bool> op_config_file_default
  "no_use_config and provide a path to custom config file using -config option.");
 
 droption_t<std::string> op_config_file
-(DROPTION_SCOPE_ALL, "config", "", "The path to drltrace's config file.",
+(DROPTION_SCOPE_ALL, "config", "", "The path to custom config file.",
  "Specify a custom path where config is located. The config file describes the prototype"
  " of library functions for printing library call arguments.  See drltrace documentation"
  " for more details.");
