@@ -135,7 +135,6 @@ set(conf_out ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drltrace.config)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/drltrace.config ${conf_out} COPYONLY)
 install(FILES ${conf_out} DESTINATION "${INSTALL_BIN}" PERMISSIONS ${owner_access}
         GROUP_READ WORLD_READ)
-copy_target_to_device(${conf_out})
 
 ##################################################
 # drltrace tests
