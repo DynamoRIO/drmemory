@@ -65,9 +65,14 @@ const char * const param_type_names[] = {
     "int",                      /* DRSYS_TYPE_INT */
     "int",                      /* DRSYS_TYPE_SIGNED_INT */
     "unsigned int",             /* DRSYS_TYPE_UNSIGNED_INT */
+    "size_t",                   /* DRSYS_TYPE_SIZE_T */
     "HANDLE",                   /* DRSYS_TYPE_HANDLE */
     "NTSTATUS",                 /* DRSYS_TYPE_NTSTATUS */
     "ATOM",                     /* DRSYS_TYPE_ATOM */
+    "LCID",                     /* DRSYS_TYPE_LCID */
+    "LPARAM",                   /* DRSYS_TYPE_LPARAM */
+    "HMODULE",                  /* DRSYS_TYPE_HMODULE */
+    "HFILE",                    /* DRSYS_TYPE_HFILE */
     "void *",                   /* DRSYS_TYPE_POINTER */
     "<struct>",                 /* DRSYS_TYPE_STRUCT */
     "char *",                   /* DRSYS_TYPE_CSTRING */

@@ -104,6 +104,8 @@ print_string(void *drcontext, void *pointer_str, bool is_wide)
 static void
 print_arg(void *drcontext, drsys_arg_t *arg)
 {
+    if (arg->pre && (TEST(DRSYS_PARAM_OUT, arg->mode) && !TEST(DRSYS_PARAM_IN, arg->mode)))
+        return;
     dr_fprintf(outf, "\n    arg %d: ", arg->ordinal);
     switch (arg->type) {
     case DRSYS_TYPE_VOID:         print_simple_value(arg, true); break;
@@ -115,6 +117,12 @@ print_arg(void *drcontext, drsys_arg_t *arg)
     case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
     case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
     case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+#ifdef WINDOWS
+    case DRSYS_TYPE_LCID:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_LPARAM:       print_simple_value(arg, false); break;
+    case DRSYS_TYPE_SIZE_T:       print_simple_value(arg, false); break;
+    case DRSYS_TYPE_HMODULE:      print_simple_value(arg, false); break;
+#endif
     case DRSYS_TYPE_CSTRING:
         print_string(drcontext, (void *)arg->value, false);
         break;
