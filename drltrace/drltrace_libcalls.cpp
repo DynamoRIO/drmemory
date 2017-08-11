@@ -82,6 +82,16 @@ libcalls_hashtable_insert(const char *name, std::vector<drsys_arg_t *> *args_lis
  * Config file parsing routines
  */
 
+static std::string
+erase_token(std::string src_string, std::string pattern) {
+   std::string::size_type i = src_string.find(pattern);
+   while (i != std::string::npos) {
+     src_string.erase(i, pattern.length());
+     i = src_string.find(pattern, i);
+   }
+   return src_string;
+}
+
 /* The function returns a new drsys_arg_t object allocated on the global heap
  * that the caller should free.
  */
@@ -93,15 +103,6 @@ config_parse_type(std::string type_name, uint index)
 
     drsys_arg_t *arg = (drsys_arg_t *)global_alloc(sizeof(drsys_arg_t), HEAPSTAT_MISC);
 
-    /* sanitize input type, we assume ASCII chars here */
-    std::transform(type_name.begin(), type_name.end(), type_name.begin(), ::toupper);
-    type_name.erase(std::remove(type_name.begin(), type_name.end(), ' '),
-                    type_name.end());
-    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\r'),
-                    type_name.end());
-    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\n'),
-                    type_name.end());
-
     /* init arg */
     arg->type = DRSYS_TYPE_UNKNOWN;
     arg->ordinal = index;
@@ -110,18 +111,28 @@ config_parse_type(std::string type_name, uint index)
     arg->type_name = NULL;
     arg->pre = true;
 
-    if (type_name.find("++") != std::string::npos)
+    if (type_name.find("__inout") != std::string::npos)
         arg->mode = (drsys_param_mode_t)(DRSYS_PARAM_IN|DRSYS_PARAM_OUT);
-    else if (type_name.find("+") != std::string::npos)
+    else if (type_name.find("__out") != std::string::npos)
         arg->mode = DRSYS_PARAM_OUT;
     else if (type_name.find("*") != std::string::npos)
         arg->mode = DRSYS_PARAM_IN;
     else
         arg->mode = DRSYS_PARAM_INLINED;
 
-    /* we don't need special symbols ++, + or * further */
-    type_name.erase(std::remove(type_name.begin(), type_name.end(), '*'), type_name.end());
-    type_name.erase(std::remove(type_name.begin(), type_name.end(), '+'), type_name.end());
+    /* we don't need special symbols +-, + or * further */
+    type_name = erase_token(type_name, "*");
+    type_name = erase_token(type_name, "__inout");
+    type_name = erase_token(type_name, "__out");
+
+    /* sanitize input type, we assume ASCII chars here */
+    std::transform(type_name.begin(), type_name.end(), type_name.begin(), ::toupper);
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), ' '),
+                    type_name.end());
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\r'),
+                    type_name.end());
+    type_name.erase(std::remove(type_name.begin(), type_name.end(), '\n'),
+                    type_name.end());
 
     /* FIXME i#1948: Currently, we have only few cross-platform libcalls in the config
      * file which is possible to use both for Windows and Linux. However, we
