@@ -83,13 +83,14 @@ libcalls_hashtable_insert(const char *name, std::vector<drsys_arg_t *> *args_lis
  */
 
 static std::string
-erase_token(std::string src_string, std::string pattern) {
-   std::string::size_type i = src_string.find(pattern);
-   while (i != std::string::npos) {
-     src_string.erase(i, pattern.length());
-     i = src_string.find(pattern, i);
-   }
-   return src_string;
+erase_token(std::string src_string, std::string pattern)
+{
+    std::string::size_type i = src_string.find(pattern);
+    while (i != std::string::npos) {
+        src_string.erase(i, pattern.length());
+        i = src_string.find(pattern, i);
+    }
+    return src_string;
 }
 
 /* The function returns a new drsys_arg_t object allocated on the global heap
@@ -120,7 +121,7 @@ config_parse_type(std::string type_name, uint index)
     else
         arg->mode = DRSYS_PARAM_INLINED;
 
-    /* we don't need special symbols +-, + or * further */
+    /* we don't need special symbols __inout, __out or * further */
     type_name = erase_token(type_name, "*");
     type_name = erase_token(type_name, "__inout");
     type_name = erase_token(type_name, "__out");

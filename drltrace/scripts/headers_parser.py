@@ -2,7 +2,6 @@
 # Copyright (c) 2017 Google, Inc.  All rights reserved.
 # ***************************************************************************
 #
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -30,32 +29,36 @@
 # DAMAGE.
 #
 # ********************************************************************************
-# The script is used to search for WinAPI function prototypes in the SDK's headers
+# The script is used to search for WinAPI function prototypes in the SDK's headers based
+# on the list/lists of exported functions and to save them in a separate set of files for
+# the further postprocessing using gen_drltrace_config.py.
+#
+# The script saves possible function prototypes using the following pattern:
+# [exported function name] -> [possible return types] [function name found]([args])
+# where [exported function name] is a name of function we are searching for.
 
 import os
 import sys
 from os import listdir
 from os.path import isfile, join
+import argparse
 
-# the list of ignored expored functions
+# the list of ignored exported functions
 common_dll_names = {"DllCanUnloadNow", "DllGetClassObject", "DllRegisterServer",
                     "DllUnregisterServer", "DllEntryPoint", "DllInstall"}
 
-# the path where a list or lists of WinAPI functions to search for are located
-EXPORT_PATH = "exports\\"
+# the maximum number of elements in a function prototype
+PROTOTYPE_LENGTH = 70
 
-# the path where Windows headers are located (install Microsoft SDK to have them)
-HEADERS_PATH = "C:\\Program Files\\Microsoft SDKs\\Windows\\v7.1\\Include\\"
-
-# the path where the script saves results
-RESULTS_PATH = "results\\"
-
+# In some cases, we can find several function prototypes that match a certain exported
+# function. Such cases should be resolved manually and we add a special label [DUPLICATE]
+# to make the search easier for the user.
 def merge_entries(entry, duplicates, function_name):
     '''
-    The function converts a list of entries into the string to save in the log
-    @in entry - a list of entries
-    @in duplicates_found - prepend an output string with [DUPLICATE] token
-    @out - a string to save in the log
+    The function converts a list of entries into the string to save in the log.
+    @in entry - a list of entries.
+    @in duplicates_found - prepend an output string with [DUPLICATE] token.
+    @out - a string to save in the log.
     '''
     final_str = function_name + " -> "
     if duplicates == 1:
@@ -67,28 +70,28 @@ def merge_entries(entry, duplicates, function_name):
         final_str = final_str + " " + element
     return final_str
 
-def parse_headers():
+def parse_headers(headers_path):
     '''
-    @in - the routine parse SDKs headers located in HEADERS_PATH
-    @out - a list of lines from each header
+    @in - the routine parse SDKs headers located in the headers_path.
+    @out - a list of lines from each header.
     '''
 
     headers_content = list()
-    headers = [f for f in listdir(HEADERS_PATH) if isfile(join(HEADERS_PATH, f))]
+    headers = [f for f in listdir(headers_path) if isfile(join(headers_path, f))]
     for header in headers:
         if not header.endswith(".h"):
             continue
-        header_content = open(HEADERS_PATH + header, 'r').readlines()
+        header_content = open(headers_path + header, 'r').readlines()
         headers_content.append(header_content)
     return headers_content
 
 def find_in_headers(entry_name, headers_content):
     '''
     The function looks for the entry_name in the headers_count and returns a list of
-    potentially similar functions (that looks like WinAPI function prototype)
-    @in entry_name - a name of WinAPI function to search for
-    @in headers_content - headers content to search in
-    @out - a list of WinAPI function prototypes
+    potentially similar functions (that looks like WinAPI function prototype).
+    @in entry_name - a name of WinAPI function to search for.
+    @in headers_content - headers content to search in.
+    @out - a list of WinAPI function prototypes.
     '''
 
     list_of_results = list()
@@ -103,7 +106,7 @@ def find_in_headers(entry_name, headers_content):
 
                     final_line = tuple()
                     tmp_idx = idx
-                    #take return type, it can sit before function or at the same line
+                    # Take return type. It can sit before function or at the same line.
                     while tmp_idx > 1:
                         tmp_idx = tmp_idx - 1 # looking back
                         if header_content[tmp_idx] == '\n' or ';' in header_content[tmp_idx]\
@@ -125,9 +128,12 @@ def find_in_headers(entry_name, headers_content):
                         if ";" in header_content[tmp_idx]:
                             break
                         tmp_idx = tmp_idx + 1
-                    # we have a limitation for the prototype length (e.g. no more than
-                    # 70 elements).
-                    if len(final_line) > 70  or "{" in final_line:
+                    # we need some limitation for the prototype length to filter out really
+                    # long incorrect results. For example, we found that the threshold of
+                    # 70 elements is the best for kernel32.dll. However, it might be
+                    # different for other dlls.
+                    if len(final_line) > PROTOTYPE_LENGTH  or "{" in final_line\
+                       or "Boolean status" in final_line or "&&" in final_line:
                         continue
                     found = 0
                     '''for element in final_line:
@@ -145,20 +151,38 @@ def find_in_headers(entry_name, headers_content):
     return results
 
 if __name__ == "__main__":
-    export_files = [f for f in listdir(EXPORT_PATH) if isfile(join(EXPORT_PATH, f))]
-    headers_content = parse_headers() # parse all headers
+    parser = argparse.ArgumentParser(description = "The script is used to search for WinAPI"
+" function prototypes in the SDK headers.")
+    parser.add_argument('-exports_path', help = "The path where a list or lists of WinAPI"
+" functions to search for are located.", default = "exports\\")
+    parser.add_argument('-headers_path', help = "The path where Windows headers are located"
+" (install Microsoft SDK to have them).",
+    default = "C:\\Program Files\\Microsoft SDKs\\Windows\\v7.1\\Include\\")
+    parser.add_argument('-results_path', help = "The path where the script saves results.",
+    default = "results\\")
+    parser.add_argument('-parse_one_export_file', help = "The option is used to specify"
+" for parsing a single file located in the exports_path.")
+
+    args = parser.parse_args()
+
+    print "Using %s as the exports dir, %s as the headers dir, %s as the results dir " %\
+          (args.exports_path, args.headers_path, args.results_path)
+
+    export_files = [f for f in listdir(args.exports_path) if isfile(join(args.exports_path, f))]
+    # parse headers
+    headers_content = parse_headers(args.headers_path)
 
     for idx, file in enumerate(export_files):
         print "Done %d out of %d" % (idx, len(export_files))
 
-        if "kernel32" not in file:
+        if args.parse_one_export_file != None and args.parse_one_export_file not in file:
             continue
 
         if file.startswith("api-ms-win"): # just special wrappers for the system dlls
             continue
 
-        exp_file_content = open(EXPORT_PATH + file, 'r').readlines()
-        config = open(RESULTS_PATH + file +".headers.out", 'w')
+        exp_file_content = open(args.exports_path + file, 'r').readlines()
+        config = open(args.results_path + file +".headers_out", 'w')
 
         for export_entry in exp_file_content:
             export_entry = export_entry[:-1] # remove \n
@@ -173,4 +197,4 @@ if __name__ == "__main__":
             else:
                 config.write(entry)
         config.close()
-print "All done. Please use gen_drltrace_config.py for postprocessing"
+    print "All done. Please use gen_drltrace_config.py for postprocessing"
