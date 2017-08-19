@@ -683,7 +683,7 @@ syscall_info_t syscall_user32_info[] = {
          {0, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtUserGetAtomName", OK, SYSARG_TYPE_UINT32|SYSINFO_RET_ZERO_FAIL, 2,
+    {{0,0},"NtUserGetAtomName", OK|SYSINFO_RET_ZERO_FAIL, SYSARG_TYPE_UINT32, 2,
      {
          {0, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
          {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/},

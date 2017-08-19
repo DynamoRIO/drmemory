@@ -31,7 +31,9 @@
 # ********************************************************************************
 # The script is used to search for WinAPI function prototypes in the SDK's headers based
 # on the list/lists of exported functions and to save them in a separate set of files for
-# the further postprocessing using gen_drltrace_config.py.
+# the further postprocessing using gen_drltrace_config.py. The list of exported functions
+# should have one exported function name per line. For example, the list can be obtained
+# using dumpbin tool on Windows.
 #
 # The script saves possible function prototypes using the following pattern:
 # [exported function name] -> [possible return types] [function name found]([args])
