@@ -38,6 +38,10 @@
 # The script saves possible function prototypes using the following pattern:
 # [exported function name] -> [possible return types] [function name found]([args])
 # where [exported function name] is a name of function we are searching for.
+#
+# In some cases, we can find several function prototypes that match a certain exported
+# function. Such cases should be resolved manually and we add a special label [DUPLICATE]
+# to make the search easier for the user.
 
 import os
 import sys
@@ -50,11 +54,8 @@ common_dll_names = {"DllCanUnloadNow", "DllGetClassObject", "DllRegisterServer",
                     "DllUnregisterServer", "DllEntryPoint", "DllInstall"}
 
 # the maximum number of elements in a function prototype
-PROTOTYPE_LENGTH = 70
+prototype_length = 70
 
-# In some cases, we can find several function prototypes that match a certain exported
-# function. Such cases should be resolved manually and we add a special label [DUPLICATE]
-# to make the search easier for the user.
 def merge_entries(entry, duplicates, function_name):
     '''
     The function converts a list of entries into the string to save in the log.
@@ -100,7 +101,7 @@ def find_in_headers(entry_name, headers_content):
     for header_content in headers_content:
         for idx, line in enumerate(header_content):
             if entry_name in line:
-                ''' Parse line, look for separate names '''
+                # parse line, look for separate names
                 if "(" in line and not "#define" in line and not "return " in line\
                    and not "//" in line and not "/*" in line and not "*/" in line\
                    and not "=" in line and not "STDMETHOD" in line\
@@ -108,7 +109,7 @@ def find_in_headers(entry_name, headers_content):
 
                     final_line = tuple()
                     tmp_idx = idx
-                    # Take return type. It can sit before function or at the same line.
+                    # take return type (before function or at the same line)
                     while tmp_idx > 1:
                         tmp_idx = tmp_idx - 1 # looking back
                         if header_content[tmp_idx] == '\n' or ';' in header_content[tmp_idx]\
@@ -130,20 +131,16 @@ def find_in_headers(entry_name, headers_content):
                         if ";" in header_content[tmp_idx]:
                             break
                         tmp_idx = tmp_idx + 1
-                    # we need some limitation for the prototype length to filter out really
+                    # We need some limitation for the prototype length to filter out really
                     # long incorrect results. For example, we found that the threshold of
                     # 70 elements is the best for kernel32.dll. However, it might be
                     # different for other dlls.
-                    if len(final_line) > PROTOTYPE_LENGTH  or "{" in final_line\
+                    # The special check for "Boolean status" is required to handle specific
+                    # case when a header has the comment like "Boolean status. Error code
+                    # available via GetLastError()".
+                    if len(final_line) > prototype_length or "{" in final_line\
                        or "Boolean status" in final_line or "&&" in final_line:
                         continue
-                    found = 0
-                    '''for element in final_line:
-                        element = element.replace("(", "")
-                        if entry_name == element:
-                            found = 1
-                    if found != 1:
-                        continue'''
                     list_of_results.append(final_line)
     results = ""
     duplicates = 0
@@ -199,4 +196,4 @@ if __name__ == "__main__":
             else:
                 config.write(entry)
         config.close()
-    print "All done. Please use gen_drltrace_config.py for postprocessing"
+    print "All done. Please use gen_drltrace_config.py for postprocessing."

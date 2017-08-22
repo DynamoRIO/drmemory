@@ -358,10 +358,10 @@ types_map = {"BYTE":"BYTE",
 
 tokens_ignore_prefix = {"APIENTRY", "virtual", "DECLSPEC_NORETURN"}
 
-unknown_types = dict() # we use this dictionary to save and print a list of unknown types
+unknown_types = dict() # We use this dictionary to save and print a list of unknown types.
 
 def remove_internal_parentheses(str):
-    while True: # for the all parentheses in the string
+    while True: # the all parentheses in the string
         end = str.find(")") # find the last parenthesis
         if end == -1: # exit in case of no parenthesis
             break
@@ -379,6 +379,7 @@ def get_type(type_str):
 def parse_return_type(line):
     '''
     The function searches for a WinAPI return type in the string specified.
+    The caller should remove function name and arguments from the line.
     @in line - a string with a type to find.
     @out - returning type.
     '''
@@ -392,7 +393,7 @@ def parse_return_type(line):
         if element in tokens_ignore_prefix or element == "" or "__" in element\
            or (("WIN" in element or "NT" in element) and "API" in element):
             continue
-        # let's return "None" if we have more than 2 tokens that look like candidates for
+        # Let's return "None" if we have more than 2 tokens that look like candidates for
         # the return type.
         if type_token_count >= 1:
             print "Warning. Failed to parse line %s (%s)" % (line, element)
@@ -411,16 +412,16 @@ def parse_return_type(line):
 
     return func_type
 
-NO_TYPE = 0
-OUT_TYPE = 1
-INOUT_TYPE = 2
-
 def parse_args(args_str):
     '''
     The function searches for a WinAPI function arguments in the string specified.
+    The caller should remove return type and function name from the args_str.
     @in args_str - a string with arguments to find.
     @out - a list of arguments separated by |.
     '''
+    no_type = 0
+    out_type = 1
+    inout_type = 2
     args_str = args_str.replace("\n", "")
     args_str = args_str.replace(");", "")
     if ")" in args_str:
@@ -430,7 +431,7 @@ def parse_args(args_str):
     res_types = list()
     for arg in args:
         arg = arg.split(" ")
-        param_type = NO_TYPE
+        param_type = no_type
         pointer = False
         res_type = "None"
         for element in arg:
@@ -438,10 +439,10 @@ def parse_args(args_str):
                 continue
             if "__out" in element or "__deref_out" in element\
                or "__deref_opt_out_opt" in element or "__deref_opt_out" in element:
-                param_type = OUT_TYPE
+                param_type = out_type
                 continue
             elif "__inout" in element:
-                param_type = INOUT_TYPE
+                param_type = inout_type
                 continue
             if "*" in element:
                 pointer = True
@@ -455,9 +456,9 @@ def parse_args(args_str):
             else:
                 res_type = type
         if res_type != "None":
-            if param_type == OUT_TYPE:
+            if param_type == out_type:
                 res_type = "+" + res_type # equals __out
-            elif param_type ==  INOUT_TYPE:
+            elif param_type ==  inout_type:
                 res_type = "++" + res_type # equals __inout
             if pointer == True:
                 res_type += "*"
@@ -512,9 +513,9 @@ if __name__ == "__main__":
 
         for line in content:
             line = line[:-1]
-            # the headers_parser.py saves possible prototypes using the following pattern:
+            # The headers_parser.py saves possible prototypes using the following pattern:
             # [exported function name] -> [possible return types] [function name found]([args])
-            # where [exported function name] is a name of function we are searching for
+            # where [exported function name] is a name of function we are searching for.
             if "->" not in line or "(This)->" in line:
                 continue
 
