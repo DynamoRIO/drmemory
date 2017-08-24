@@ -424,9 +424,9 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
-# FIXME i#111, i#217: 64-bit is only supported in pattern mode
-# i#1726: ditto for ARM.
-if (NOT X64 AND NOT ARM)
+# FIXME i#111: 64-bit full mode doesn't quite support Windows yet.
+# i#1726: ARM is only supported in pattern mode.
+if (NOT ARM AND UNIX OR NOT X64)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -937,8 +937,8 @@ if (APPLE)
   newtest(mac_zones mac_zones.c)
 endif (APPLE)
 
-else (NOT X64 AND NOT ARM)
-  # XXX i#111: we'll eliminate this duplication once we have full mode working --
+else ()
+  # XXX i#1726: we'll eliminate this duplication once we have full mode working --
   # and when we do, be sure to remove the runtest.cmake auto-ignore of # uninits.
 
   # default mode == pattern + leaks
@@ -988,7 +988,7 @@ else (NOT X64 AND NOT ARM)
       newtest_ex(nonaslr nonaslr.c "${hello_path}" "-pattern;0" "" OFF "hello" 0)
     endif (LINUX)
   endif ()
-endif (NOT X64 AND NOT ARM)
+endif ()
 
 # XXX i#1660: gtest is not building with clang 6.0
 # XXX i#1726: need to port app_suite to ARM.
