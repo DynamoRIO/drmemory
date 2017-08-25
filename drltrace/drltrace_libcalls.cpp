@@ -82,6 +82,17 @@ libcalls_hashtable_insert(const char *name, std::vector<drsys_arg_t *> *args_lis
  * Config file parsing routines
  */
 
+static std::string
+erase_token(std::string src_string, std::string pattern)
+{
+    std::string::size_type i = src_string.find(pattern);
+    while (i != std::string::npos) {
+        src_string.erase(i, pattern.length());
+        i = src_string.find(pattern, i);
+    }
+    return src_string;
+}
+
 /* The function returns a new drsys_arg_t object allocated on the global heap
  * that the caller should free.
  */
@@ -93,6 +104,28 @@ config_parse_type(std::string type_name, uint index)
 
     drsys_arg_t *arg = (drsys_arg_t *)global_alloc(sizeof(drsys_arg_t), HEAPSTAT_MISC);
 
+    /* init arg */
+    arg->type = DRSYS_TYPE_UNKNOWN;
+    arg->ordinal = index;
+    arg->size = 0;
+    arg->arg_name = NULL;
+    arg->type_name = NULL;
+    arg->pre = true;
+
+    if (type_name.find("__inout") != std::string::npos)
+        arg->mode = (drsys_param_mode_t)(DRSYS_PARAM_IN|DRSYS_PARAM_OUT);
+    else if (type_name.find("__out") != std::string::npos)
+        arg->mode = DRSYS_PARAM_OUT;
+    else if (type_name.find("*") != std::string::npos)
+        arg->mode = DRSYS_PARAM_IN;
+    else
+        arg->mode = DRSYS_PARAM_INLINED;
+
+    /* we don't need special symbols __inout, __out or * further */
+    type_name = erase_token(type_name, "*");
+    type_name = erase_token(type_name, "__inout");
+    type_name = erase_token(type_name, "__out");
+
     /* sanitize input type, we assume ASCII chars here */
     std::transform(type_name.begin(), type_name.end(), type_name.begin(), ::toupper);
     type_name.erase(std::remove(type_name.begin(), type_name.end(), ' '),
@@ -102,15 +135,6 @@ config_parse_type(std::string type_name, uint index)
     type_name.erase(std::remove(type_name.begin(), type_name.end(), '\n'),
                     type_name.end());
 
-    /* init arg */
-    arg->type = DRSYS_TYPE_UNKNOWN;
-    arg->ordinal = index;
-    arg->size = 0;
-    arg->arg_name = NULL;
-    arg->type_name = NULL;
-    arg->pre = true;
-    arg->mode = DRSYS_PARAM_INLINED; /* considering inlined param by default */
-
     /* FIXME i#1948: Currently, we have only few cross-platform libcalls in the config
      * file which is possible to use both for Windows and Linux. However, we
      * need to separate them into two configs and fix CMAKE accordingly.
@@ -119,50 +143,73 @@ config_parse_type(std::string type_name, uint index)
      */
 
     /* XXX i#1948: We have to extend a list of supported types here. */
-    if (type_name.compare("VOID") == 0)
+    if (type_name.compare("VOID") == 0) {
         arg->type_name = "void";
-    else if (type_name.compare("INT") == 0) {
+        arg->type = DRSYS_TYPE_VOID;
+    } else if (type_name.compare("INT") == 0) {
         arg->type_name = "int";
         arg->size = sizeof(int);
+        arg->type = DRSYS_TYPE_SIGNED_INT;
+    } else if (type_name.compare("LONG") == 0) {
+        arg->type_name = "long";
+        arg->size = sizeof(long);
+        arg->type = DRSYS_TYPE_SIGNED_INT;
+    } else if (type_name.compare("SIZE_T") == 0) {
+        arg->type_name = "size_t";
+        arg->size = sizeof(size_t);
+        arg->type = DRSYS_TYPE_SIZE_T;
     }
 #ifdef WINDOWS
     else if (type_name.compare("HANDLE") == 0) {
         arg->type_name = "HANDLE";
         arg->size = sizeof(HANDLE);
+        arg->type = DRSYS_TYPE_HANDLE;
+    } else if (type_name.compare("HFILE") == 0) {
+        arg->type_name = "HFILE";
+        arg->size = sizeof(HFILE);
+        arg->type = DRSYS_TYPE_HFILE;
+    } else if (type_name.compare("HMODULE") == 0) {
+        arg->type_name = "HMODULE";
+        arg->size = sizeof(HFILE);
+        arg->type = DRSYS_TYPE_HMODULE;
     } else if (type_name.compare("UINT") == 0) {
         arg->type_name = "uint";
         arg->size = sizeof(UINT);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
     } else if (type_name.compare("DWORD") == 0) {
         arg->type_name = "DWORD";
         arg->size = sizeof(DWORD);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
     } else if (type_name.compare("WORD") == 0) {
         arg->type_name = "WORD";
         arg->size = sizeof(WORD);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
     } else if (type_name.compare("BYTE") == 0) {
         arg->type_name = "BYTE";
         arg->size = sizeof(BYTE);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
     } else if (type_name.compare("BOOL") == 0) {
         arg->type_name = "BOOL";
         arg->size = sizeof(BOOL);
+        arg->type = DRSYS_TYPE_BOOL;
+    } else if (type_name.compare("LCID") == 0) {
+        arg->type_name = "LCID";
+        arg->size = sizeof(LCID);
+        arg->type = DRSYS_TYPE_LCID;
+    } else if (type_name.compare("LPARAM") == 0) {
+        arg->type_name = "LPARAM";
+        arg->size = sizeof(LPARAM);
+        arg->type = DRSYS_TYPE_LPARAM;
     }
 #endif
-    else if (type_name.compare("CHAR*") == 0) {
-        arg->type_name = "char ";
-        arg->mode = DRSYS_PARAM_IN;
+    else if (type_name.compare("CHAR") == 0) {
+        arg->type_name = "char";
         arg->type = DRSYS_TYPE_CSTRING;
-    } else if (type_name.compare("WCHAR*") == 0) {
-        arg->type_name = "wchar_t ";
-        arg->mode = DRSYS_PARAM_IN;
+    } else if (type_name.compare("WCHAR") == 0) {
+        arg->type_name = "wchar_t";
         arg->type = DRSYS_TYPE_CWSTRING;
-    } else if (type_name.find("*") != std::string::npos) {
-        arg->size = sizeof(void *);
-        arg->mode = DRSYS_PARAM_IN;
-        arg->type_name = "<unknown> ";
-        VNOTIFY(0, "found pointer to unknown type %s in the config file" NL,
-                type_name.c_str());
     } else {
         arg->type_name = "<unknown>";
-        arg->mode = DRSYS_PARAM_IN;
         VNOTIFY(0, "found unknown type %s in the config file" NL, type_name.c_str());
     }
 

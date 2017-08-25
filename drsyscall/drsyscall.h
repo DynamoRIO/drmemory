@@ -177,9 +177,14 @@ typedef enum {
     DRSYS_TYPE_INT,    	    /**< Integer type of unspecified signedness. */
     DRSYS_TYPE_SIGNED_INT,  /**< Signed integer type. */
     DRSYS_TYPE_UNSIGNED_INT,/**< Unsigned integer type. */
+    DRSYS_TYPE_SIZE_T,      /**< Size_t type */
     DRSYS_TYPE_HANDLE,      /**< Windows-only: kernel/GDI/user handle type. */
     DRSYS_TYPE_NTSTATUS,    /**< Windows-only: NTSTATUS Native API/RTL type. */
     DRSYS_TYPE_ATOM,        /**< Windows-only: ATOM type. */
+    DRSYS_TYPE_LCID,        /**< Windows-only: LCID type. */
+    DRSYS_TYPE_LPARAM,      /**< Windows-only: LPARAM type. */
+    DRSYS_TYPE_HMODULE,     /**< Windows-only: HMODULE type. */
+    DRSYS_TYPE_HFILE,       /**< Windows-only: HFILE type. */
     DRSYS_TYPE_POINTER,     /**< Pointer to an unspecified type. */
 
     /* Structs */
