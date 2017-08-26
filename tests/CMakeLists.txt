@@ -490,7 +490,8 @@ if (UNIX)
   newtest(signal signal.c)
   newtest(syscalls_unix syscalls_unix.c)
 
-  if (NOT APPLE)
+  if (NOT APPLE
+      AND "${CMAKE_GENERATOR}" MATCHES "Unix Makefiles") # i#2019: fails w/ Ninja
     ##################################################
     # kernel module
     set(kernel_dir "/lib/modules/${CMAKE_SYSTEM_VERSION}/build" )
@@ -534,7 +535,7 @@ if (UNIX)
         "${kmod_build_files}")
     endif ()
     ##################################################
-  endif (NOT APPLE)
+  endif ()
 
   target_link_libraries(signal m)
   if (NOT VMKERNEL AND NOT APPLE)
