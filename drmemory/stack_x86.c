@@ -698,8 +698,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* We make this signed so that 0xffffffff will encode for x64 as -1. */
     int shadow_dqword_newmem = (sp_action == SP_ADJUST_ACTION_DEFINED ?
                                 SHADOW_DQWORD_DEFINED : SHADOW_DQWORD_UNDEFINED);
-    ASSERT(shadow_dqword_newmem == -1 || shadow_dqword_newmem == 0,
-           "shadow dqword must be -1 or 0");
 
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);
