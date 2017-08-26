@@ -1352,9 +1352,16 @@ set_initial_structures(void *drcontext)
         LOG(1, "initial stack is "PFX"-"PFX", sp="PFX"\n",
             stack_base, stack_base + stack_size, mc.xsp);
         set_known_range(stack_base, (app_pc)mc.xsp);
-        if (options.check_stack_bounds)
+        if (options.check_stack_bounds) {
             set_initial_range((app_pc)mc.xsp, stack_base + stack_size);
-        else
+            if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                size_t redzone_sz = BEYOND_TOS_REDZONE_SIZE;
+                if ((app_pc)mc.xsp - BEYOND_TOS_REDZONE_SIZE < stack_base)
+                    redzone_sz = (app_pc)mc.xsp - stack_base;
+                shadow_set_range((app_pc)mc.xsp - redzone_sz, (app_pc)mc.xsp,
+                                 SHADOW_UNDEFINED);
+            }
+        } else
             set_initial_range(stack_base, stack_base + stack_size);
         /* rest is unaddressable by default, and memory walk skips known range */
     } else {

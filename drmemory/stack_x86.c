@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -309,8 +309,16 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(arg_tgt),
                                                   arg));
             }
-        } else
-            PRE(bb, inst, INSTR_CREATE_mov_st(drcontext, opnd_create_reg(arg_tgt), arg));
+        } else {
+            if (opnd_is_immed_int(arg)) {
+                instrlist_insert_mov_immed_ptrsz(drcontext, opnd_get_immed_int(arg),
+                                                 opnd_create_reg(arg_tgt), bb, inst,
+                                                 NULL, NULL);
+            } else {
+                PRE(bb, inst, INSTR_CREATE_mov_st(drcontext, opnd_create_reg(arg_tgt),
+                                                  arg));
+            }
+        }
         if (si1.xchg != REG_NULL) {
             /* now put arg into ecx, and saved ecx into dead xchg-w/ reg */
             insert_spill_or_restore(drcontext, bb, inst, &si1, true/*save*/, false);
@@ -687,8 +695,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
     uint shadow_dword_newmem = (sp_action == SP_ADJUST_ACTION_DEFINED ?
                                 SHADOW_DWORD_DEFINED : SHADOW_DWORD_UNDEFINED);
-    uint shadow_dqword_newmem = (sp_action == SP_ADJUST_ACTION_DEFINED ?
-                                 SHADOW_DQWORD_DEFINED : SHADOW_DQWORD_UNDEFINED);
+    /* We make this signed so that 0xffffffff will encode for x64 as -1. */
+    int shadow_dqword_newmem = (sp_action == SP_ADJUST_ACTION_DEFINED ?
+                                SHADOW_DQWORD_DEFINED : SHADOW_DQWORD_UNDEFINED);
+    ASSERT(shadow_dqword_newmem == -1 || shadow_dqword_newmem == 0,
+           "shadow dqword must be -1 or 0");
 
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);

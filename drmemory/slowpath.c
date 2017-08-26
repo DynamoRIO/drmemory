@@ -1556,9 +1556,10 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
         uint shadow = shadow_get_byte(&info, addr + i);
         ASSERT(shadow <= 3, "internal error");
         if (shadow == SHADOW_UNADDRESSABLE) {
-            if (TEST(MEMREF_PUSHPOP, flags) && !TEST(MEMREF_WRITE, flags)) {
-                ELOG(0, "ERROR: "PFX" popping unaddressable memory: possible Dr. Memory bug\n",
-                     loc_to_print(loc));
+            if (TEST(MEMREF_PUSHPOP, flags) &&
+                (!TEST(MEMREF_WRITE, flags) || BEYOND_TOS_REDZONE_SIZE > 0)) {
+                ELOG(0, "ERROR: "PFX" popping unaddressable memory: possible Dr. Memory "
+                     "bug\n", loc_to_print(loc));
                 if (options.pause_at_unaddressable)
                     wait_for_user("popping unaddressable memory!");
             }
@@ -1566,9 +1567,15 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
              * addressable, but really should check if in stack range
              */
             if (TEST(MEMREF_PUSHPOP, flags) && TEST(MEMREF_WRITE, flags)) {
+                /* Push without stack redzone */
                 ASSERT(!TEST(MEMREF_MOVS, flags), "internal movs error");
                 shadow_set_byte(&info, addr + i, TEST(MEMREF_USE_VALUES, flags) ?
                                 comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED);
+                /* We shouldn't get here for BEYOND_TOS_REDZONE_SIZE > 0 */
+                if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                    shadow_set_byte(&info, addr + i - BEYOND_TOS_REDZONE_SIZE,
+                                    SHADOW_UNDEFINED);
+                }
             } else {
                 /* We check stack bounds here and cache to avoid
                  * check_undefined_exceptions having to do it over and over (did
@@ -1689,11 +1696,19 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                 ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
             }
             if (TEST(MEMREF_PUSHPOP, flags)) {
-                shadow_set_byte(&info, addr + i, SHADOW_UNADDRESSABLE);
+                if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                    shadow_set_byte(&info, addr + i, SHADOW_UNDEFINED);
+                    shadow_set_byte(&info, addr + i - BEYOND_TOS_REDZONE_SIZE,
+                                    SHADOW_UNADDRESSABLE);
+                } else
+                    shadow_set_byte(&info, addr + i, SHADOW_UNADDRESSABLE);
             }
         } else if (!TEST(MEMREF_CHECK_ADDRESSABLE, flags)) {
             uint newval;
-            if (TEST(MEMREF_PUSHPOP, flags)) {
+            if (TEST(MEMREF_PUSHPOP, flags) &&
+                (BEYOND_TOS_REDZONE_SIZE == 0 ||
+                 shadow_get_byte(&info, addr + i - BEYOND_TOS_REDZONE_SIZE) !=
+                 SHADOW_UNADDRESSABLE)) {
                 if (!handled_push_addr) {
                     /* only call once: don't want to mark push target as unaddr,
                      * so each byte will trigger here: avoid extra warnings in logs
@@ -1702,25 +1717,35 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                         handle_push_addressable(loc, addr + i, addr, sz, mc);
                 }
             }
-            if (TEST(MEMREF_MOVS, flags)) {
-                ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
-                ASSERT(memref_idx(flags, i) == i, "internal movs error");
-                newval = shadow_get_byte(&info, comb->movs_addr + i);
+            if (TEST(MEMREF_PUSHPOP, flags) && TEST(MEMREF_WRITE, flags) &&
+                BEYOND_TOS_REDZONE_SIZE > 0) {
+                /* Push with stack redzone */
+                ASSERT(!TEST(MEMREF_MOVS, flags), "internal movs error");
+                shadow_set_byte(&info, addr + i, TEST(MEMREF_USE_VALUES, flags) ?
+                                comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED);
+                shadow_set_byte(&info, addr + i - BEYOND_TOS_REDZONE_SIZE,
+                                SHADOW_UNDEFINED);
             } else {
-                newval = TEST(MEMREF_USE_VALUES, flags) ?
-                    comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED;
-            }
-            if (shadow == SHADOW_DEFINED_BITLEVEL ||
-                newval == SHADOW_DEFINED_BITLEVEL) {
-                ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
-            } else {
-                if (shadow == newval) {
-                    LOG(4, "store @"PFX" to "PFX" w/ already-same-val "PIFX"\n",
-                        loc_to_print(loc), addr+i, newval);
+                if (TEST(MEMREF_MOVS, flags)) {
+                    ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
+                    ASSERT(memref_idx(flags, i) == i, "internal movs error");
+                    newval = shadow_get_byte(&info, comb->movs_addr + i);
                 } else {
-                    LOG(4, "store @"PFX" to "PFX" val="PIFX"\n",
-                        loc_to_print(loc), addr + i, newval);
-                    shadow_set_byte(&info, addr + i, newval);
+                    newval = TEST(MEMREF_USE_VALUES, flags) ?
+                        comb->dst[memref_idx(flags, i)] : SHADOW_DEFINED;
+                }
+                if (shadow == SHADOW_DEFINED_BITLEVEL ||
+                    newval == SHADOW_DEFINED_BITLEVEL) {
+                    ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
+                } else {
+                    if (shadow == newval) {
+                        LOG(4, "store @"PFX" to "PFX" w/ already-same-val "PIFX"\n",
+                            loc_to_print(loc), addr+i, newval);
+                    } else {
+                        LOG(4, "store @"PFX" to "PFX" val="PIFX"\n",
+                            loc_to_print(loc), addr + i, newval);
+                        shadow_set_byte(&info, addr + i, newval);
+                    }
                 }
             }
         }

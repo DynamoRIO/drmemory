@@ -25,6 +25,7 @@
 #include "slowpath.h"
 #include "report.h"
 #include "shadow.h"
+#include "stack.h"
 #include "syscall.h"
 #include "alloc.h"
 #include "heap.h"
@@ -1316,15 +1317,27 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 void
 client_stack_alloc(byte *start, byte *end, bool defined)
 {
-    if (options.shadowing && (options.check_uninitialized || options.check_stack_bounds))
+    if (options.shadowing &&
+        (options.check_uninitialized || options.check_stack_bounds)) {
         shadow_set_range(start, end, defined ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+        if (BEYOND_TOS_REDZONE_SIZE > 0)
+            shadow_set_range(start - BEYOND_TOS_REDZONE_SIZE,
+                             end - BEYOND_TOS_REDZONE_SIZE, SHADOW_UNDEFINED);
+    }
 }
 
 void
 client_stack_dealloc(byte *start, byte *end)
 {
-    if (options.shadowing && (options.check_uninitialized || options.check_stack_bounds))
-        shadow_set_range(start, end, SHADOW_UNADDRESSABLE);
+    if (options.shadowing &&
+        (options.check_uninitialized || options.check_stack_bounds)) {
+        if (BEYOND_TOS_REDZONE_SIZE > 0) {
+            shadow_set_range(start, end, SHADOW_UNDEFINED);
+            shadow_set_range(start - BEYOND_TOS_REDZONE_SIZE,
+                             end - BEYOND_TOS_REDZONE_SIZE, SHADOW_UNADDRESSABLE);
+        } else
+            shadow_set_range(start, end, SHADOW_UNADDRESSABLE);
+    }
     if (options.shadowing && options.check_uninitialized)
         register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DEFINED);
 }
@@ -1700,6 +1713,10 @@ at_signal_handler(void)
          */
         shadow_set_byte(&info, sp, SHADOW_DEFINED);
         sp++;
+    }
+    if (BEYOND_TOS_REDZONE_SIZE > 0) {
+        shadow_set_range((byte *)mc.xsp - BEYOND_TOS_REDZONE_SIZE, (byte *)mc.xsp,
+                         SHADOW_UNDEFINED);
     }
     LOG(2, "signal handler: marked new frame defined "PFX"-"PFX"\n", mc.xsp, sp);
 }

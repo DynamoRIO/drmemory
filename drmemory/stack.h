@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -45,6 +45,13 @@ extern uint zero_loop_aborts_thresh;
  * constant for typical min stack size
  */
 #define TYPICAL_STACK_MIN_SIZE (32*1024)
+
+/* Some ABI's have a stack redzone which we want to mark uninit. */
+#if defined(X86_64) && defined(UNIX)
+# define BEYOND_TOS_REDZONE_SIZE 128
+#else
+# define BEYOND_TOS_REDZONE_SIZE 0
+#endif
 
 /* Indicates what action to take on SP adjustments.  Different from esp_adjust_t
  * in stack.c, which is about what kind of adjustment is being made by the app.

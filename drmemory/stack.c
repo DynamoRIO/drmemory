@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -235,6 +235,12 @@ handle_push_addressable(app_loc_t *loc, app_pc addr, app_pc start_addr,
                               * pushed as unaddr!
                               */
                              (addr - PAGE_SIZE), start_addr, SHADOW_UNADDRESSABLE);
+            if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                size_t redzone_sz = BEYOND_TOS_REDZONE_SIZE;
+                if (start_addr - BEYOND_TOS_REDZONE_SIZE < stack_start)
+                    redzone_sz = start_addr - stack_start;
+                shadow_set_range(start_addr - redzone_sz, start_addr, SHADOW_UNDEFINED);
+            }
             check_stack_size_vs_threshold(dr_get_current_drcontext(), stack_size);
         } else {
             ELOG(0, "ERROR: "PFX" pushing addressable memory: possible Dr. Memory bug\n",
@@ -303,7 +309,8 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     } else if (type == ESP_ADJUST_AND) {
         ptr_int_t newval = mc.xsp & val;
         delta = newval - mc.xsp;
-        LOG(3, "esp adjust and esp="PFX" delta=%d\n", mc.xsp, delta);
+        LOG(3, "esp adjust and mask="PIFX" esp="PFX" delta="SZFMT"\n",
+            val, mc.xsp, delta);
         if ((delta > options.stack_swap_threshold ||
              delta < -options.stack_swap_threshold) &&
             check_stack_swap((byte *)mc.xsp, (byte *)newval)) {
@@ -325,6 +332,10 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     }
     if (delta != 0) {
         if (sp_action == SP_ADJUST_ACTION_ZERO) {
+            if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                /* FIXME i#1205: zeroing conflicts w/ redzone: NYI */
+                ASSERT_NOT_IMPLEMENTED();
+            }
             if (delta < 0) {
                 /* zero out newly allocated stack space to avoid stale
                  * pointers from misleading our leak scan (PR 520916).
@@ -333,8 +344,9 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
                 memset((app_pc)(mc.xsp + delta), 0, -delta);
             }
         } else {
-            shadow_set_range((app_pc) (delta > 0 ? mc.xsp : (mc.xsp + delta)),
-                             (app_pc) (delta > 0 ? (mc.xsp + delta) : mc.xsp),
+            app_pc sp = (app_pc)mc.xsp - BEYOND_TOS_REDZONE_SIZE;
+            shadow_set_range(delta > 0 ? sp : (sp + delta),
+                             delta > 0 ? (sp + delta) : sp,
                              (delta > 0 ? SHADOW_UNADDRESSABLE :
                               ((sp_action == SP_ADJUST_ACTION_DEFINED) ?
                                SHADOW_DEFINED : SHADOW_UNDEFINED)));

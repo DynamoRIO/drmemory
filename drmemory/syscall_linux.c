@@ -156,6 +156,12 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
                 /* assume that above newsp should stay defined */
                 shadow_set_range(stack_base, newsp, SHADOW_UNADDRESSABLE);
                 check_stack_size_vs_threshold(drcontext, stack_size);
+                if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                    size_t redzone_sz = BEYOND_TOS_REDZONE_SIZE;
+                    if (newsp - BEYOND_TOS_REDZONE_SIZE < stack_base)
+                        redzone_sz = newsp - stack_base;
+                    shadow_set_range(newsp - redzone_sz, newsp, SHADOW_UNDEFINED);
+                }
             }
         } else {
             LOG(0, "ERROR: cannot find bounds of new thread's stack "PFX"\n",
