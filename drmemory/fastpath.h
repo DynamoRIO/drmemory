@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -121,10 +121,12 @@ typedef struct _fastpath_info_t {
     scratch_reg_info_t reg2;
     scratch_reg_info_t reg3;
     /* cached sub-scratch-regs */
+    reg_id_t reg1_16;
     reg_id_t reg1_8;
     reg_id_t reg2_16;
     reg_id_t reg2_8;
     reg_id_t reg2_8h;
+    reg_id_t reg3_16;
     reg_id_t reg3_8;
     /* is this instr using shared xl8? */
     bool use_shared;

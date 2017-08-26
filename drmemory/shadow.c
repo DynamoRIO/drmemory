@@ -1574,7 +1574,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
     if (reg_is_gpr(reg)) {
         reg_id_t r = reg_to_pointer_sized(reg);
         offs = (r - DR_REG_START_GPR) * sizeof(shadow_reg_type_t);
-        opsz = IF_X64(reg_is_32bit(reg) ? OPSZ_1 :) SHADOW_GPR_OPSZ;
+        opsz = IF_X64(!reg_is_64bit(reg) ? OPSZ_1 :) SHADOW_GPR_OPSZ;
     } else {
         ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "internal shadow reg error");
         offs = offsetof(shadow_registers_t, aux);
@@ -1586,6 +1586,20 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
 }
+
+#ifdef X64
+opnd_t
+opnd_create_shadow_reg_slot_high_dword(reg_id_t reg)
+{
+    uint offs;
+    reg_id_t r = reg_to_pointer_sized(reg);
+    ASSERT(options.shadowing && reg_is_gpr(reg), "incorrectly called");
+    offs = (r - DR_REG_START_GPR) * sizeof(shadow_reg_type_t) + 1/*little-endian*/;
+    return opnd_create_far_base_disp_ex
+        (tls_shadow_seg, REG_NULL, REG_NULL, 1, tls_shadow_base + offs, OPSZ_1,
+         false, true, false);
+}
+#endif
 
 uint
 get_shadow_xmm_offs(reg_id_t reg)

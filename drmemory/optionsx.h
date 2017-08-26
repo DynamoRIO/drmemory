@@ -802,7 +802,8 @@ OPTION_CLIENT_BOOL(internal, size_in_redzone, true,
 OPTION_CLIENT_BOOL(internal, fastpath, true,
                    "Enable fastpath",
                    "Enable fastpath")
-OPTION_CLIENT_BOOL(internal, esp_fastpath, true,
+/* XXX i#2027: implement and enable for x64 */
+OPTION_CLIENT_BOOL(internal, esp_fastpath, IF_X64_ELSE(false, true),
                    "Enable esp-adjust fastpath",
                    "Enable esp-adjust fastpath")
 OPTION_CLIENT_BOOL(internal, shared_slowpath, true,
@@ -866,7 +867,8 @@ OPTION_CLIENT_BOOL(internal, repstr_to_loop, true,
 OPTION_CLIENT_BOOL(internal, replace_realloc, true,
                    "Replace realloc to avoid races and non-delayed frees",
                    "Replace realloc to avoid races and non-delayed frees")
-OPTION_CLIENT_BOOL(internal, share_xl8, true,
+/* XXX i#2025: enable for x64 once failures are fixed */
+OPTION_CLIENT_BOOL(internal, share_xl8, IF_X64_ELSE(false, true),
                    "Share translations among adjacent similar references",
                    "Share translations among adjacent similar references")
 OPTION_CLIENT(internal, share_xl8_max_slow, uint, 5000, 0, UINT_MAX/2,

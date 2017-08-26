@@ -304,6 +304,11 @@ print_shadow_registers(void);
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg);
 
+#ifdef X64
+opnd_t
+opnd_create_shadow_reg_slot_high_dword(reg_id_t reg);
+#endif
+
 /* Also takes mmx reg */
 uint
 get_shadow_xmm_offs(reg_id_t reg);
