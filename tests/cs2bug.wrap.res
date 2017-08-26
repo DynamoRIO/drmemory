@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -113,5 +113,5 @@ cs2bug.cpp:195
 %ENDOPTIONAL
 : LEAK 88 direct bytes + 196 indirect bytes
 cs2bug.cpp:198
-: LEAK 7 direct bytes + 0 indirect bytes
+: LEAK 42 direct bytes + 0 indirect bytes
 cs2bug.cpp:204
