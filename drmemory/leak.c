@@ -1106,12 +1106,14 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
 #endif
                 /* don't count references in DR data */
                 dr_memory_is_dr_internal(pc) ||
+#ifdef TOOL_DR_MEMORY
+                /* skip over shadow memory */
+                shadow_memory_is_shadow(pc) ||
+#endif
                 /* don't count references in DrMem data (e.g., report.c's
                  * page_buf holds a page's worth of old stack data)
                  */
-                dr_memory_is_in_client(pc) ||
-                /* skip over shadow memory */
-                shadow_memory_is_shadow(pc)) {
+                dr_memory_is_in_client(pc)) {
                 if (query_end < pc) /* overflow */
                     break;
                 pc = query_end;

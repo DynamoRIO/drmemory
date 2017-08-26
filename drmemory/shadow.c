@@ -1818,8 +1818,10 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
     } else if (sz == OPSZ_8) {
         IF_NOT_X86(ASSERT_NOT_REACHED());
         val = *(ushort*)addr;
-    } else
+    } else {
+        val = 0;
         ASSERT_NOT_REACHED();
+    }
     return val;
 }
 
