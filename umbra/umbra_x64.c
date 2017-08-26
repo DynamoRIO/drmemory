@@ -1034,9 +1034,9 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
     byte  *shadow_start, *shadow_addr;
     size_t shadow_size, iter_size;
 
-    if (value > USHRT_MAX || value_size != 1)
+    if (value > USHRT_MAX || (value_size != 1 && value_size != 2))
         return DRMF_ERROR_NOT_IMPLEMENTED;
-    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+    if (POINTER_OVERFLOW_ON_ADD(*app_addr, app_size-1)) /* just hitting top is ok */
         return DRMF_ERROR_INVALID_SIZE;
 
     *found  = false;
@@ -1062,7 +1062,23 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
             continue;
         }
         shadow_size = umbra_map_scale_app_to_shadow(map, iter_size);
-        shadow_addr = memchr(shadow_start, (int)value, shadow_size);
+        if (value_size == 1) {
+            shadow_addr = memchr(shadow_start, (int)value, shadow_size);
+        } else {
+            byte *first_byte = shadow_start;
+            shadow_addr = NULL;
+            while (first_byte != NULL) {
+                first_byte = memchr(first_byte, (char)value,
+                                    shadow_size - 1 - (first_byte - shadow_start));
+                if (first_byte != NULL) {
+                    if (*(first_byte + 1) == (char)(value>>8)) {
+                        shadow_addr = first_byte;
+                        break;
+                    } else
+                        first_byte++;
+                }
+            }
+        }
         if (shadow_addr != NULL) {
             *app_addr = start +
                 umbra_map_scale_shadow_to_app(map, shadow_addr - shadow_start);

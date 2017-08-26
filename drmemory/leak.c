@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1109,7 +1109,9 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 /* don't count references in DrMem data (e.g., report.c's
                  * page_buf holds a page's worth of old stack data)
                  */
-                dr_memory_is_in_client(pc)) {
+                dr_memory_is_in_client(pc) ||
+                /* skip over shadow memory */
+                shadow_memory_is_shadow(pc)) {
                 if (query_end < pc) /* overflow */
                     break;
                 pc = query_end;
