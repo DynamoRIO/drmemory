@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -504,7 +504,7 @@ is_rawmemchr_uninit(void *drcontext, app_pc pc, reg_id_t reg,
             memcmp(buf, RAWMEMCHR_PATTERN_NONMOVES,
                    sizeof(RAWMEMCHR_PATTERN_NONMOVES)) == 0) {
             LOG(3, "suppressing positive from glibc rawmemchr pattern\n");
-            register_shadow_set_dword(DR_REG_XCX, SHADOW_DWORD_DEFINED);
+            register_shadow_set_ptrsz(DR_REG_XCX, SHADOW_PTRSZ_DEFINED);
             STATS_INC(rawmemchr_exception);
             return true;
         }
@@ -2038,6 +2038,12 @@ assign_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd
             }
         }
     }
+# ifdef X64
+    if (opnd_get_size(opnd) == OPSZ_4 && reg_is_gpr(reg)) {
+        /* Writing to the 32-bit reg clears the top 32 bits. */
+        register_shadow_set_high_dword(reg, SHADOW_DWORD_DEFINED);
+    }
+# endif
     return false;
 }
 #endif /* TOOL_DR_MEMORY */

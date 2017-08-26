@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1339,7 +1339,7 @@ client_stack_dealloc(byte *start, byte *end)
             shadow_set_range(start, end, SHADOW_UNADDRESSABLE);
     }
     if (options.shadowing && options.check_uninitialized)
-        register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DEFINED);
+        register_shadow_set_ptrsz(DR_REG_PTR_RETURN, SHADOW_PTRSZ_DEFINED);
 }
 
 /* Non-interpreted code about to write to app-visible memory */
@@ -1425,30 +1425,30 @@ client_pre_syscall(void *drcontext, int sysnum)
             safe_read(&cxt->Xsp, sizeof(cxt_xsp), &cxt_xsp)) {
             /* FIXME: what if the syscall fails? */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {
-                register_shadow_set_dword(REG_XSP,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xsp));
+                register_shadow_set_ptrsz(REG_XSP,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xsp));
 # ifndef X64
-                register_shadow_set_dword(REG_XBP,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xbp));
+                register_shadow_set_ptrsz(REG_XBP,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xbp));
 # endif
             }
             if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt_flags)) {
-                register_shadow_set_dword(REG_XAX,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xax));
-                register_shadow_set_dword(REG_XCX,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xcx));
-                register_shadow_set_dword(REG_XDX,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xdx));
-                register_shadow_set_dword(REG_XBX,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xbx));
+                register_shadow_set_ptrsz(REG_XAX,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xax));
+                register_shadow_set_ptrsz(REG_XCX,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xcx));
+                register_shadow_set_ptrsz(REG_XDX,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xdx));
+                register_shadow_set_ptrsz(REG_XBX,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xbx));
 # ifdef X64
-                register_shadow_set_dword(REG_XBP,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xbp));
+                register_shadow_set_ptrsz(REG_XBP,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xbp));
 # endif
-                register_shadow_set_dword(REG_XSI,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xsi));
-                register_shadow_set_dword(REG_XDI,
-                                          shadow_get_byte(&info, (app_pc)&cxt->Xdi));
+                register_shadow_set_ptrsz(REG_XSI,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xsi));
+                register_shadow_set_ptrsz(REG_XDI,
+                                          shadow_get_ptrsz(&info, (app_pc)&cxt->Xdi));
             }
             /* Mark stack AFTER reading cxt since cxt may be on stack! */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {

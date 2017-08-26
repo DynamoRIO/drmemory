@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -120,6 +120,12 @@ const char *shadow_dqword_name(uint dqword);
 /* PR 493257: share shadow translation across multiple instrs */
 #define SHADOW_REDZONE_SIZE 512
 
+#ifdef X64
+# define SHADOW_GPR_OPSZ OPSZ_2
+#else
+# define SHADOW_GPR_OPSZ OPSZ_1
+#endif
+
 #ifdef STATISTICS
 extern uint shadow_block_alloc;
 extern uint shadow_block_free;
@@ -173,6 +179,16 @@ shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 /* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 uint
 shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+
+#ifdef X64
+/* Returns the byte that shadows the 8-byte-aligned address */
+/* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
+uint
+shadow_get_qword(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+#endif
+
+uint
+shadow_get_ptrsz(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 /* Sets the two bits for the byte at the passed-in address */
 /* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
@@ -315,6 +331,17 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val);
 
 void
 register_shadow_set_dword(reg_id_t reg, uint val);
+
+#ifdef X64
+void
+register_shadow_set_qword(reg_id_t reg, uint val);
+
+void
+register_shadow_set_high_dword(reg_id_t reg, uint val);
+#endif
+
+void
+register_shadow_set_ptrsz(reg_id_t reg, uint val);
 
 void
 register_shadow_set_dqword(reg_id_t reg, uint val);

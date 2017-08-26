@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1030,7 +1030,7 @@ shadow_state_restore_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
     uint i;
 
     for (i = 0; i < fuzz_target.arg_count_regs; i++) {
-        register_shadow_set_dword(fuzz_target.callconv_args->regs[i],
+        register_shadow_set_ptrsz(fuzz_target.callconv_args->regs[i],
                                   shadow->reg_args[i]);
     }
     shadow_restore_region(shadow->stack_shadow);

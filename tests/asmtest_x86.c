@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -294,6 +294,21 @@ GLOBAL_LABEL(FUNCNAME:)
     post_al_test:
         pop      REG_XAX
         pop      REG_XBX
+
+#ifdef X64
+        /***************************************************
+         * Test the top 32 bits being auto-defined.
+         */
+        jmp      top32_test
+    top32_test:
+        mov      r11d, DWORD [REG_XAX] /* undef */
+        shr      r11, 32
+        cmp      r11, 0
+        jne      top32_never_happens
+        nop
+    top32_never_happens:
+        nop
+#endif
 
         /***************************************************
          * XXX: add more tests here.  Avoid clobbering eax (holds undef mem) or

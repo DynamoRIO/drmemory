@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -555,7 +555,7 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (options.shadowing) {
         /* post-syscall, eax is defined */
-        register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DWORD_DEFINED);
+        register_shadow_set_ptrsz(DR_REG_PTR_RETURN, SHADOW_PTRSZ_DEFINED);
         if (success) {
             /* commit the writes via MEMREF_WRITE */
             if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) !=

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -109,6 +109,16 @@ bitmapx2_byte(bitmap_t bm, uint i)
     return (bm[BITMAPx2_IDX(i)] >> BITMAPx2_SHIFT(i)) & 0xff;
 }
 
+#ifdef X64
+/* returns the ushort corresponding to offset i */
+static inline uint
+bitmapx2_ushort(bitmap_t bm, uint i)
+{
+    ASSERT(BITMAPx2_SHIFT(i) %16 == 0, "bitmapx2_ushort: index not aligned");
+    return (bm[BITMAPx2_IDX(i)] >> BITMAPx2_SHIFT(i)) & 0xffff;
+}
+#endif
+
 /* returns the uint corresponding to offset i */
 static inline uint
 bitmapx2_dword(bitmap_t bm, uint i)
@@ -140,6 +150,16 @@ bytemap_4to1_byte(bitmap_t bm, uint i)
     char *bytes = (char *) bm;
     return bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)];
 }
+
+#ifdef X64
+/* returns the ushort corresponding to offset i */
+static inline uint
+bytemap_4to1_ushort(bitmap_t bm, uint i)
+{
+    char *bytes = (char *) bm;
+    return *(ushort*)(&bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)]);
+}
+#endif
 
 /***************************************************************************
  * MEMORY SHADOWING DATA STRUCTURES
@@ -395,6 +415,44 @@ shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
         return bitmapx2_byte((bitmap_t)info->shadow_base, idx);
     else /* just return byte */
         return bytemap_4to1_byte((bitmap_t)info->shadow_base, idx);
+}
+
+#ifdef X64
+uint
+shadow_get_qword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
+{
+    ptr_uint_t idx;
+    if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        ASSERT(info->struct_size == sizeof(*info),
+               "shadow memory info is not initialized properly");
+        if (umbra_get_shadow_memory(umbra_map, addr,
+                                    NULL, info) != DRMF_SUCCESS) {
+            ASSERT(false, "fail to get shadow memory info");
+            return 0;
+        }
+    }
+    /* avoid a fault: if no shadow yet, it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC)
+        return SHADOW_DWORD_UNADDRESSABLE;
+    /* if non-app-memory (no shadow supported there for x64), it's unaddr */
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW)
+        return SHADOW_DWORD_UNADDRESSABLE;
+    idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 8)) - (ptr_uint_t)info->app_base;
+    if (!MAP_4B_TO_1B)
+        return bitmapx2_ushort((bitmap_t)info->shadow_base, idx);
+    else /* just return byte */
+        return bytemap_4to1_ushort((bitmap_t)info->shadow_base, idx);
+}
+#endif
+
+uint
+shadow_get_ptrsz(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
+{
+#ifdef X64
+    return shadow_get_qword(info, addr);
+#else
+    return shadow_get_dword(info, addr);
+#endif
 }
 
 /* Sets the two bits for the byte at the passed-in address */
@@ -1478,14 +1536,14 @@ typedef struct _shadow_registers_t {
     shadow_reg_type_t r14;
     shadow_reg_type_t r15;
 # endif
-    /* Third/fifth TLS slot.  We go ahead and write DWORD values here
+    /* Third/fifth TLS slot.  We go ahead and write GPR-sized values here
      * for simplicity in our fastpath even though we treat this as
      * a single tracked value.
      */
-    byte eflags;
+    shadow_reg_type_t eflags;
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
-    byte padding[IF_X64_ELSE(6,2)];
+    byte padding[IF_X64_ELSE(4,2)];
     /* Fourth/sixth TLS slot, which provides indirection to additional
      * shadow memory.
      */
@@ -1515,8 +1573,8 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
     ASSERT(options.shadowing, "incorrectly called");
     if (reg_is_gpr(reg)) {
         reg_id_t r = reg_to_pointer_sized(reg);
-        offs = (r - DR_REG_START_GPR) * IF_X64_ELSE(2, 1);
-        opsz = IF_X64_ELSE(OPSZ_2, OPSZ_1);
+        offs = (r - DR_REG_START_GPR) * sizeof(shadow_reg_type_t);
+        opsz = IF_X64(reg_is_32bit(reg) ? OPSZ_1 :) SHADOW_GPR_OPSZ;
     } else {
         ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "internal shadow reg error");
         offs = offsetof(shadow_registers_t, aux);
@@ -1554,7 +1612,7 @@ opnd_create_shadow_eflags_slot(void)
     ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
         (tls_shadow_seg, REG_NULL, REG_NULL, 1, tls_shadow_base +
-         offsetof(shadow_registers_t, eflags), OPSZ_1,
+         offsetof(shadow_registers_t, eflags), SHADOW_GPR_OPSZ,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
@@ -1718,9 +1776,10 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
     /* REG_NULL means eflags */
     if (reg == REG_NULL)
         return ((byte *)sr) + offsetof(shadow_registers_t, eflags);
-    else if (reg_is_gpr(reg))
-        return ((byte *)sr) + (reg_to_pointer_sized(reg) - DR_REG_START_GPR);
-    else {
+    else if (reg_is_gpr(reg)) {
+        return ((byte *)sr) +
+            (reg_to_pointer_sized(reg) - DR_REG_START_GPR)*sizeof(shadow_reg_type_t);
+    } else {
 #ifdef X86
         /* Caller must ask for xmm to get low bits (won't all fit in uint) */
         if (reg_is_ymm(reg))
@@ -1742,23 +1801,31 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
 static uint
 get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
 {
-    byte val;
+    uint val;
     opnd_size_t sz = reg_get_size(reg);
     byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
     if (reg_is_xmm(reg) || reg_is_mmx(reg))
         return *(uint *)addr;
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
-    val = *addr;
     if (sz == OPSZ_1) {
+        val = *addr;
         if (reg_is_8bit_high(reg))
             val = (val & 0xc) >> 2;
         else
             val &= 0x3;
-    } else if (sz == OPSZ_2)
+    } else if (sz == OPSZ_2) {
+        val = *addr;
         val &= 0xf;
-    else
-        ASSERT(sz == OPSZ_4, "internal shadow reg error");
+    } else if (sz == OPSZ_4) {
+        val = *addr;
+    } else if (sz == OPSZ_8) {
+        IF_NOT_X86(ASSERT_NOT_REACHED());
+        val = *(ushort*)addr;
+    } else {
+        val = 0;
+        ASSERT_NOT_REACHED();
+    }
     return val;
 }
 
@@ -1796,7 +1863,7 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
     ASSERT(options.shadowing, "incorrectly called");
     while (shift > 7) {
         ASSERT(reg_is_xmm(reg) ||
-               (shift < 16 && reg_is_mmx(reg)), "shift too big for reg");
+               (shift < 16 IF_NOT_X64(&& reg_is_mmx(reg))), "shift too big for reg");
         addr++;
         shift -= 8;
     }
@@ -1811,6 +1878,38 @@ register_shadow_set_dword(reg_id_t reg, uint val)
     ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     *addr = (byte) val;
+}
+
+#ifdef X64
+void
+register_shadow_set_qword(reg_id_t reg, uint val)
+{
+    shadow_registers_t *sr = get_shadow_registers();
+    byte *addr = reg_shadow_addr(sr, reg);
+    ASSERT(options.shadowing, "incorrectly called");
+    ASSERT(reg_is_gpr(reg), "internal shadow reg error");
+    *(ushort *)addr = (ushort) val;
+}
+
+void
+register_shadow_set_high_dword(reg_id_t reg, uint val)
+{
+    shadow_registers_t *sr = get_shadow_registers();
+    byte *addr = reg_shadow_addr(sr, reg);
+    ASSERT(options.shadowing, "incorrectly called");
+    ASSERT(reg_is_gpr(reg), "internal shadow reg error");
+    *(addr+1) = (byte) val; /* little-endian */
+}
+#endif
+
+void
+register_shadow_set_ptrsz(reg_id_t reg, uint val)
+{
+#ifdef X64
+    register_shadow_set_qword(reg, val);
+#else
+    register_shadow_set_dword(reg, val);
+#endif
 }
 
 void

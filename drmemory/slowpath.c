@@ -424,9 +424,14 @@ void
 register_shadow_mark_defined(reg_id_t reg, size_t sz)
 {
     uint i;
-    if (sz == 4 && reg_is_gpr(reg))
+    if (sz == sizeof(void*) && reg_is_gpr(reg))
+        register_shadow_set_ptrsz(reg, SHADOW_PTRSZ_DEFINED);
+    else if (sz == 4 && reg_is_gpr(reg)) {
+        /* We assume the cases where we call this are not app writes and thus we don't
+         * want to clear the top 32 bits for x64.
+         */
         register_shadow_set_dword(reg, SHADOW_DWORD_DEFINED);
-    else {
+    } else {
         for (i = 0; i < sz; i++)
             register_shadow_set_byte(reg, i, SHADOW_DEFINED);
     }
@@ -709,7 +714,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 
     shadow_combine_init(&comb, &inst, opc, OPND_SHADOW_ARRAY_LEN);
 
-    num_srcs = (IF_X86_ELSE(opc == OP_lea, false)) ? 2 : num_true_srcs(&inst, mc);
+    num_srcs = num_true_srcs(&inst, mc);
+#ifdef X86
+    if (opc == OP_lea)
+        num_srcs = IF_X64_ELSE(opnd_is_rel_addr(instr_get_src(&inst, 0)), false) ? 0 : 2;
+#endif
  check_srcs:
     for (i = 0; i < num_srcs; i++) {
         if (IF_X86_ELSE(opc == OP_lea, false)) {
@@ -930,7 +939,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             /* we want the ultimate target, not whole_bb_spills_enabled()'s
              * SPILL_SLOT_5 intermediate target
              */
-            byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
+            byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_SLOW_RET);
             /* ensure event_restore_state() returns true */
             byte *xl8;
             cpt->self_translating = true;
@@ -1049,7 +1058,8 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi,
              * at if we end up encountering any mangled instrs.
              */
         }
-        ASSERT(!instr_is_cti(inst), "assuming non-mangled");
+        /* drwrap_replace() for x86_64 and ARM uses a jmp through a reg */
+        ASSERT(instr_is_app(inst) || !instr_is_cti(inst), "assuming non-mangled");
         *decode_pc_opnd = opnd_create_instr(inst);
         return false;
     }
