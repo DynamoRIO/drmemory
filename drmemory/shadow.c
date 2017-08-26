@@ -109,6 +109,7 @@ bitmapx2_byte(bitmap_t bm, uint i)
     return (bm[BITMAPx2_IDX(i)] >> BITMAPx2_SHIFT(i)) & 0xff;
 }
 
+#ifdef X64
 /* returns the ushort corresponding to offset i */
 static inline uint
 bitmapx2_ushort(bitmap_t bm, uint i)
@@ -116,6 +117,7 @@ bitmapx2_ushort(bitmap_t bm, uint i)
     ASSERT(BITMAPx2_SHIFT(i) %16 == 0, "bitmapx2_ushort: index not aligned");
     return (bm[BITMAPx2_IDX(i)] >> BITMAPx2_SHIFT(i)) & 0xffff;
 }
+#endif
 
 /* returns the uint corresponding to offset i */
 static inline uint
@@ -149,6 +151,7 @@ bytemap_4to1_byte(bitmap_t bm, uint i)
     return bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)];
 }
 
+#ifdef X64
 /* returns the ushort corresponding to offset i */
 static inline uint
 bytemap_4to1_ushort(bitmap_t bm, uint i)
@@ -156,6 +159,7 @@ bytemap_4to1_ushort(bitmap_t bm, uint i)
     char *bytes = (char *) bm;
     return *(ushort*)(&bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)]);
 }
+#endif
 
 /***************************************************************************
  * MEMORY SHADOWING DATA STRUCTURES
