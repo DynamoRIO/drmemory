@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -890,7 +890,9 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
 #endif
 
 /* XXX i#1726: port the zeroing loop to ARM */
-OPTION_CLIENT_BOOL(internal, zero_stack, IF_ARM_ELSE(false, true),
+/* FIXME i#1205: zeroing conflicts w/ UNIX x64 redzone: NYI */
+OPTION_CLIENT_BOOL(internal, zero_stack,
+                   IF_ARM_ELSE(false, IF_X64_ELSE(IF_UNIX_ELSE(false, true), true)),
                    "When detecting leaks but not keeping definedness info, zero old stack frames",
                    "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values.  This is potentially unsafe.")
 OPTION_CLIENT_BOOL(internal, zero_retaddr, true,
