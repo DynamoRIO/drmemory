@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1961,18 +1961,19 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
             bool identified = false;
             bool valid = false;
             if (p != NULL) {
-                /* try 4 bytes back, in case this is an array w/ size passed to delete */
-                head = header_from_ptr(p - sizeof(int));
-                if (is_live_alloc(p - sizeof(int), arena, head)) {
-                    check_type_match(p - sizeof(int), head, free_type,
+                const size_t slot_sz = sizeof(size_t);
+                /* try one slot back, in case this is an array w/ size passed to delete */
+                head = header_from_ptr(p - slot_sz);
+                if (is_live_alloc(p - slot_sz, arena, head)) {
+                    check_type_match(p - slot_sz, head, free_type,
                                      flags, mc, caller);
                     identified = true;
                 }
                 if (!identified) {
-                    /* try 4 bytes in, in case this is a non-array passed to delete[] */
-                    head = header_from_ptr(p + sizeof(int));
-                    if (is_live_alloc(p + sizeof(int), arena, head)) {
-                        check_type_match(p + sizeof(int), head, free_type,
+                    /* try one slot in, in case this is a non-array passed to delete[] */
+                    head = header_from_ptr(p + slot_sz);
+                    if (is_live_alloc(p + slot_sz, arena, head)) {
+                        check_type_match(p + slot_sz, head, free_type,
                                          flags, mc, caller);
                         identified = true;
                     }

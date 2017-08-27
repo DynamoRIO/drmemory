@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -177,12 +177,12 @@ test_leaks()
 static void
 test_exception()
 {
-   try {
-       std::cout << "throwing exception" << std::endl;
-       throw std::exception();
-   } catch (std::exception&) {
-       std::cout << "caught exception" << std::endl;
-   }
+    try {
+        std::cout << "throwing exception" << std::endl;
+        throw std::exception();
+    } catch (std::exception&) {
+        std::cout << "caught exception" << std::endl;
+    }
 }
 
 static void
@@ -198,10 +198,10 @@ test_mismatch_dtr()
     x = new hasdtr[7];
     if (setjmp(mark) == 0)
         free(x);
-    x = (hasdtr *) malloc(7);
+    x = (hasdtr *) malloc(42); /* big enough for hasdtr but same size for x64 */
     if (setjmp(mark) == 0)
         delete x;
-    x = (hasdtr *) malloc(7);
+    x = (hasdtr *) malloc(42); /* big enough for hasdtr but same size for x64 */
     if (setjmp(mark) == 0)
         delete[] x; /* unaddr reading size + dtr calls might crash before mismatch */
     /* not a mismatch, but test debug operator del (i#500) */
