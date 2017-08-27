@@ -699,6 +699,8 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     int shadow_dqword_newmem = (sp_action == SP_ADJUST_ACTION_DEFINED ?
                                 SHADOW_DQWORD_DEFINED : SHADOW_DQWORD_UNDEFINED);
 
+    IF_X64(ASSERT_NOT_IMPLEMENTED()); /* XXX i#2027: NYI */
+
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);
     push_one_done = INSTR_CREATE_label(drcontext);

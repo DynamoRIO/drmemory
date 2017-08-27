@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -802,7 +802,8 @@ OPTION_CLIENT_BOOL(internal, size_in_redzone, true,
 OPTION_CLIENT_BOOL(internal, fastpath, true,
                    "Enable fastpath",
                    "Enable fastpath")
-OPTION_CLIENT_BOOL(internal, esp_fastpath, true,
+/* XXX i#2027: implement and enable for x64 */
+OPTION_CLIENT_BOOL(internal, esp_fastpath, IF_X64_ELSE(false, true),
                    "Enable esp-adjust fastpath",
                    "Enable esp-adjust fastpath")
 OPTION_CLIENT_BOOL(internal, shared_slowpath, true,
@@ -866,7 +867,8 @@ OPTION_CLIENT_BOOL(internal, repstr_to_loop, true,
 OPTION_CLIENT_BOOL(internal, replace_realloc, true,
                    "Replace realloc to avoid races and non-delayed frees",
                    "Replace realloc to avoid races and non-delayed frees")
-OPTION_CLIENT_BOOL(internal, share_xl8, true,
+/* XXX i#2025: enable for x64 once failures are fixed */
+OPTION_CLIENT_BOOL(internal, share_xl8, IF_X64_ELSE(false, true),
                    "Share translations among adjacent similar references",
                    "Share translations among adjacent similar references")
 OPTION_CLIENT(internal, share_xl8_max_slow, uint, 5000, 0, UINT_MAX/2,
@@ -888,7 +890,9 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
 #endif
 
 /* XXX i#1726: port the zeroing loop to ARM */
-OPTION_CLIENT_BOOL(internal, zero_stack, IF_ARM_ELSE(false, true),
+/* FIXME i#1205: zeroing conflicts w/ UNIX x64 redzone: NYI */
+OPTION_CLIENT_BOOL(internal, zero_stack,
+                   IF_ARM_ELSE(false, IF_X64_ELSE(IF_UNIX_ELSE(false, true), true)),
                    "When detecting leaks but not keeping definedness info, zero old stack frames",
                    "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values.  This is potentially unsafe.")
 OPTION_CLIENT_BOOL(internal, zero_retaddr, true,

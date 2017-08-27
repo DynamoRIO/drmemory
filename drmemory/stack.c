@@ -466,6 +466,8 @@ generate_shared_esp_fastpath(void *drcontext, instrlist_t *ilist, app_pc pc)
     int eflags_live;
     sp_adjust_action_t sp_action;
     esp_adjust_t type;
+    if (!options.esp_fastpath)
+        return pc;
     ASSERT(ESP_ADJUST_FAST_FIRST == 0, "esp enum error");
     /* No shared_esp_fastpath gencode for zeroing. */
     for (sp_action = 0; sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX; sp_action++) {
