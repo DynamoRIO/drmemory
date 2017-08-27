@@ -126,7 +126,6 @@ typedef struct _fastpath_info_t {
     reg_id_t reg2_16;
     reg_id_t reg2_8;
     reg_id_t reg2_8h;
-    reg_id_t reg3_16;
     reg_id_t reg3_8;
     /* is this instr using shared xl8? */
     bool use_shared;

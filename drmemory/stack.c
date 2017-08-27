@@ -350,6 +350,13 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
                              (delta > 0 ? SHADOW_UNADDRESSABLE :
                               ((sp_action == SP_ADJUST_ACTION_DEFINED) ?
                                SHADOW_DEFINED : SHADOW_UNDEFINED)));
+            if (BEYOND_TOS_REDZONE_SIZE > 0) {
+                sp = (app_pc)mc.xsp;
+                shadow_set_range(delta > 0 ? sp : (sp + delta),
+                                 delta > 0 ? (sp + delta) : sp,
+                                 (sp_action == SP_ADJUST_ACTION_DEFINED) ?
+                                 SHADOW_DEFINED : SHADOW_UNDEFINED);
+            }
         }
     }
 }

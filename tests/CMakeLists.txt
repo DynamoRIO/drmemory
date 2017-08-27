@@ -659,17 +659,20 @@ if (TOOL_DR_MEMORY)
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
     newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
   endif ()
-  if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-    # this test crashes on win8 so we only run it on older Windows
-    if (NOT cs2bug_flags MATCHES "SKIP_MISMATCH_DTR")
-      newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug.wrap")
-    else ()
-      # -no_replace_malloc raises unrecoverable heap errors (i#1161)
-      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} 0)
+  # i#2030: we do not support wrap tests on x64
+  if (NOT X64)
+    if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+      # this test crashes on win8 so we only run it on older Windows
+      if (NOT cs2bug_flags MATCHES "SKIP_MISMATCH_DTR")
+        newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug.wrap")
+      else ()
+        # -no_replace_malloc raises unrecoverable heap errors (i#1161)
+        newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} 0)
+      endif ()
     endif ()
+    newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
+      "" OFF "operators" 0 "")
   endif ()
-  newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-    "" OFF "operators" 0 "")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

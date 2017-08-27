@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -73,10 +73,19 @@ static char code[] = {
     /*8048537:*/ 0xb8, 0x78, 0x56, 0x34, 0x12,       /* mov    $0x12345678,%eax */
     /*804853c:*/ 0xb9, 0x00, 0x00, 0x00, 0x00,       /* mov    $0x0,%ecx        */
     /*8048541:*/                                     /*repeat1:                 */
+#ifdef X64
+    /*8048541:*/ 0xff, 0xc8,                         /* dec    %eax             */
+    /*8048542:*/ 0xff, 0xc1,                         /* inc    %ecx             */
+#else
     /*8048541:*/ 0x48,                               /* dec    %eax             */
     /*8048542:*/ 0x41,                               /* inc    %ecx             */
+#endif
     /*8048543:*/ 0x83, 0xf8, 0x00,                   /* cmp    $0x0,%eax        */
+#ifdef X64
+    /*8048546:*/ 0x75, 0xf7,                         /* jne    8048541 <repeat1>*/
+#else
     /*8048546:*/ 0x75, 0xf9,                         /* jne    8048541 <repeat1>*/
+#endif
     /*8048548:*/ 0x89, 0xc8,                         /* mov    %ecx,%eax        */
     /*804854a:*/ 0xc3,                               /* ret                     */
 };
