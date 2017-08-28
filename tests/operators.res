@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -18,9 +18,11 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+%if X32
 : WARNING: heap allocation failed
-operators.cpp:91
+operators.cpp:97
 : WARNING: heap allocation failed
-operators.cpp:105
+operators.cpp:111
+%endif
 : WARNING: heap allocation failed
-operators.cpp:126
+operators.cpp:132
