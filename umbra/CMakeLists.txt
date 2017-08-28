@@ -38,8 +38,12 @@ set(srcs
 # add arch specific src here
 if (X64)
   set (srcs ${srcs} umbra_x64.c)
-else (X64)
+elseif (X82)
   set (srcs ${srcs} umbra_x86.c)
+elseif (ARM)
+  set (srcs ${srcs} umbra_x86.c)
+else (X64)
+  message(FATAL_ERROR "Umbra does not support this architecture")
 endif (X64)
 
 # i#1594c#3: VS generators fail if static lib has resources
