@@ -1157,6 +1157,20 @@ reg_32_to_8h(reg_id_t reg)
 #endif
 
 reg_id_t
+reg_ptrsz_to_32(reg_id_t reg)
+{
+#ifdef X64
+    ASSERT(reg >= DR_REG_START_64 && reg <= DR_REG_STOP_64,
+           "wrong register for conversion");
+    return reg_64_to_32(reg);
+#else
+    ASSERT(reg >= DR_REG_START_32 && reg < DR_REG_STOP_32,
+           "wrong register for conversion");
+    return reg;
+#endif
+}
+
+reg_id_t
 reg_ptrsz_to_16(reg_id_t reg)
 {
 #ifdef X64

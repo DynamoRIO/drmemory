@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1034,6 +1034,9 @@ find_next_line(const char *start, const char *eof, const char **sol OUT,
 /***************************************************************************
  * REGISTER CONVERSION UTILITIES
  */
+
+reg_id_t
+reg_ptrsz_to_32(reg_id_t reg);
 
 reg_id_t
 reg_ptrsz_to_16(reg_id_t reg);
