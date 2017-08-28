@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -29,6 +29,8 @@ Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
 registers.c_asm.asm:1330
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds:
 registers.c_asm.asm:1343
+Error #4: UNADDRESSABLE ACCESS beyond heap bounds:
+registers.c_asm.asm:1344
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
@@ -37,6 +39,8 @@ Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
 registers.c_asm.asm:624
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds:
 registers.c_asm.asm:637
+Error #4: UNADDRESSABLE ACCESS beyond heap bounds:
+registers.c_asm.asm:638
 %endif
-Error #4: LEAK 15 direct bytes + 0 indirect bytes
 Error #5: LEAK 15 direct bytes + 0 indirect bytes
+Error #6: LEAK 15 direct bytes + 0 indirect bytes

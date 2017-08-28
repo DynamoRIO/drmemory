@@ -868,7 +868,8 @@ OPTION_CLIENT_BOOL(internal, replace_realloc, true,
                    "Replace realloc to avoid races and non-delayed frees",
                    "Replace realloc to avoid races and non-delayed frees")
 /* XXX i#2025: enable for x64 once failures are fixed */
-OPTION_CLIENT_BOOL(internal, share_xl8, IF_X64_ELSE(false, true),
+/* XXX i#2032, i#2009: disabling due to lack of confidence in the feature */
+OPTION_CLIENT_BOOL(internal, share_xl8, IF_X64_ELSE(false, false),
                    "Share translations among adjacent similar references",
                    "Share translations among adjacent similar references")
 OPTION_CLIENT(internal, share_xl8_max_slow, uint, 5000, 0, UINT_MAX/2,
