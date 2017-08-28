@@ -726,7 +726,16 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         /* else fall-through: 2-byte is check-defined (i#401 covers doing better)
          * and 4-byte is handled normally
          */
-    default: {
+    case OP_movzx:
+    case OP_movsx:
+        if (opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_8) {
+            /* XXX i#111: fastpath code for these doesn't yet handle 8-byte dests. */
+            return false;
+        }
+        /* else fall-through */
+    }
+    /* default */
+    {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
         int num_dsts = num_true_dsts(inst, NULL);
@@ -800,8 +809,6 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
 
         return true;
     }
-    }
-    return false;
 }
 #endif /* TOOL_DR_MEMORY */
 
@@ -1707,8 +1714,10 @@ write_shadow_eflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                 opnd_set_size(&val, SHADOW_GPR_OPSZ);
 #ifdef X64
             else if (opnd_is_reg(val) && reg_is_8bit(opnd_get_reg(val))) {
-                val = opnd_create_reg(reg_ptrsz_to_16(reg_to_pointer_sized
-                                                      (opnd_get_reg(val))));
+                reg_id_t reg16 = reg_ptrsz_to_16(reg_to_pointer_sized(opnd_get_reg(val)));
+                PRE(bb, inst,
+                    INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg16), val));
+                val = opnd_create_reg(reg16);
             }
 #endif
             else
@@ -3607,9 +3616,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* Subtract what's already been incorporated into the reg */
             diff -= mi->bb->shared_disp_reg1;
             if (mi->load && !mi->pushpop && options.check_uninitialized) { /*want value*/
-                PRE(bb, inst,
-                    INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
-                                       OPND_CREATE_MEM8(mi->reg1.reg, diff)));
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
+                                            OPND_CREATE_MEM8(mi->reg1.reg, diff)),
+                         mi->xl8));
                 mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             } else {
                 mi->bb->shared_disp_reg1 += diff;
@@ -3653,9 +3663,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         ASSERT(mi->reg1.used && mi->reg2.used, "internal reg spill error");
         ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
-        PRE(bb, inst,
-            INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
-                               OPND_CREATE_MEM8(mi->reg1.reg, 0)));
+        PREXL8M(bb, inst, INSTR_XL8
+                (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
+                                    OPND_CREATE_MEM8(mi->reg1.reg, 0)), mi->xl8));
     }
 
     /* check definedness of sources, if necessary.
@@ -3950,9 +3960,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
                     scratch = mi->reg2.reg;
                 }
-                PRE(bb, inst,
-                    INSTR_CREATE_movzx(drcontext, opnd_create_reg(scratch),
-                                       OPND_CREATE_MEM8(mi->reg1.reg, 0)));
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_movzx(drcontext, opnd_create_reg(scratch),
+                                            OPND_CREATE_MEM8(mi->reg1.reg, 0)), mi->xl8));
                 /* optimization: avoid redundant load below for mi->num_to_propagate>1 */
                 if (opnd_same(mi->src[0].shadow, OPND_CREATE_MEM8(mi->reg1.reg, 0)))
                     mi->src[0].shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));

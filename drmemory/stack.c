@@ -296,7 +296,8 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     STATS_INC(adjust_esp_executions);
     dr_get_mcontext(drcontext, &mc);
 
-    if (type == ESP_ADJUST_ABSOLUTE) {
+    if (type == ESP_ADJUST_ABSOLUTE ||
+        type == ESP_ADJUST_ABSOLUTE_POSTPOP) {
         LOG(3, "esp adjust absolute esp="PFX" => "PFX"\n", mc.xsp, val);
         delta = val - mc.xsp;
         /* Treat as a stack swap (vs ebp->esp, etc.) if a large change */
@@ -351,9 +352,14 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
                               ((sp_action == SP_ADJUST_ACTION_DEFINED) ?
                                SHADOW_DEFINED : SHADOW_UNDEFINED)));
             if (BEYOND_TOS_REDZONE_SIZE > 0) {
-                sp = (app_pc)mc.xsp;
-                shadow_set_range(delta > 0 ? sp : (sp + delta),
-                                 delta > 0 ? (sp + delta) : sp,
+                sp = (app_pc)mc.xsp + delta;
+                if (type == ESP_ADJUST_ABSOLUTE_POSTPOP) {
+                    /* Don't undo the pop portion of OP_leave, which already happened
+                     * due to instru ordering.
+                     */
+                    sp += sizeof(void*);
+                }
+                shadow_set_range(sp - BEYOND_TOS_REDZONE_SIZE, sp,
                                  (sp_action == SP_ADJUST_ACTION_DEFINED) ?
                                  SHADOW_DEFINED : SHADOW_UNDEFINED);
             }

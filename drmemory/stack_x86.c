@@ -57,7 +57,6 @@ get_esp_adjust_type(instr_t *inst, bool mangled)
     switch (opc) {
     case OP_mov_st:
     case OP_mov_ld:
-    case OP_leave:
     case OP_lea:
     case OP_xchg:
     case OP_cmovb:
@@ -77,6 +76,8 @@ get_esp_adjust_type(instr_t *inst, bool mangled)
     case OP_cmovz:
     case OP_cmovnz:
         return ESP_ADJUST_ABSOLUTE;
+    case OP_leave:
+        return ESP_ADJUST_ABSOLUTE_POSTPOP;
     case OP_pop:
         if (!mangled || instr_pop_into_esp(inst))
             return ESP_ADJUST_ABSOLUTE;
@@ -416,7 +417,8 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg1.reg),
                             opnd_create_reg(REG_XSP)));
     ASSERT(type != ESP_ADJUST_RET_IMMED, "ret ignored for -leaks_only");
-    if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_AND) {
+    if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_ABSOLUTE_POSTPOP &&
+        type != ESP_ADJUST_AND) {
         /* calculate the end of the loop */
         PRE(bb, inst,
             INSTR_CREATE_add(drcontext, opnd_create_reg(reg_mod),
@@ -439,7 +441,8 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
      * zeroing out non-stack app memory!
      * We assume a swap would not happen w/ a relative adjustment.
      */
-    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_AND/*abs passed to us*/) {
+    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP ||
+        type == ESP_ADJUST_AND/*abs passed to us*/) {
         PRE(bb, inst,
             INSTR_CREATE_sub(drcontext, opnd_create_reg(mi->reg1.reg),
                              opnd_create_reg(reg_mod)));
@@ -700,6 +703,8 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
                                 SHADOW_DQWORD_DEFINED : SHADOW_DQWORD_UNDEFINED);
 
     IF_X64(ASSERT_NOT_IMPLEMENTED()); /* XXX i#2027: NYI */
+    ASSERT(type != ESP_ADJUST_ABSOLUTE_POSTPOP || BEYOND_TOS_REDZONE_SIZE == 0,
+           "handling OP_leave properly with a stack redzone in fastpath is NYI");
 
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);
@@ -763,7 +768,8 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     }
 
     /* for absolute, calculate the delta */
-    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_AND/*abs passed to us*/) {
+    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP ||
+        type == ESP_ADJUST_AND/*abs passed to us*/) {
         PRE(bb, NULL,
             INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
                              opnd_create_reg(mi.reg1.reg)));
@@ -994,7 +1000,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
             INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg),
                              OPND_CREATE_INT8(4)));
     }
-    if (type == ESP_ADJUST_ABSOLUTE) {
+    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_ABSOLUTE_POSTPOP) {
         /* TLS slot holds abs esp so re-compute orig delta */
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld
@@ -1235,11 +1241,15 @@ esp_fastpath_update_swap_threshold(void *drcontext, int new_threshold)
     sp_adjust_action_t sp_action;
     byte *pc, *end_pc;
     instr_t inst;
+    if (!options.esp_fastpath)
+        return;
     instr_init(drcontext, &inst);
     /* No shared_esp_fastpath for zeroing. */
     for (sp_action = 0; sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX; sp_action++) {
         for (eflags_live = 0; eflags_live < 2; eflags_live++) {
-            /* only ESP_ADJUST_ABSOLUTE checks for a stack swap: swaps aren't relative */
+            /* Only ESP_ADJUST_ABSOLUTE checks for a stack swap: swaps aren't relative,
+             * and we assume OP_leave is not used to swap stacks.
+             */
             int found = 0;
             pc = shared_esp_fastpath[sp_action][eflags_live][ESP_ADJUST_ABSOLUTE];
             ASSERT(ESP_ADJUST_ABSOLUTE < ESP_ADJUST_FAST_LAST,

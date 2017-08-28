@@ -381,7 +381,7 @@ shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
         return SHADOW_UNADDRESSABLE;
     /* if non-app-memory (no shadow supported there for x64), it's unaddr */
     if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW)
-        return SHADOW_DWORD_UNADDRESSABLE;
+        return SHADOW_UNADDRESSABLE;
     idx = addr - info->app_base;
     if (!MAP_4B_TO_1B)
         return bitmapx2_get((bitmap_t)info->shadow_base, idx);
@@ -618,7 +618,7 @@ shadow_set_range(app_pc start, app_pc end, uint val)
     size_t shadow_size;
     ASSERT(options.shadowing, "shadowing disabled");
     ASSERT(val <= 4, "invalid shadow value");
-    LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
+    LOG(2, "set range "PFX"-"PFX" => 0x%x\n", start, end, val);
     umbra_shadow_memory_info_init(&info);
     DOLOG(2, {
         if (end - start > 0x10000000)
@@ -950,6 +950,8 @@ shadow_next_ptrsz(app_pc start, app_pc end, uint expect)
     bool found;
     app_pc app_addr = start;
     uint expect_val = VAL_TO_PTRSZ[expect];
+    if (end < start)
+        return NULL;
 
     if (umbra_value_in_shadow_memory(umbra_map,
                                      (app_pc *)&app_addr,
@@ -1760,7 +1762,7 @@ print_shadow_registers(void)
     LOG(0, "    rax=%04x rcx=%04x rdx=%04x rbx=%04x "
         "rsp=%04x rbp=%04x rsi=%04x rdi=%04x\n"
         "    r8 =%04x r9 =%04x r10=%04x r11=%04x "
-        "r12=%04x r13=%04x r14=%04x r15=%04x efl=%02x\n",
+        "r12=%04x r13=%04x r14=%04x r15=%04x efl=%04x\n",
         sr->xax, sr->xcx, sr->xdx, sr->xbx, sr->xsp, sr->xbp, sr->xsi, sr->xdi,
         sr->r8,  sr->r9,  sr->r10, sr->r11, sr->r12, sr->r13, sr->r14, sr->r15,
         sr->eflags);
@@ -1936,7 +1938,7 @@ register_shadow_set_dqword(reg_id_t reg, uint val)
     *(uint *)addr = val;
 }
 
-byte
+uint
 get_shadow_eflags(void)
 {
     shadow_registers_t *sr = get_shadow_registers();

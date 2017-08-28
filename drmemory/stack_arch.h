@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,6 +31,7 @@
 typedef enum {
     ESP_ADJUST_ABSOLUTE,
     ESP_ADJUST_FAST_FIRST = ESP_ADJUST_ABSOLUTE,
+    ESP_ADJUST_ABSOLUTE_POSTPOP, /* OP_leave where the pop was already done */
     ESP_ADJUST_NEGATIVE,
     ESP_ADJUST_POSITIVE,
     ESP_ADJUST_RET_IMMED, /* positive, but after a pop */

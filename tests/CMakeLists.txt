@@ -620,7 +620,9 @@ if (TOOL_DR_MEMORY)
   # PR 464804: test runtime options
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
-  newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
+  if (NOT X64) # XXX i#111: -esp_fastpath not supported yet
+    newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
+  endif ()
   if (NOT ARM) # XXX i#1726: port to ARM
     newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
     newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
@@ -837,9 +839,11 @@ if (TOOL_DR_MEMORY)
     # we make a separate executable to avoid ASLR
     append_link_flags(pcache "/dynamicbase:no")
   endif ()
-  newtest_nobuild(pcache-use pcache "" "-no_check_uninitialized;-no_count_leaks;-persist_code" "" OFF "addronly")
-  # when running tests in parallel, have to generate pcaches first
-  set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
+  if (NOT X64) # XXX i#2034: add x64 support
+    newtest_nobuild(pcache-use pcache "" "-no_check_uninitialized;-no_count_leaks;-persist_code" "" OFF "addronly")
+    # when running tests in parallel, have to generate pcaches first
+    set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
+  endif ()
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
   # pattern mode testing.

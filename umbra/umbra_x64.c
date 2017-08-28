@@ -1080,8 +1080,12 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
             }
         }
         if (shadow_addr != NULL) {
-            *app_addr = start +
+            app_pc found_addr = start +
                 umbra_map_scale_shadow_to_app(map, shadow_addr - shadow_start);
+            /* We can go beyond the app size due to shadow size rounding up. */
+            if (found_addr > *app_addr + app_size)
+                return DRMF_SUCCESS; /* not found */
+            *app_addr = found_addr;
             *found = true;
             return DRMF_SUCCESS;
         }

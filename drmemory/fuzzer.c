@@ -1014,7 +1014,8 @@ shadow_state_save_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
 
     for (i = 0; i < fuzz_target.arg_count_regs; i++)
         shadow->reg_args[i] = get_shadow_register(fuzz_target.callconv_args->regs[i]);
-    if (fuzz_target.arg_count > fuzz_target.callconv_args->reg_count) {
+    if (fuzz_target.arg_count > fuzz_target.callconv_args->reg_count ||
+        fuzz_target.callconv_args->stack_offset > 0) {
         size_t stack_ret_size = fuzz_target.callconv_args->stack_offset * sizeof(reg_t);
         size_t stack_arg_size = (fuzz_target.arg_count_stack * sizeof(reg_t));
         /* save shadow state for arg and return addr */
@@ -1033,7 +1034,8 @@ shadow_state_restore_stack_frame(dr_mcontext_t *mc, shadow_state_t *shadow)
         register_shadow_set_ptrsz(fuzz_target.callconv_args->regs[i],
                                   shadow->reg_args[i]);
     }
-    shadow_restore_region(shadow->stack_shadow);
+    if (shadow->stack_shadow != NULL)
+        shadow_restore_region(shadow->stack_shadow);
 }
 
 static void
