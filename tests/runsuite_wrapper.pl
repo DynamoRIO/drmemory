@@ -108,6 +108,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
         my %ignore_failures_32 = ('procterm' => 1,
                                   'winthreads' => 1,
                                   'malloc_callstacks' => 1,
+                                  'wrap_wincrt' => 1, # i#1741: flaky.
                                   'app_suite.pattern' => 1,
                                   'app_suite' => 1,
                                   'drstrace_unit_tests' => 1);
