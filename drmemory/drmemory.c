@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1886,16 +1886,15 @@ dr_init(client_id_t id)
         NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
         NOTIFY("problems encountered to http://drmemory.org/issues."NL);
 #endif
-#ifdef X64
-        /* i#111: full mode not ported yet to 64-bit */
+#if defined(X64) && defined(WINDOWS)
+        /* i#111: full mode not ported yet to 64-bit Windows */
         if (options.pattern == 0)
-            NOTIFY("WARNING: 64-bit non-pattern modes are experimental"NL);
+            NOTIFY("WARNING: 64-bit non-pattern modes are experimental on Windows"NL);
 #endif
-#if defined(X64) || defined(ARM)
-        /* i#111/i#1726: full mode not ported yet to 64-bit/ARM */
+#ifdef ARM
+        /* i#1726: full mode not ported yet to ARM */
         if (!option_specified.pattern && !option_specified.light)
-            NOTIFY("(Uninitialized read checking is not yet supported for "
-                   IF_X64_ELSE("64-bit","ARM") ")"NL);
+            NOTIFY("(Uninitialized read checking is not yet supported for ARM"NL);
 #endif
     }
 # ifdef WINDOWS

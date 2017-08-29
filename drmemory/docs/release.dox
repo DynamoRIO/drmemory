@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -61,7 +61,10 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.11.0 include:
- - Nothing yet.
+ - Added preliminary 64-bit full mode (i.e., with uninitialized read
+   checking) support for Linux.
+ - Added preliminary support for the Windows Subsystem for Linux
+   environment with the regular Dr. Memory Linux package.
 
 The changes between version 1.11.0 and version 1.10.1 include:
  - Added support for Windows 10 1607.

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -482,10 +482,10 @@ foreach (line ${lines})
     if (TOOL_DR_HEAPSTAT AND "${line}" MATCHES "~~")
       set(enable_check OFF)
     endif ()
-    # XXX i#111: for now we don't support full mode, but we will soon.  To avoid
-    # changing a ton of .res files we instead just ignore uninit lines here.
-    # i#1726: ditto for ARM.
-    if (X64 OR ARM)
+    # XXX i#111, i#1726: on ARM and x64 Windows, we don't yet support
+    # full mode, but we will soon.  To avoid changing a ton of .res
+    # files we instead just ignore uninit lines here.
+    if (ARM OR WIN32 AND X64)
       if ("${line}" MATCHES "total uninitialized")
         set(enable_check OFF)
         set(remove_line OFF)
