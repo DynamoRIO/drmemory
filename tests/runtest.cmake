@@ -485,7 +485,7 @@ foreach (line ${lines})
     # XXX i#111, i#1726: on ARM and x64 Windows, we don't yet support
     # full mode, but we will soon.  To avoid changing a ton of .res
     # files we instead just ignore uninit lines here.
-    if (ARM OR WINDOWS AND X64)
+    if (ARM OR WIN32 AND X64)
       if ("${line}" MATCHES "total uninitialized")
         set(enable_check OFF)
         set(remove_line OFF)

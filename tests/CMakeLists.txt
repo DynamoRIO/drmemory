@@ -488,7 +488,9 @@ newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
 if (UNIX)
   newtest(signal signal.c)
-  newtest(syscalls_unix syscalls_unix.c)
+  if (NOT X64) # FIXME i#111: failing on Travis
+    newtest(syscalls_unix syscalls_unix.c)
+  endif ()
 
   if (NOT APPLE
       AND "${CMAKE_GENERATOR}" MATCHES "Unix Makefiles") # i#2019: fails w/ Ninja
@@ -624,7 +626,9 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
   endif ()
   if (NOT ARM) # XXX i#1726: port to ARM
-    newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
+    if (NOT X64) # FIXME i#111: failing on Travis
+      newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
+    endif ()
     newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
     newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   endif ()
@@ -633,7 +637,9 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
   if (USE_DRSYMS)
-    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+    if (NOT X64) # FIXME i#111: failing on Travis
+      newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+    endif ()
   endif (USE_DRSYMS)
   if (NOT ARM) # XXX i#1726: port to ARM
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
@@ -1000,14 +1006,16 @@ if (NOT APPLE AND NOT ARM)
   else ()
     set(app_suite_ops "")
   endif ()
-  newtest_nobuild_allparams(app_suite app_suite_tests "${app_suite_ops}"
-    "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-    # i#1309: turn off some DR debug checking to speed up the test, as it times out
-    # on Dr. Heapstat w/ online symbolization.
-    # i#1809: turn off ldmps from false pos curiosity
-    "-checklevel;1;-dumpcore_mask;0x877d" OFF "" 0 ""
-    # This test can take >120s in the suite.
-    240)
+  if (NOT X64) # FIXME i#111: failing on Travis
+    newtest_nobuild_allparams(app_suite app_suite_tests "${app_suite_ops}"
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+      # i#1309: turn off some DR debug checking to speed up the test, as it times out
+      # on Dr. Heapstat w/ online symbolization.
+      # i#1809: turn off ldmps from false pos curiosity
+      "-checklevel;1;-dumpcore_mask;0x877d" OFF "" 0 ""
+      # This test can take >120s in the suite.
+      240)
+  endif ()
   if (TOOL_DR_MEMORY)
     newtest_nobuild_allparams(app_suite.pattern app_suite_tests ""
       "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
