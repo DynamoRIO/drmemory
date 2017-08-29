@@ -388,6 +388,8 @@ static dr_emit_flags_t
 perturb_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                         bool for_trace, bool translating, void *user_data)
 {
+    drmgr_disable_auto_predication(drcontext, bb);
+
     if (instr_is_synch_op(inst)) {
         dr_insert_clean_call(drcontext, bb, inst, (void *)do_delay, false,
                              1, OPND_CREATE_INT32(SYNCH_INSTR));

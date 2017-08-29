@@ -1107,6 +1107,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     bool used_fastpath = false;
     fastpath_info_t mi;
 
+    drmgr_disable_auto_predication(drcontext, bb);
+
     if (go_native)
         return DR_EMIT_GO_NATIVE;
 

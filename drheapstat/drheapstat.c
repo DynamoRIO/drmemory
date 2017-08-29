@@ -1362,6 +1362,8 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     if (instr_is_meta(inst))
         return DR_EMIT_DEFAULT;
 
+    drmgr_disable_auto_predication(drcontext, bb);
+
     ii->instrs_in_bb++;
 
     if (options.time_instrs) {

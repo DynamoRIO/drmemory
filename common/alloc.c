@@ -7086,6 +7086,7 @@ alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst
     app_pc pc = instr_get_app_pc(inst);
     if (pc == NULL)
         return DR_EMIT_DEFAULT;
+    drmgr_disable_auto_predication(drcontext, bb);
 #ifdef WINDOWS
     if (instr_get_opcode(inst) == OP_int &&
         opnd_get_immed_int(instr_get_src(inst, 0)) == CBRET_INTERRUPT_NUM) {
