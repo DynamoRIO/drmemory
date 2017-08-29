@@ -1272,6 +1272,11 @@ should_share_addr_helper(fastpath_info_t *mi)
         return false;
     if (mi->mem2mem || mi->load2x || mi->need_offs)
         return false;
+    /* i#2032: sub-dword w/ check-defined was supported before but it was buggy
+     * so we are disabling it until it can be re-examined.
+     */
+    if (mi->memsz < 4)
+        return false;
     /* XXX i#243: we rule out sharing here b/c it's too hard to figure out whether
      * we can use reg3 down below -- probably we can?  it's hard to ensure.
      * once we get drreg we should be able to share these and avoid reg
@@ -3567,6 +3572,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                  * lookup memref but we complicate the code.  This is all
                  * unnecessary for byte-to-byte shadowing.
                  */
+                /* FIXME i#2032: this is broken: it needs to also incorporate
+                 * the delta!  It is now disabled until we have time to either
+                 * fix it or abandon completely.
+                 */
+                ASSERT_NOT_REACHED();
                 instr_t *adjust_sharing = INSTR_CREATE_label(drcontext);
                 instr_t *no_adjust_sharing = INSTR_CREATE_label(drcontext);
                 PRE(bb, inst,
