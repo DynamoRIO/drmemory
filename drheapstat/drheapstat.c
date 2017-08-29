@@ -1362,6 +1362,11 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     if (instr_is_meta(inst))
         return DR_EMIT_DEFAULT;
 
+    /* i#2402: Temporarily disable auto predication globally due to poor
+     * interaction with internal control flow we emit.
+     */
+    drmgr_disable_auto_predication(drcontext, bb);
+
     ii->instrs_in_bb++;
 
     if (options.time_instrs) {
