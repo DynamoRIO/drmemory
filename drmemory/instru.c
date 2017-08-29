@@ -1107,6 +1107,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     bool used_fastpath = false;
     fastpath_info_t mi;
 
+    /* i#2402: Temporarily disable auto predication globally due to poor
+     * interaction with internal control flow we emit.
+     */
     drmgr_disable_auto_predication(drcontext, bb);
 
     if (go_native)
