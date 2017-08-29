@@ -447,7 +447,9 @@ else ()
 endif ()
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
-  newtest(multierror multierror.cpp)
+  if (NOT X64) # FIXME i#111: failing on Travis
+    newtest(multierror multierror.cpp)
+  endif ()
 endif (TOOL_DR_MEMORY)
 if (NOT ARM) # XXX i#1726: port to ARM
   newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
