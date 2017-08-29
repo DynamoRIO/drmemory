@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -237,7 +237,7 @@ suppress-mod-foo.c
 suppress!mod_ellipsis_test
 suppress.c
 
-Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
+Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading PTRSZ byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:202
@@ -246,7 +246,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #18: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
+Error #18: UNADDRESSABLE ACCESS beyond heap bounds: reading PTRSZ byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:204
@@ -255,7 +255,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #19: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
+Error #19: UNADDRESSABLE ACCESS beyond heap bounds: reading PTRSZ byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:204

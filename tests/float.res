@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -31,5 +31,6 @@ Error #5: UNINITIALIZED READ: reading 8 byte(s)
 float.c:58
 # PR 473614: cl's /RTC1 fills all locals w/ 0xcccccccc
 # but /RTC1 is now off (for i#545) so re-enabling
-Error #6: UNINITIALIZED READ: reading 8 byte(s)
+# This is sometimes memory and sometimes xmm1 (x64).
+Error #6: UNINITIALIZED READ: reading
 float.c:65

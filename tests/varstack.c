@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -105,7 +105,9 @@ main()
     /* test giant alloca (will also test fault on special shadow write) */
     test_alloca();
     /* i#668 test esp adjusted by cmovcc */
+    stack1 = (char *) malloc(16*1024) + 16*1024;
     test_cmovcc_asm();
+    free((char *)stack1 - 16*1024);
     printf("all done\n");
     return 0;
 }

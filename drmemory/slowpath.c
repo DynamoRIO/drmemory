@@ -1706,6 +1706,7 @@ handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                 ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
             }
             if (TEST(MEMREF_PUSHPOP, flags)) {
+                /* Pop */
                 if (BEYOND_TOS_REDZONE_SIZE > 0) {
                     shadow_set_byte(&info, addr + i, SHADOW_UNDEFINED);
                     shadow_set_byte(&info, addr + i - BEYOND_TOS_REDZONE_SIZE,

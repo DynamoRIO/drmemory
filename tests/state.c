@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -38,7 +38,7 @@ typedef void (*handler_3_t)(int, siginfo_t *, void *);
 # include <windows.h>
 #endif
 
-int xax_val = 0xffffffff;
+int xax_val = 0x0dead420;
 
 void test_fault_asm(int xax_val);
 

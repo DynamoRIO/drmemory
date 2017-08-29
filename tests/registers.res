@@ -78,7 +78,7 @@ Error #10: UNINITIALIZED READ: reading register eflags
 registers.c_asm.asm:371
 Error #11: UNINITIALIZED READ: reading register cl
 registers.c_asm.asm:376
-Error #12: UNINITIALIZED READ: reading register ecx
+Error #12: UNINITIALIZED READ: reading register xcx
 registers.c_asm.asm:399
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
 registers.c_asm.asm:432

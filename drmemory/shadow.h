@@ -351,7 +351,7 @@ register_shadow_set_ptrsz(reg_id_t reg, uint val);
 void
 register_shadow_set_dqword(reg_id_t reg, uint val);
 
-byte
+uint
 get_shadow_eflags(void);
 
 void
