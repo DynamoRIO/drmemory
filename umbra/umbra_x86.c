@@ -325,17 +325,10 @@ shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
     reg_id_t reg_idx = regs[0];
     reg_id_t reg_tmp = regs[1];
 
-    uint disp_hi = (uint)(map->shadow_table) & 0xffff0000;
-    uint disp_lo = (uint)(map->shadow_table) & 0x0000ffff;
-    disp_hi >>= 0x10;
-
     /* %reg_idx = table */
-    PRE(ilist, where, INSTR_CREATE_movw(drcontext,
-                                        opnd_create_reg(reg_idx),
-                                        OPND_CREATE_INT16(disp_lo)));
-    PRE(ilist, where, INSTR_CREATE_movt(drcontext,
-                                        opnd_create_reg(reg_idx),
-                                        OPND_CREATE_INT16(disp_hi)));
+    instrlist_insert_mov_immed_ptrsz(drcontext, (uint)(map->shadow_table),
+                                     opnd_create_reg(reg_idx), ilist, where,
+                                     NULL, NULL);
 
     /* %reg_tmp = (%reg_addr >> 0x10) */
     PRE(ilist, where, INSTR_CREATE_lsr(drcontext,

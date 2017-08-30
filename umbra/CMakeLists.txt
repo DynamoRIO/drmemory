@@ -38,7 +38,7 @@ set(srcs
 # add arch specific src here
 if (X64)
   set (srcs ${srcs} umbra_x64.c)
-elseif (X82)
+elseif (X86)
   set (srcs ${srcs} umbra_x86.c)
 elseif (ARM)
   set (srcs ${srcs} umbra_x86.c)
