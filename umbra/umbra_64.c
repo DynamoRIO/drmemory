@@ -1305,4 +1305,3 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
     }
     return false;
 }
-

@@ -37,11 +37,11 @@ set(srcs
 
 # add arch specific src here
 if (X64)
-  set (srcs ${srcs} umbra_x64.c)
+  set (srcs ${srcs} umbra_64.c)
 elseif (X86)
-  set (srcs ${srcs} umbra_x86.c)
+  set (srcs ${srcs} umbra_32.c)
 elseif (ARM)
-  set (srcs ${srcs} umbra_x86.c)
+  set (srcs ${srcs} umbra_32.c)
 else (X64)
   message(FATAL_ERROR "Umbra does not support this architecture")
 endif (X64)
