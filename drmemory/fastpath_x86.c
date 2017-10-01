@@ -103,7 +103,8 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
         spill_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
         using_temp = true;
     }
-    bool ok = drutil_insert_get_mem_addr(drcontext, bb, inst, opnd, dst, scratch);
+    IF_DEBUG(bool ok =)
+        drutil_insert_get_mem_addr(drcontext, bb, inst, opnd, dst, scratch);
     ASSERT(ok, "drutil_insert_get_mem_addr failed");
     if (using_temp) {
         restore_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
