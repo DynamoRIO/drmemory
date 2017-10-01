@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drutil.h"
 #include "drmemory.h"
 #include "slowpath.h"
 #include "spill.h"
@@ -80,92 +81,33 @@ print_opnd(void *drcontext, opnd_t op, file_t file, const char *prefix)
  */
 static void
 insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
-           opnd_t opnd, reg_id_t dst)
+           opnd_t opnd, reg_id_t dst, reg_id_t scratch/*can be REG_NULL*/)
 {
-    if (opnd_is_far_base_disp(opnd)) {
-        if (opnd_get_segment(opnd) == SEG_ES ||
-            opnd_get_segment(opnd) == SEG_DS ||
-            /* cs: is sometimes seen, as here on win10:
-             *   RPCRT4!Invoke+0x28:
-             *   76d85ea0 2eff1548d5de76  call dword ptr cs:[RPCRT4!
-             *                              __guard_check_icall_fptr (76ded548)]
-             * We assume it's flat.
-             */
-            opnd_get_segment(opnd) == SEG_CS) {
-            /* string operation: we assume flat segments */
-            opnd_set_size(&opnd, OPSZ_lea);
-            PRE(bb, inst,
-                INSTR_CREATE_lea(drcontext, opnd_create_reg(dst), opnd));
-        } else if (opnd_get_segment(opnd) == seg_tls
-                   IF_UNIX(|| opnd_get_segment(opnd) == IF_X64_ELSE(SEG_FS, SEG_GS))) {
-            /* convert to linear address. */
-#if THREAD_PRIVATE
-            /* for thread private we can statically determine the fs base */
-            uint fs_addr;
-            __asm {
-                mov eax, fs:[0x18]
-                mov fs_addr, eax
-            }
-            opnd = opnd_create_base_disp(opnd_get_base(opnd), opnd_get_index(opnd),
-                                         opnd_get_scale(opnd),
-                                         opnd_get_disp(opnd) + fs_addr, OPSZ_lea);
-#else
-            /* we could determine for each thread in its init and store */
-            reg_id_t other_reg = REG_NULL;
-            reg_id_t tmp_reg = dst;
-            int scale = 0;
-            /* for now we bail if we have a conflict w/ our dst reg.
-             * should never happen in practice: will always be simple disp.
-             */
-            if (opnd_get_base(opnd) != REG_NULL) {
-                other_reg = opnd_get_base(opnd);
-                scale = 1;
-                ASSERT(opnd_get_index(opnd) == REG_NULL,
-                       "can't handle fs/gs ref w/ base and index");
-            } else if (opnd_get_index(opnd) != REG_NULL) {
-                other_reg = opnd_get_index(opnd);
-                scale = opnd_get_scale(opnd);
-            }
-            if (other_reg == dst) {
-                /* This does happen on Linux:
-                 *   0x0022cad0 <__printf_fp+8624>:  mov    %eax,%gs:(%edx)
-                 * We assume it's rare and so rather than have callers pass us a
-                 * scratch reg (which would get complicated), we do a locally
-                 * transparent save+restore.  We could try to optimize
-                 * if caller lets us know a faster spill slot is available.
-                 */
-                tmp_reg = (dst == REG_XAX ? REG_XCX : REG_XAX);
-                spill_reg(drcontext, bb, inst, tmp_reg, SPILL_SLOT_5);
-            }
-# ifdef WINDOWS
-            /* dynamically get teb->self */
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(tmp_reg),
-                                    opnd_create_far_base_disp(seg_tls, REG_NULL, REG_NULL,
-                                                              0, offsetof(TEB, Self),
-                                                              OPSZ_PTR)));
-            PRE(bb, inst,
-                INSTR_CREATE_lea(drcontext, opnd_create_reg(dst),
-                                 opnd_create_base_disp(tmp_reg, other_reg, scale,
-                                                       opnd_get_disp(opnd), OPSZ_lea)));
-# else
-            dr_insert_get_seg_base(drcontext, bb, inst, opnd_get_segment(opnd), tmp_reg);
-            PRE(bb, inst,
-                INSTR_CREATE_lea(drcontext, opnd_create_reg(dst),
-                                 opnd_create_base_disp(tmp_reg, other_reg, scale,
-                                                       opnd_get_disp(opnd), OPSZ_lea)));
-# endif
-            if (tmp_reg != dst) {
-                restore_reg(drcontext, bb, inst, tmp_reg, SPILL_SLOT_5);
-            }
-#endif
-        } else {
-            ASSERT(false, "unsupported segment reference");
-        }
-    } else {
-        opnd_set_size(&opnd, OPSZ_lea);
-        PRE(bb, inst,
-            INSTR_CREATE_lea(drcontext, opnd_create_reg(dst), opnd));
+    bool using_temp = false;
+    /* We assume that drutil_insert_get_mem_addr() will not use scratch unless
+     * either the opnd uses dst or the opnd has a base and an index.
+     * It's not easy for us to get an extra scratch reg so we limit the cases.
+     */
+    if (scratch == REG_NULL &&
+        (opnd_uses_reg(opnd, dst) ||
+         (opnd_is_base_disp(opnd) && opnd_get_base(opnd) != REG_NULL &&
+          opnd_get_index(opnd) != REG_NULL) ||
+         opnd_get_index(opnd) == DR_REG_AL)) {
+        /* This does happen on Linux:
+         *   0x0022cad0 <__printf_fp+8624>:  mov    %eax,%gs:(%edx)
+         * We assume it's rare and so rather than have callers pass us a
+         * scratch reg (which would get complicated), we do a locally
+         * transparent save+restore.
+         */
+        scratch = (dst == REG_XAX ? REG_XCX : REG_XAX);
+        spill_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
+        using_temp = true;
+    }
+    IF_DEBUG(bool ok =)
+        drutil_insert_get_mem_addr(drcontext, bb, inst, opnd, dst, scratch);
+    ASSERT(ok, "drutil_insert_get_mem_addr failed");
+    if (using_temp) {
+        restore_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
     }
 }
 
@@ -2215,7 +2157,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(!mi->mem2mem, "mem2mem zero-offs NYI");
         ASSERT(value_in_reg2, "clobbering reg1");
         ASSERT(!SHARING_XL8_ADDR(mi), "when sharing reg1 is in use");
-        insert_lea(drcontext, bb, inst, mi->memop, reg1);
+        insert_lea(drcontext, bb, inst, mi->memop, reg1, REG_NULL);
         mi->memoffs = opnd_create_reg(reg1_8h);
         PRE(bb, inst,
             INSTR_CREATE_and(drcontext, opnd_create_reg(reg1),
@@ -2986,10 +2928,10 @@ insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
             insert_spill_global(drcontext, bb, inst, &mi->reg1, false/*restore*/);
         else
             restore_reg(drcontext, bb, inst, mi->reg1.reg, mi->reg1.slot);
-        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg);
+        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg, mi->reg2.reg);
         restore_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
     } else
-        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg);
+        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg, mi->reg2.reg);
 }
 
 /* Fast path for "normal" instructions with a single memory
@@ -3297,10 +3239,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (mi->use_shared && mi->memsz < 4) {
             /* i#1597: reg1 holds xl8 share, but we need addr to check dword bounds */
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-            insert_lea(drcontext, bb, inst, mi->memop, mi->reg2.reg);
+            insert_lea(drcontext, bb, inst, mi->memop, mi->reg2.reg, mi->reg3.reg);
         } else if (!mi->use_shared) { /* don't need lea if sharing trans */
             mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
-            insert_lea(drcontext, bb, inst, mi->memop, mi->reg1.reg);
+            insert_lea(drcontext, bb, inst, mi->memop, mi->reg1.reg, mi->reg3.reg);
         }
     }
     if (mi->mem2mem || mi->load2x) {
