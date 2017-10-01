@@ -1890,11 +1890,6 @@ dr_init(client_id_t id)
         NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
         NOTIFY("problems encountered to http://drmemory.org/issues."NL);
 #endif
-#if defined(X64) && defined(WINDOWS)
-        /* i#111: full mode not ported yet to 64-bit Windows */
-        if (options.pattern == 0)
-            NOTIFY("WARNING: 64-bit non-pattern modes are experimental on Windows"NL);
-#endif
 #ifdef ARM
         /* i#1726: full mode not ported yet to ARM */
         if (!option_specified.pattern && !option_specified.light)

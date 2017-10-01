@@ -62,7 +62,7 @@ The Dr. Memory distribution contains the following:
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.11.0 include:
  - Added preliminary 64-bit full mode (i.e., with uninitialized read
-   checking) support for Linux.
+   checking) support.
  - Added preliminary support for the Windows Subsystem for Linux
    environment with the regular Dr. Memory Linux package.
  - Added automated generation of system call information on Windows,
@@ -410,8 +410,7 @@ The changes between version 1.1.0 and 1.0.1 include:
 Dr. Memory is still under development.  It has some missing features and undoubtedly
 some bugs.  The missing features include:
 
- - Uninitialized read checking is not yet supported for 64-bit applications
-   nor for ARM platforms.
+ - Uninitialized read checking is not yet supported for ARM platforms.
  - Windows system call parameters are not all known, which can
    result in false positives and false negatives, especially on graphical
    applications on more recent versions of Windows.
@@ -419,6 +418,9 @@ some bugs.  The missing features include:
    Dr. Memory attempts to separate such errors into potential_errors.txt.
  - Definedness is tracked at the byte level, not at the bit level,
    which when bitfields are in use can lead to false positives.
+ - Mac OSX supports only 32-bit applications and does not yet have
+   a full isolation barrier between Dr. Memory and the application,
+   which can cause failures on large applications.
  - Race corner cases:
    - Pathological races between mallocs and frees can result in Dr. Memory's
      shadow memory structures becoming mis-aligned with subsequent false
