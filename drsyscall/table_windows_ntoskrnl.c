@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1764,8 +1764,8 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(MEMORY_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, -4, W},
          {3, -5, WI},
-         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(SIZE_T), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_QueryVirtualMemory
     },
     {{0,0},"NtQueryVolumeInformationFile", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
