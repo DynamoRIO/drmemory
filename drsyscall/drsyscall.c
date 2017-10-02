@@ -1308,7 +1308,19 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
                "reached max syscall args stored");
-        size = (arg->size > 0) ? arg->size : ((ptr_uint_t) pt->sysarg[-arg->size]);
+        if (arg->size > 0) {
+            size = arg->size;
+        } else {
+            int sz_argnum;
+            size = (ptr_uint_t) pt->sysarg[-arg->size];
+            sz_argnum = (-arg->size < arg->param) ? 0 : argnum + 1;
+            for (; !sysarg_invalid(&sysinfo->arg[sz_argnum]); sz_argnum++) {
+                if (sysinfo->arg[sz_argnum].param == -arg->size)
+                    break;
+            }
+            if (sysinfo->arg[sz_argnum].size == sizeof(uint))
+                size = (uint) size;
+        }
         if (TEST(SYSARG_LENGTH_INOUT, arg->flags)) {
             size_t *ptr;
             int sz_argnum;

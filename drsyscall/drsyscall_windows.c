@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -953,7 +953,8 @@ get_sysparam_base(cls_syscall_t *pt)
     reg_t *base = (reg_t *) pt->param_base;
     if (is_using_sysenter())
         base += 2;
-    else if (win_ver.version >= DR_WINDOWS_VERSION_8 && is_using_wow64())
+    else if (IF_X64_ELSE(true,
+                         win_ver.version >= DR_WINDOWS_VERSION_8 && is_using_wow64()))
         base += 1; /* retaddr */
     return base;
 }
@@ -1513,8 +1514,29 @@ handle_object_attributes_access(sysarg_iter_info_t *ii,
                                 app_pc start, uint size)
 {
     OBJECT_ATTRIBUTES oa;
+    OBJECT_ATTRIBUTES *oap = (OBJECT_ATTRIBUTES *)start;
     ASSERT(size == sizeof(OBJECT_ATTRIBUTES), "invalid size");
-    if (!report_memarg(ii, arg_info, start, size, "OBJECT_ATTRIBUTES fields"))
+    /* There's padding between fields on x64 so we split them up. */
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->Length, sizeof(oap->Length),
+                       "OBJECT_ATTRIBUTES.Length"))
+        return true;
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->RootDirectory,
+                       sizeof(oap->RootDirectory),
+                       "OBJECT_ATTRIBUTES.Length"))
+        return true;
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->ObjectName, sizeof(oap->ObjectName),
+                       "OBJECT_ATTRIBUTES.ObjectName"))
+        return true;
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->Attributes, sizeof(oap->Attributes),
+                       "OBJECT_ATTRIBUTES.Attributes"))
+        return true;
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->SecurityDescriptor,
+                       sizeof(oap->SecurityDescriptor),
+                       "OBJECT_ATTRIBUTES.SecurityDescriptor"))
+        return true;
+    if (!report_memarg(ii, arg_info, (app_pc)&oap->SecurityQualityOfService,
+                       sizeof(oap->SecurityQualityOfService),
+                       "OBJECT_ATTRIBUTES.SecurityQualityOfService"))
         return true;
     if (safe_read((void*)start, sizeof(oa), &oa)) {
         if ((byte *) oa.ObjectName != NULL) {
