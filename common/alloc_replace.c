@@ -4942,8 +4942,8 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
     if (interceptor != NULL) {
         /* optimization: only pass where needed, for Windows libc */
         void *user_data = IF_WINDOWS_ELSE(is_rtl_routine(type) ? NULL : (void *) e, NULL);
-        if (!drwrap_replace_native(pc, interceptor, at_entry, stack_adjust,
-                                   user_data, false))
+        if (!drwrap_replace_native(pc, interceptor, at_entry,
+                                   IF_X64_ELSE(0, stack_adjust), user_data, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
         LOG(2, "wrapping, not replacing, "PFX"\n", pc);
@@ -4972,7 +4972,8 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
         return;
     }
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, NULL, at_entry, stack_adjust, NULL, true))
+        if (!drwrap_replace_native(pc, NULL, at_entry, IF_X64_ELSE(0, stack_adjust),
+                                   NULL, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
         malloc_wrap__unintercept(pc, type, e, check_mismatch, check_winapi_match);
