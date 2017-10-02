@@ -1320,9 +1320,10 @@ client_stack_alloc(byte *start, byte *end, bool defined)
     if (options.shadowing &&
         (options.check_uninitialized || options.check_stack_bounds)) {
         shadow_set_range(start, end, defined ? SHADOW_DEFINED : SHADOW_UNDEFINED);
-        if (BEYOND_TOS_REDZONE_SIZE > 0)
+        if (BEYOND_TOS_REDZONE_SIZE > 0) {
             shadow_set_range(start - BEYOND_TOS_REDZONE_SIZE,
                              end - BEYOND_TOS_REDZONE_SIZE, SHADOW_UNDEFINED);
+        }
     }
 }
 

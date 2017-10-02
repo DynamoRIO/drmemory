@@ -69,6 +69,7 @@ def merge_entries(entry, duplicates, function_name):
     for element in entry:
         element = element.replace("\n", "")
         element = ' '.join(element.split())
+        element = element.replace(" *", "*")
         element = element.replace("*", "* ")
         final_str = final_str + " " + element
     return final_str
