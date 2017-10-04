@@ -120,8 +120,10 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
         drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr)
         != DRREG_SUCCESS ||
         drreg_reserve_register(drcontext, ilist, where, NULL, &scratch)
-        != DRREG_SUCCESS)
-        DR_ASSERT(false);
+        != DRREG_SUCCESS) {
+        DR_ASSERT(false); /* can't recover */
+        return;
+    }
 
     ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, regaddr, scratch);
     DR_ASSERT(ok);
