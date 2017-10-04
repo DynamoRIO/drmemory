@@ -36,6 +36,11 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 configure_DynamoRIO_global(OFF ON)
 
 function(add_drmf_test_app app_name src_app)
+  if (WIN32)
+    # i#1748: disable inlining optimization to avoid calls to
+    # fuzzing targets being inlined
+    append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi /Ob0")
+  endif (WIN32)
   tobuild(${app_name} ${src_app})
   copy_target_to_device(${app_name})
 endfunction(add_drmf_test_app)
