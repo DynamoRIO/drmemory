@@ -76,8 +76,8 @@ GLOBAL_LABEL(FUNCNAME:)
         PUSH_SEH(REG_XSI)
         PUSH_SEH(REG_XDI)
         sub      REG_XSP, FRAME_PADDING /* align */
-        mov 	 REG_XBP, REG_XSP
-        sub		 REG_XSP, 4
+        mov      REG_XBP, REG_XSP
+        sub      REG_XSP, 4
         END_PROLOG
         jmp      test1
 
@@ -85,7 +85,7 @@ GLOBAL_LABEL(FUNCNAME:)
      test1:
         mov      REG_XDI, UMBRA_TEST_1_ASM
         mov      REG_XDI, UMBRA_TEST_1_ASM
-        mov		 [REG_XBP], REG_XDI
+        mov      [REG_XBP], REG_XDI
 
         jmp      test2
 
@@ -93,12 +93,12 @@ GLOBAL_LABEL(FUNCNAME:)
      test2:
         mov      REG_XDI, UMBRA_TEST_2_ASM
         mov      REG_XDI, UMBRA_TEST_2_ASM
-        mov		 REG_XDI, [REG_XBP]
+        mov      REG_XDI, [REG_XBP]
 
         jmp      epilog
 
     epilog:
-        mov 	 REG_XSP, REG_XBP
+        mov      REG_XSP, REG_XBP
         add      REG_XSP, FRAME_PADDING /* make a legal SEH64 epilog */
         pop      REG_XDI
         pop      REG_XSI

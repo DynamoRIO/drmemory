@@ -35,13 +35,21 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 # a function scope, we must set the global vars ahead of time:
 configure_DynamoRIO_global(OFF ON)
 
+# We save pdb+dll space by not using libc (xref DRi#714).
+# For Android, we allow running w/o a private Bionic.
+# For Linux x86 we need libc for div+mod routines, as well
+# as for Umbra.
+if (WIN32 OR ANDROID)
+  set(DynamoRIO_USE_LIBC OFF)
+endif ()
+
 function(add_drmf_test_app app_name src_app)
+  tobuild(${app_name} ${src_app})
   if (WIN32)
     # i#1748: disable inlining optimization to avoid calls to
     # fuzzing targets being inlined
     append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi /Ob0")
   endif (WIN32)
-  tobuild(${app_name} ${src_app})
   copy_target_to_device(${app_name})
 endfunction(add_drmf_test_app)
 
