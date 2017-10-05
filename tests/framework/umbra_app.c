@@ -67,7 +67,7 @@ START_FILE
 #endif
 
 #define FUNCNAME asm_test
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
 #ifdef X86
         /* push callee-saved registers */
