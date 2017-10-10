@@ -30,7 +30,9 @@
  * DAMAGE.
  */
 
-/* tests umbra's umbra_{read,write}_shadow_memory methods */
+/* Tests for consistency between umbra_insert_app_to_shadow() and
+ * umbra_get_shadow_memory().
+ */
 
 #include <string.h>
 
@@ -41,8 +43,6 @@
 #include "drutil.h"
 
 #include "umbra_test_shared.h"
-
-#define MAGIC_VALUE 0xcc
 
 static umbra_map_t *umbra_map;
 
@@ -83,29 +83,19 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 }
 
 static void
-write_shadow_mem(void *reg)
+test_shadow(app_pc shadow)
 {
-    unsigned char buffer = MAGIC_VALUE;
-    size_t shadow_size = sizeof(buffer);
+    void *drcontext = dr_get_current_drcontext();
+    app_pc target = (app_pc)dr_read_saved_reg(drcontext, SPILL_SLOT_2);
+    app_pc shadow_expect;
+    umbra_shadow_memory_info_t info;
 
-    dr_printf("writing %02x to\t%p\n", MAGIC_VALUE, reg);
-    if (umbra_write_shadow_memory(umbra_map, reg, 4, &shadow_size,
-                                  (unsigned char *)&buffer) != DRMF_SUCCESS)
+    info.struct_size = sizeof(info);
+    if (umbra_get_shadow_memory(umbra_map, target,
+                                &shadow_expect, &info) != DRMF_SUCCESS) {
         DR_ASSERT(false);
-}
-
-static void
-read_shadow_mem(void *reg)
-{
-    unsigned char buffer;
-    size_t shadow_size = sizeof(buffer);
-
-    dr_printf("reading from\t%p...\t", reg);
-    if (umbra_read_shadow_memory(umbra_map, reg, 4, &shadow_size,
-                                 (unsigned char *)&buffer) != DRMF_SUCCESS)
-        DR_ASSERT(false);
-    dr_printf("%x\n", buffer);
-    DR_ASSERT(buffer == MAGIC_VALUE);
+    }
+    DR_ASSERT(shadow == shadow_expect);
 }
 
 static void
@@ -128,13 +118,13 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
     ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, regaddr, scratch);
     DR_ASSERT(ok);
 
-    if (write) {
-        dr_insert_clean_call(drcontext, ilist, where, write_shadow_mem, false, 1,
-                             opnd_create_reg(regaddr));
-    } else {
-        dr_insert_clean_call(drcontext, ilist, where, read_shadow_mem, false, 1,
-                             opnd_create_reg(regaddr));
-    }
+    /* save the app address for our clean call so we don't have to spill more registers */
+    dr_save_reg(drcontext, ilist, where, regaddr, SPILL_SLOT_2);
+    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr,
+                                   &scratch, 1) != DRMF_SUCCESS)
+        DR_ASSERT(false);
+    dr_insert_clean_call(drcontext, ilist, where, test_shadow, false, 1,
+                         opnd_create_reg(regaddr));
 
     if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
         drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
@@ -176,10 +166,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     if (subtest != UMBRA_TEST_1_C && subtest != UMBRA_TEST_2_C)
         return DR_EMIT_DEFAULT;
 
-    /* Test 1 writes to memory -- we will consequently write a magic value to shadow
-     * memory, and assure that the values are still there when reading from the same
-     * shadow memory in test 2.
-     */
     for (i = 0; i < instr_num_srcs(where); i++) {
         if (opnd_is_memory_reference(instr_get_src(where, i)))
             instrument_mem(drcontext, ilist, where, instr_get_src(where, i), false);

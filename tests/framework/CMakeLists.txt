@@ -153,3 +153,17 @@ use_DynamoRIO_extension(umbra_test_shadow_mem.client drreg)
 use_DynamoRIO_extension(umbra_test_shadow_mem.client drutil)
 target_include_directories(umbra_test_shadow_mem.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_insert_app_to_shadow umbra_app
+  umbra_client_insert_app_to_shadow.c umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drreg)
+use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
+target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_consistency umbra_app
+  umbra_client_consistency.c umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_test_consistency.client drreg)
+use_DynamoRIO_extension(umbra_test_consistency.client drutil)
+target_include_directories(umbra_test_consistency.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})

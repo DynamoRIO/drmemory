@@ -30,9 +30,10 @@
  * DAMAGE.
  */
 
-/* tests umbra's umbra_{read,write}_shadow_memory methods */
+/* tests umbra's umbra_insert_app_to_shadow() method */
 
 #include <string.h>
+#include <signal.h>
 
 #include "dr_api.h"
 #include "drmgr.h"
@@ -41,8 +42,6 @@
 #include "drutil.h"
 
 #include "umbra_test_shared.h"
-
-#define MAGIC_VALUE 0xcc
 
 static umbra_map_t *umbra_map;
 
@@ -53,6 +52,15 @@ event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data);
+
+#ifdef WINDOWS
+static bool
+event_exception_instrumentation(void *drcontext, dr_exception_t *excpt);
+#else
+static dr_signal_action_t
+event_signal_instrumentation(void *drcontext, dr_siginfo_t *info);
+#endif
+
 
 static void
 exit_event(void);
@@ -79,38 +87,18 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
         DR_ASSERT_MSG(false, "fail to create shadow memory mapping");
     drmgr_register_bb_instrumentation_event(event_app_analysis,
                                             event_app_instruction, NULL);
+#ifdef WINDOWS
+    drmgr_register_exception_event(event_exception_instrumentation);
+#else
+    drmgr_register_signal_event(event_signal_instrumentation);
+#endif
     dr_register_exit_event(exit_event);
+
+
 }
 
 static void
-write_shadow_mem(void *reg)
-{
-    unsigned char buffer = MAGIC_VALUE;
-    size_t shadow_size = sizeof(buffer);
-
-    dr_printf("writing %02x to\t%p\n", MAGIC_VALUE, reg);
-    if (umbra_write_shadow_memory(umbra_map, reg, 4, &shadow_size,
-                                  (unsigned char *)&buffer) != DRMF_SUCCESS)
-        DR_ASSERT(false);
-}
-
-static void
-read_shadow_mem(void *reg)
-{
-    unsigned char buffer;
-    size_t shadow_size = sizeof(buffer);
-
-    dr_printf("reading from\t%p...\t", reg);
-    if (umbra_read_shadow_memory(umbra_map, reg, 4, &shadow_size,
-                                 (unsigned char *)&buffer) != DRMF_SUCCESS)
-        DR_ASSERT(false);
-    dr_printf("%x\n", buffer);
-    DR_ASSERT(buffer == MAGIC_VALUE);
-}
-
-static void
-instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
-               bool write)
+instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
 {
     reg_id_t regaddr;
     reg_id_t scratch;
@@ -127,14 +115,22 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
 
     ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, regaddr, scratch);
     DR_ASSERT(ok);
+    /* Save the app address to a well-known spill slot, so that the fault handler
+     * can recover if no shadow memory was installed yet.
+     */
+    dr_save_reg(drcontext, ilist, where, regaddr, SPILL_SLOT_2);
+    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr,
+                                   &scratch, 1) != DRMF_SUCCESS)
+        DR_ASSERT(false);
 
-    if (write) {
-        dr_insert_clean_call(drcontext, ilist, where, write_shadow_mem, false, 1,
-                             opnd_create_reg(regaddr));
-    } else {
-        dr_insert_clean_call(drcontext, ilist, where, read_shadow_mem, false, 1,
-                             opnd_create_reg(regaddr));
-    }
+    /* trigger a fault to the shared readonly shadow page */
+    instrlist_meta_preinsert(ilist, where, INSTR_XL8
+            (XINST_CREATE_store_1byte
+             (drcontext,
+              OPND_CREATE_MEM8(regaddr, 0),
+              opnd_create_reg(
+                  reg_resize_to_opsz(scratch, OPSZ_1))),
+             instr_get_app_pc(where)));
 
     if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
         drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
@@ -176,17 +172,13 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     if (subtest != UMBRA_TEST_1_C && subtest != UMBRA_TEST_2_C)
         return DR_EMIT_DEFAULT;
 
-    /* Test 1 writes to memory -- we will consequently write a magic value to shadow
-     * memory, and assure that the values are still there when reading from the same
-     * shadow memory in test 2.
-     */
     for (i = 0; i < instr_num_srcs(where); i++) {
         if (opnd_is_memory_reference(instr_get_src(where, i)))
-            instrument_mem(drcontext, ilist, where, instr_get_src(where, i), false);
+            instrument_mem(drcontext, ilist, where, instr_get_src(where, i));
     }
     for (i = 0; i < instr_num_dsts(where); i++) {
         if (opnd_is_memory_reference(instr_get_dst(where, i)))
-            instrument_mem(drcontext, ilist, where, instr_get_dst(where, i), true);
+            instrument_mem(drcontext, ilist, where, instr_get_dst(where, i));
     }
 
     return DR_EMIT_DEFAULT;
@@ -202,3 +194,89 @@ exit_event(void)
     drmgr_exit();
     drreg_exit();
 }
+
+static reg_id_t
+get_faulting_shadow_reg(void *drcontext, dr_mcontext_t *mc)
+{
+    instr_t inst;
+    reg_id_t reg;
+
+    instr_init(drcontext, &inst);
+    decode(drcontext, mc->pc, &inst);
+    reg = opnd_get_base(instr_get_dst(&inst, 0));
+    instr_free(drcontext, &inst);
+    return reg;
+}
+
+static bool
+handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
+                            app_pc app_shadow)
+{
+    umbra_shadow_memory_type_t shadow_type;
+    app_pc app_target;
+    reg_id_t reg;
+
+    dr_printf("Handling a fault...\n");
+
+    /* If a fault occured, it is probably because we computed the
+     * address of shadow memory which was initialized to a shared
+     * readonly shadow block. We allocate a shadow page there and
+     * replace the reg value used by the faulting instr.
+     */
+    /* handle faults from writes to special shadow blocks */
+    if (umbra_shadow_memory_is_shared(umbra_map, app_shadow,
+                                      &shadow_type) != DRMF_SUCCESS) {
+        DR_ASSERT(false);
+        return true;
+    }
+    if (shadow_type != UMBRA_SHADOW_MEMORY_TYPE_SHARED)
+        return true;
+
+    /* Grab the original app target out of the spill slot so we
+     * don't have to compute the app target ourselves (this is
+     * difficult).
+     */
+    app_target = (app_pc)dr_read_saved_reg(drcontext, SPILL_SLOT_2);
+    dr_printf("Original app memory:         %p\n"
+              "Got fault at shadow memory:  %p\n",
+              app_target, app_shadow);
+
+    /* replace the shared block, and record the new app shadow */
+    if (umbra_replace_shared_shadow_memory(umbra_map, app_target,
+                                           &app_shadow) != DRMF_SUCCESS) {
+        DR_ASSERT(false);
+        return true;
+    }
+
+    /* Replace the faulting register value to reflect the new shadow
+     * memory.
+     */
+    reg = get_faulting_shadow_reg(drcontext, raw_mc);
+    reg_set_value(reg, raw_mc, (reg_t)app_shadow);
+
+    dr_printf("Installed new shadow memory: %p\n", app_shadow);
+    return false;
+}
+
+#ifdef WINDOWS
+bool
+event_exception_instrumentation(void *drcontext, dr_exception_t *excpt)
+{
+    if (excpt->record->ExceptionCode != STATUS_ACCESS_VIOLATION)
+        return true;
+    DR_ASSERT(info->raw_mcontext_valid);
+    return handle_special_shadow_fault(drcontext, excpt->raw_mcontext,
+            (byte *)excpt->record->ExceptionInformation[1]);
+}
+#else
+static dr_signal_action_t
+event_signal_instrumentation(void *drcontext, dr_siginfo_t *info)
+{
+    if (info->sig != SIGSEGV && info->sig != SIGBUS)
+        return DR_SIGNAL_DELIVER;
+    DR_ASSERT(info->raw_mcontext_valid);
+    return handle_special_shadow_fault(drcontext, info->raw_mcontext,
+                                       info->access_address) ?
+        DR_SIGNAL_DELIVER : DR_SIGNAL_SUPPRESS;
+}
+#endif
