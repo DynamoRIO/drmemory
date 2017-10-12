@@ -124,6 +124,11 @@ add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
 add_drmf_test(strace_test drsyscall_app strace_client.c
   drsyscall "" "done\n.*TEST PASSED")
 
+# drltrace tests
+if (WIN32)
+  add_drmf_test_app(drltrace_test_app drltrace_test_app.cpp)
+endif ()
+
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty drfuzz_client_empty.c
