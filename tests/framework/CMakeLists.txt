@@ -140,12 +140,12 @@ use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
 
 # umbra tests
 
+set(asm_defs "${asm_defs}" -I "${CMAKE_CURRENT_SOURCE_DIR}") # for umbra_test_shared.h
 add_drmf_test_app(umbra_app umbra_app.c)
+target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_empty      umbra_app umbra_client_empty.c
   umbra "" ".*TEST PASSED")
-target_include_directories(umbra_app                    PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_shadow_mem umbra_app umbra_client_shadow_mem.c
   umbra "" ".*TEST PASSED")

@@ -264,7 +264,6 @@ event_exception_instrumentation(void *drcontext, dr_exception_t *excpt)
 {
     if (excpt->record->ExceptionCode != STATUS_ACCESS_VIOLATION)
         return true;
-    DR_ASSERT(info->raw_mcontext_valid);
     return handle_special_shadow_fault(drcontext, excpt->raw_mcontext,
             (byte *)excpt->record->ExceptionInformation[1]);
 }
