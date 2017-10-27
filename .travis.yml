@@ -59,7 +59,7 @@ matrix:
 # For C/C++ there is no default install, so we set "install", not "before_install".
 install:
   - uname -a
-  - if [[ "`uname`" == "Darwin" ]]; then brew install nasm; fi
+  - if [[ "`uname`" == "Darwin" ]]; then brew update; brew install nasm; fi
   # ImageMagick is present but these are not:
   - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen transfig; fi
 

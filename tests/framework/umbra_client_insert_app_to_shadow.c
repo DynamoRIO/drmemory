@@ -93,8 +93,6 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drmgr_register_signal_event(event_signal_instrumentation);
 #endif
     dr_register_exit_event(exit_event);
-
-
 }
 
 static void
