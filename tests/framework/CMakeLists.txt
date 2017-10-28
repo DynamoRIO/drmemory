@@ -29,17 +29,6 @@ set(CMAKE_BUILD_TYPE "Debug")
 
 set_output_dirs("${PROJECT_BINARY_DIR}/tests")
 
-if (UNIX)
-  set(arch_defs "UNIX")
-  if (APPLE)
-    set(arch_defs ${arch_defs} "MACOS")
-  else (APPLE)
-    set(arch_defs ${arch_defs} "LINUX")
-  endif (APPLE)
-else (UNIX)
-  set(arch_defs "WINDOWS")
-endif (UNIX)
-
 find_package(DrMemoryFramework PATHS ${framework_dir})
 
 # As we'll be calling configure_DynamoRIO_{client,standalone} from within
@@ -48,25 +37,19 @@ configure_DynamoRIO_global(OFF ON)
 
 # We save pdb+dll space by not using libc (xref DRi#714).
 # For Android, we allow running w/o a private Bionic.
-# For Linux x86 we need libc for div+mod routines.
-if (WIN32 OR ARM OR ANDROID)
+# For Linux x86 we need libc for div+mod routines, as well
+# as for Umbra.
+if (WIN32 OR ANDROID)
   set(DynamoRIO_USE_LIBC OFF)
 endif ()
 
 function(add_drmf_test_app app_name src_app)
-  add_executable(${app_name} ${src_app})
-  set_property(TARGET ${app_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
-  if (UNIX AND NOT X64 AND NOT ARM)
-    append_property_string(TARGET ${app_name} COMPILE_FLAGS "-m32")
-    append_property_string(TARGET ${app_name} LINK_FLAGS "-m32")
-  endif ()
-  if (UNIX)
-    append_property_string(TARGET ${app_name} COMPILE_FLAGS "-g")
-  else (UNIX)
+  tobuild(${app_name} ${src_app})
+  if (WIN32)
     # i#1748: disable inlining optimization to avoid calls to
     # fuzzing targets being inlined
     append_property_string(TARGET ${app_name} COMPILE_FLAGS "/Zi /Ob0")
-  endif (UNIX)
+  endif (WIN32)
   copy_target_to_device(${app_name})
 endfunction(add_drmf_test_app)
 
@@ -154,3 +137,33 @@ add_drmf_test(drfuzz_test_no_crash drfuzz_app_segfault drfuzz_client_segfault.c
 use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
 
 # XXX i#1734: add multi-threaded test, checking for aborted fuzz targets on all threads
+
+# umbra tests
+
+set(asm_defs "${asm_defs}" -I "${CMAKE_CURRENT_SOURCE_DIR}") # for umbra_test_shared.h
+add_drmf_test_app(umbra_app umbra_app.c)
+target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_empty      umbra_app umbra_client_empty.c
+  umbra "" ".*TEST PASSED")
+
+add_drmf_test(umbra_test_shadow_mem umbra_app umbra_client_shadow_mem.c
+  umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_test_shadow_mem.client drreg)
+use_DynamoRIO_extension(umbra_test_shadow_mem.client drutil)
+target_include_directories(umbra_test_shadow_mem.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_insert_app_to_shadow umbra_app
+  umbra_client_insert_app_to_shadow.c umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drreg)
+use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
+target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_consistency umbra_app
+  umbra_client_consistency.c umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_test_consistency.client drreg)
+use_DynamoRIO_extension(umbra_test_consistency.client drutil)
+target_include_directories(umbra_test_consistency.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})

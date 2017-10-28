@@ -68,7 +68,7 @@
 #define SHADOW_TABLE_APP_BASE(idx) ((ptr_uint_t)(idx)  << APP_BLOCK_BITS)
 
 static ptr_int_t static_shadow_table[SHADOW_TABLE_ENTRIES];
-static bool      static_shadow_table_is_used = false;
+static bool      static_shadow_table_unused = false;
 
 /***************************************************************************
  * SHADOW TABLE ROUTINES
@@ -249,6 +249,13 @@ shadow_table_app_to_shadow(umbra_map_t *map, app_pc app_addr)
             shadow_table_get_block_offset(map, app_addr));
 }
 
+int
+umbra_num_scratch_regs_for_translation_arch(void)
+{
+    return 1;
+}
+
+#if defined(X86)
 /* code sequence:
  * %reg_index   = %reg_addr;
  * %reg_index >>= 16;
@@ -256,22 +263,19 @@ shadow_table_app_to_shadow(umbra_map_t *map, app_pc app_addr)
  * %reg_addr   += table[%reg_index];
  */
 static void
-shadow_table_insert_app_to_shadow(void *drcontext,
-                                  umbra_map_t *map,
-                                  instrlist_t *ilist,
-                                  instr_t *where,
-                                  reg_id_t reg_addr,
-                                  reg_id_t reg_index)
+shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
+                                       instrlist_t *ilist, instr_t *where,
+                                       reg_id_t reg_addr, reg_id_t reg_idx)
 {
-#ifdef X86
     uint disp;
+
     /* %reg_index = %reg_addr */
     PRE(ilist, where, XINST_CREATE_move(drcontext,
-                                        opnd_create_reg(reg_index),
+                                        opnd_create_reg(reg_idx),
                                         opnd_create_reg(reg_addr)));
     /* %reg_index >>= 16 */
     PRE(ilist, where, INSTR_CREATE_shr(drcontext,
-                                       opnd_create_reg(reg_index),
+                                       opnd_create_reg(reg_idx),
                                        OPND_CREATE_INT8(APP_BLOCK_BITS)));
     /* We assume that the addr is aligned and won't keep the offset in byte. */
     if (UMBRA_MAP_SCALE_IS_DOWN(map->options.scale)) {
@@ -291,14 +295,74 @@ shadow_table_insert_app_to_shadow(void *drcontext,
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
                                        opnd_create_reg(reg_addr),
                                        opnd_create_base_disp(REG_NULL,
-                                                             reg_index,
+                                                             reg_idx,
                                                              sizeof(ptr_int_t),
                                                              disp,
                                                              OPSZ_PTR)));
-#elif defined(ARM)
-    /* FIXME i#1726: port to ARM by adding more XINST_CREATE_ routines */
-#endif
 }
+#elif defined(ARM)
+/* code sequence:
+ * %reg_idx   = table
+ * %reg_idx  += (%reg_addr >> 14)
+ * %reg_idx  &= 0xfffffffc
+ * %reg_idx   = 0x0(%reg_idx)
+ *
+ * %reg_addr  >>= map->scale
+ * %reg_addr   += %reg_idx
+ */
+static void
+shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
+                                       instrlist_t *ilist, instr_t *where,
+                                       reg_id_t reg_addr, reg_id_t reg_idx)
+{
+    /* %reg_idx = table */
+    instrlist_insert_mov_immed_ptrsz(drcontext, (uint)(map->shadow_table),
+                                     opnd_create_reg(reg_idx), ilist, where,
+                                     NULL, NULL);
+
+    /* %reg_idx += (%reg_addr >> 14) */
+    PRE(ilist, where, INSTR_CREATE_add_shimm(drcontext,
+                                             opnd_create_reg(reg_idx),
+                                             opnd_create_reg(reg_idx),
+                                             opnd_create_reg(reg_addr),
+                                             OPND_CREATE_INT(DR_SHIFT_LSR),
+                                             OPND_CREATE_INT(14)));
+
+    /* Can't specify a bitmask of 0xfffffffc, so instead we use its inverse, BIC.
+     * %reg_idx &= 0xfffffffc
+     */
+    PRE(ilist, where, INSTR_CREATE_bic(drcontext,
+                                       opnd_create_reg(reg_idx),
+                                       opnd_create_reg(reg_idx),
+                                       OPND_CREATE_INT8(0x03)));
+
+    /* %reg_idx = 0x0(%reg_idx) */
+    PRE(ilist, where, XINST_CREATE_load(drcontext,
+                                        opnd_create_reg(reg_idx),
+                                        OPND_CREATE_MEMPTR(reg_idx, 0)));
+
+    /* %reg_addr >>= map->scale */
+    if (UMBRA_MAP_SCALE_IS_DOWN(map->options.scale)) {
+        PRE(ilist, where, INSTR_CREATE_lsr(drcontext,
+                                           opnd_create_reg(reg_addr),
+                                           opnd_create_reg(reg_addr),
+                                           OPND_CREATE_INT8(map->shift)));
+    } else {
+        DR_ASSERT(UMBRA_MAP_SCALE_IS_UP(map->options.scale));
+        PRE(ilist, where, INSTR_CREATE_lsl(drcontext,
+                                           opnd_create_reg(reg_addr),
+                                           opnd_create_reg(reg_addr),
+                                           OPND_CREATE_INT8(map->shift)));
+    }
+
+    /* %reg_addr += %reg_idx */
+    PRE(ilist, where, XINST_CREATE_add(drcontext,
+                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_idx)));
+}
+#else
+# error NYI
+#endif
 
 static bool
 shadow_table_is_in_default_block(umbra_map_t *map, byte *shadow_addr,
@@ -405,7 +469,7 @@ shadow_table_init(umbra_map_t *map)
 {
     uint i;
     LOG(UMBRA_VERBOSE, "shadow_table_init\n");
-    if (static_shadow_table_is_used) {
+    if (static_shadow_table_unused) {
         map->shadow_table = nonheap_alloc(SHADOW_TABLE_SIZE,
                                           DR_MEMPROT_READ | DR_MEMPROT_WRITE,
                                           HEAPSTAT_SHADOW);
@@ -809,12 +873,6 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
     return DRMF_SUCCESS;
 }
 
-int
-umbra_num_scratch_regs_for_translation_arch(void)
-{
-    return 1;
-}
-
 drmf_status_t
 umbra_insert_app_to_shadow_arch(void *drcontext,
                                 umbra_map_t *map,
@@ -824,10 +882,11 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                 reg_id_t *scratch_regs,
                                 int num_scratch_regs)
 {
-    if (num_scratch_regs < 1 || scratch_regs == NULL)
+    if (num_scratch_regs < umbra_num_scratch_regs_for_translation_arch() ||
+        scratch_regs == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    shadow_table_insert_app_to_shadow(drcontext, map, ilist, where,
-                                      addr_reg, scratch_regs[0]);
+    shadow_table_insert_app_to_shadow_arch(drcontext, map, ilist, where,
+                                           addr_reg, scratch_regs[0]);
     return DRMF_SUCCESS;
 }
 
