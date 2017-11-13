@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2527,6 +2527,57 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN12,0},"NtUserSetProcessDpiAwarenessContext", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN12,0},"NtUserSetProcessInteractionFlags", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN12,0},"NtUserSystemParametersInfoForDpi", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    /* Added in Windows 10 1703 */
+    /* FIXME i#1750: fill in details */
+    {{WIN13,0},"NtDCompositionCommitSynchronizationObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtDCompositionCreateSharedVisualHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtDCompositionSetChildRootVisual", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITActivateInputProcessing", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITBindInputTypeToMonitors", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITCoreMsgKGetConnectionHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITCoreMsgKOpenConnectionTo", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITCoreMsgKSend", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITDeactivateInputProcessing", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITDisableMouseIntercept", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITEnableMouseIntercept", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITSetInputCallbacks", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITSynthesizeMouseInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITSynthesizeMouseWheel", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITSynthesizeTouchInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITUpdateInputGlobals", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtMITWaitForMultipleObjectsEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMAreSiblingDevices", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMDeviceIoControl", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMFreeInputBuffer", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMGetDevicePreparsedData", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMGetDeviceProperties", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMGetDevicePropertiesLockfree", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMGetPhysicalDeviceRect", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMGetSourceProcessId", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMOnPnpNotification", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMOnTimerNotification", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMReadInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMRegisterForInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMSetTestModeStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtRIMUnregisterForInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtSetCompositionSurfaceBufferUsage", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserBeginLayoutUpdate", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserCompositionInputSinkViewInstanceIdFromPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserConfirmResizeCommit", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserEnableResizeLayoutSynchronization", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserEnableWindowGDIScaledDpiMessage", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserEnableWindowResizeOptimization", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserFunctionalizeDisplayConfig", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserGetInteractiveCtrlSupportedWaveforms", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserGetResizeDCompositionSynchronizationObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserInitializeGenericHidInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserInitializePointerDeviceInjectionEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserInjectGenericHidInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserIsResizeLayoutSynchronizationEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserIsWindowGDIScaledDpiMessageEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserLockCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserProcessInkFeedbackCommand", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN13,0},"NtUserSetDialogControlDpiChangeBehavior", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_USER32_SYSCALLS \
