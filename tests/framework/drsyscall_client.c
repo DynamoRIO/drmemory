@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -256,11 +256,11 @@ test_static_queries(void)
     res = drsys_name_to_syscall("NtContinueBogus", &syscall);
     ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_syscall should have failed");
     /* test secondary */
-    if (drsys_name_to_syscall("NtUserCallOneParam.RELEASEDC", &syscall) != DRMF_SUCCESS)
+    if (drsys_name_to_syscall("NtUserCallOneParam.MESSAGEBEEP", &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_name_to_syscall failed");
     res = drsys_syscall_number(syscall, &num);
     ASSERT(res == DRMF_SUCCESS && num.secondary > 0, "drsys_syscall_number failed");
-    if (drsys_name_to_syscall("RELEASEDC", &syscall) != DRMF_SUCCESS)
+    if (drsys_name_to_syscall("MESSAGEBEEP", &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_name_to_syscall failed");
     res = drsys_syscall_number(syscall, &num);
     ASSERT(res == DRMF_SUCCESS && num.secondary > 0, "drsys_syscall_number failed");

@@ -3535,6 +3535,12 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN13,0},"NtLoadHotPatch", UNKNOWN, RNTST, 2, },
     {{WIN13,0},"NtQueryAuxiliaryCounterFrequency", UNKNOWN, RNTST, 1, },
     {{WIN13,0},"NtQueryInformationByName", UNKNOWN, RNTST, 5, },
+    /* Added in Windows 10 1709 */
+    /* FIXME i#1750: fill in details */
+    {{WIN14,0},"NtCallEnclave", UNKNOWN, RNTST, 4, },
+    {{WIN14,0},"NtNotifyChangeDirectoryFileEx", UNKNOWN, RNTST, 10, },
+    {{WIN14,0},"NtQueryDirectoryFileEx", UNKNOWN, RNTST, 10, },
+    {{WIN14,0},"NtTerminateEnclave", UNKNOWN, RNTST, 2, },
 };
 
 #define NUM_NTDLL_SYSCALLS \

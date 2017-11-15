@@ -2578,6 +2578,32 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN13,0},"NtUserLockCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN13,0},"NtUserProcessInkFeedbackCommand", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN13,0},"NtUserSetDialogControlDpiChangeBehavior", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    /* Added in Windows 10 1709 */
+    /* FIXME i#1750: fill in details */
+    {{WIN14,0},"NtDWMBindCursorToOutputConfig", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtDWMCommitInputSystemOutputConfig", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtDWMSetCursorOrientation", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtDWMSetInputSystemOutputConfig", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtFlipObjectAddPoolBuffer", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtFlipObjectCreate", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtFlipObjectOpen", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtFlipObjectRemovePoolBuffer", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtMITGetCursorUpdateHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtRIMEnableMonitorMappingForDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserCreateEmptyCursorObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserGetActiveProcessesDpis", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserGetCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserGetDpiForCurrentProcess", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserGetHDevName", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserMsgWaitForMultipleObjectsEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserReleaseDC", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserSetCursorPos", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserSetDesktopColorTransform", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserSetTargetForResourceBrokering", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserShowCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserStopAndEndInertia", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserWOWCleanup", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtUserWindowFromDC", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_USER32_SYSCALLS \

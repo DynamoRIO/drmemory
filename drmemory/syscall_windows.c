@@ -61,7 +61,7 @@ static drsys_sysnum_t sysnum_UserDestroyCursor = {-1,0};
 static drsys_sysnum_t sysnum_UserDestroyInputContext = {-1,0};
 static drsys_sysnum_t sysnum_UserDestroyMenu = {-1,0};
 static drsys_sysnum_t sysnum_UserDestroyWindow = {-1,0};
-static drsys_sysnum_t sysnum_UserCallOneParam_RELEASEDC = {-1,0};
+static drsys_sysnum_t sysnum_UserReleaseDC = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteColorSpace = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteColorTransform = {-1,0};
@@ -83,7 +83,7 @@ static drsys_sysnum_t sysnum_GdiSelectBitmap = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectFont = {-1, 0};
 /* i#1386: mismatch between system call type and handle type */
 /* syscall added above:
- * sysnum_UserCallOneParam_RELEASEDC
+ * sysnum_UserReleaseDC
  * sysnum_UserGetThreadDesktop
  */
 /* To support handle usage check in the future, we may want to record
@@ -186,9 +186,13 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
                false/*reqd*/);
     get_sysnum("NtUserDestroyMenu", &sysnum_UserDestroyMenu, false/*reqd*/);
     get_sysnum("NtUserDestroyWindow", &sysnum_UserDestroyWindow, false/*reqd*/);
-    get_sysnum("NtUserCallOneParam.RELEASEDC",
-               &sysnum_UserCallOneParam_RELEASEDC,
-               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    if (!get_sysnum("NtUserCallOneParam.RELEASEDC",
+                    &sysnum_UserReleaseDC,
+                    get_windows_version() <= DR_WINDOWS_VERSION_2000 ||
+                    get_windows_version() > DR_WINDOWS_VERSION_10_1703)) {
+        get_sysnum("NtUserReleaseDC", &sysnum_UserReleaseDC,
+                   get_windows_version() <= DR_WINDOWS_VERSION_10_1703);
+    }
     get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtGdiDeleteColorSpace", &sysnum_GdiDeleteColorSpace,
@@ -441,7 +445,7 @@ syscall_deletes_handle(void *drcontext, drsys_sysnum_t sysnum)
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyInputContext) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyMenu) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyWindow) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserReleaseDC) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserCloseDesktop) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserCloseWindowStation) ||
         drsys_sysnums_equal(&sysnum, &sysnum_GdiDeleteObjectApp) ||
@@ -598,7 +602,7 @@ syscall_handle_type(drsys_syscall_type_t drsys_type, drsys_sysnum_t sysnum)
 {
     if (drsys_type == DRSYS_SYSCALL_TYPE_USER) {
         if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetDC) ||
-            drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserReleaseDC) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserGetWindowDC))
             return HANDLE_TYPE_GDI;
         if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetProcessWindowStation) ||
