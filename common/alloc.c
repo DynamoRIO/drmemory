@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -96,7 +96,6 @@ static int sysnum_mapcmf = -1;
 static int sysnum_munmap = -1;
 static int sysnum_valloc = -1;
 static int sysnum_vfree = -1;
-static int sysnum_cbret = -1;
 int sysnum_continue = -1;
 int sysnum_setcontext = -1;
 int sysnum_RaiseException = -1;
@@ -148,19 +147,11 @@ handle_alloc_post(void *wrapcxt, void *user_data);
 
 #ifdef WINDOWS
 static void
-alloc_wrap_exception(void *wrapcxt, void OUT **user_data);
+alloc_handle_exception(void *drcontext);
 
 static void
-alloc_wrap_Ki(void *wrapcxt, void OUT **user_data);
+alloc_handle_continue(void *drcontext);
 #endif
-
-static dr_emit_flags_t
-alloc_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                        bool for_trace, bool translating, OUT void **user_data);
-
-static dr_emit_flags_t
-alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
-                      bool for_trace, bool translating, void *user_data);
 
 static bool
 malloc_lock_held_by_self(void);
@@ -3050,6 +3041,17 @@ malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info OUT)
     info->client_data = e->data;
 }
 
+void
+alloc_kernel_xfer(void *drcontext, const dr_kernel_xfer_info_t *info)
+{
+#ifdef WINDOWS
+    if (info->type == DR_XFER_EXCEPTION_DISPATCHER)
+        alloc_handle_exception(drcontext);
+    else if (info->type == DR_XFER_CONTINUE)
+        alloc_handle_continue(drcontext);
+#endif
+}
+
 /* If track_allocs is false, only callbacks and callback returns are tracked.
  * Else: if track_heap is false, only syscall allocs are tracked;
  *       else, syscall allocs and mallocs are tracked.
@@ -3057,15 +3059,6 @@ malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info OUT)
 void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
-    drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.alloc.insert",
-                                   /* must go before CLS exit and after CLS entry */
-                                   DRMGR_PRIORITY_NAME_CLS_EXIT,
-                                   DRMGR_PRIORITY_NAME_CLS_ENTRY,
-                                   DRMGR_PRIORITY_INSERT_ALLOC};
-    if (!drmgr_register_bb_instrumentation_event(alloc_event_bb_analysis,
-                                                 alloc_event_bb_insert, &pri_insert))
-        ASSERT(false, "drmgr registration failed");
-
     ASSERT(ops_size <= sizeof(alloc_ops), "option struct too large");
     memcpy(&alloc_ops, ops, ops_size);
     ASSERT(alloc_ops.track_allocs || !alloc_ops.track_heap,
@@ -3118,8 +3111,15 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     }
 #endif
 
-    if (!alloc_ops.track_allocs)
+    if (!alloc_ops.track_allocs) {
         return;
+    }
+
+    /* We want alloc_handle_continue to be late so users can call is_in_seh(). */
+    drmgr_priority_t pri_xfer = {sizeof(pri_xfer), "drmemory.alloc.xfer",
+                                 NULL, NULL, 500};
+    if (!drmgr_register_kernel_xfer_event_ex(alloc_kernel_xfer, &pri_xfer))
+        ASSERT(false, "xfer event registration failed");
 
     /* set up the per-malloc API */
     if (alloc_ops.replace_malloc)
@@ -3136,6 +3136,8 @@ alloc_exit(void)
         hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
         dr_mutex_destroy(alloc_routine_lock);
     }
+
+    drmgr_unregister_kernel_xfer_event(alloc_kernel_xfer);
 
     if (!alloc_ops.track_allocs)
         return;
@@ -3197,38 +3199,8 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
         return;
 
     if (stri_eq(modname, "ntdll.dll")) {
-        app_pc addr_KiCallback = (app_pc)
-            dr_get_proc_address(info->handle, "KiUserCallbackDispatcher");
-        ASSERT(addr_KiCallback != NULL, "can't find Ki routine");
-        if (!drwrap_wrap_ex(addr_KiCallback, alloc_wrap_Ki, NULL, (void*)1, 0))
-            ASSERT(false, "failed to wrap");
         if (alloc_ops.track_allocs) {
-            app_pc addr_KiAPC, addr_KiLdrThunk, addr_KiException, addr_KiRaise;
-            addr_KiAPC = (app_pc) dr_get_proc_address(info->handle,
-                                                      "KiUserApcDispatcher");
-            addr_KiLdrThunk = (app_pc) dr_get_proc_address(info->handle,
-                                                           "LdrInitializeThunk");
-            addr_KiException = (app_pc) dr_get_proc_address(info->handle,
-                                                            "KiUserExceptionDispatcher");
-            addr_KiRaise = (app_pc) dr_get_proc_address(info->handle,
-                                                        "KiRaiseUserExceptionDispatcher");
-            /* Assuming that KiUserCallbackExceptionHandler,
-             * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
-             * entered from the kernel.
-             */
-            ASSERT(addr_KiAPC != NULL && addr_KiLdrThunk != NULL &&
-                   addr_KiException != NULL && addr_KiRaise != NULL,
-                   "can't find Ki routine");
-            if (!drwrap_wrap_ex(addr_KiAPC, alloc_wrap_Ki, NULL, (void*)0, 0) ||
-                !drwrap_wrap(addr_KiException, alloc_wrap_exception, NULL) ||
-                !drwrap_wrap_ex(addr_KiRaise, alloc_wrap_Ki, NULL, (void*)0, 0))
-                ASSERT(false, "failed to wrap");
-            /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
-             * there via APC: only on Vista+ is it a "Ki" routine
-             */
-            if (running_on_Vista_or_later() &&
-                !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
-                ASSERT(false, "failed to wrap");
+            /* We no longer need to wrap Ki routines: we use event_kernel_xfer now. */
 
             /* FIXME i#1153: watch NtWow64AllocateVirtualMemory64 on win8 */
             get_primary_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
@@ -3236,7 +3208,6 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             get_primary_sysnum("NtAllocateVirtualMemory", &sysnum_valloc, false);
             get_primary_sysnum("NtFreeVirtualMemory", &sysnum_vfree, false);
             get_primary_sysnum("NtContinue", &sysnum_continue, false);
-            get_primary_sysnum("NtCallbackReturn", &sysnum_cbret, false);
             get_primary_sysnum("NtSetContextThread", &sysnum_setcontext, false);
             get_primary_sysnum("NtMapCMFModule", &sysnum_mapcmf,
                                !running_on_Win7_or_later());
@@ -4400,15 +4371,6 @@ malloc_wrap_init(void)
 /*
  ***************************************************************************/
 
-#ifdef WINDOWS
-static void
-handle_cbret(bool syscall)
-{
-    void *drcontext = dr_get_current_drcontext();
-    client_handle_cbret(drcontext);
-}
-#endif
-
 bool
 alloc_syscall_filter(void *drcontext, int sysnum)
 {
@@ -4418,7 +4380,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
 #ifdef WINDOWS
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
-        sysnum == sysnum_cbret || sysnum == sysnum_continue ||
+        sysnum == sysnum_continue ||
         sysnum == sysnum_RaiseException ||
         sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
         sysnum == sysnum_UserConnectToServer ||
@@ -4456,7 +4418,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 #ifdef WINDOWS
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
-        sysnum == sysnum_cbret || sysnum == sysnum_continue ||
+        sysnum == sysnum_continue ||
         sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
         sysnum == sysnum_SetInformationProcess) {
         HANDLE process;
@@ -4570,13 +4532,6 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                                        allocation_size(pt->munmap_base, NULL), mc);
                 }
             }
-        } else if (sysnum == sysnum_cbret) {
-            handle_cbret(true/*syscall*/);
-        } else if (sysnum == sysnum_continue) {
-            client_handle_continue(drcontext, mc);
-            if (pt->in_seh)
-                pt->in_seh = false;
-            /* else, an APC */
         }
     }
 #else /* WINDOWS */
@@ -6721,11 +6676,9 @@ alloc_hook(void *wrapcxt, INOUT void **user_data)
 
 #ifdef WINDOWS
 static void
-alloc_wrap_exception(void *wrapcxt, void OUT **user_data)
+alloc_handle_exception(void *drcontext)
 {
-    void *drcontext = dr_get_current_drcontext();
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
-    dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR); /* don't need xmm */
     /* XXX PR 408545: preserve pre-fault values and watch NtContinue and
      * longjmp (unless longjmp from top handler still invokes
      * NtContinue) and determine whether returning to heap routine.  For
@@ -6737,25 +6690,15 @@ alloc_wrap_exception(void *wrapcxt, void OUT **user_data)
      */
     LOG(2, "Exception in app\n");
     pt->in_seh = true;
-    client_handle_exception(drcontext, mc);
-    client_handle_Ki(drcontext, drwrap_get_func(wrapcxt), mc, false/*!cb*/);
 }
 
 static void
-alloc_wrap_Ki(void *wrapcxt, void OUT **user_data)
+alloc_handle_continue(void *drcontext)
 {
-    app_pc pc = drwrap_get_func(wrapcxt);
-    void *drcontext = dr_get_current_drcontext();
-    dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR); /* don't need xmm */
-    bool is_cb = (bool) *user_data;
-    ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    /* our per-thread data is private per callback so we're already handling
-     * cbs (though we don't expect callbacks to interrupt heap routines).
-     * we handle exceptions interrupting heap routines here.
-     */
-    client_handle_Ki(drcontext, pc, mc, is_cb);
-    if (is_cb)
-        client_handle_callback(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
+    if (pt->in_seh)
+        pt->in_seh = false;
+    /* else, an APC */
 }
 #endif /* WINDOWS */
 
@@ -7069,31 +7012,6 @@ alloc_exiting_alloc_routine(app_pc pc)
      * wrap postcalls are hit while executing new code in allocators.
      */
     return drwrap_is_post_wrap(pc);
-}
-
-static dr_emit_flags_t
-alloc_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                        bool for_trace, bool translating, OUT void **user_data)
-{
-    /* Nothing anymore (used to have i#690 mod_pending_tree check here) */
-    return DR_EMIT_DEFAULT;
-}
-
-static dr_emit_flags_t
-alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
-                      bool for_trace, bool translating, void *user_data)
-{
-    app_pc pc = instr_get_app_pc(inst);
-    if (pc == NULL)
-        return DR_EMIT_DEFAULT;
-#ifdef WINDOWS
-    if (instr_get_opcode(inst) == OP_int &&
-        opnd_get_immed_int(instr_get_src(inst, 0)) == CBRET_INTERRUPT_NUM) {
-        dr_insert_clean_call(drcontext, bb, inst, (void *)handle_cbret, false,
-                             1, OPND_CREATE_INT32(0/*not syscall*/));
-    }
-#endif
-    return DR_EMIT_DEFAULT;
 }
 
 /***************************************************************************

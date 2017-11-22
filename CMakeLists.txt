@@ -807,7 +807,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "6.1.17042")
+set(DynamoRIO_VERSION_REQUIRED "6.2.17499")
 
 set(DR_install_dir "dynamorio")
 

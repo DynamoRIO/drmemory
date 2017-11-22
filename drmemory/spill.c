@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1347,13 +1347,16 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
 {
     instr_t *inst = instrlist_first(bb);
 #ifdef DEBUG
-    app_pc prev_pc = dr_fragment_app_pc(tag);
-    ASSERT(prev_pc != NULL, "bb tag must not be NULL");
+    /* We look at instr pc, not the tag, to handle displaced code such
+     * as for the vsyscall hook.
+     */
+    app_pc prev_pc = instr_get_app_pc(instrlist_first_app(bb));
+    ASSERT(prev_pc != NULL, "bb first app pc must not be NULL");
     /* i#260 and i#1466: bbs must be contiguous */
     if (inst != NULL && whole_bb_spills_enabled() &&
         /* bi->is_repstr_to_loop is set in app2app and may mess up the instr pc */
         !bi->is_repstr_to_loop) {
-        for (; inst != NULL; inst = instr_get_next(inst)) {
+        for (; inst != NULL; inst = instr_get_next_app(inst)) {
             app_pc cur_pc = instr_get_app_pc(inst);
             if (cur_pc == NULL)
                 continue;
