@@ -69,7 +69,7 @@ static const char * const sysnum_names[] = {
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
-static const int win10_1703_x64_sysnums[] = {
+static const int win10_1709_x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
      w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
@@ -78,7 +78,7 @@ static const int win10_1703_x64_sysnums[] = {
 #undef USER32
 };
 
-static const int win10_1703_wow_sysnums[] = {
+static const int win10_1709_wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
      w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
@@ -87,7 +87,7 @@ static const int win10_1703_wow_sysnums[] = {
 #undef USER32
 };
 
-static const int win10_1703_x86_sysnums[] = {
+static const int win10_1709_x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
      w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\

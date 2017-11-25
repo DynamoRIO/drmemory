@@ -230,5 +230,5 @@ USERCALL(NtUserCallTwoParam, SETPHYSCURSORPOS              , NONE, NONE, NONE, 0
 USERCALL(NtUserCallTwoParam, UNHOOKWINDOWSHOOK             , NONE, 0x70, 0x70, 0x75, 0x76, 0x76, 0x7d, 0x82, 0x89, 0x8a, 0x8e, 0x95, 0x8d)
 USERCALL(NtUserCallTwoParam, WOWCLEANUP                    , NONE, 0x71, 0x71, 0x76, 0x77, 0x77, 0x7e, 0x83, 0x8a, 0x8b, 0x8f, 0x96, NONE)
 USERCALL(NtUserCallTwoParam, ENABLESHELLWINDOWMGT          , NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, 0x8b, 0x8c, 0x90, 0x97, 0x8e)
-USERCALL(NtUserCallTwoParam, SETCITINFO,                   , NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, 0x8b, 0x8c, 0x90, 0x97, 0x8f)
+USERCALL(NtUserCallTwoParam, SETCITINFO                    , NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, 0x8b, 0x8c, 0x90, 0x97, 0x8f)
 USERCALL(NtUserCallTwoParam, SCALESYSTEMMETRICFORDPI       , NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, 0x8d, 0x91, 0x98, 0x90)
