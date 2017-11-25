@@ -138,7 +138,7 @@ on_win8_or_later(void)
 static bool
 on_supported_version(void)
 {
-    return (win_ver.version <= DR_WINDOWS_VERSION_10_1703);
+    return (win_ver.version <= DR_WINDOWS_VERSION_10_1709);
 }
 #elif defined(MACOS)
 static bool

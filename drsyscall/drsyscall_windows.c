@@ -61,17 +61,46 @@ static bool syscall_numbers_unknown;
 
 static const char * const sysnum_names[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
-      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-      w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   #n,
+     w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   #n,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
+static const int win10_1709_x64_sysnums[] = {
+#define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
+     w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w14x64,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
+static const int win10_1709_wow_sysnums[] = {
+#define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
+     w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w14wow,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
+static const int win10_1709_x86_sysnums[] = {
+#define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
+     w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w14x86,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
 static const int win10_1703_x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w13x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w13x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -79,7 +108,8 @@ static const int win10_1703_x64_sysnums[] = {
 static const int win10_1703_wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w13wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w13wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -87,7 +117,8 @@ static const int win10_1703_wow_sysnums[] = {
 static const int win10_1703_x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w13x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w13x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -95,7 +126,8 @@ static const int win10_1703_x86_sysnums[] = {
 static const int win10_1607_x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w12x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w12x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -103,7 +135,8 @@ static const int win10_1607_x64_sysnums[] = {
 static const int win10_1607_wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w12wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w12wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -111,7 +144,8 @@ static const int win10_1607_wow_sysnums[] = {
 static const int win10_1607_x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w12x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w12x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -119,7 +153,8 @@ static const int win10_1607_x86_sysnums[] = {
 static const int win10_1511_x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w11x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w11x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -127,7 +162,8 @@ static const int win10_1511_x64_sysnums[] = {
 static const int win10_1511_wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w11wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w11wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -135,7 +171,8 @@ static const int win10_1511_wow_sysnums[] = {
 static const int win10_1511_x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w11x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w11x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -143,7 +180,8 @@ static const int win10_1511_x86_sysnums[] = {
 static const int win10x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w10x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w10x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -151,7 +189,8 @@ static const int win10x64_sysnums[] = {
 static const int win10wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w10wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w10wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -159,7 +198,8 @@ static const int win10wow_sysnums[] = {
 static const int win10x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w10x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w10x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -167,7 +207,8 @@ static const int win10x86_sysnums[] = {
 static const int win81x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w81x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w81x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -175,7 +216,8 @@ static const int win81x64_sysnums[] = {
 static const int win81wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w81wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w81wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -183,7 +225,8 @@ static const int win81wow_sysnums[] = {
 static const int win81x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w81x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w81x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -191,7 +234,8 @@ static const int win81x86_sysnums[] = {
 static const int win8x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w8x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w8x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -199,7 +243,8 @@ static const int win8x64_sysnums[] = {
 static const int win8wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w8wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w8wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -207,7 +252,8 @@ static const int win8wow_sysnums[] = {
 static const int win8x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w8x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w8x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -215,7 +261,8 @@ static const int win8x86_sysnums[] = {
 static const int win7x64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w7x64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w7x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -223,7 +270,8 @@ static const int win7x64_sysnums[] = {
 static const int win7wow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w7wow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w7wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -231,7 +279,8 @@ static const int win7wow_sysnums[] = {
 static const int win7x86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w7x86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w7x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -239,7 +288,8 @@ static const int win7x86_sysnums[] = {
 static const int vistax64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   vx64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   vx64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -247,7 +297,8 @@ static const int vistax64_sysnums[] = {
 static const int vistawow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   vwow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   vwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -255,7 +306,8 @@ static const int vistawow_sysnums[] = {
 static const int vistax86_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   vx86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   vx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -263,7 +315,8 @@ static const int vistax86_sysnums[] = {
 static const int winXPx64_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   xp64,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   xp64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -271,7 +324,8 @@ static const int winXPx64_sysnums[] = {
 static const int winXPwow_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   xpwow,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   xpwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -279,7 +333,8 @@ static const int winXPwow_sysnums[] = {
 static const int win2003_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w2k3,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w2k3,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -287,7 +342,8 @@ static const int win2003_sysnums[] = {
 static const int winXP_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   xpx86,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   xpx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -295,7 +351,8 @@ static const int winXP_sysnums[] = {
 static const int win2K_sysnums[] = {
 #define USER32(n, w2K, xpx86, w2k3, xpwow, xp64, vx86, vwow, vx64, w7x86, w7wow, w7x64,\
      w8x86, w8wow, w8x64, w81x86, w81wow, w81x64, w10x86, w10wow, w10x64,\
-     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64)   w2K,
+     w11x86, w11wow, w11x64, w12x86, w12wow, w12x64, w13x86, w13wow, w13x64,\
+     w14x86, w14wow, w14x64)   w2K,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -697,11 +754,15 @@ drsyscall_os_init(void *drcontext)
     if (!dr_get_os_version(&win_ver)) {
         ASSERT(false, "unable to get version");
         /* guess at latest win10 */
-        win_ver.version = DR_WINDOWS_VERSION_10_1703;
+        win_ver.version = DR_WINDOWS_VERSION_10_1709;
         win_ver.service_pack_major = 0;
         win_ver.service_pack_minor = 0;
     }
     switch (win_ver.version) {
+    case DR_WINDOWS_VERSION_10_1709:
+        sysnums = IF_X64_ELSE(win10_1709_x64_sysnums,
+                              wow64 ? win10_1709_wow_sysnums : win10_1709_x86_sysnums);
+        break;
     case DR_WINDOWS_VERSION_10_1703:
         sysnums = IF_X64_ELSE(win10_1703_x64_sysnums,
                               wow64 ? win10_1703_wow_sysnums : win10_1703_x86_sysnums);

@@ -74,6 +74,9 @@ my %numx2index = (
     'w13x86' => 26,
     'w13wow' => 27,
     'w13x64' => 28,
+    'w14x86' => 29,
+    'w14wow' => 30,
+    'w14x64' => 31,
     );
 
 # Maps OS labels in drsyscall_callx.h to our array from drsyscall_usercallx.h
@@ -90,6 +93,7 @@ my %callx2indices = (
     'w11'  => [$numx2index{'w11x86'}, $numx2index{'w11wow'}, $numx2index{'w11x64'}],
     'w12'  => [$numx2index{'w12x86'}, $numx2index{'w12wow'}, $numx2index{'w12x64'}],
     'w13'  => [$numx2index{'w13x86'}, $numx2index{'w13wow'}, $numx2index{'w13x64'}],
+    'w14'  => [$numx2index{'w14x86'}, $numx2index{'w14wow'}, $numx2index{'w14x64'}],
     );
 
 my %os_numx2flavor_map = (
@@ -122,6 +126,9 @@ my %os_numx2flavor_map = (
     'w13x86' => 'x86',
     'w13wow' => 'wow64',
     'w13x64' => 'x64',
+    'w14x86' => 'x86',
+    'w14wow' => 'wow64',
+    'w14x64' => 'x64',
     );
 
 my ($scriptname,$scriptpath,$suffix) = fileparse($0);
@@ -197,6 +204,7 @@ while (<IN>) {
     }
 }
 close(IN);
+die "Failed to parse $callx_file\n" unless ($callx_count > 0);
 
 my $fh;
 foreach my $flavor (keys %outfile_names) {

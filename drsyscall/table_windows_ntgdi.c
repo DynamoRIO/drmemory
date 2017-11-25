@@ -3200,6 +3200,27 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN13,0},"NtGdiScaleRgn", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN13,0},"NtGdiScaleValues", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN13,0},"NtGdiSetPrivateDeviceGammaRamp", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    /* Added in Windows 10 1709 */
+    /* FIXME i#1750: fill in details */
+    {{WIN14,0},"NtGdiDdDDIAddSurfaceToSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDICreateBundleObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDICreateProtectedSession", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIDDisplayEnum", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIDestroyProtectedSession", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIDispMgrCreate", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIDispMgrSourceOperation", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIDispMgrTargetOperation", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIExtractBundleObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIGetProcessDeviceLostSupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIOpenProtectedSessionFromNtHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIPresentRedirected", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIQueryProtectedSessionInfoFromNtHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIQueryProtectedSessionStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIRemoveSurfaceFromSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDISetDeviceLostSupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDISetMonitorColorSpaceTransform", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiDdDDIUnOrderedPresentSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN14,0},"NtGdiEnsureDpiDepDefaultGuiFontForPlateau", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_GDI32_SYSCALLS \
