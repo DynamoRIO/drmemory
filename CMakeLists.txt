@@ -1376,7 +1376,8 @@ if (USE_DRSYMS)
   set(DynamoRIO_RPATH ON)
   configure_DynamoRIO_standalone(${toolname})
   set(DynamoRIO_RPATH ${old_rpath})
-  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib)
+  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib
+    drsyscall_static)
   if (WIN32)
     set_target_properties(${toolname} PROPERTIES
       VERSION ${TOOL_VERSION_NUMBER}

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2016-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -111,7 +111,8 @@ read_sysnum_file(void *drcontext, const char *sysnum_file, module_data_t *ntdll_
      */
     do {
         search = strstr(line, "\nSTART=0x");
-        LOG(SYSCALL_VERBOSE, "syscall file: examining %.16s\n", search+1);
+        LOG(SYSCALL_VERBOSE, "syscall file: examining %.16s\n",
+            search == NULL ? "<null>" : search+1);
         if (search == NULL || search - map > actual_size)
             goto read_sysnum_file_done;
         if (dr_sscanf(search+1, "START=0x%x", &val) != 1)

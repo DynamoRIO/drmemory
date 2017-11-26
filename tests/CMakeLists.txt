@@ -1053,10 +1053,10 @@ if (NOT APPLE AND NOT ARM)
     # our internal tables.
     find_package(Perl)
     if (NOT PERL_FOUND)
-      message(STATUS "Warning: perl not found: disabling syscall file tests")
+      message(STATUS "Warning: perl not found: disabling syscall_file_all test")
     else ()
-      # DrM looks in the bin dir:
-      set(syscall_file_path "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
+      # Place somewhere that DrM won't look by default:
+      set(syscall_file_path "${CMAKE_CURRENT_BINARY_DIR}")
       add_custom_target(syscall_files ALL
         DEPENDS "${syscall_file_path}/syscalls_x86.txt")
       add_custom_command(
@@ -1067,13 +1067,20 @@ if (NOT APPLE AND NOT ARM)
         COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/mksyscalltxt.pl
           ${syscall_file_path}
         VERBATIM)
-      newtest_nobuild(syscall_file app_suite_tests
+      newtest_nobuild(syscall_file_all app_suite_tests
         # Run enough tests to generate some errors w/o accurate syscall info.
         # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
         "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
-        "-no_use_syscall_tables;-ignore_kernel;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-        "-checklevel;1" OFF "")
+        "-no_use_syscall_tables;-ignore_kernel;-syscall_number_path;${syscall_file_path};-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+        "-checklevel;1" OFF "syscall_file")
     endif (NOT PERL_FOUND)
+    # Test auto-generating syscall number files (i#1848):
+    newtest_nobuild(syscall_file_gen app_suite_tests
+      # Run enough tests to generate some errors w/o accurate syscall info.
+      # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
+      "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
+      "-no_use_syscall_tables;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+      "-checklevel;1" OFF "syscall_file")
   endif ()
 endif ()
 

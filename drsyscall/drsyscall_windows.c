@@ -437,10 +437,13 @@ name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw, bool dup_n
         e->name, num.number, num.secondary);
     ok = hashtable_add(&name2num_table, (void *)e->name, (void *)e);
     if (!ok) {
-        /* If we have any more of these, add a flag to drsyscall_numx.h */
-        ASSERT(strcmp(e->name, "GetThreadDesktop") == 0/*i#487*/ ||
-               strstr(e->name, "PREPAREFORLOGOFF") != NULL, /* NoParam vs OneParam */
-               "no dup entries in name2num_table");
+        /* With auto-generated files on a new OS, we may have had a shift from
+         * NtUserCallOneParam.FOO to NtUserFoo (this has happened before:
+         * WindowFromDC, GetKeyboardLayout).  So we downgrade this to just a warning.
+         */
+        if (strcmp(e->name, "GetThreadDesktop") != 0/*i#487*/ &&
+            strstr(e->name, "PREPAREFORLOGOFF") == NULL /* NoParam vs OneParam */)
+            WARN("WARNING: duplicate entry added to name2num_table: %s\n", e->name);
         name2num_entry_free((void *)e);
     }
 }

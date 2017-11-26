@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -26,7 +26,7 @@
 #include "dr_api.h"
 
 bool op_print_stderr = false;
-uint op_verbose_level = 0;
+int op_verbose_level = -1;
 bool op_ignore_asserts = true;
 file_t f_global = INVALID_FILE;
 int tls_idx_util = -1;
@@ -83,6 +83,9 @@ nonheap_free(void *p, size_t size, heapstat_t type)
     dr_nonheap_free(p, size);
 }
 
+#ifdef UNIX
+LINK_ONCE
+#endif
 bool
 safe_read(void *base, size_t size, void *out_buf)
 {
