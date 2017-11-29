@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -29,10 +29,6 @@
 
 #include "callstack.h" /* app_loc_t */
 
-#ifdef UNIX
-extern hashtable_t sighand_table;
-#endif
-
 void
 alloc_drmem_init(void);
 
@@ -43,13 +39,12 @@ bool
 check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
                                bool addr_on_stack, dr_mcontext_t *mc);
 
+void
+event_kernel_xfer(void *drcontext, const dr_kernel_xfer_info_t *info);
+
 #ifdef UNIX
 dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info);
-
-void
-instrument_signal_handler(void *drcontext, instrlist_t *bb, instr_t *inst,
-                          app_pc pc);
 
 bool
 mmap_anon_lookup(byte *addr, byte **start OUT, size_t *size OUT);

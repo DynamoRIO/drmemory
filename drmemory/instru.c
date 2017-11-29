@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1164,13 +1164,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             }
         }
     }
-
-#if defined(UNIX) && defined(TOOL_DR_MEMORY)
-    if (options.shadowing &&
-        hashtable_lookup(&sighand_table, (void*)pc) != NULL) {
-        instrument_signal_handler(drcontext, bb, inst, pc);
-    }
-#endif
 
     if (INSTRUMENT_MEMREFS()) {
         /* We want to spill AFTER any clean call in case it changes mcontext */

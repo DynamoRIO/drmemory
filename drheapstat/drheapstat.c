@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1045,31 +1045,6 @@ client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
 {
     if (options.check_leaks)
         leak_remove_malloc_on_destroy(heap, start, end);
-}
-
-void
-client_handle_cbret(void *drcontext)
-{
-}
-
-void
-client_handle_callback(void *drcontext)
-{
-}
-
-void
-client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
-{
-}
-
-void
-client_handle_exception(void *drcontext, dr_mcontext_t *mc)
-{
-}
-
-void
-client_handle_continue(void *drcontext, dr_mcontext_t *mc)
-{
 }
 #endif /* WINDOWS */
 

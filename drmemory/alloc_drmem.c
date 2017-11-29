@@ -58,10 +58,6 @@
 static hashtable_t alloc_stack_table;
 
 #ifdef UNIX
-/* Track all signal handlers registered by app so we can instrument them */
-#define SIGHAND_HASH_BITS 6
-hashtable_t sighand_table;
-
 /* PR 418629: to determine stack bounds accurately we track anon mmaps */
 static rb_tree_t *mmap_tree;
 static void *mmap_tree_lock; /* maybe rbtree should support internal synch */
@@ -220,7 +216,6 @@ alloc_drmem_init(void)
                       (bool (*)(void*, void*)) packed_callstack_cmp);
 
 #ifdef UNIX
-    hashtable_init(&sighand_table, SIGHAND_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
     mmap_tree = rb_tree_create(NULL);
     mmap_tree_lock = dr_mutex_create();
 #endif
@@ -257,7 +252,6 @@ alloc_drmem_exit(void)
     alloc_exit(); /* must be before deleting alloc_stack_table */
     hashtable_delete_with_stats(&alloc_stack_table, "alloc stack table");
 #ifdef UNIX
-    hashtable_delete(&sighand_table);
     rb_tree_destroy(mmap_tree);
     dr_mutex_destroy(mmap_tree_lock);
 #endif
@@ -1207,51 +1201,14 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 #endif
 
 #ifdef WINDOWS
-void
-client_handle_cbret(void *drcontext)
-{
-    umbra_shadow_memory_info_t info;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    byte *sp;
-    cls_drmem_t *cpt_parent = (cls_drmem_t *)
-        drmgr_get_parent_cls_field(drcontext, cls_idx_drmem);
-    if (cpt_parent == NULL) /* DR took over in middle of callback */
-        return;
-    if (!options.shadowing)
-        return;
-    syscall_handle_cbret(drcontext);
-
-    if (!options.check_stack_bounds)
-        return;
-
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL; /* only need xsp */
-    dr_get_mcontext(drcontext, &mc);
-    sp = (byte *) mc.xsp;
-    LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
-        sp, cpt_parent->pre_callback_esp);
-    LOG(3, "cbret: cpt_parent is "PFX", cpt is "PFX"\n",
-        cpt_parent, drmgr_get_cls_field(drcontext, cls_idx_drmem));
-    umbra_shadow_memory_info_init(&info);
-    for (; sp < cpt_parent->pre_callback_esp; sp++)
-        shadow_set_byte(&info, sp, SHADOW_UNADDRESSABLE);
-}
-
-void
-client_handle_callback(void *drcontext)
-{
-    LOG(2, "Entering windows callback handler\n");
-    syscall_handle_callback(drcontext);
-}
-
-void
-client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
+static void
+handle_Ki(void *drcontext, app_pc pc, byte *new_xsp, bool is_cb)
 {
     /* The kernel has placed some data on the stack.  We assume we're
      * on the same thread stack.  FIXME: check those assumptions by checking
      * default stack bounds.
      */
-    app_pc sp = (app_pc) mc->xsp;
+    app_pc sp = new_xsp;
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
@@ -1273,7 +1230,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
             sp += 4; /* 4 bytes map to one so skip to next */
         else
             sp++;
-        if (sp - (byte *) mc->xsp >= TYPICAL_STACK_MIN_SIZE) {
+        if (sp - new_xsp >= TYPICAL_STACK_MIN_SIZE) {
             ASSERT(false, "kernel-placed data on stack too large: error?");
             break; /* abort */
         }
@@ -1281,7 +1238,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
 
     LOG(2, "Ki routine "PFX": marked stack "PFX"-"PFX" as defined\n",
-        pc, mc->xsp, sp);
+        pc, new_xsp, sp);
 
     if (is_cb) {
         /* drmgr already pushed a new context */
@@ -1296,21 +1253,55 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
     }
 }
 
-void
-client_handle_exception(void *drcontext, dr_mcontext_t *mc)
+static void
+handle_callback(void *drcontext)
+{
+    LOG(2, "Entering windows callback handler\n");
+    syscall_handle_callback(drcontext);
+}
+
+static void
+handle_cbret(void *drcontext, const dr_kernel_xfer_info_t *xfer_info)
+{
+    umbra_shadow_memory_info_t info;
+    byte *sp = (byte *) xfer_info->source_mcontext->xsp;
+    cls_drmem_t *cpt_parent = (cls_drmem_t *)
+        drmgr_get_parent_cls_field(drcontext, cls_idx_drmem);
+    if (cpt_parent == NULL) /* DR took over in middle of callback */
+        return;
+    if (!options.shadowing)
+        return;
+    syscall_handle_cbret(drcontext);
+
+    if (!options.check_stack_bounds)
+        return;
+
+    ASSERT(cpt_parent->pre_callback_esp == (byte *)xfer_info->target_xsp,
+           "cb xsp mismatch");
+    LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
+        sp, cpt_parent->pre_callback_esp);
+    LOG(3, "cbret: cpt_parent is "PFX", cpt is "PFX"\n",
+        cpt_parent, drmgr_get_cls_field(drcontext, cls_idx_drmem));
+    umbra_shadow_memory_info_init(&info);
+    for (; sp < cpt_parent->pre_callback_esp; sp++)
+        shadow_set_byte(&info, sp, SHADOW_UNADDRESSABLE);
+}
+
+static void
+handle_exception(void *drcontext)
 {
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     cpt->heap_critsec = NULL;
 }
 
-void
-client_handle_continue(void *drcontext, dr_mcontext_t *mc)
+static void
+handle_continue(void *drcontext)
 {
+    /* We rely on this running *before* alloc.c's so is_in_seh() is correct. */
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (is_in_seh(drcontext)) {
         cpt->heap_critsec = NULL;
-    }
-    /* else it was an APC */
+    } /* else it was an APC */
 }
 #endif /* WINDOWS */
 
@@ -1418,6 +1409,7 @@ client_pre_syscall(void *drcontext, int sysnum)
     if (!options.check_stack_bounds)
         return;
     if (sysnum == sysnum_continue) {
+        /* XXX: we could move this to the kernel xfer event */
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
         umbra_shadow_memory_info_t info;
         umbra_shadow_memory_info_init(&info);
@@ -1483,110 +1475,7 @@ client_pre_syscall(void *drcontext, int sysnum)
     }
 #else
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-    if (sysnum == IF_MACOS_ELSE(SYS_sigaction, SYS_rt_sigaction)
-        IF_NOT_X64(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
-        /* PR 406333: linux signal delivery.
-         * For delivery: signal event doesn't help us since have to predict
-         * which stack and size of frame: should intercept handler registration
-         * and wait until enter a handler.  Can ignore SIG_IGN and SIG_DFL.
-         */
-        void *handler = NULL;
-# ifdef MACOS
-        if (sysnum == SYS_sigaction) {
-            /* 2nd arg is ptr to struct w/ app handler as 1st field, but libc
-             * trampoline as 2nd field.
-             */
-            safe_read((byte *)syscall_get_param(drcontext, 1) + sizeof(handler),
-                      sizeof(handler), &handler);
-        }
-# else
-        if (sysnum == SYS_rt_sigaction) {
-            /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
-        }
-#  ifdef X86_32
-        else if (sysnum == SYS_sigaction) {
-            /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
-        }
-        else if (sysnum == SYS_signal) {
-            /* 2nd arg is handler */
-            handler = (void *) syscall_get_param(drcontext, 1);
-        }
-#  endif
-# endif
-        if (handler != NULL) {
-            LOG(2, "SYS_rt_sigaction/etc.: new handler "PFX"\n", handler);
-            /* We make a simplifying assumption: handler code is only used for
-             * signal handling.  We could keep a counter and inc on every success
-             * and dec on failure and on change to IGN/DFL and remove when it hits
-             * 0 -- but might have races where a final signal comes in.  We assume
-             * we can leave our instrumentation there and if it is executed
-             * executed for non-signals our check for prior signal event
-             * is good enough to distinguish.
-             */
-            if (handler != SIG_IGN && handler != SIG_DFL)
-                hashtable_add(&sighand_table, (void*)handler, (void*)1);
-        } else {
-            LOG(2, "SYS_rt_sigaction/etc.: bad handler\n");
-        }
-    }
-    else if ((sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigreturn)
-              IF_NOT_X64(|| sysnum == SYS_sigreturn)) &&
-             options.check_stack_bounds) {
-#ifdef LINUX
-        /* PR 406333: linux signal delivery.
-         * On sigreturn, whether altstack or not, invalidate
-         * where frame was.  Either need to record at handler entry the base of
-         * the frame, or at sigreturn determine target esp: the former is
-         * complicated by nested signals and signals that use longjmp, so
-         * we do the latter.
-         *
-         * Longjmp exiting a signal requires no special handling when it
-         * goes up the stack (or down) since we see the xsp assignment.
-         */
-        byte *sp = (byte *)mc.xsp;
-        byte *new_sp;
-        struct sigcontext *sc;
-        if (sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigreturn)) {
-            /* first, skip signum and siginfo ptr to get ucontext ptr */
-            struct ucontext *ucxt;
-            if (safe_read(sp + sizeof(int) + sizeof(struct siginfo*),
-                          sizeof(ucxt), &ucxt)) {
-                sc = (struct sigcontext *) &ucxt->uc_mcontext;
-            } else {
-                LOG(1, "WARNING: can't read sc pointer at sigreturn\n");
-                sc = NULL;
-            }
-        } else {
-            sc = (struct sigcontext *) sp;
-        }
-        if (sc != NULL &&
-            safe_read(&sc->IF_X64_ELSE(rsp, IF_ARM_ELSE(arm_sp, esp)),
-                      sizeof(new_sp), &new_sp)) {
-            byte *unaddr_top = NULL;
-            if (new_sp > sp && (size_t)(new_sp - sp) < MAX_SIGNAL_FRAME_SIZE) {
-                unaddr_top = new_sp;
-            } else if (cpt->sigaltstack != NULL && cpt->sigaltstack > sp &&
-                       (size_t)(cpt->sigaltstack - sp) < cpt->sigaltsize) {
-                /* transitioning from sigaltstack to regular stack */
-                unaddr_top = cpt->sigaltstack;
-            } else {
-                LOG(2, "at sigreturn but new sp "PFX" irregular vs "PFX"\n", new_sp, sp);
-            }
-            if (unaddr_top != NULL) {
-                LOG(2, "at sigreturn: marking frame "PFX"-"PFX" unaddressable\n",
-                    sp, unaddr_top);
-                shadow_set_range(sp, unaddr_top, SHADOW_UNADDRESSABLE);
-            }
-        } else {
-            LOG(1, "WARNING: can't read sc->xsp at sigreturn\n");
-        }
-#else
-        /* FIXME i#1438: add Mac handling */
-#endif
-    }
-    else if (sysnum == SYS_sigaltstack) {
+    if (sysnum == SYS_sigaltstack) {
         /* PR 406333: linux signal delivery */
         stack_t stk;
         cpt->prev_sigaltstack = cpt->sigaltstack;
@@ -1631,19 +1520,7 @@ client_post_syscall(void *drcontext, int sysnum)
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (!options.shadowing)
         return;
-    if (sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigaction)
-        IF_NOT_X64(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
-        if (result != 0) {
-            LOG(2, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
-                  syscall_get_param(drcontext, 1));
-            /* See notes above: if we had a counter we could remove from
-             * sighand_table if there were no successfull registrations --
-             * but we assume handler code is only used for signals so
-             * we just leave in the table and rely on our pre-event check.
-             */
-        }
-    }
-    else if (sysnum == SYS_sigaltstack) {
+    if (sysnum == SYS_sigaltstack) {
         if (result != 0) {
             /* We can't query the OS since DR is hiding the real sigaltstack,
              * so we record the prev value
@@ -1670,7 +1547,7 @@ event_signal_alloc(void *drcontext, dr_siginfo_t *info)
 }
 
 static void
-at_signal_handler(void)
+handle_signal_delivery(void *drcontext, reg_t dst_xsp)
 {
     /* PR 406333: linux signal delivery.
      * Need to know extent of frame: could record xsp in signal event,
@@ -1689,7 +1566,6 @@ at_signal_handler(void)
      * at the very base of a stack and we could walk off onto
      * adjacent memory: we ignore that.
      */
-    void *drcontext = dr_get_current_drcontext();
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
@@ -1722,15 +1598,60 @@ at_signal_handler(void)
     LOG(2, "signal handler: marked new frame defined "PFX"-"PFX"\n", mc.xsp, sp);
 }
 
-void
-instrument_signal_handler(void *drcontext, instrlist_t *bb, instr_t *inst,
-                          app_pc pc)
+static void
+handle_signal_return(void *drcontext, const dr_mcontext_t *src_mc, byte *new_sp)
 {
-    LOG(3, "instrumenting signal handler "PFX"\n", pc);
-    dr_insert_clean_call(drcontext, bb, inst, (void *)at_signal_handler,
-                         false, 0);
+    ASSERT(options.shadowing && options.check_stack_bounds, "incorrectly called");
+    ASSERT(src_mc != NULL && TEST(DR_MC_CONTROL, src_mc->flags),
+           "src_mc should always exist for sigreturn");
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+    byte *sp = (byte *)src_mc->xsp;
+    byte *unaddr_top = NULL;
+    if (new_sp > sp && (size_t)(new_sp - sp) < MAX_SIGNAL_FRAME_SIZE) {
+        unaddr_top = new_sp;
+    } else if (cpt->sigaltstack != NULL && cpt->sigaltstack > sp &&
+               (size_t)(cpt->sigaltstack - sp) < cpt->sigaltsize) {
+        /* transitioning from sigaltstack to regular stack */
+        unaddr_top = cpt->sigaltstack;
+    } else {
+        LOG(2, "at sigreturn but new sp "PFX" irregular vs "PFX"\n", new_sp, sp);
+    }
+    if (unaddr_top != NULL) {
+        LOG(2, "at sigreturn: marking frame "PFX"-"PFX" unaddressable\n",
+            sp, unaddr_top);
+        shadow_set_range(sp, unaddr_top, SHADOW_UNADDRESSABLE);
+    }
 }
 #endif /* UNIX */
+
+void
+event_kernel_xfer(void *drcontext, const dr_kernel_xfer_info_t *info)
+{
+#ifdef UNIX
+    if (!options.shadowing || !options.check_stack_bounds)
+        return;
+    if (info->type == DR_XFER_SIGNAL_DELIVERY)
+        handle_signal_delivery(drcontext, info->target_xsp);
+    else if (info->type == DR_XFER_SIGNAL_RETURN)
+        handle_signal_return(drcontext, info->source_mcontext, (byte *)info->target_xsp);
+#else
+    if (info->type == DR_XFER_CALLBACK_DISPATCHER) {
+        handle_Ki(drcontext, info->target_pc, (byte*)info->target_xsp, true);
+        handle_callback(drcontext);
+    }
+    else if (info->type == DR_XFER_CALLBACK_RETURN)
+        handle_cbret(drcontext, info);
+    else if (info->type == DR_XFER_APC_DISPATCHER ||
+             info->type == DR_XFER_RAISE_DISPATCHER)
+        handle_Ki(drcontext, info->target_pc, (byte*)info->target_xsp, false);
+    else if (info->type == DR_XFER_EXCEPTION_DISPATCHER) {
+        handle_exception(drcontext);
+        handle_Ki(drcontext, info->target_pc, (byte*)info->target_xsp, false);
+    }
+    else if (info->type == DR_XFER_CONTINUE)
+        handle_continue(drcontext);
+#endif
+}
 
 /***************************************************************************
  * ADDRESSABILITY

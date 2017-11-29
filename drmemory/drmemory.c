@@ -1213,8 +1213,8 @@ set_thread_initial_structures(void *drcontext)
      * can set base part of stack for primary thread.
      * For drinject, stack is clean, except on Vista where a few words
      * are above esp.
-     * Note that this is the start esp: the APC esp is handled in
-     * client_handle_Ki.
+     * Note that this is the start esp, due to DRi#2718: the APC esp is handled in
+     * handle_Ki().
      */
     IF_DEBUG(ok = )
         dr_get_mcontext(drcontext, &mc);
@@ -1935,6 +1935,7 @@ dr_init(client_id_t id)
     dr_register_nudge_event(event_nudge, client_id);
     if (options.soft_kills)
         drx_register_soft_kills(event_soft_kill);
+    drmgr_register_kernel_xfer_event(event_kernel_xfer);
 #ifdef UNIX
     dr_register_fork_init_event(event_fork);
     drmgr_register_signal_event(event_signal);
