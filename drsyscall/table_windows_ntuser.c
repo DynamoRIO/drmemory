@@ -781,9 +781,9 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserGetCursorFrameInfo", OK, DRSYS_TYPE_HANDLE, 4,
      {
          {0, sizeof(HCURSOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(DWORD), R|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(INT), R|HT, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(INT), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtUserGetCursorInfo", OK, SYSARG_TYPE_BOOL32, 1,
