@@ -2024,10 +2024,10 @@ NtUserGetCPD(
 HCURSOR
 NTAPI
 NtUserGetCursorFrameInfo(
-  HCURSOR hCursor,
-  DWORD istep,
-  PDWORD rate_jiffies,
-  INT *num_steps);
+  IN HCURSOR hCursor,
+  IN INT istep,
+  OUT LPDWORD rate_jiffies,
+  OUT LPINT num_steps);
 
 BOOL
 NTAPI
