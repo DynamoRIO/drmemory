@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2016-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -41,20 +41,20 @@ language:
   - c
   - cpp
 
-os:
-  - linux
-  - osx
-
-# We request 2 runs, one with clang and one with gcc:
-compiler:
-  - clang
-  - gcc
-
-matrix:
-  exclude:
-    # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we disable:
-    - os: osx
+# We use a jobs include approach rather than an os, compiler, env matrix
+# with exludes so we can use conditional builds (plus it's clearer this way).
+jobs:
+  include:
+    - os: linux
       compiler: gcc
+    - os: linux
+      compiler: clang
+    - os: osx
+      # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we only run clang.
+      compiler: clang
+      # XXX: DRi#2764: Travis OSX resources are over-subscribed and it can take
+      # hours to get an OSX machine, so we skip running PR's for now.
+      if: type = push
 
 # For C/C++ there is no default install, so we set "install", not "before_install".
 install:
