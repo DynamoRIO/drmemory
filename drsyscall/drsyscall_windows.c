@@ -1883,6 +1883,30 @@ handle_alpc_message_attributes_access(sysarg_iter_info_t *ii,
 }
 
 static bool
+handle_t2_set_parameters_access(sysarg_iter_info_t *ii,
+                                const sysinfo_arg_t *arg_info,
+                                app_pc start, uint size)
+{
+    PT2_SET_PARAMETERS params = (PT2_SET_PARAMETERS) start;
+    ASSERT(size == sizeof(T2_SET_PARAMETERS), "invalid size");
+
+    if (ii->arg->pre) {
+        if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
+                              start, size, "T2_SET_PARAMETERS",
+                              DRSYS_TYPE_T2_SET_PARAMETERS, NULL,
+                              DRSYS_TYPE_INVALID))
+            return true;
+    }
+    if (!report_memarg(ii, arg_info, (byte *) &params->Version, sizeof(params->Version),
+        "T2_SET_PARAMETERS.Version"))
+        return true;
+    if (!report_memarg(ii, arg_info, (byte *) &params->NoWakeTolerance, sizeof(params->NoWakeTolerance),
+        "T2_SET_PARAMETERS.NoWakeTolerance"))
+        return true;
+    return true;
+}
+
+static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const sysinfo_arg_t *arg_info,
                              app_pc start, uint size)
@@ -1917,6 +1941,8 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
         return handle_alpc_context_attributes_access(ii, arg_info, start, size);
     case SYSARG_TYPE_ALPC_MESSAGE_ATTRIBUTES:
         return handle_alpc_message_attributes_access(ii, arg_info, start, size);
+    case SYSARG_TYPE_T2_SET_PARAMETERS:
+        return handle_t2_set_parameters_access(ii, arg_info, start, size);
     }
     return wingdi_process_arg(ii, arg_info, start, size);
 }
