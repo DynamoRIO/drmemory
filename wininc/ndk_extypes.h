@@ -240,4 +240,10 @@ typedef enum _WORKERFACTORYINFOCLASS
     MaxWorkerFactoryInfoClass
 } WORKERFACTORYINFOCLASS, *PWORKERFACTORYINFOCLASS;
 
+typedef struct _T2_SET_PARAMETERS_V0 {
+    ULONG Version;
+    ULONG Reserved;
+    LONGLONG NoWakeTolerance;
+} T2_SET_PARAMETERS, *PT2_SET_PARAMETERS;
+
 #endif /* _EXTYPES_H */

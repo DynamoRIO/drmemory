@@ -3487,9 +3487,8 @@ syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
-         /* XXX: Always 0. If not 0 -> NtSetTimer2 returns STATUS_NOT_IMPLEMENTED */
-         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {2, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {3, sizeof(T2_SET_PARAMETERS), R|CT, SYSARG_TYPE_T2_SET_PARAMETERS},
      }
     },
     {{WIN81,0},"NtSetWnfProcessNotificationEvent", UNKNOWN, RNTST, 1,
