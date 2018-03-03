@@ -306,9 +306,7 @@ shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
  * %reg_idx  += (%reg_addr >> 14)
  * %reg_idx  &= 0xfffffffc
  * %reg_idx   = 0x0(%reg_idx)
- *
- * %reg_addr  >>= map->scale
- * %reg_addr   += %reg_idx
+ * %reg_addr  = %reg_idx + (%reg_addr >> map->scale)
  */
 static void
 shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
@@ -341,24 +339,26 @@ shadow_table_insert_app_to_shadow_arch(void *drcontext, umbra_map_t *map,
                                         opnd_create_reg(reg_idx),
                                         OPND_CREATE_MEMPTR(reg_idx, 0)));
 
-    /* %reg_addr >>= map->scale */
+    /* %reg_addr = %reg_idx + (%reg_addr >> map->scale) */
     if (UMBRA_MAP_SCALE_IS_DOWN(map->options.scale)) {
-        PRE(ilist, where, INSTR_CREATE_lsr(drcontext,
-                                           opnd_create_reg(reg_addr),
-                                           opnd_create_reg(reg_addr),
-                                           OPND_CREATE_INT8(map->shift)));
+        PRE(ilist, where, INSTR_CREATE_add_shimm(drcontext,
+                                                 opnd_create_reg(reg_addr),
+                                                 opnd_create_reg(reg_idx),
+                                                 opnd_create_reg(reg_addr),
+                                                 OPND_CREATE_INT(DR_SHIFT_LSR),
+                                                 OPND_CREATE_INT(map->shift)));
+    } else if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
+        PRE(ilist, where, INSTR_CREATE_add_shimm(drcontext,
+                                                 opnd_create_reg(reg_addr),
+                                                 opnd_create_reg(reg_idx),
+                                                 opnd_create_reg(reg_addr),
+                                                 OPND_CREATE_INT(DR_SHIFT_LSL),
+                                                 OPND_CREATE_INT(map->shift)));
     } else {
-        DR_ASSERT(UMBRA_MAP_SCALE_IS_UP(map->options.scale));
-        PRE(ilist, where, INSTR_CREATE_lsl(drcontext,
+        PRE(ilist, where, XINST_CREATE_add(drcontext,
                                            opnd_create_reg(reg_addr),
-                                           opnd_create_reg(reg_addr),
-                                           OPND_CREATE_INT8(map->shift)));
+                                           opnd_create_reg(reg_idx)));
     }
-
-    /* %reg_addr += %reg_idx */
-    PRE(ilist, where, XINST_CREATE_add(drcontext,
-                                       opnd_create_reg(reg_addr),
-                                       opnd_create_reg(reg_idx)));
 }
 #else
 # error NYI
