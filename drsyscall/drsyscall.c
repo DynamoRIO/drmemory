@@ -108,6 +108,7 @@ const char * const param_type_names[] = {
     "BITMAPINFO",               /* DRSYS_TYPE_BITMAPINFO */
     "ALPC_CONTEXT_ATTRIBUTES",  /* DRSYS_TYPE_ALPC_CONTEXT_ATTRIBUTES */
     "ALPC_MESSAGE_ATTRIBUTES",  /* DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES */
+    "T2_SET_PARAMETERS",        /* DRSYS_TYPE_T2_SET_PARAMETERS */
 };
 #define NUM_PARAM_TYPE_NAMES \
     (sizeof(param_type_names)/sizeof(param_type_names[0]))

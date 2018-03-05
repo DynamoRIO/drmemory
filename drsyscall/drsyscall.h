@@ -222,9 +222,11 @@ typedef enum {
     DRSYS_TYPE_BITMAPINFO,          /**< BITMAPINFO structure. */
     DRSYS_TYPE_ALPC_CONTEXT_ATTRIBUTES,/**< ALPC_CONTEXT_ATTRIBUTES structure. */
     DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES,/**< ALPC_MESSAGE_ATTRIBUTES structure. */
+    DRSYS_TYPE_T2_SET_PARAMETERS,   /**< T2_SET_PARAMETERS structure. */
 
-    /* Additional types may be added in the future. */
-    DRSYS_TYPE_LAST = DRSYS_TYPE_ALPC_MESSAGE_ATTRIBUTES,
+    /* Additional types may be added in the future. Add them above. */
+    DRSYS_TYPE_LAST_PLUS_ONE,
+    DRSYS_TYPE_LAST = DRSYS_TYPE_LAST_PLUS_ONE - 1,
 } drsys_param_type_t;
 
 /** Describes a system call parameter or memory region. */
