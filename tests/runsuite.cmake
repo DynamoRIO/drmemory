@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -43,6 +43,7 @@ set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
 
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
 set(arg_travis OFF)
+set(arg_package OFF)
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "test_vmk")
@@ -70,6 +71,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   endif (UNIX)
   if (${arg} STREQUAL "travis")
     set(arg_travis ON)
+  endif ()
+  if (${arg} STREQUAL "package")
+    set(arg_package ON)
   endif ()
 endforeach (arg)
 
@@ -120,6 +124,15 @@ if (arg_travis)
     set(run_tests OFF)
     message("Detected a Travis clang suite: disabling running of tests")
   endif ()
+  if ("$ENV{TRAVIS_EVENT_TYPE}" STREQUAL "cron" OR
+      "$ENV{APPVEYOR_REPO_TAG}" STREQUAL "true")
+    # We don't want flaky tests to derail package deployment.  We've already run
+    # the tests for this same commit via regular master-push triggers: these
+    # package builds are coming from a cron trigger (Travis) or a tag addition
+    # (Appveyor), not a code change.
+    set(run_tests OFF)
+    message("Detected a cron package build: disabling running of tests")
+  endif()
 endif()
 set(prev_run_tests ${run_tests})
 
@@ -251,14 +264,14 @@ foreach (tool ${tools})
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Debug
         VMKERNEL:BOOL=ON
-        " OFF ON "")
+        " OFF OFF "")
       testbuild_ex("${name}-vmk-rel-32" OFF "
         ${base_cache}
         ${tool}
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Release
         VMKERNEL:BOOL=ON
-        " ON ON "") # only run release tests for long suite
+        " ON OFF "") # only run release tests for long suite
     endif (arg_vmk_only OR arg_test_vmk)
   endif (UNIX)
 endforeach (tool)

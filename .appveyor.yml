@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2017-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -92,3 +92,29 @@ build_script:
   - echo %PATH%
   # The perl in c:\perl can't open a pipe so we use cygwin perl.
   - c:\cygwin\bin\perl ../tests/runsuite_wrapper.pl travis use_ninja %EXTRA_ARGS%
+
+# Automated deployment of builds to GitHub Releases.
+# We rely on a Travis cron job to push a tag to the repo which then
+# triggers this deployment.
+# We disable test running for these package builds in runsuite.cmake by
+# looking for $APPVEYOR_REPO_TAG=="true".
+# XXX i#1967: build an .msi package as well.
+artifacts:
+  - path: 'build\build_*\DrMemory*.zip'
+    name: DrMem.zip
+    type: zip
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: mfNFJ47dV/0CNpg156CiHuK3t6VUNCVhAIYNVkJfwjwY0dbhD1kIdMPfTMdarCnz
+  artifact: DrMem.zip
+  draft: false
+  prerelease: false
+  # We want to use the same release as Travis.
+  force_update: true
+  # Using the default "release:" name (the tag) to match Travis.
+  # This description replaces the one provided by Travis.
+  description: 'Auto-generated periodic build (Appveyor build $(appveyor_build_version)).'
+  on:
+    branch: master
+    appveyor_repo_tag: true

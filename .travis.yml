@@ -47,11 +47,13 @@ jobs:
   include:
     - os: linux
       compiler: gcc
+      env: DEPLOY=yes
     - os: linux
       compiler: clang
     - os: osx
       # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we only run clang.
       compiler: clang
+      env: DEPLOY=yes
       # XXX: DRi#2764: Travis OSX resources are over-subscribed and it can take
       # hours to get an OSX machine, so we skip running PR's for now.
       if: type = push
@@ -67,3 +69,32 @@ install:
 
 script:
   - tests/runsuite_wrapper.pl travis
+
+# We disable test running for these package builds in runsuite.cmake by
+# looking for $TRAVIS_EVENT_TYPE=="cron".
+# Longer-term we may want to use package.cmake instead and even make official
+# builds on Travis (DRi#2861).
+before_deploy:
+  - git config --local user.name "Travis Auto-Tag"
+  - git config --local user.email "drmemory-devs@googlegroups.com"
+  # XXX: for now we duplicate this version number here with CMakeLists.txt.
+  # We should find a way to share (xref DRi#1565).
+  # We support setting TAG_SUFFIX on triggered builds so we can have
+  # multiple unique tags in one day (the patchlevel here is the day number).
+  - export GIT_TAG="cronbuild-1.11.$((`git log -n 1 --format=%ct` / (60*60*24)))${TAG_SUFFIX}"
+  - git tag $GIT_TAG -a -m "Travis auto-generated tag for build $TRAVIS_BUILD_NUMBER."
+deploy:
+  provider: releases
+  api_key:
+    secure: V3kgcRiwijjpmcSuVio1+/oZ8cqJGaVlL42hN0w/jjO6LoELy2kknT5h80H7wMVKpZnMg+2v/yWj5hawlrwh8nCS51lYllPHN7K+ivzkyJ3R4cp1WAzL56vnYFYz1/twYpeS10Zl6JL6wt788WcibpShMOIlAnXnm1kU9BBVtYE=
+  file_glob: true
+  file: "build*/DrMemory*.tar.gz"
+  skip_cleanup: true
+  # The name must just be the tag in order to match Appveyor.
+  name: $GIT_TAG
+  # This body is clobbered by Appveyor.
+  body: "Auto-generated periodic build (Travis build $TRAVIS_BUILD_NUMBER)."
+  on:
+    repo: DynamoRIO/drmemory
+    branch: master
+    condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY = yes
