@@ -56,7 +56,7 @@ jobs:
       env: DEPLOY=yes
       # XXX: DRi#2764: Travis OSX resources are over-subscribed and it can take
       # hours to get an OSX machine, so we skip running PR's for now.
-      if: type = push
+      if: type IN (push, cron)
 
 # For C/C++ there is no default install, so we set "install", not "before_install".
 install:

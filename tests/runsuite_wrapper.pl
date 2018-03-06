@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -101,21 +101,30 @@ for (my $i = 0; $i < $#lines; ++$i) {
         $should_print = 1;
         $name = "diff pre-commit checks";
     }
-    if ($fail && $is_CI && $^O eq 'cygwin' && $line =~ /tests failed/) {
-        # FIXME i#1938: ignoring certain AppVeyor test failures until
-        # we get all tests passing.
+    if ($fail && $is_CI  && $line =~ /tests failed/) {
         my $is_32 = $line =~ /-32/;
-        my %ignore_failures_32 = ('procterm' => 1,
-                                  'winthreads' => 1,
-                                  'malloc_callstacks' => 1,
-                                  'wrap_wincrt' => 1, # i#1741: flaky.
-                                  'app_suite.pattern' => 1,
-                                  'app_suite' => 1,
-                                  'drstrace_unit_tests' => 1);
-        my %ignore_failures_64 = ('handle' => 1,
-                                  'app_suite' => 1,
-                                  'app_suite.pattern' => 1,
-                                  'drstrace_unit_tests' => 1);
+        my %ignore_failures_32 = ();
+        my %ignore_failures_64 = ();
+        if ($^O eq 'cygwin') {
+            # FIXME i#1938: ignoring certain AppVeyor test failures until
+            # we get all tests passing.
+            %ignore_failures_32 = ('procterm' => 1,
+                                   'winthreads' => 1,
+                                   'malloc_callstacks' => 1,
+                                   'wrap_wincrt' => 1, # i#1741: flaky.
+                                   'app_suite.pattern' => 1,
+                                   'app_suite' => 1,
+                                   'drstrace_unit_tests' => 1);
+            %ignore_failures_64 = ('handle' => 1,
+                                   'app_suite' => 1,
+                                   'app_suite.pattern' => 1,
+                                   'drstrace_unit_tests' => 1);
+        } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
+            %ignore_failures_32 = ('malloc' => 1); # i#2038
+            %ignore_failures_64 = ('malloc' => 1);
+        } else {
+            print "No auto-ignored tests for platform $^O\n";
+        }
         # Read ahead to examine the test failures:
         $fail = 0;
         my $num_ignore = 0;
