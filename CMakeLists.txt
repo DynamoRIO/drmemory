@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -231,6 +231,8 @@ if (APPLE)
   math(EXPR VERSION_NUMBER_PATCHLEVEL "(${VERSION_NUMBER_PATCHLEVEL} % 200) + 56")
 endif (APPLE)
 
+# N.B.: when updating this, update the git tag in .travis.yml.
+# We should find a way to share (xref DRi#1565).
 set(VERSION_NUMBER_DEFAULT "1.11.${VERSION_NUMBER_PATCHLEVEL}")
 # do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
