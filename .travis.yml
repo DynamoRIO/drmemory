@@ -45,18 +45,18 @@ language:
 # with exludes so we can use conditional builds (plus it's clearer this way).
 jobs:
   include:
-    - os: linux
-      compiler: gcc
-      env: DEPLOY=yes
-    - os: linux
-      compiler: clang
+#NOCHECKI    - os: linux
+#NOCHECKI      compiler: gcc
+#NOCHECKI      env: DEPLOY=yes
+#NOCHECKI    - os: linux
+#NOCHECKI      compiler: clang
     - os: osx
       # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we only run clang.
       compiler: clang
       env: DEPLOY=yes
       # XXX: DRi#2764: Travis OSX resources are over-subscribed and it can take
       # hours to get an OSX machine, so we skip running PR's for now.
-      if: type != pull_request
+#NOCHECKI      if: type != pull_request
 
 # For C/C++ there is no default install, so we set "install", not "before_install".
 install:
