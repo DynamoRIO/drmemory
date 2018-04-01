@@ -148,12 +148,6 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
          * fail to be optimized b/c it will use the old code's history: so a perf
          * failure, not a correctness failure.
          */
-        /* XXX i#551: -single_arg_slowpath adds a second xl8_sharing_table entry with
-         * cache pc for each app pc entry which we are not deleting yet.  May need a
-         * table to map the two.  Xref DRi#409: while there's no good solution from
-         * the DR side for app pc flushing, perhaps some event on re-using cache pcs
-         * could work but seems too specialized.
-         */
         /* i#768: We used to invalidate entries from ignore_unaddr_table here,
          * but that ends up thrashing the code cache.  Instead we remove stale
          * entries in the new bb event if the alloca pattern no longer matches.
@@ -1322,60 +1316,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (INSTRUMENT_MEMREFS())
         fastpath_pre_app_instr(drcontext, bb, inst, bi, &mi);
 
-    if (mi.appclone != NULL) {
-        instr_t *nxt = instr_get_next(mi.appclone);
-        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
-        while (nxt != NULL &&
-               (instr_is_label(nxt) || instr_is_spill(nxt) || instr_is_restore(nxt)))
-            nxt = instr_get_next(nxt);
-        ASSERT(nxt != NULL, "app clone error");
-        DOLOG(3, {
-                LOG(3, "comparing: ");
-                instr_disassemble(drcontext, mi.appclone, LOGFILE_GET(drcontext));
-                LOG(3, "\n");
-                LOG(3, "with: ");
-                instr_disassemble(drcontext, nxt, LOGFILE_GET(drcontext));
-                LOG(3, "\n");
-            });
-        STATS_INC(app_instrs_fastpath);
-        /* only destroy if app instr won't be mangled */
-        if (instr_same(mi.appclone, nxt) &&
-            !instr_is_cti(nxt) &&
-            /* FIXME PR 494769: -single_arg_slowpath cannot be on by default
-             * until b/c we can't predict whether an instr will be mangled
-             * for selfmod!  Also, today we're not looking for mangling of
-             * instr_has_rel_addr_reference().  The option is off by default
-             * until that's addressed by implementing i#156/PR 306163 and
-             * adding post-mangling bb and trace events.
-             */
-            !instr_is_syscall(nxt) &&
-            !instr_is_interrupt(nxt)) {
-            ASSERT(mi.slow_store_retaddr != NULL, "slowpath opt error");
-            /* point at the jmp so slow_path() knows to return right afterward */
-            instru_insert_mov_pc(drcontext, bb, mi.slow_store_retaddr,
-                                 mi.slow_store_dst, opnd_create_instr(mi.slow_jmp));
-            /* we've replaced the original so remove it */
-            instrlist_remove(bb, mi.slow_store_retaddr);
-            instr_destroy(drcontext, mi.slow_store_retaddr);
-            mi.slow_store_retaddr = NULL;
-            if (mi.slow_store_retaddr2 != NULL) {
-                instrlist_remove(bb, mi.slow_store_retaddr2);
-                instr_destroy(drcontext, mi.slow_store_retaddr2);
-                mi.slow_store_retaddr2 = NULL;
-            }
-            instrlist_remove(bb, mi.appclone);
-            instr_destroy(drcontext, mi.appclone);
-            mi.appclone = NULL;
-            STATS_INC(app_instrs_no_dup);
-        } else {
-            DOLOG(3, {
-                    LOG(3, "need dup for: ");
-                    instr_disassemble(drcontext, mi.appclone, LOGFILE_GET(drcontext));
-                    LOG(3, "\n");
-                });
-        }
-    }
-
  instru_event_bb_insert_done:
     if (bi->first_instr && instr_is_app(inst))
         bi->first_instr = false;
@@ -1429,44 +1369,11 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
  * LOCATION SHARED CODE
  */
 
-#ifdef TOOL_DR_MEMORY
-/* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
-static app_pc
-translate_cache_pc(byte *pc_to_xl8)
-{
-    app_pc res;
-    void *drcontext = dr_get_current_drcontext();
-    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-    ASSERT(cpt != NULL, "pt shouldn't be null");
-    ASSERT(pc_to_xl8 != NULL, "invalid param");
-    ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
-    /* ensure event_restore_state() returns true */
-    cpt->self_translating = true;
-    res = dr_app_pc_from_cache_pc(pc_to_xl8);
-    cpt->self_translating = false;
-    ASSERT(res != NULL, "failure to determine app pc on slowpath");
-    STATS_INC(xl8_app_for_slowpath);
-    LOG(3, "translated "PFX" to "PFX" for slowpath\n", pc_to_xl8, res);
-    return res;
-}
-#endif
-
 app_pc
 loc_to_pc(app_loc_t *loc)
 {
     ASSERT(loc != NULL && loc->type == APP_LOC_PC, "invalid param");
-    if (!loc->u.addr.valid) {
-#ifdef TOOL_DR_MEMORY
-        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
-        /* pc field holds cache pc that must be translated */
-        ASSERT(dr_memory_is_dr_internal(loc->u.addr.pc), "invalid untranslated pc");
-        loc->u.addr.pc = translate_cache_pc(loc->u.addr.pc);
-        ASSERT(loc->u.addr.pc != NULL, "translation failed");
-        loc->u.addr.valid = true;
-#else
-        ASSERT(false, "NYI");
-#endif
-    }
+    ASSERT(loc->u.addr.valid, "-single_arg_slowpath was removed so should be valid");
     return loc->u.addr.pc;
 }
 

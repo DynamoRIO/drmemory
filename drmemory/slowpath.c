@@ -121,9 +121,6 @@ uint xl8_shared_slowpath_instrs;
 uint xl8_shared_slowpath_count;
 uint slowpath_unaligned;
 uint slowpath_8_at_border;
-uint app_instrs_fastpath;
-uint app_instrs_no_dup;
-uint xl8_app_for_slowpath;
 uint num_bbs;
 #endif
 
@@ -566,41 +563,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
      * but we don't rely on them here.
      */
 
-    /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769)
-     * we always pass NULL for decode_pc
-     */
-    if (decode_pc == NULL) {
-        /* not using safe_read since in cache */
-        byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
-        ASSERT(pc == NULL, "invalid params");
-        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
-        /* If the ret pc is a jmp, we know to walk forward, bypassing
-         * spills, to find the app instr (we assume app jmp never
-         * needs slowpath).  If using a cloned app instr, then ret pc
-         * points directly there.  Since we want to skip the clone and
-         * the jmp, we always skip the instr at ret pc when returning.
-         */
-        pc = decode_next_pc(drcontext, ret_pc);
-        ASSERT(pc != NULL, "invalid stored app instr");
-        set_own_tls_value(SPILL_SLOT_2, (reg_t) pc);
-        if (*ret_pc == 0xe9) {
-            /* walk forward to find the app pc */
-            instr_init(drcontext, &inst);
-            do {
-                instr_reset(drcontext, &inst);
-                decode_pc = pc;
-                pc = decode(drcontext, decode_pc, &inst);
-                ASSERT(pc != NULL, "invalid app instr copy");
-            } while (instr_is_spill(&inst) || instr_is_restore(&inst));
-            instr_reset(drcontext, &inst);
-        } else
-            decode_pc = ret_pc;
-        /* if we want the app addr later, we'll have to translate to get it */
-        loc.u.addr.valid = false;
-        loc.u.addr.pc = decode_pc;
-        pc = NULL;
-    } else
-        ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
+    ASSERT(decode_pc != NULL, "single_arg_slowpath removed");
 
 #ifdef TOOL_DR_MEMORY
     if (decode_pc != NULL) {
@@ -934,7 +897,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     slow_path_xl8_sharing(&loc, instr_sz, memop, mc);
 
     DOLOG(5, { /* this pollutes the logfile, so it's a pain to have at 4 or lower */
-        if (!options.single_arg_slowpath && pc == decode_pc/*else retpc not in tls3*/) {
+        if (pc == decode_pc/*else retpc not in tls3*/) {
             /* Test translation when have both args */
             /* we want the ultimate target, not whole_bb_spills_enabled()'s
              * SPILL_SLOT_5 intermediate target
@@ -1162,37 +1125,17 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                    shared_slowpath_entry_global[r1][r2][r3]:
                    shared_slowpath_entry_local[r1][r2][r3][ef]);
             ASSERT(tgt != NULL, "targeting un-generated slowpath");
-            if (options.single_arg_slowpath) {
-                /* for jmp-to-slowpath optimization: we point at app instr, or a
-                 * clone of it, for pc to decode from (PR 494769), as the
-                 * retaddr, and thus do not need a second parameter.
-                 */
-                mi->appclone = instr_clone(drcontext, inst);
-                mi->slow_store_dst = (r2 == SPILL_REG_NONE) ?
-                    spill_slot_opnd(drcontext, SPILL_SLOT_2) : opnd_create_reg(s2->reg);
-                instrlist_insert_mov_instr_addr(drcontext, mi->appclone,
-                                                NULL /* in code cache */,
-                                                mi->slow_store_dst,
-                                                bb, inst, &mi->slow_store_retaddr,
-                                                &mi->slow_store_retaddr2);
-                mi->slow_jmp = XINST_CREATE_jump(drcontext, opnd_create_pc(tgt));
-                PRE(bb, inst, mi->slow_jmp);
-                instr_set_meta(mi->appclone);
-                instr_set_translation(mi->appclone, NULL);
-                PRE(bb, inst, mi->appclone);
-            } else {
-                instru_insert_mov_pc(drcontext, bb, inst,
-                                     (r1 == SPILL_REG_NONE) ?
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM) :
-                                     opnd_create_reg(s1->reg),
-                                     decode_pc_opnd);
-                instru_insert_mov_pc(drcontext, bb, inst,
-                                     (r2 == SPILL_REG_NONE) ?
-                                     spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_RET) :
-                                     opnd_create_reg(s2->reg),
-                                     opnd_create_instr(appinst));
-                PRE(bb, inst, XINST_CREATE_jump(drcontext, opnd_create_pc(tgt)));
-            }
+            instru_insert_mov_pc(drcontext, bb, inst,
+                                 (r1 == SPILL_REG_NONE) ?
+                                 spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_PARAM) :
+                                 opnd_create_reg(s1->reg),
+                                 decode_pc_opnd);
+            instru_insert_mov_pc(drcontext, bb, inst,
+                                 (r2 == SPILL_REG_NONE) ?
+                                 spill_slot_opnd(drcontext, SPILL_SLOT_SLOW_RET) :
+                                 opnd_create_reg(s2->reg),
+                                 opnd_create_instr(appinst));
+            PRE(bb, inst, XINST_CREATE_jump(drcontext, opnd_create_pc(tgt)));
         }
         PRE(bb, inst, appinst);
         /* If we entered the slowpath, we've clobbered the reg holding the address to
@@ -1348,28 +1291,6 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                     }
                     shared_slowpath_save_retaddr(drcontext, ilist, r2);
                     shared_slowpath_restore(drcontext, ilist, r2, SPILL_SLOT_2);
-                    if (options.single_arg_slowpath) {
-                        /* for jmp-to-slowpath optimization we don't have 2nd
-                         * param, so pass 0 (PR 494769)
-                         */
-                        if (r1 >= SPILL_REG_EAX && r1 <= SPILL_REG_EBX) {
-                            PRE(ilist, NULL, INSTR_CREATE_mov_imm
-                                (drcontext,
-                                 opnd_create_reg(DR_REG_XAX +
-                                                 (r1 - SPILL_REG_EAX)),
-                                 OPND_CREATE_INT32(0)));
-                        } else if (r1 >= SPILL_REG_EAX_DEAD && r1 <= SPILL_REG_EBX_DEAD) {
-                            PRE(ilist, NULL, INSTR_CREATE_mov_imm
-                                (drcontext,
-                                 opnd_create_reg(DR_REG_XAX +
-                                                 (r1 - SPILL_REG_EAX_DEAD)),
-                                 OPND_CREATE_INT32(0)));
-                        } else {
-                            PRE(ilist, NULL, INSTR_CREATE_mov_st
-                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                 OPND_CREATE_INT32(0)));
-                        }
-                    }
                     shared_slowpath_save_param(drcontext, ilist, r1);
                     shared_slowpath_restore(drcontext, ilist, r1, SPILL_SLOT_1);
                     PRE(ilist, NULL,
