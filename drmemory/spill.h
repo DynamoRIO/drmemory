@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,6 +27,7 @@
 #ifndef _SPILL_H_
 #define _SPILL_H_ 1
 
+#include "drvector.h"
 #include "fastpath.h"
 
 #ifdef DEBUG

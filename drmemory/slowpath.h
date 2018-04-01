@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -203,7 +203,7 @@ bool
 instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi);
 
 void
-instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_info_t *mi);
+instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst);
 
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);

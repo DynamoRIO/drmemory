@@ -4356,7 +4356,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             insert_spill_or_restore(drcontext, bb, inst, &mi->reg2, false/*restore*/,true);
             insert_spill_or_restore(drcontext, bb, inst, &mi->reg1, false/*restore*/,true);
         }
-        instrument_slowpath(drcontext, bb, inst, mi);
+        instrument_slowpath(drcontext, bb, inst);
     } else {
         /* avoid leaks, be defensive in case we buggily did target it */
 #ifdef TOOL_DR_MEMORY

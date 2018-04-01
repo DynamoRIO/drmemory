@@ -1141,21 +1141,13 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          */
         if (whole_bb_spills_enabled() &&
             !(options.pattern != 0 && options.pattern_opt_repstr)) {
-            if (options.pattern != 0) { /* pattern uses drreg */
-                IF_DEBUG(drreg_status_t res =)
-                    drreg_reserve_aflags(drcontext, bb, inst);
-                ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
-                IF_DEBUG(res =)
-                    drreg_unreserve_aflags(drcontext, bb, inst);
-                ASSERT(res == DRREG_SUCCESS, "unreserve of aflags should work");
-            } else {
-                mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
-                mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
-                mark_eflags_used(drcontext, bb, bi);
-                /* eflag saving may have clobbered xcx, which we need for jecxz, but
-                 * jecxz is an app instr now so we should naturally restore it
-                 */
-            }
+            //NOCHECKIN do we need to do this for reg1+reg2 for non-pattern?
+            IF_DEBUG(drreg_status_t res =)
+                drreg_reserve_aflags(drcontext, bb, inst);
+            ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+            IF_DEBUG(res =)
+                drreg_unreserve_aflags(drcontext, bb, inst);
+            ASSERT(res == DRREG_SUCCESS, "unreserve of aflags should work");
         }
     }
 

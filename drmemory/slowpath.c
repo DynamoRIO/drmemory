@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1036,8 +1036,7 @@ instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi)
 }
 
 void
-instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    fastpath_info_t *mi)
+instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
 {
     opnd_t decode_pc_opnd;
     ASSERT(options.pattern == 0, "No slow path for pattern mode");
