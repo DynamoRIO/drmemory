@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1147,7 +1147,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
                 ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
                 IF_DEBUG(res =)
                     drreg_unreserve_aflags(drcontext, bb, inst);
-                ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+                ASSERT(res == DRREG_SUCCESS, "unreserve of aflags should work");
             } else {
                 mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
                 mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);

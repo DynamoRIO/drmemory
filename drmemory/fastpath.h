@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -238,13 +238,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 /* Whole-bb spilling */
 bool
 whole_bb_spills_enabled(void);
-
-void
-mark_scratch_reg_used(void *drcontext, instrlist_t *bb,
-                      bb_info_t *bi, scratch_reg_info_t *si);
-
-void
-mark_eflags_used(void *drcontext, instrlist_t *bb, bb_info_t *bi);
 
 void
 fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi);
