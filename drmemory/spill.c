@@ -414,6 +414,23 @@ instr_at_pc_is_restore(void *drcontext, byte *pc)
 }
 ///////////////////////////////////////////////////////////////////////////
 
+//NOCHECKIN get rid of this
+bool
+whole_bb_spills_enabled(void)
+{
+    return (
+#ifdef TOOL_DR_HEAPSTAT
+            options.staleness &&
+#endif
+            /* should we enable whole-bb for -leaks_only?
+             * we'd need to enable bb table and state restore on fault.
+             * since it's rare to have more than one stack adjust in a
+             * single bb, I don't think we'd gain enough perf to be worth
+             * the complexity.
+             */
+            INSTRUMENT_MEMREFS());
+}
+
 /***************************************************************************
  * drreg wrappers that assert on failure and update fastpath_info_t.
  */
@@ -421,48 +438,53 @@ instr_at_pc_is_restore(void *drcontext, byte *pc)
 void
 reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
 {
-    IF_DEBUG(bool res =)
+    IF_DEBUG(drreg_status_t res =)
         drreg_reserve_aflags(drcontext, ilist, where);
-    ASSERT(res);
+    /* We're ok with IN_USE b/c of our "lazy spill, single restore" strategy. */
+    ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_IN_USE, "failed to reserve aflags");
 }
 
 void
-unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
+unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
 {
-    IF_DEBUG(bool res =)
+    IF_DEBUG(drreg_status_t res =)
         drreg_unreserve_aflags(drcontext, ilist, where);
-    ASSERT(res);
+    /* We're ok with INVALID b/c of our "lazy spill, single restore" strategy. */
+    ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_INVALID_PARAMETER,
+           "failed to unreserve aflags");
 }
 
-void
+reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                 drvector_t *reg_allowed, OUT reg_id_t *reg, INOUT fastpath_info_t *mi)
+                 drvector_t *reg_allowed, INOUT fastpath_info_t *mi)
 {
-    IF_DEBUG(bool res =)
-        drreg_reserve_register(drcontext, ilist, where, reg_allowed, reg);
-    ASSERT(res);
+    reg_id_t reg;
+    IF_DEBUG(drreg_status_t res =)
+        drreg_reserve_register(drcontext, ilist, where, reg_allowed, &reg);
+    ASSERT(res == DRREG_SUCCESS, "failed to reserve scratch register");
     if (mi != NULL) {
-        if (reg == &mi->reg1) {
+        if (reg == mi->reg1) {
             mi->reg1_8 = reg_ptrsz_to_8(mi->reg1);
             mi->reg1_16 = reg_ptrsz_to_16(mi->reg1);
-        } else if (reg == &mi->reg2) {
+        } else if (reg == mi->reg2) {
             mi->reg2_16 = reg_ptrsz_to_16(mi->reg2);
             mi->reg2_8 = reg_ptrsz_to_8(mi->reg2);
             mi->reg2_8h = reg_ptrsz_to_8h(mi->reg2);
-        } else if (reg == &mi->reg3) {
+        } else if (reg == mi->reg3) {
             mi->reg3_8 = reg_ptrsz_to_8(mi->reg3);
             mi->reg3_16 = reg_ptrsz_to_16(mi->reg3);
         }
     }
+    return reg;
 }
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
                    INOUT fastpath_info_t *mi)
 {
-    IF_DEBUG(bool res =)
+    IF_DEBUG(drreg_status_t res =)
         drreg_unreserve_register(drcontext, ilist, where, reg);
-    ASSERT(res);
+    ASSERT(res == DRREG_SUCCESS, "failed to unreserve scratch register");
     if (mi != NULL) {
         if (reg == mi->reg1) {
             mi->reg1 = DR_REG_NULL;
@@ -490,7 +512,7 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
         if (mi->bb->shared_reg != DR_REG_NULL)
             mi->reg1 = mi->bb->shared_reg;
         else {
-            reserve_register(drcontext, ilist, where, reg_allowed, &mi->reg1, mi);
+            mi->reg1 = reserve_register(drcontext, ilist, where, reg_allowed, mi);
             mi->bb->shared_reg = mi->reg1;
         }
     } else
@@ -499,11 +521,15 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                          INOUT bb_info_t *bi)
+                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi)
 {
-    ASSERT(bi != NULL, "shared register requires fastpath info");
-    if (bi->reg_shared != DR_REG_NULL) {
+    ASSERT(bi != NULL, "shared register requires fastpath && bb info");
+    if (bi->shared_reg != DR_REG_NULL) {
         unreserve_register(drcontext, ilist, where, bi->shared_reg, NULL);
         bi->shared_reg = DR_REG_NULL;
+        if (mi != NULL) {
+            ASSERT(bi->shared_reg == mi->reg1, "shared register inconsistency");
+            mi->reg1 = DR_REG_NULL;
+        }
     }
 }

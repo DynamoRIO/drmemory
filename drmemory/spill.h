@@ -94,6 +94,10 @@ instr_is_restore(instr_t *inst);
 bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);
 
+/* Whole-bb spilling */
+bool
+whole_bb_spills_enabled(void);
+
 /***************************************************************************
  * drreg wrappers that assert on failure and update fastpath_info_t.
  */
@@ -104,9 +108,9 @@ reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 void
 unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 
-void
+reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                 drvector_t *reg_allowed, OUT reg_id_t *reg, INOUT fastpath_info_t *mi);
+                 drvector_t *reg_allowed, INOUT fastpath_info_t *mi);
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
@@ -119,6 +123,6 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                          INOUT fastpath_info_t *mi);
+                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi);
 
 #endif /* _SPILL_H_ */

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "drmemory.h"
 #include "slowpath.h"
 #include "spill.h"
@@ -157,11 +158,9 @@ instrument_esp_cmovcc_adjust(void *drcontext,
     instr_t *jcc;
     int opc = instr_get_opcode(inst);
     /* restore the app's aflags if necessary */
-    if (whole_bb_spills_enabled()) {
-        restore_aflags_if_live(drcontext, bb, inst, NULL, bi);
-        /* to avoid eflags save on the mark_eflags_used later */
-        bi->eflags_used = true;
-    }
+    IF_DEBUG(drreg_status_t res =)
+        drreg_restore_app_aflags(drcontext, bb, inst);
+    ASSERT(res == DRREG_SUCCESS, "failed to restore flags");
     /* jcc skip */
     jcc = INSTR_CREATE_jcc_short(drcontext,
                                  instr_cmovcc_to_jcc(opc),
@@ -215,19 +214,23 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* Go through eax to get to tls */
             ASSERT(dr_max_opnd_accessible_spill_slot() >= SPILL_SLOT_1,
                    "DR spill slot not accessible");
-            spill_reg(drcontext, bb, inst, DR_REG_XAX, SPILL_SLOT_2);
+            reg_id_t scratch = reserve_register(drcontext, bb, inst, NULL, NULL);
             if (opc == OP_lea) {
                 PRE(bb, inst,
-                    INSTR_CREATE_lea(drcontext, opnd_create_reg(DR_REG_XAX), arg));
+                    INSTR_CREATE_lea(drcontext, opnd_create_reg(scratch), arg));
             } else {
                 PRE(bb, inst,
-                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(DR_REG_XAX), arg));
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch), arg));
             }
-            spill_reg(drcontext, bb, inst, DR_REG_XAX, SPILL_SLOT_1);
-            restore_reg(drcontext, bb, inst, DR_REG_XAX, SPILL_SLOT_2);
+            PRE(bb, inst,
+                INSTR_CREATE_mov_st(drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
+                                    opnd_create_reg(scratch)));
+            unreserve_register(drcontext, bb, inst, scratch, NULL);
         } else {
             ASSERT(opnd_is_reg(arg), "internal error");
-            spill_reg(drcontext, bb, inst, opnd_get_reg(arg), SPILL_SLOT_1);
+            PRE(bb, inst,
+                INSTR_CREATE_mov_st(drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
+                                    arg));
         }
         arg = spill_slot_opnd(drcontext, SPILL_SLOT_1);
     } else if (opc == OP_inc || opc == OP_dec) {
@@ -258,52 +261,23 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     if (options.shared_slowpath) {
         instr_t *retaddr = INSTR_CREATE_label(drcontext);
-        //NOCHECKIN port to drreg
-        scratch_reg_info_t si1 = {
-            ESP_SLOW_SCRATCH1, true, false, false, REG_NULL, SPILL_SLOT_1
-        };
-        scratch_reg_info_t si2 = {
-            ESP_SLOW_SCRATCH2, true, false, false, REG_NULL, SPILL_SLOT_2
-        };
-        reg_id_t arg_tgt;
-        if (opnd_is_immed_int(arg))
-            opnd_set_size(&arg, OPSZ_PTR);
-        if (bi->reg1.reg != REG_NULL) {
-            /* use global scratch regs
-             * FIXME: opt: generalize and use for fastpath too: but more complex
-             * there since have 3 scratches and any one could be the extra local.
-             */
-            if (bi->reg1.reg == ESP_SLOW_SCRATCH1 || bi->reg2.reg == ESP_SLOW_SCRATCH1)
-                si1.dead = true;
-            else {
-                si1.xchg = (bi->reg1.reg == ESP_SLOW_SCRATCH2) ?
-                    bi->reg2.reg : bi->reg1.reg;
-            }
-            if (bi->reg1.reg == ESP_SLOW_SCRATCH2 || bi->reg2.reg == ESP_SLOW_SCRATCH2)
-                si2.dead = true;
-            else {
-                si2.xchg = (bi->reg1.reg == ESP_SLOW_SCRATCH1) ? bi->reg2.reg :
-                    ((si1.xchg == bi->reg1.reg) ? bi->reg2.reg : bi->reg1.reg);
-            }
-            /* restore from spill slot prior to setting up arg */
-            if (opnd_uses_reg(arg, bi->reg1.reg)) {
-                insert_spill_global(drcontext, bb, inst, &bi->reg1, false/*restore*/);
-            } else if (opnd_uses_reg(arg, bi->reg2.reg)) {
-                insert_spill_global(drcontext, bb, inst, &bi->reg2, false/*restore*/);
-            }
-            /* mark as used after the restore to avoid superfluous restore */
-            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
-            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
-        } else {
-            /* we assume regs are all holding app state and we can use arg directly */
-        }
-        /* if saving ecx via xchg we must do xchg after, else mess up app values */
-        if (si1.xchg != REG_NULL)
-            arg_tgt = si1.xchg;
-        else {
-            arg_tgt = ESP_SLOW_SCRATCH1;
-            insert_spill_or_restore(drcontext, bb, inst, &si1, true/*save*/, false);
-        }
+
+        drvector_t allowed;
+        drreg_init_and_fill_vector(&allowed, false);
+        drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH1, true);
+        reg_id_t arg_tgt = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        ASSERT(arg_tgt == ESP_SLOW_SCRATCH1, "shared_esp_slowpath reg error");
+        drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH1, false);
+        drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH2, true);
+        reg_id_t retaddr_tgt = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        ASSERT(retaddr_tgt == ESP_SLOW_SCRATCH2, "shared_esp_slowpath reg error");
+        drvector_delete(&allowed);
+
+        reg_id_t swap = DR_REG_NULL;
+        drreg_status_t res = drreg_restore_app_values(drcontext, bb, inst, arg, &swap);
+        ASSERT(res == DRREG_SUCCESS, "failed to restore app stack val");
+        ASSERT(swap == DR_REG_NULL, "need to restore stolen reg swapper");
+
         if (opnd_is_memory_reference(arg)) {
             if (opc == OP_lea) {
                 PRE(bb, inst, INSTR_CREATE_lea(drcontext, opnd_create_reg(arg_tgt), arg));
@@ -321,15 +295,9 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                   arg));
             }
         }
-        if (si1.xchg != REG_NULL) {
-            /* now put arg into ecx, and saved ecx into dead xchg-w/ reg */
-            insert_spill_or_restore(drcontext, bb, inst, &si1, true/*save*/, false);
-        }
-        /* spill/xchg edx after, since if xchg can mess up arg's app values */
-        insert_spill_or_restore(drcontext, bb, inst, &si2, true/*save*/, false);
         /* we don't need to negate here since handle_adjust_esp() does that */
         PRE(bb, inst,
-            INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(ESP_SLOW_SCRATCH2),
+            INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(retaddr_tgt),
                                  opnd_create_instr(retaddr)));
         PRE(bb, inst, INSTR_CREATE_jmp
             (drcontext, opnd_create_pc((sp_action == SP_ADJUST_ACTION_ZERO) ?
@@ -338,8 +306,8 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                         shared_esp_slowpath_defined :
                                         shared_esp_slowpath_shadow))));
         PRE(bb, inst, retaddr);
-        insert_spill_or_restore(drcontext, bb, inst, &si2, false/*restore*/, false);
-        insert_spill_or_restore(drcontext, bb, inst, &si1, false/*restore*/, false);
+        unreserve_register(drcontext, bb, inst, retaddr_tgt, NULL);
+        unreserve_register(drcontext, bb, inst, arg_tgt, NULL);
     } else {
         dr_insert_clean_call(drcontext, bb, inst,
                              (void *) handle_esp_adjust,
@@ -509,7 +477,6 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     opnd_t arg;
     instr_t *retaddr;
     bool negate = false;
-    bool eflags_live;
     esp_adjust_t type = get_esp_adjust_type(inst, false/*!mangled*/);
     reg_id_t reg1, reg2, reg_mod;
     instr_t *skip;
@@ -551,25 +518,25 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     /* set up regs and spill info */
     if (sp_action == SP_ADJUST_ACTION_ZERO) {
-        reserve_register(drcontext, ilist, app, NULL, &reg1, NULL);
-        reserve_register(drcontext, ilist, app, NULL, &reg_mod, NULL);
+        reg1 = reserve_register(drcontext, bb, inst, NULL, NULL);
+        reg_mod = reserve_register(drcontext, bb, inst, NULL, NULL);
     } else {
         drvector_t allowed;
         drreg_init_and_fill_vector(&allowed, false);
         drreg_set_vector_entry(&allowed, DR_REG_XBX, true);
         drreg_set_vector_entry(&allowed, DR_REG_XDX, true);
-        reserve_register(drcontext, ilist, app, &allowed, &reg1, NULL);
-        reserve_register(drcontext, ilist, app, &allowed, &reg2, NULL);
+        reg1 = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        reg2 = reserve_register(drcontext, bb, inst, &allowed, NULL);
         ASSERT((reg2 == DR_REG_XBX && reg1 == DR_REG_XDX) ||
                (reg2 == DR_REG_XDX && reg1 == DR_REG_XBX),
                "shared_esp_fastpath reg error");
         drreg_set_vector_entry(&allowed, DR_REG_XBX, false);
         drreg_set_vector_entry(&allowed, DR_REG_XDX, false);
         drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
-        reserve_register(drcontext, ilist, app, &allowed, &reg_mod, NULL);
+        reg_mod = reserve_register(drcontext, bb, inst, &allowed, NULL);
         drvector_delete(&allowed);
         ASSERT(reg_mod == DR_REG_XCX, "shared_esp_fastpath reg error");
-        reserve_aflags(drcontext, ilist, app);
+        reserve_aflags(drcontext, bb, inst);
     }
 
     retaddr = INSTR_CREATE_label(drcontext);
@@ -611,15 +578,9 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst, INSTR_CREATE_neg(drcontext, opnd_create_reg(reg_mod)));
     }
 
-    insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, true/*save*/, false);
     if (sp_action == SP_ADJUST_ACTION_ZERO) {
-        insert_zeroing_loop(drcontext, bb, inst, bi, &mi, reg_mod, type, retaddr);
+        insert_zeroing_loop(drcontext, bb, inst, bi, reg1, reg_mod, type, retaddr);
     } else {
-        /* should we trade speed for space and move this spill/restore into
-         * shared_fastpath? then need to nail down which of reg2 vs reg1 is which.
-         */
-        insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, true/*save*/, false);
-
         PRE(bb, inst,
             INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(DR_REG_XDX),
                                  opnd_create_instr(retaddr)));
@@ -632,11 +593,11 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst, retaddr);
     }
 
-    unreserve_register(drcontext, ilist, app, reg1, NULL);
-    unreserve_register(drcontext, ilist, app, reg_mod, NULL);
+    unreserve_register(drcontext, bb, inst, reg1, NULL);
+    unreserve_register(drcontext, bb, inst, reg_mod, NULL);
     if (sp_action != SP_ADJUST_ACTION_ZERO) {
-        unreserve_register(drcontext, ilist, app, reg2, NULL);
-        unreserve_aflags(drcontext, ilist, app);
+        unreserve_register(drcontext, bb, inst, reg2, NULL);
+        unreserve_aflags(drcontext, bb, inst);
     }
 
     PRE(bb, inst, skip);
@@ -654,10 +615,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* XXX: pre-drreg we had a "bool eflags_live" dimension to avoid spilling
      * when dead.  It's hard to do that with drreg without requiring an extra
      * TLS slot among our own (to avoid drreg conflicts) so we switched to
-     * asking drreg to reserve aflags inline.  This shouldn't be much overhead
-     * as often aflags are already reserved within the bb.
+     * asking drreg to reserve aflags inline in the caller.  This
+     * shouldn't be much overhead as often aflags are already reserved
+     * within the bb.
      */
-    instr_t *slowpath;
+    fastpath_info_t mi;
     instr_t *loop_push, *loop_done, *restore;
     instr_t *loop_next_shadow, *loop_shadow_lookup, *shadow_lookup;
     instr_t *pop_one_block, *push_one_block;
@@ -689,7 +651,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     reg_id_t reg2 = DR_REG_XBX;
     reg_id_t reg3 = DR_REG_XCX;
 
-    slowpath = INSTR_CREATE_label(drcontext);
     push_unaligned = INSTR_CREATE_label(drcontext);
     push_aligned = INSTR_CREATE_label(drcontext);
     push_one_done = INSTR_CREATE_label(drcontext);
@@ -704,6 +665,9 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     restore = INSTR_CREATE_label(drcontext);
     pop_one_block = INSTR_CREATE_label(drcontext);
     push_one_block = INSTR_CREATE_label(drcontext);
+
+    memset(&mi, 0, sizeof(mi));
+    mi.slowpath = INSTR_CREATE_label(drcontext);
 
     /* save the 2 args for retrieval at end */
     PRE(bb, NULL,
@@ -1164,7 +1128,6 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 void
 esp_fastpath_update_swap_threshold(void *drcontext, int new_threshold)
 {
-    int eflags_live;
     sp_adjust_action_t sp_action;
     byte *pc, *end_pc;
     instr_t inst;
@@ -1173,53 +1136,51 @@ esp_fastpath_update_swap_threshold(void *drcontext, int new_threshold)
     instr_init(drcontext, &inst);
     /* No shared_esp_fastpath for zeroing. */
     for (sp_action = 0; sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX; sp_action++) {
-        for (eflags_live = 0; eflags_live < 2; eflags_live++) {
-            /* Only ESP_ADJUST_ABSOLUTE checks for a stack swap: swaps aren't relative,
-             * and we assume OP_leave is not used to swap stacks.
-             */
-            int found = 0;
-            pc = shared_esp_fastpath[sp_action][eflags_live][ESP_ADJUST_ABSOLUTE];
-            ASSERT(ESP_ADJUST_ABSOLUTE < ESP_ADJUST_FAST_LAST,
-                   "ESP_ADJUST_ABSOLUTE+1 will be OOB");
-            end_pc = shared_esp_fastpath[sp_action][eflags_live][ESP_ADJUST_ABSOLUTE+1];
-            LOG(3, "updating swap threshold in gencode "PFX"-"PFX"\n", pc, end_pc);
-            do {
-                pc = decode(drcontext, pc, &inst);
-                if (instr_get_opcode(&inst) == OP_cmp &&
-                    opnd_is_reg(instr_get_src(&inst, 0)) &&
-                    opnd_is_immed_int(instr_get_src(&inst, 1))) {
-                    ptr_int_t immed = opnd_get_immed_int(instr_get_src(&inst, 1));
-                    LOG(3, "found cmp ending @"PFX" immed="PIFX"\n", pc, immed);
-                    if (immed == options.stack_swap_threshold) {
-                        /* could replace through IR and re-encode but want to
-                         * check cache line
-                         */
-                        if (CROSSES_ALIGNMENT(pc-4, 4, proc_get_cache_line_size())) {
-                            /* not that worried: not worth suspend-world */
-                            LOG(1, "WARNING: updating gencode across cache line!\n");
-                        }
-                        /* immed is always last */
-                        ASSERT(*(int*)(pc-4) == options.stack_swap_threshold,
-                               "imm last?");
-                        *(int*)(pc-4) = new_threshold;
-                        found++;
-                    } else if (immed == -options.stack_swap_threshold) {
-                        if (CROSSES_ALIGNMENT(pc-4, 4, proc_get_cache_line_size())) {
-                            /* not that worried: not worth suspend-world */
-                            LOG(1, "WARNING: updating gencode across cache line!\n");
-                        }
-                        ASSERT(*(int*)(pc-4) == -options.stack_swap_threshold,
-                               "imm last?");
-                        *(int*)(pc-4) = -new_threshold;
-                        found++;
+        /* Only ESP_ADJUST_ABSOLUTE checks for a stack swap: swaps aren't relative,
+         * and we assume OP_leave is not used to swap stacks.
+         */
+        int found = 0;
+        pc = shared_esp_fastpath[sp_action][ESP_ADJUST_ABSOLUTE];
+        ASSERT(ESP_ADJUST_ABSOLUTE < ESP_ADJUST_FAST_LAST,
+               "ESP_ADJUST_ABSOLUTE+1 will be OOB");
+        end_pc = shared_esp_fastpath[sp_action][ESP_ADJUST_ABSOLUTE+1];
+        LOG(3, "updating swap threshold in gencode "PFX"-"PFX"\n", pc, end_pc);
+        do {
+            pc = decode(drcontext, pc, &inst);
+            if (instr_get_opcode(&inst) == OP_cmp &&
+                opnd_is_reg(instr_get_src(&inst, 0)) &&
+                opnd_is_immed_int(instr_get_src(&inst, 1))) {
+                ptr_int_t immed = opnd_get_immed_int(instr_get_src(&inst, 1));
+                LOG(3, "found cmp ending @"PFX" immed="PIFX"\n", pc, immed);
+                if (immed == options.stack_swap_threshold) {
+                    /* could replace through IR and re-encode but want to
+                     * check cache line
+                     */
+                    if (CROSSES_ALIGNMENT(pc-4, 4, proc_get_cache_line_size())) {
+                        /* not that worried: not worth suspend-world */
+                        LOG(1, "WARNING: updating gencode across cache line!\n");
                     }
+                    /* immed is always last */
+                    ASSERT(*(int*)(pc-4) == options.stack_swap_threshold,
+                           "imm last?");
+                    *(int*)(pc-4) = new_threshold;
+                    found++;
+                } else if (immed == -options.stack_swap_threshold) {
+                    if (CROSSES_ALIGNMENT(pc-4, 4, proc_get_cache_line_size())) {
+                        /* not that worried: not worth suspend-world */
+                        LOG(1, "WARNING: updating gencode across cache line!\n");
+                    }
+                    ASSERT(*(int*)(pc-4) == -options.stack_swap_threshold,
+                           "imm last?");
+                    *(int*)(pc-4) = -new_threshold;
+                    found++;
                 }
-                instr_reset(drcontext, &inst);
-                if (found >= 2)
-                    break;
-            } while (pc < end_pc);
-            ASSERT(found == 2, "cannot find both threshold cmps in esp fastpath!");
-        }
+            }
+            instr_reset(drcontext, &inst);
+            if (found >= 2)
+                break;
+        } while (pc < end_pc);
+        ASSERT(found == 2, "cannot find both threshold cmps in esp fastpath!");
     }
     instr_free(drcontext, &inst);
 }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -274,12 +274,11 @@ byte *shared_esp_slowpath_defined;
 byte *shared_esp_slowpath_zero;
 /* Indexed by:
  * - sp_action
- * - eflags_live
  * - esp_adjust_t
  * There is no shared fast path for stack zeroing, we always do that inline.
  */
 byte *
-shared_esp_fastpath[SP_ADJUST_ACTION_FASTPATH_MAX+1][2][ESP_ADJUST_FAST_LAST+1];
+shared_esp_fastpath[SP_ADJUST_ACTION_FASTPATH_MAX+1][ESP_ADJUST_FAST_LAST+1];
 
 /* N.B.: mcontext is not in consistent app state, for efficiency.
  * esp is guaranteed to hold app value, though.
@@ -419,8 +418,8 @@ generate_shared_esp_slowpath_helper(void *drcontext, instrlist_t *ilist, app_pc 
 {
     /* PR 447537: adjust_esp's shared_slowpath.
      * On entry:
-     *   - scratch1 holds the val arg
-     *   - scratch2 holds the return address
+     *   - ESP_SLOW_SCRATCH1 holds the val arg
+     *   - ESP_SLOW_SCRATCH2 holds the return address
      * Need retaddr in persistent storage: slot5 is guaranteed free.
      */
     PRE(ilist, NULL, XINST_CREATE_store
@@ -462,7 +461,6 @@ generate_shared_esp_fastpath(void *drcontext, instrlist_t *ilist, app_pc pc)
      * Uses slot5 and slot6.
      * We have multiple versions for {sp_action,eflags,adjust-type}.
      */
-    int eflags_live;
     sp_adjust_action_t sp_action;
     esp_adjust_t type;
     if (!options.esp_fastpath)
@@ -470,14 +468,11 @@ generate_shared_esp_fastpath(void *drcontext, instrlist_t *ilist, app_pc pc)
     ASSERT(ESP_ADJUST_FAST_FIRST == 0, "esp enum error");
     /* No shared_esp_fastpath gencode for zeroing. */
     for (sp_action = 0; sp_action <= SP_ADJUST_ACTION_FASTPATH_MAX; sp_action++) {
-        for (eflags_live = 0; eflags_live < 2; eflags_live++) {
-            for (type = ESP_ADJUST_FAST_FIRST; type <= ESP_ADJUST_FAST_LAST; type++) {
-                shared_esp_fastpath[sp_action][eflags_live][type] = pc;
-                generate_shared_esp_fastpath_helper
-                    (drcontext, ilist, eflags_live, sp_action, type);
-                pc = instrlist_encode(drcontext, ilist, pc, true);
-                instrlist_clear(drcontext, ilist);
-            }
+        for (type = ESP_ADJUST_FAST_FIRST; type <= ESP_ADJUST_FAST_LAST; type++) {
+            shared_esp_fastpath[sp_action][type] = pc;
+            generate_shared_esp_fastpath_helper(drcontext, ilist, sp_action, type);
+            pc = instrlist_encode(drcontext, ilist, pc, true);
+            instrlist_clear(drcontext, ilist);
         }
     }
     return pc;

@@ -969,7 +969,7 @@ slow_path(app_pc pc, app_pc decode_pc)
  * used as an intpr opnd for decoding.
  */
 static bool
-instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi,
+instr_shared_slowpath_decode_pc(instr_t *inst, bb_info_t *bi,
                                 opnd_t *decode_pc_opnd)
 {
     app_pc pc = instr_get_app_pc(inst);
@@ -978,11 +978,11 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi,
         *decode_pc_opnd = OPND_CREATE_INTPTR(decode_pc);
         return false;
     }
-    if (mi->bb->fake_xl8_override_instr == inst) {
-        *decode_pc_opnd = OPND_CREATE_INTPTR(mi->bb->fake_xl8_override_pc);
+    if (bi->fake_xl8_override_instr == inst) {
+        *decode_pc_opnd = OPND_CREATE_INTPTR(bi->fake_xl8_override_pc);
         return true;
-    } else if (mi->bb->fake_xl8 != NULL) {
-        *decode_pc_opnd = OPND_CREATE_INTPTR(mi->bb->fake_xl8);
+    } else if (bi->fake_xl8 != NULL) {
+        *decode_pc_opnd = OPND_CREATE_INTPTR(bi->fake_xl8);
         return true;
     } else if (pc != decode_pc) {
         /* We have to handle DR trampolines so we pass in a separate pc to
@@ -1032,15 +1032,15 @@ bool
 instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi)
 {
     opnd_t ignore;
-    return instr_shared_slowpath_decode_pc(inst, mi, &ignore);
+    return instr_shared_slowpath_decode_pc(inst, mi->bb, &ignore);
 }
 
 void
-instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
+instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
 {
     opnd_t decode_pc_opnd;
     ASSERT(options.pattern == 0, "No slow path for pattern mode");
-    if (instr_shared_slowpath_decode_pc(inst, mi, &decode_pc_opnd)
+    if (instr_shared_slowpath_decode_pc(inst, bi, &decode_pc_opnd)
         IF_ARM(&& false/*NYI: see below*/)) {
 #ifdef X86
         /* Since the clean call instr sequence is quite long we share
@@ -1055,7 +1055,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
          * executed directly in future.
          */
         instr_t *appinst = INSTR_CREATE_label(drcontext);
-        if (mi == NULL) {
+        if (true ||/*NOCHECKIN*/bi == NULL) {
             ASSERT(!whole_bb_spills_enabled(), "whole-bb needs tls preserved");
             instru_insert_mov_pc(drcontext, bb, inst,
                                  spill_slot_opnd(drcontext, SPILL_SLOT_1),
@@ -1074,6 +1074,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
             PRE(bb, inst,
                 XINST_CREATE_jump(drcontext, opnd_create_pc(shared_slowpath_entry)));
         } else {
+# if 0//NOCHECKIN
             /* Don't restore, and put consts into registers if we can, to save space */
             scratch_reg_info_t *s1, *s2, *s3;
             int r1, r2, r3, ef = 0;
@@ -1135,6 +1136,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
                                  opnd_create_reg(s2->reg),
                                  opnd_create_instr(appinst));
             PRE(bb, inst, XINST_CREATE_jump(drcontext, opnd_create_pc(tgt)));
+# endif
         }
         PRE(bb, inst, appinst);
         /* If we entered the slowpath, we've clobbered the reg holding the address to
@@ -1142,8 +1144,8 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
          * which requires a 2-step return and a fixed TLS slot to get it back into the
          * per-call-site reg, we pay a little in inlined cache size and clear it here.
          */
-        if (SHARING_XL8_ADDR(mi)) {
-            instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1.reg),
+        if (SHARING_XL8_ADDR_BI(bi)) {
+            instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(bi->shared_reg),
                                  OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
         }
 #else
@@ -1155,9 +1157,6 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst)
 #endif
     } else {
         app_pc pc = instr_get_app_pc(inst);
-        if (mi != NULL) {
-            /* We assume caller did a restore */
-        }
         if (!opnd_same(OPND_CREATE_INTPTR(pc), decode_pc_opnd)) {
             LOG(1, "INFO: app "PFX" has separate decode pc\n", pc);
         }
@@ -1179,6 +1178,7 @@ is_in_gencode(byte *pc)
 }
 
 #ifdef X86 /* XXX i#1726: update for ARM */
+# if 0 //NOCHECKIN
 static void
 shared_slowpath_save_param(void *drcontext, instrlist_t *ilist, int type)
 {
@@ -1222,6 +1222,7 @@ shared_slowpath_restore(void *drcontext, instrlist_t *ilist, int type, int slot)
             (drcontext, opnd_create_reg(reg), spill_slot_opnd(drcontext, slot)));
     } /* else param was put straight in tls slot */
 }
+# endif
 #endif
 
 byte *
@@ -1262,6 +1263,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                 /* for whole-bb, eflags is never restored here */
                 for (ef = 0; ef < (whole_bb_spills_enabled() ? 1 : SPILL_EFLAGS_NUM);
                      ef++) {
+# if 0 //NOCHECKIN
                     if (!whole_bb_spills_enabled() && ef != SPILL_EFLAGS_NOSPILL) {
                         if (ef == SPILL_EFLAGS_6_EAX ||
                             ef == SPILL_EFLAGS_6_NOEAX) {
@@ -1301,6 +1303,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                         shared_slowpath_entry_local[r1][r2][r3][ef] = pc;
                     pc = instrlist_encode(drcontext, ilist, pc, true);
                     instrlist_clear(drcontext, ilist);
+# endif
                 }
             }
         }

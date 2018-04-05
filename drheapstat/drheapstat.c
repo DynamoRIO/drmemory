@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1361,12 +1361,6 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     }
 
     if (options.staleness) {
-        /* We want to spill AFTER any clean call in case it changes mcontext */
-        ii->bi.spill_after = instr_get_prev(inst);
-
-        /* update liveness of whole-bb spilled regs */
-        fastpath_pre_instrument(drcontext, bb, inst, &ii->bi);
-
         if (instr_uses_memory_we_track(inst)) {
             if (instr_ok_for_instrument_fastpath(inst, &mi, &ii->bi)) {
                 instrument_fastpath(drcontext, bb, inst, &mi, false);
@@ -1392,8 +1386,6 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     }
 
     if (ZERO_STACK() && instr_writes_esp(inst)) {
-        /* any new spill must be after the alloc instru */
-        ii->bi.spill_after = instr_get_prev(inst);
         /* we zero for leaks, and staleness does not care about xsp */
         instrument_esp_adjust(drcontext, bb, inst, &ii->bi,
                               SP_ADJUST_ACTION_ZERO);

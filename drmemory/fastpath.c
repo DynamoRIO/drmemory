@@ -31,6 +31,7 @@
 #include "fastpath_arch.h"
 #include "shadow.h"
 #include "stack.h"
+#include "instru.h"
 #ifdef TOOL_DR_MEMORY
 # include "alloc_drmem.h"
 # include "report.h"
@@ -530,7 +531,7 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
     }
 
     if (options.pattern == 0)
-        unreserve_shared_register(drcontext, bb, instrlist_last(bb), bi);
+        unreserve_shared_register(drcontext, bb, instrlist_last(bb), NULL, bi);
 }
 
 /***************************************************************************

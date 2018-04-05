@@ -203,7 +203,7 @@ bool
 instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi);
 
 void
-instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst);
+instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi);
 
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);

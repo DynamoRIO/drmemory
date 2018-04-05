@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "drutil.h"
 #include "drmemory.h"
 #include "slowpath.h"
@@ -99,15 +100,18 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
          * scratch reg (which would get complicated), we do a locally
          * transparent save+restore.
          */
-        scratch = (dst == REG_XAX ? REG_XCX : REG_XAX);
-        spill_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
+        drvector_t allowed;
+        drreg_init_and_fill_vector(&allowed, false);
+        drreg_set_vector_entry(&allowed, dst == REG_XAX ? REG_XCX : REG_XAX, true);
+        scratch = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        drvector_delete(&allowed);
         using_temp = true;
     }
     IF_DEBUG(bool ok =)
         drutil_insert_get_mem_addr(drcontext, bb, inst, opnd, dst, scratch);
     ASSERT(ok, "drutil_insert_get_mem_addr failed");
     if (using_temp) {
-        restore_reg(drcontext, bb, inst, scratch, SPILL_SLOT_5);
+        unreserve_register(drcontext, bb, inst, scratch, NULL);
     }
 }
 
@@ -1451,22 +1455,19 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
              * regs are dead at which points, and to check assumptions
              */
             if (mi->store) {
+                //NOCHECKIN for reg3 should this be a local reserve?
                 base = mi->need_offs ? mi->reg3 : mi->reg2;
-                mark_scratch_reg_used(drcontext, bb, mi->bb,
-                                      mi->need_offs ? &mi->reg3 : &mi->reg2);
             } else if (!SHARING_XL8_ADDR(mi)) {
                 base = mi->reg1;
-                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
             } else {
                 base = mi->reg2;
-                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             }
             /* all shadow de-refs need xl8 as Umbra uses page faults */
             PREXL8M(bb, inst, INSTR_XL8
                     (INSTR_CREATE_movzx(drcontext, opnd_create_reg(base), shadow_op),
                      mi->xl8));
         }
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_defined);
         ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_defined);
         disp += (int)(ptr_int_t)
@@ -1479,8 +1480,8 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else {
         if (oi != NULL && oi->indir_size != OPSZ_NA) {
             reg_id_t indir_tgt = reg_to_size(mi->reg3, shadow_reg_indir_size(oi));
+            //NOCHECKIN for reg3 should this be a local reserve?
             ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
-            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
             load_reg_shadow_val(drcontext, bb, inst, mi, indir_tgt, oi);
             shadow_op = opnd_create_reg(indir_tgt);
         }
@@ -1508,8 +1509,7 @@ needs_shadow_op(instr_t *inst)
  */
 static void
 insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
-                 reg_id_t reg, reg_id_t scratch,
-                 scratch_reg_info_t *si/*for scratch*/)
+                 reg_id_t reg, reg_id_t scratch)
 {
     ASSERT(scratch == DR_REG_NULL ||
            reg_get_size(reg) == reg_get_size(scratch), "caller must size scratch reg");
@@ -1532,7 +1532,6 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
             } else {
                 /* need to merge partial bytes */
                 ASSERT(scratch != REG_NULL, "invalid scratch reg");
-                mark_scratch_reg_used(drcontext, bb, mi->bb, si);
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch),
                                         opnd_create_reg(reg)));
@@ -1568,7 +1567,6 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
                 } else {
                     /* shift-in bits come from top bit */
                     ASSERT(scratch != REG_NULL, "invalid scratch reg");
-                    mark_scratch_reg_used(drcontext, bb, mi->bb, si);
                     while (shift > 0) {
                         PRE(bb, inst,
                             INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch),
@@ -1585,7 +1583,6 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
             } else {
                 /* need to merge partial bytes */
                 ASSERT(scratch != REG_NULL, "invalid scratch reg");
-                mark_scratch_reg_used(drcontext, bb, mi->bb, si);
                 ASSERT(opc != OP_sar, "NYI");
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch),
@@ -1616,7 +1613,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
  */
 static void
 merge_src_shadows(void *dc, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
-                  opnd_t memsrc, reg_id_t regsrc, scratch_reg_info_t *si)
+                  opnd_t memsrc, reg_id_t regsrc)
 {
     int opc = instr_get_opcode(inst);
     switch (opc) {
@@ -1834,7 +1831,7 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, opnd_create_shadow_reg_slot(base),
                                  shadow_immed(sizeof(void*), SHADOW_DEFINED)));
-            mark_eflags_used(drcontext, bb, mi->bb);
+            reserve_aflags(drcontext, bb, inst);
             add_jcc_slowpath(drcontext, bb, inst,
                              /* short doesn't quite reach for mem2mem's 1st check
                               * FIXME: use short for 2nd though! */
@@ -1854,7 +1851,7 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, opnd_create_shadow_reg_slot(index),
                                  shadow_immed(sizeof(void*), SHADOW_DEFINED)));
-            mark_eflags_used(drcontext, bb, mi->bb);
+            reserve_aflags(drcontext, bb, inst);
             add_jcc_slowpath(drcontext, bb, inst,
                              (mi->mem2mem || mi->load2x ||
                               /* new zero-src check => require long */
@@ -1867,40 +1864,6 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 #endif /* TOOL_DR_MEMORY */
-
-/* Today we pass in reg enum values instead of pointers to
- * scratch_reg_info_t, so we resort to searching for the data
- * for each one passed to add_shadow_table_lookup
- */
-static void
-mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
-                          fastpath_info_t *mi, reg_id_t reg)
-{
-    scratch_reg_info_t *si = NULL;
-    scratch_reg_info_t *si_local = NULL;
-    if (reg == mi->reg1)
-        si = &mi->reg1;
-    else if (reg == mi->reg2)
-        si = &mi->reg2;
-    else if (reg == mi->reg3)
-        si = &mi->reg3;
-    else
-        ASSERT(false, "cannot find scratch reg");
-    si_local = si;
-    if (si->global) {
-        ASSERT(mi->bb != NULL, "global requires bb data");
-        if (si->reg == mi->bb->reg1.reg)
-            si = &mi->bb->reg1;
-        else if (si->reg == mi->bb->reg2.reg)
-            si = &mi->bb->reg2;
-        else
-            ASSERT(false, "cannot find global reg");
-    }
-    mark_scratch_reg_used(drcontext, bb, mi->bb, si);
-    /* enable asserts on local used field */
-    if (si->global)
-        si_local->used = si->used;
-}
 
 /* When we can't or won't use table lookup to find unaddressable, we check
  * some common partial-undefined patterns and if they match we jmp to
@@ -2027,9 +1990,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
     if (need_offs || zero_rest_of_offs)
         reg1_8h = reg_ptrsz_to_8h(reg1);
-    mark_matching_scratch_reg(drcontext, bb, mi, reg1);
-    mark_matching_scratch_reg(drcontext, bb, mi, reg2);
-    mark_eflags_used(drcontext, bb, mi->bb);
+    reserve_aflags(drcontext, bb, inst);
     ASSERT(mi->memsz <= 4 || !need_offs, "unsupported fastpath memsz");
 #ifdef TOOL_DR_MEMORY
     if (check_alignment && mi->memsz > 1) {
@@ -2084,10 +2045,10 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          * avoid the need for reg3 for some uses that do not need it
          * later (e.g., insert_check_defined())
          */
-        mark_matching_scratch_reg(drcontext, bb, mi, reg3);
         /* FIXME: does this really need top 16 bits zeroed?  can save 1 byte
          * using mov_st instead of movzx
          */
+        //NOCHECKIN should this be locally reserved
         PRE(bb, inst,
             INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg3),
                                opnd_create_reg(reg_ptrsz_to_16(reg1))));
@@ -2127,7 +2088,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
             ((get_value && value_in_reg2) ?
              opnd_create_reg(reg1_8h) : opnd_create_reg(reg2_8h));
         /* store offset within containing dword in high 8 bits */
-        ASSERT(mi->reg3.used, "spill error");
+        ASSERT(reg3_8 != DR_REG_NULL, "spill error");
         PRE(bb, inst,
             INSTR_CREATE_mov_st(drcontext, mi->memoffs, opnd_create_reg(reg3_8)));
         if (zero_rest_of_offs) {
@@ -2152,7 +2113,6 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          * doesn't need it for propagating, so need_offs is false and thus
          * no 3rd scratch reg was asked for.
          * we avoid a 3rd reg when not needed below by re-doing the lea */
-        ASSERT(!mi->reg3.used, "spill error");
         ASSERT(!opnd_uses_reg(mi->memop, reg1) &&
                !opnd_uses_reg(mi->memop, reg2), "cannot re-lea");
         /* only used by non-mem2mem loads, so val is in reg2 and reg1 is now scratch */
@@ -2195,7 +2155,7 @@ add_check_datastore(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* all shadow de-refs need xl8 as Umbra uses page faults */
         PREXL8M(bb, inst, INSTR_XL8
                 (INSTR_CREATE_cmp(drcontext, dst, src), mi->xl8));
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         PRE(bb, inst,
             INSTR_CREATE_jcc_short(drcontext, OP_je_short,
                                    opnd_create_instr(match_target)));
@@ -2276,7 +2236,7 @@ load_reg_shadow_val(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(target), shadow));
                 opnd_set_disp(&shadow, opnd_get_disp(shadow) + 1);
-                mark_eflags_used(drcontext, bb, mi->bb);
+                reserve_aflags(drcontext, bb, inst);
                 PRE(bb, inst,
                     INSTR_CREATE_or(drcontext, opnd_create_reg(target), shadow));
             } else {
@@ -2301,14 +2261,12 @@ load_reg_shadow_val(void *drcontext, instrlist_t *bb, instr_t *inst,
  * stores just those bits for opsz and offs from src into dst.
  * Assumes that src_opsz != dst_opsz only for movzx/movsx and only for
  * src_opsz=={1,2} and dst_opsz==4.
- * If it uses scratch, it calls mark_scratch_reg_used on si.
  * If preserve is true, does not clobber src.offs or src.shadow.
  */
 static inline void
 add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                      fastpath_info_t *mi, opnd_info_t dst,
-                     opnd_info_t src, int src_opsz, int dst_opsz,
-                     reg_id_t scratch, scratch_reg_info_t *si,
+                     opnd_info_t src, int src_opsz, int dst_opsz, reg_id_t scratch,
                      bool process_eflags, bool alu_uncombined, bool preserve)
 {
     /* PR 448701: we need to support writes to shadow blocks faulting.
@@ -2343,6 +2301,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(!opnd_is_null(dst.shadow) ||
            (process_eflags && !opnd_is_null(src.shadow)), "shouldn't be called");
     ASSERT(src_opsz > 0 && !opnd_is_null(src.shadow), "shouldn't be called");
+    reg_id_t scratch_full = reg_to_pointer_sized(scratch);
 
     DOLOG(4, {
         file_t f = LOGFILE_GET(drcontext);
@@ -2356,7 +2315,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      * is in src.  We now perform any shifting, and then write to dest.
      */
     if (opnd_is_reg(src.shadow)) {
-        insert_shadow_op(drcontext, bb, mi, inst, opnd_get_reg(src.shadow), scratch, si);
+        insert_shadow_op(drcontext, bb, mi, inst, opnd_get_reg(src.shadow), scratch);
     } else
         ASSERT(opnd_is_immed_int(src.shadow), "invalid shadow src");
     ASSERT(dst.indir_size == OPSZ_NA || src_opsz == 4 || src_opsz == 8 || src_opsz == 16,
@@ -2370,11 +2329,10 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (dst.indir_size != OPSZ_NA) {
                 /* we're going to use the whole register */
                 ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
-                mark_scratch_reg_used(drcontext, bb, mi->bb, si);
                 PRE(bb, inst,
-                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(si->reg),
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch_full),
                                         dst.shadow));
-                dst.shadow = shadow_reg_indir_opnd(&dst, si->reg);
+                dst.shadow = shadow_reg_indir_opnd(&dst, scratch_full);
             }
 #ifdef X86_64
             /* Writing to a 32-bit GPR zeroes the top 32 bits. */
@@ -2428,7 +2386,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                                /* 2 = dst_opsz, 0 = ofnum */
                                opnd_create_immed_int(~(((1 << 2*2)-1) << 0*2),
                                                      OPSZ_1)), mi->xl8));
-            mark_eflags_used(drcontext, bb, mi->bb);
+            reserve_aflags(drcontext, bb, inst);
         }
         PRE(bb, inst, skip_write_tgt);
     } else if (opnd_is_immed_int(src.shadow) && opnd_get_immed_int(src.shadow) == 0 &&
@@ -2445,7 +2403,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                               (drcontext, dst.shadow,
                                opnd_create_immed_int(~(((1 << dst_opsz*2)-1) << ofnum*2),
                                                      OPSZ_1)), mi->xl8));
-            mark_eflags_used(drcontext, bb, mi->bb);
+            reserve_aflags(drcontext, bb, inst);
         }
         PRE(bb, inst, skip_write_tgt);
     } else {
@@ -2461,8 +2419,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                (opnd_is_null(dst.shadow) || !opnd_is_null(dst.offs)),
                "must have offs set for src and dst");
 
-        mark_scratch_reg_used(drcontext, bb, mi->bb, si);
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
 
         /* We split into cases based on which of src and dst has a constant
          * offset.  Only one should dynamically vary.
@@ -2887,22 +2844,21 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 static inline void
 add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, opnd_info_t src, int src_opsz, int dst_opsz,
-                       reg_id_t scratch, scratch_reg_info_t *si,
-                       bool process_eflags, bool alu_uncombined)
+                       reg_id_t scratch, bool process_eflags, bool alu_uncombined)
 {
     /* even if dst1 is empty we need to write to eflags */
     if (!opnd_is_null(mi->dst[0].shadow) ||
         (process_eflags &&
          TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst, DR_QUERY_INCLUDE_ALL)))) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
-                             src, src_opsz, dst_opsz, scratch, si,
+                             src, src_opsz, dst_opsz, scratch,
                              process_eflags, alu_uncombined,
                              /* preserve src if we need to write to 2nd dst */
                              !opnd_is_null(mi->dst[1].shadow));
     }
     if (!opnd_is_null(mi->dst[1].shadow)) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[1],
-                             src, src_opsz, dst_opsz, scratch, si,
+                             src, src_opsz, dst_opsz, scratch,
                              process_eflags, alu_uncombined,
                              false/*we assume ok to clobber src*/);
     }
@@ -2920,7 +2876,7 @@ insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(mi->reg3 != DR_REG_NULL, "reg3 is not set up");
     /* mi->reg1 holds the first lea so we have to preserve it */
     if (opnd_uses_reg(memop, mi->reg1)) {
-        PRE(ilist, NULL, INSTR_CREATE_mov_st
+        PRE(bb, inst, INSTR_CREATE_mov_st
             (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
              opnd_create_reg(mi->reg1)));
     }
@@ -2929,7 +2885,7 @@ insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
     insert_lea(drcontext, bb, inst, memop, mi->reg3, mi->reg2);
     if (opnd_uses_reg(memop, mi->reg1)) {
-        PRE(ilist, NULL, INSTR_CREATE_mov_ld
+        PRE(bb, inst, INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(mi->reg1),
              spill_slot_opnd(drcontext, SPILL_SLOT_1)));
     }
@@ -2967,7 +2923,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     uint opc = instr_get_opcode(inst);
 #ifdef TOOL_DR_MEMORY
     reg_id_t scratch, scratch3, src_val_reg;
-    scratch_reg_info_t *si;
 #endif
     instr_t *nextinstr = INSTR_CREATE_label(drcontext);
     instr_t *fastpath_restore = INSTR_CREATE_label(drcontext);
@@ -2982,7 +2937,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool checked_src2 = false, checked_memsrc = false;
 #endif
     bool share_addr = false;
-#ifdef DEBUG
+#ifdef DEBUG_NOCHECKIN//NOCHECKIN see below
     instr_t *instru_start = instr_get_prev(inst);
 #endif
 #ifdef TOOL_DR_MEMORY
@@ -3033,8 +2988,8 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                  * We require whole-bb so that we know the regs here.
                  */
                 (whole_bb_spills_enabled() && mi->load &&
-                 (opnd_uses_reg(mi->memop, mi->bb->reg1.reg) ||
-                  opnd_uses_reg(mi->memop, mi->bb->reg2.reg))))
+                 (opnd_uses_reg(mi->memop, mi->reg1) ||
+                  opnd_uses_reg(mi->memop, mi->reg2))))
                 mi->need_offs_early = true;
         }
     }
@@ -3109,7 +3064,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         mi->use_shared = false;
         mi->bb->shared_memop = opnd_create_null();
         mi->bb->shared_disp_implicit = 0;
-        unreserve_shared_register(drcontext, bb, inst, mi->bb);
+        unreserve_shared_register(drcontext, bb, inst, mi, mi->bb);
         mi->reg1 = DR_REG_NULL;
     }
 
@@ -3119,18 +3074,19 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
      * span a bunch of code (and reg3 for 2nd address for mem2mem).
      */
     if (mi->reg1 == DR_REG_NULL)
-        reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg1);
-    reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg2);
+        mi->reg1 = reserve_register(drcontext, bb, inst, &only_abcd, mi);
+    mi->reg2 = reserve_register(drcontext, bb, inst, &only_abcd, mi);
     /* we need 3rd reg for temp to get offs while getting
      * shadow byte address, and also temp to set dest bits in
      * add_dst_shadow_write(); we also need to handle 2nd
      * memop for mem2mem or load2x.
+     * XXX i#1795: move reg3 to local use to avoid having to reserve up front.
      */
     if (mi->need_offs || mi->mem2mem || mi->load2x ||
         mi->need_offs_early || mi->need_nonoffs_reg3 ||
         /* to read the app value for and/test/or memop we need 3rd reg */
         need_reg3_for_appval)
-        reserve_register(drcontext, bb, inst, &only_abcd, &mi->reg3);
+        mi->reg3 = reserve_register(drcontext, bb, inst, &only_abcd, mi);
 
 #ifdef TOOL_DR_MEMORY
     /* point at the locations of shadow values for operands */
@@ -3165,9 +3121,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
     });
 #endif /* TOOL_DR_MEMORY */
 
-    LOG(5, "aflags: %s\n", mi->aflags == EFLAGS_WRITE_6 ? "W6" :
-        (mi->aflags == EFLAGS_WRITE_OF ? "WO" :
-         (mi->aflags == EFLAGS_READ_6 ? "R6" : "0")));
     ASSERT(mi->opsz != 4 || (!mi->load && !mi->store) ||
            opnd_same(mi->memoffs, opnd_create_immed_int(0, OPSZ_1)),
            "4-byte should have 0 offset");
@@ -3235,7 +3188,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             /* i#1969: OP_jne_short does not always reach. */
             (drcontext, OP_jne, opnd_create_instr(fastpath_restore)));
         check_ignore_unaddr = false; /* can ignore from now on */
-        unreserve_aflags(drcontext, bb, inst);
     }
 #endif
 
@@ -3243,10 +3195,8 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
     if (mi->load || mi->store) {
         if (mi->use_shared && mi->memsz < 4) {
             /* i#1597: reg1 holds xl8 share, but we need addr to check dword bounds */
-            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-                insert_lea(drcontext, bb, inst, mi->memop, mi->reg2, mi->reg3);
+            insert_lea(drcontext, bb, inst, mi->memop, mi->reg2, mi->reg3);
         } else if (!mi->use_shared) { /* don't need lea if sharing trans */
-            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
             insert_lea(drcontext, bb, inst, mi->memop, mi->reg1, mi->reg3);
         }
     }
@@ -3266,21 +3216,11 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
      */
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc)) {
         int setcc_opc = instr_cmovcc_to_jcc(opc) - OP_jo + OP_seto;
-        //NOCHECKIN need new drreg API for this
-        /* for whole-bb we have to restore and then re-save aflags.
-         * optimization: we should avoid the restore+spill of eax
-         */
-        if (whole_bb_spills_enabled()) {
-            restore_aflags_if_live(drcontext, bb, inst, mi, mi->bb);
-            /* avoid double-save at top */
-            mi->bb->eflags_used = true;
-        }
-        mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
+        IF_DEBUG(drreg_status_t res =)
+            drreg_restore_app_aflags(drcontext, bb, inst);
+        ASSERT(res == DRREG_SUCCESS, "failed to restore flags");
         PRE(bb, inst,
             INSTR_CREATE_setcc(drcontext, setcc_opc, opnd_create_reg(mi->reg2_8)));
-        if (whole_bb_spills_enabled()) {
-            save_aflags_if_live(drcontext, bb, inst, mi, mi->bb);
-        }
     }
 
 #ifdef TOOL_DR_MEMORY
@@ -3293,7 +3233,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                              shadow_immed(sizeof(void*), SHADOW_DEFINED)));
         reserve_aflags(drcontext, bb, inst);
         add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
-        unreserve_aflags(drcontext, bb, inst);
     }
 #endif /* TOOL_DR_MEMORY */
 
@@ -3342,12 +3281,13 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         uint jcc_not_unaddr = OP_je;
 #endif
         bool check_alignment = options.check_uninitialized;
-        reserve_register(drcontext, bb, inst, NULL, &mi->reg3, mi);
+        mi->reg3 = reserve_register(drcontext, bb, inst, NULL, mi);
         add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                 false/*val in reg1*/, false/*no offs*/, false/*no offs*/,
                                 mi->reg3, mi->reg2,
                                 mi->reg1/*won't be touched!*/, check_alignment);
 #ifdef TOOL_DR_MEMORY
+        reserve_aflags(drcontext, bb, inst);
         if (!options.check_uninitialized) {
             /* all shadow de-refs need xl8 as Umbra uses page faults */
             PREXL8M(bb, inst, INSTR_XL8
@@ -3391,7 +3331,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             if (mi->num_to_propagate > 0)
                 mi->num_to_propagate--;
         }
-        mark_eflags_used(drcontext, bb, mi->bb);
         if (mi->mem2mem && check_ignore_unaddr && !opnd_is_null(mi->src[0].shadow)) {
             /* PR 578892: fastpath heap routine unaddr accesses.  Yes, there
              * are mem2mem w/ load being heap unaddr: push of heap lock to
@@ -3434,11 +3373,11 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             /* FIXME: measure perf to see which is better */
             /* cmp and avoid store can be faster than blindly storing */
             /* all shadow de-refs need xl8 as Umbra uses page faults */
+            reserve_aflags(drcontext, bb, inst);
             PREXL8M(bb, inst, INSTR_XL8
                     (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3, 0),
                                       OPND_CREATE_INT8(0)),
                      mi->xl8));
-            mark_eflags_used(drcontext, bb, mi->bb);
             PRE(bb, inst,
                 INSTR_CREATE_jcc(drcontext, OP_jnz_short,
                                  opnd_create_instr(fastpath_restore)));
@@ -3447,9 +3386,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg3, 0),
                                 OPND_CREATE_INT8(1)));
 #endif
-        IF_DEBUG(res =)
-            drreg_unreserve_register(drcontext, bb, inst, NULL, &mi->reg3);
-        ASSERT(res == DRREG_SUCCESS, "failed to unreserve scratch reg");
+        unreserve_register(drcontext, bb, inst, mi->reg3, mi);
     }
 
 #ifdef TOOL_DR_MEMORY
@@ -3473,7 +3410,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         bool need_value;
         /* we set mi->use_shared, share_addr, and mi->bb->shared_* above */
         IF_DEBUG(if (share_addr))
-            ASSERT(mi->reg1 == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
+            ASSERT(mi->reg1 == mi->reg1, "sharing requires reg1==bb reg1");
         need_value = options.check_uninitialized &&
             mi->load && !mi->pushpop && !share_addr;
 
@@ -3501,7 +3438,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
              * deleting for now.  If address is re-used we simply won't share
              * so nothing that bad will happen.
              */
-            ASSERT(mi->reg1 == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
+            ASSERT(mi->reg1 == mi->reg1, "sharing requires reg1==bb reg1");
             diff = opnd_get_disp(mi->memop) -
                 (opnd_get_disp(mi->bb->shared_memop) + mi->bb->shared_disp_implicit);
             LOG(3, "  sharing shadow addr: disp = %d - (%d + %d) => %d /4 - %d\n",
@@ -3556,11 +3493,10 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                         (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2),
                                             OPND_CREATE_MEM8(mi->reg1, diff)),
                          mi->xl8));
-                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
             } else {
                 mi->bb->shared_disp_reg1 += diff;
                 /* No reason to avoid eflags since will use cmp below anyway */
-                mark_eflags_used(drcontext, bb, mi->bb);
+                reserve_aflags(drcontext, bb, inst);
                 insert_add_to_reg(drcontext, bb, inst, mi->reg1, diff);
             }
         }
@@ -3571,8 +3507,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             mi->bb->shared_disp_implicit += (mi->load ? -(int)mi->memsz : mi->memsz);
     } else if ((mi->load || mi->store) && mi->need_offs) {
         ASSERT(false, "not supported"); /* not updated for PR 425240, etc. */
-        mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         PRE(bb, inst,
             INSTR_CREATE_mov_st(drcontext, opnd_create_reg(mi->reg2_8h),
                                 opnd_create_reg(mi->reg1_8)));
@@ -3597,7 +3532,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
          * We need both shadow table slot address and value.  Address is
          * currently in reg1; we get value into reg2.
          */
-        ASSERT(mi->reg1.used && mi->reg2.used, "internal reg spill error");
         ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
         PREXL8M(bb, inst, INSTR_XL8
                 (INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2),
@@ -3616,9 +3550,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
           always_check_definedness(inst, mi->opnum[2])))) {
         LOG(4, "\tchecking definedness of src3 => %d to propagate\n",
             mi->num_to_propagate-1);
+        reserve_aflags(drcontext, bb, inst);
         insert_check_defined(drcontext, bb, marker1, mi, &mi->src[2],
                              mi->src[2].app, mi->src[2].shadow);
-        mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
         mi->num_to_propagate--;
@@ -3632,9 +3566,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         opnd_info_t tmp;
         LOG(4, "\tchecking definedness of src2 => %d to propagate\n",
             mi->num_to_propagate-1);
+        reserve_aflags(drcontext, bb, inst);
         insert_check_defined(drcontext, bb, marker1, mi, &mi->src[1],
                              mi->src[1].app, mi->src[1].shadow);
-        mark_eflags_used(drcontext, bb, mi->bb);
         /* relies on src1 undef going to slowpath so only for !opnd_same */
         if (check_appval && !opnd_same(mi->src[1].app, mi->src[0].app)) {
             /* handle common cases of undef and/test/or in fastpath: only handling
@@ -3701,9 +3635,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
          * we check src2 since if checked_src2 we swapped 1 and 2
          */
         if (!checked_src2 || !opnd_same(mi->src[2].app, mi->src[0].app)) {
+            reserve_aflags(drcontext, bb, inst);
             insert_check_defined(drcontext, bb, marker1, mi, &mi->src[0],
                                  mi->src[0].app, mi->src[0].shadow);
-            mark_eflags_used(drcontext, bb, mi->bb);
             ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
             if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow) &&
                 /* i#1722: do not try to check unaddr for indirected shadow */
@@ -3733,9 +3667,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         /* we keep on fastpath by hardcoding the 4th & 5th sources */
         opnd_t op4 = instr_get_src(inst, 3);
         opnd_t op5 = instr_get_src(inst, 4);
+        reserve_aflags(drcontext, bb, inst);
         insert_check_defined(drcontext, bb, marker1, mi, NULL, op4,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
-        mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
         insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
@@ -3762,7 +3696,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         /* if we checked memsrc for definedness we also checked for addressability */
         !checked_memsrc) {
         int jcc_unaddr = OP_jne;
-        mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
+        reserve_aflags(drcontext, bb, inst);
 
         if (!options.check_uninitialized) {
             jcc_unaddr = OP_je;
@@ -3822,7 +3756,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                                      OPND_CREATE_INT32(SHADOW_DQWORD_DEFINED)));
             }
         }
-        mark_eflags_used(drcontext, bb, mi->bb);
         /* we only check for 1 unaddr shadow so only check if haven't already */
         if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
             /* PR 578892: fastpath heap routine unaddr accesses */
@@ -3839,7 +3772,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         }
     } else if (mi->store) {
         /* shadow table slot address is in reg1 */
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
         if (mi->pushpop) { /* push of a reg or immed */
             /* it should be unaddressable, but might not be if app has malloced
              * a stack.  we use this as more than a debug check: it triggers
@@ -3849,7 +3782,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
              * and have already tuned the stack swap threshold.
              */
             if (options.check_push) {
-                ASSERT(mi->reg1.used, "internal reg spill error");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
@@ -3860,12 +3792,12 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         } else {
             if (!options.check_uninitialized) {
                 /* all shadow de-refs need xl8 as Umbra uses page faults */
+                reserve_aflags(drcontext, bb, inst);
                 PREXL8M(bb, inst, INSTR_XL8
                         (INSTR_CREATE_cmp(drcontext, mi->dst[0].shadow,
                                           OPND_CREATE_INT8
                                           ((char)SHADOW_DWORD_UNADDRESSABLE)),
                          mi->xl8));
-                mark_eflags_used(drcontext, bb, mi->bb);
                 /* we only check for 1 unaddr shadow so only check if haven't already */
                 if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
                     /* PR 578892: fastpath heap routine unaddr accesses */
@@ -3884,16 +3816,14 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                  * not-fully-defined dwords, so we have separate checks.
                  */
                 reg_id_t scratch;
-                ASSERT(mi->reg1.used, "internal reg spill error");
                 /* Our table lookup requires an explicit load but it should still
                  * be more performant than the series of compares we used to use,
                  * as it keeps partial-defined dwords on the fastpath.
                  */
                 if (mi->need_offs) {
-                    ASSERT(mi->reg3.used, "reg spill incorrect assumption");
+                    ASSERT(mi->reg3 != DR_REG_NULL, "reg spill incorrect assumption");
                     scratch = mi->reg3;
                 } else {
-                    mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
                     scratch = mi->reg2;
                 }
                 PREXL8M(bb, inst, INSTR_XL8
@@ -3947,7 +3877,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                  * see !options.loads_use_table comments above on dup src def checks.
                  */
                 instr_t *ok_to_write = INSTR_CREATE_label(drcontext);
-                ASSERT(mi->reg1.used, "internal reg spill error");
                 PRE(bb, inst, INSTR_CREATE_cmp
                     (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1, 0) :
                      (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1, 0) :
@@ -3995,10 +3924,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         initialize_opnd_info(&src);
         dst.shadow = OPND_CREATE_MEM8(mi->reg1, 0);
         src.shadow = OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE);
-        ASSERT(mi->reg2.used, "internal reg spill error");
         add_dst_shadow_write(drcontext, bb, inst, mi, dst, src, mi->src_opsz,
                              instr_is_return(inst) ? mi->src_opsz : mi->opsz,
-                             mi->reg2_8, &mi->reg2,
+                             mi->reg2_8,
                              /* for popf don't write UNADDR to eflags: we handle below */
                              false/*skip eflags*/, false/*!alu_uncombined*/,
                              false/*!preserve -- doesn't matter since src is const*/);
@@ -4020,12 +3948,10 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg2), "scratch reg error");
         scratch = reg_to_size(mi->reg2, (mi->opsz > 8) ? OPSZ_4 :
                               ((mi->opsz == 8) ? OPSZ_2 : OPSZ_1));
-        si = &mi->reg2;
     } else {
         ASSERT(!opnd_uses_reg(mi->dst[0].shadow, mi->reg1), "scratch reg error");
         scratch = reg_to_size(mi->reg1, (mi->opsz > 8) ? OPSZ_4 :
                               ((mi->opsz == 8) ? OPSZ_2 : OPSZ_1));
-        si = &mi->reg1;
     }
     scratch3 = mi->reg3 == REG_NULL ? REG_NULL :
         reg_to_size(mi->reg3, (mi->opsz > 8) ? OPSZ_4 :
@@ -4071,11 +3997,10 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
             add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
                                    effective_opsz, effective_opsz,
-                                   scratch, si, true, false);
+                                   scratch, true, false);
         }
     } else if (mi->num_to_propagate == 1) {
         /* copy src shadow to eflags shadow and dst shadow */
-        mark_scratch_reg_used(drcontext, bb, mi->bb, si);
         if (load_reg_shadow_val(drcontext, bb, inst, mi, src_val_reg, &mi->src[0]))
             mi->src[0].shadow = opnd_create_reg(src_val_reg);
         if (!needs_shadow_op(inst) && opnd_same(mi->src[0].app, mi->dst[0].app)) {
@@ -4083,9 +4008,9 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             mi->dst[0].shadow = opnd_create_null();
             mi->dst[0].offs = opnd_create_immed_int(0, OPSZ_1); /* for eflags */
         }
+        ASSERT(scratch3 != REG_NULL, "spill error");
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0], mi->src_opsz,
-                               mi->opsz, scratch3, &mi->reg3, true, false);
-        ASSERT(!mi->reg3.used || mi->reg3 != REG_NULL, "spill error");
+                               mi->opsz, scratch3, true, false);
     } else {
         /* combine the N sources and then write to the dest + eflags.
          * in general we want U+D=>U, U+U=>U, and D+D=>D: so we want bitwise or.
@@ -4098,8 +4023,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
          */
         bool alu_uncombined = mi->opsz < 4 && is_alu(mi);
 
-        mark_scratch_reg_used(drcontext, bb, mi->bb, si);
-        mark_eflags_used(drcontext, bb, mi->bb);
+        reserve_aflags(drcontext, bb, inst);
 
         if (alu_uncombined) {
             /* src and dst are combined inside add_dstX2_shadow_write */
@@ -4119,7 +4043,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                        "multi-src different offsets on fastpath NYI");
                 ASSERT(mi->src[2].indir_size == OPSZ_NA, "should be !alu_uncombined");
                 merge_src_shadows(drcontext, bb, mi, inst, mi->src[2].shadow,
-                                  src_val_reg, si);
+                                  src_val_reg);
             }
         } else {
             /* We used to optimize for 4-byte ALU ops by or-ing src into dst instead
@@ -4145,33 +4069,31 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                    "combining srcs w/ different sub-dword offs NYI");
             if (mi->src[1].indir_size != OPSZ_NA) {
                 ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
-                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3),
                                         mi->src[1].shadow));
                 mi->src[1].shadow = shadow_reg_indir_opnd(&mi->src[1], mi->reg3);
             }
             merge_src_shadows(drcontext, bb, mi, inst, mi->src[1].shadow,
-                              src_val_reg, &mi->reg3);
+                              src_val_reg);
             if (!opnd_is_null(mi->src[2].shadow)) {
                 ASSERT(opnd_same(mi->src[2].offs, mi->src[0].offs),
                        "combining srcs w/ different sub-dword offs NYI");
                 if (mi->src[2].indir_size != OPSZ_NA) {
                     ASSERT(mi->reg3 != DR_REG_NULL, "spill error");
-                    mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
                     PRE(bb, inst,
                         INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3),
                                             mi->src[2].shadow));
                     mi->src[2].shadow = shadow_reg_indir_opnd(&mi->src[2], mi->reg3);
                 }
                 merge_src_shadows(drcontext, bb, mi, inst, mi->src[2].shadow,
-                                  src_val_reg, &mi->reg3);
+                                  src_val_reg);
             }
         }
+        ASSERT(scratch3 != REG_NULL, "spill error");
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
-                               mi->src_opsz, mi->opsz, scratch3, &mi->reg3,
+                               mi->src_opsz, mi->opsz, scratch3,
                                true, alu_uncombined);
-        ASSERT(!mi->reg3.used || mi->reg3 != REG_NULL, "spill error");
 
         /* FIXME: for insert_shadow_op() for shifts, need to
          * either do the bitwise or into mi->reg1_8, then call:
@@ -4192,11 +4114,11 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         /* FIXME: measure perf to see which is better */
         /* cmp and avoid store can be faster than blindly storing */
         /* all shadow de-refs need xl8 as Umbra uses page faults */
+        reserve_aflags(drcontext, bb, inst);
         PREXL8M(bb, inst, INSTR_XL8
                 (INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1, 0),
                                   OPND_CREATE_INT8(0)),
                  mi->xl8));
-        mark_eflags_used(drcontext, bb, mi->bb);
         /* too bad there's no cmovcc from immed to memory! */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_jnz_short,
@@ -4218,23 +4140,21 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         disp = (int)(ptr_int_t)(mi->pushpop ?
                                 (mi->store ? &push4_fastpath  : &pop4_fastpath) :
                                 (mi->store ? &write4_fastpath : &read4_fastpath));
+        reserve_aflags(drcontext, bb, inst);
         PRE(bb, inst,
             INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32(REG_NULL, disp)));
-        mark_eflags_used(drcontext, bb, mi->bb);
     }
 #endif
-    insert_spill_or_restore(drcontext, bb, spill_location, &mi->reg1, true/*save*/, false);
-    insert_spill_or_restore(drcontext, bb, spill_location, &mi->reg2, true/*save*/, false);
-    insert_spill_or_restore(drcontext, bb, spill_location, &mi->reg3, true/*save*/, false);
-    /* restoring may involve xchg so must be prior to aflags restore */
-    insert_spill_or_restore(drcontext, bb, inst, &mi->reg3, false/*restore*/,false);
-    insert_spill_or_restore(drcontext, bb, inst, &mi->reg2, false/*restore*/,false);
-    insert_spill_or_restore(drcontext, bb, inst, &mi->reg1, false/*restore*/,false);
-    if (save_aflags && mi->aflags != EFLAGS_WRITE_6) {
-        insert_restore_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
-    }
+    if (mi->reg1 != DR_REG_NULL)
+        unreserve_register(drcontext, bb, inst, mi->reg1, mi);
+    if (mi->reg2 != DR_REG_NULL)
+        unreserve_register(drcontext, bb, inst, mi->reg2, mi);
+    if (mi->reg3 != DR_REG_NULL)
+        unreserve_register(drcontext, bb, inst, mi->reg3, mi);
+    unreserve_aflags(drcontext, bb, inst);
+#if 0//NOCHECKIN probably has to go
 #ifdef DEBUG
-    else if (!save_aflags && mi->aflags != EFLAGS_WRITE_6) {
+    if (!save_aflags && mi->aflags != EFLAGS_WRITE_6) {
         instr_t *in;
         tls_util_t *pt = PT_GET(drcontext);
         if (instru_start == NULL)
@@ -4252,6 +4172,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
             }
         }
     }
+#endif
 #endif
     if (mi->need_slowpath) {
         bool ignore_unaddr_pre_slow =
@@ -4306,7 +4227,7 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
                     mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
                     add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
                                            mi->opsz/*not src*/, mi->opsz,
-                                           scratch, si, false/*no eflags*/, false);
+                                           scratch, false/*no eflags*/, false);
                     PRE(bb, inst,
                         INSTR_CREATE_jmp_short(drcontext,
                                                opnd_create_instr(fastpath_restore)));
@@ -4334,29 +4255,17 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
     /* check again b/c no-uninits may have removed regular slowpath */
     if (mi->need_slowpath) {
         PRE(bb, inst, mi->slowpath);
-        if (!instr_can_use_shared_slowpath(inst, mi)) {
-            /* must restore now */
-            if (mi->aflags != EFLAGS_WRITE_6) {
-                if (mi->aflags != EFLAGS_WRITE_OF) {
-                    PRE(bb, inst, INSTR_CREATE_add
-                        (drcontext, opnd_create_reg(REG_AL), OPND_CREATE_INT8(0x7f)));
-                }
-                PRE(bb, inst, INSTR_CREATE_sahf(drcontext));
-                insert_spill_or_restore(drcontext, bb, inst, &mi->eax, false/*restore*/,
-                                        false);
-            }
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg3,false/*restore*/,false);
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg2,false/*restore*/,false);
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg1,false/*restore*/,false);
-        } else {
-            /* We restore in the shared slowpath for slot spills, but here for
-             * xchg to avoid having too many variations in slow path entrances.
-             */
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg3, false/*restore*/,true);
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg2, false/*restore*/,true);
-            insert_spill_or_restore(drcontext, bb, inst, &mi->reg1, false/*restore*/,true);
-        }
-        instrument_slowpath(drcontext, bb, inst);
+        /* To keep things local we unreserve here and let the slowpath handle its
+         * own scratch registers.
+         */
+        if (mi->reg1 != DR_REG_NULL)
+            unreserve_register(drcontext, bb, inst, mi->reg1, mi);
+        if (mi->reg2 != DR_REG_NULL)
+            unreserve_register(drcontext, bb, inst, mi->reg2, mi);
+        if (mi->reg3 != DR_REG_NULL)
+            unreserve_register(drcontext, bb, inst, mi->reg3, mi);
+        unreserve_aflags(drcontext, bb, inst);
+        instrument_slowpath(drcontext, bb, inst, mi->bb);
     } else {
         /* avoid leaks, be defensive in case we buggily did target it */
 #ifdef TOOL_DR_MEMORY
@@ -4365,7 +4274,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
         PRE(bb, inst, mi->slowpath);
     }
     PRE(bb, inst, nextinstr);
-    drvector_delete(&only_abcd);
 }
 
 /***************************************************************************
@@ -4373,25 +4281,6 @@ NOCHECKIN drreg should solve this: always ask for reg; if no sharing, we should 
  */
 
 #ifdef TOOL_DR_MEMORY
-
-static bool
-instr_is_restore_eflags(void *drcontext, instr_t *inst)
-{
-    return (instr_get_opcode(inst) == OP_mov_ld &&
-            opnd_is_far_base_disp(instr_get_src(inst, 0)) &&
-            /* opnd_same fails b/c of force_full_disp differences */
-            opnd_get_disp(instr_get_src(inst, 0)) ==
-            opnd_get_disp(spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX)));
-}
-
-static bool
-instr_is_spill_reg(void *drcontext, instr_t *inst)
-{
-    return (instr_get_opcode(inst) == OP_mov_st &&
-            opnd_is_far_base_disp(instr_get_dst(inst, 0)) &&
-            /* distinguish our pop store of 0x55 from slow slot eax spill */
-            opnd_get_size(instr_get_src(inst, 0)) == OPSZ_PTR);
-}
 
 /* PR 448701: handle fault on write to a special shadow block.
  * Restores mc to app values and returns a pointer to app instr,
@@ -4402,22 +4291,13 @@ restore_mcontext_on_shadow_fault(void *drcontext,
                                  dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
                                  byte *pc_post_fault, bb_saved_info_t *save)
 {
-    app_pc pc;
-    instr_t inst;
     instr_t *app_inst;
 #ifdef DEBUG
     tls_util_t *pt = PT_GET(drcontext);
 #endif
 
     /* We need to restore the app registers in order to emulate the app instr
-     * and obtain the original address referenced.  We assume all shadow table
-     * writes involve a single base register and are followed by no ctis prior
-     * to restoring the registers.
-     */
-    /* We're re-executing from raw_mc, so we change mc, which we did NOT fix up
-     * in our restore_state event for non-whole-bb registers: we did restore
-     * the two whole-bb.  Note that our restore_state event has
-     * restored eflags, but that doesn't hurt anything.
+     * and obtain the original address referenced.  drreg does that for us now.
      */
     DOLOG(3, {
         LOG(3, "faulting cache instr:\n");
@@ -4430,186 +4310,6 @@ restore_mcontext_on_shadow_fault(void *drcontext,
      * dr_app_pc_for_decoding()
      */
     decode(drcontext, dr_app_pc_for_decoding(mc->pc), app_inst);
-    pc = pc_post_fault;
-    instr_init(drcontext, &inst);
-
-    /* First we look for eflags restore.  We could try and work it into the
-     * regular loop to be more efficient but it gets messy.  We want to skip
-     * the whole thing (i#533).
-     */
-    if (instr_needs_eflags_restore(app_inst,
-                                   /* not worth storing liveness for bb or decoding
-                                    * whole bb here, so we may have false pos
-                                    */
-                                   instr_get_eflags(app_inst, DR_QUERY_INCLUDE_ALL)) ||
-        mc->pc == save->last_instr /* bottom of bb restores */) {
-        /* Skip what's added by restore_aflags_if_live() prior to GPR restores */
-        bool has_eflags_restore = false;
-        pc = decode(drcontext, pc, &inst);
-        if (instr_valid(&inst)) {
-            bool has_spill_eax = false;
-            if (instr_get_opcode(&inst) == OP_xchg ||
-                instr_is_spill_reg(drcontext, &inst)) {
-                has_spill_eax = true;
-                instr_reset(drcontext, &inst);
-                pc = decode(drcontext, pc, &inst);
-            }
-            if (instr_is_restore_eflags(drcontext, &inst)) {
-                has_eflags_restore = true;
-                /* skip it and any add+sahf */
-                instr_reset(drcontext, &inst);
-                pc = decode(drcontext, pc, &inst);
-                if (instr_get_opcode(&inst) == OP_add) {
-                    instr_reset(drcontext, &inst);
-                    pc = decode(drcontext, pc, &inst);
-                }
-                ASSERT(instr_get_opcode(&inst) == OP_sahf, "invalid flags restore");
-                if (has_spill_eax) {
-                    /* skip restore */
-                    instr_reset(drcontext, &inst);
-                    pc = decode(drcontext, pc, &inst);
-                    ASSERT(instr_get_opcode(&inst) == OP_xchg ||
-                           instr_get_opcode(&inst) == OP_mov_ld, "invalid restore");
-                }
-            }
-        } else
-            ASSERT(false, "unknown restore instr"); /* we'll reset below for release */
-        if (!has_eflags_restore) {
-            /* since we didn't have bb liveness we could come here and not find it */
-            pc = pc_post_fault;
-        }
-        instr_reset(drcontext, &inst);
-    }
-
-    while (true) {
-        pc = decode(drcontext, pc, &inst);
-        DOLOG(3, {
-            LOG(3, "considering potential restore instr: ");
-            instr_disassemble(drcontext, &inst, pt->f);
-            LOG(3, "\n");
-        });
-        ASSERT(instr_valid(&inst), "unknown suspect instr");
-        if (!options.check_uninitialized && instr_same(&inst, app_inst)) {
-            /* for -no_check_uninitialized slowpath faults we do not have
-             * a cti between the faulting instr and the app instr, so we
-             * stop when we see the app instr (i#456).
-             * XXX: if the app instr looks just like our xchg or load
-             * instrs we could mess up the app state: will affect
-             * the address considered for the unaddr error so could
-             * lead to a false negative or misleading error.
-             */
-            break;
-        }
-        if (instr_get_opcode(&inst) == OP_xchg) {
-            reg_t val1, val2;
-            reg_id_t reg1, reg2;
-            bool swap = true;
-            ASSERT(opnd_is_reg(instr_get_src(&inst, 0)) &&
-                   opnd_is_reg(instr_get_src(&inst, 1)), "unknown xchg!");
-            reg1 = opnd_get_reg(instr_get_src(&inst, 0));
-            reg2 = opnd_get_reg(instr_get_src(&inst, 1));
-            /* If one of the regs is a whole-bb spill, its real value is
-             * in the TLS slot, so don't swap (PR 501740).
-             */
-            if (mc->pc != save->last_instr) {
-                if (reg1 == save->scratch1 || reg1 == save->scratch2) {
-                    swap = false;
-                    if (reg2 == save->scratch1 || reg2 == save->scratch2) {
-                        /* Both are global: do nothing since the fault
-                         * restore put the proper values into mcxt
-                         */
-                    } else {
-                        /* The app's value was in the global's mcxt slot */
-                        val2 = reg_get_value(reg1, raw_mc);
-                        LOG(3, "\tsetting %s to "PFX"\n",
-                            get_register_name(reg2), val2);
-                        reg_set_value(reg2, mc, val2);
-                    }
-                } else if (reg2 == save->scratch1 || reg2 == save->scratch2) {
-                    swap = false;
-                    /* The app's value was in the global's mcxt slot */
-                    val1 = reg_get_value(reg2, raw_mc);
-                    LOG(3, "\tsetting %s to "PFX"\n",
-                        get_register_name(reg1), val1);
-                    reg_set_value(reg1, mc, val1);
-                }
-            }
-            if (swap) {
-                val1 = reg_get_value(reg1, mc);
-                val2 = reg_get_value(reg2, mc);
-                LOG(3, "\tsetting %s to "PFX" and %s to "PFX"\n",
-                    get_register_name(reg2), val1,
-                    get_register_name(reg1), val2);
-                reg_set_value(reg2, mc, val1);
-                reg_set_value(reg1, mc, val2);
-            }
-        } else if (instr_get_opcode(&inst) == OP_mov_ld &&
-                   opnd_is_far_base_disp(instr_get_src(&inst, 0))) {
-            opnd_t src = instr_get_src(&inst, 0);
-            int offs = opnd_get_disp(src);
-            IF_DEBUG(opnd_t flag_slot = spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX);)
-            ASSERT(opnd_get_index(src) == REG_NULL, "unknown tls");
-            ASSERT(opnd_get_segment(src) == seg_tls, "unknown tls");
-            ASSERT(opnd_is_reg(instr_get_dst(&inst, 0)), "unknown tls");
-            /* We read directly from the tls slot regardless of whether ours or
-             * DR's: no easy way to translate to DR spill slot # and use C
-             * interface.
-             */
-            LOG(3, "\tsetting %s to "PFX"\n",
-                get_register_name(opnd_get_reg(instr_get_dst(&inst, 0))),
-                get_raw_tls_value(offs));
-            /* XXX: opnd_same() fails b/c we have force_full_disp set, which is
-             * not set on decoding
-             */
-            ASSERT(offs != opnd_get_disp(flag_slot), "failed to skip eflags restore");
-            reg_set_value(opnd_get_reg(instr_get_dst(&inst, 0)), mc,
-                          get_raw_tls_value(offs));
-        } else if (instr_is_spill_reg(drcontext, &inst)) {
-            /* Start of non-fast DR spill slot sequence.
-             * We skip eflags restore so this can't be a local store of eax.
-             */
-            reg_t val;
-            int offs;
-            if (opnd_get_disp(instr_get_dst(&inst, 0)) <
-                opnd_get_disp(spill_slot_opnd(drcontext, SPILL_SLOT_1))) {
-                /* this is ecx spill for DR's own mangling */
-                break;
-            }
-            /* FIXME: NOT TESTED: not easy since we now require our own spill slots */
-            instr_reset(drcontext, &inst);
-            pc = decode(drcontext, pc, &inst);
-            ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
-                   opnd_is_far_base_disp(instr_get_src(&inst, 0)), "unknown slow spill");
-
-            /* Load from mcontext */
-            instr_reset(drcontext, &inst);
-            pc = decode(drcontext, pc, &inst);
-            ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
-                   opnd_is_near_base_disp(instr_get_src(&inst, 0)), "unknown slow spill");
-            ASSERT(opnd_get_index(instr_get_src(&inst, 0)) == REG_NULL,
-                   "unknown slow spill");
-            ASSERT(opnd_is_reg(instr_get_dst(&inst, 0)), "unknown slow spill");
-            offs = opnd_get_disp(instr_get_src(&inst, 0));
-            ASSERT(offs < sizeof(*raw_mc), "unknown slow spill");
-            val = *(reg_t *)(((byte *)raw_mc) + offs);
-            LOG(3, "\tsetting %s to "PFX"\n",
-                get_register_name(opnd_get_reg(instr_get_dst(&inst, 0))), val);
-            reg_set_value(opnd_get_reg(instr_get_dst(&inst, 0)), mc, val);
-
-            instr_reset(drcontext, &inst);
-            pc = decode(drcontext, pc, &inst);
-            ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
-                   opnd_is_far_base_disp(instr_get_src(&inst, 0)), "unknown slow spill");
-        } else if (instr_get_opcode(&inst) == OP_sahf) {
-            ASSERT(false, "should have skipped eflags restore");
-        } else if (instr_is_cti(&inst) ||
-                   /* for no uninits our instru has no cti before app instr */
-                   !options.check_uninitialized) {
-            break;
-        }
-        instr_reset(drcontext, &inst);
-    }
-    instr_free(drcontext, &inst);
 
     /* Adjust (esp) => (esp-X).  Xref i#164/PR 214976 where DR should adjust for us. */
     if (opc_is_push(instr_get_opcode(app_inst))) {

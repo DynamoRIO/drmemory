@@ -1151,15 +1151,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
 
-    if (INSTRUMENT_MEMREFS()) {
-        /* We want to spill AFTER any clean call in case it changes mcontext */
-        /* XXX: examine this: how make it more in spirit of drmgr? */
-        bi->spill_after = instr_get_prev(inst);
-
-        /* update liveness of whole-bb spilled regs */
-        fastpath_pre_instrument(drcontext, bb, inst, bi);
-    }
-
     opc = instr_get_opcode(inst);
     if (instr_is_syscall(inst)) {
         /* new syscall events mean we no longer have to add a clean call
@@ -1257,14 +1248,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             DOLOG(3, { instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext)); });
             LOG(3, "\n");
             bi->shared_memop = opnd_create_null();
-            /* Restore whole-bb spilled regs (PR 489221)
-             * FIXME: optimize via liveness analysis
-             */
-            mi.reg1 = bi->reg1;
-            mi.reg2 = bi->reg2;
-            memset(&mi.reg3, 0, sizeof(mi.reg3));
-            instrument_slowpath(drcontext, bb, inst,
-                                whole_bb_spills_enabled() ? &mi : NULL);
+            instrument_slowpath(drcontext, bb, inst, bi);
             /* for whole-bb slowpath does interact w/ global regs */
             bi->added_instru = whole_bb_spills_enabled();
         }
@@ -1282,8 +1266,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             (options.check_uninitialized || options.check_stack_bounds);
         bool zero_stack = ZERO_STACK();
         if (shadow_xsp || zero_stack) {
-            /* any new spill must be after the fastpath instru */
-            bi->spill_after = instr_get_prev(inst);
             if (shadow_xsp) {
                 sp_adjust_action_t sp_action = SP_ADJUST_ACTION_SHADOW;
                 if (should_mark_stack_frames_defined(pc)) {
@@ -1303,10 +1285,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     }
     if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized)
         insert_zero_retaddr(drcontext, bb, inst, bi);
-
-    /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
-    if (INSTRUMENT_MEMREFS())
-        fastpath_pre_app_instr(drcontext, bb, inst, bi, &mi);
 
  instru_event_bb_insert_done:
     if (bi->first_instr && instr_is_app(inst))

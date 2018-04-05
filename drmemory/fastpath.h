@@ -112,6 +112,7 @@ typedef struct _fastpath_info_t {
     reg_id_t reg2_16;
     reg_id_t reg2_8;
     reg_id_t reg2_8h;
+    reg_id_t reg3_16;
     reg_id_t reg3_8;
     /* is this instr using shared xl8? */
     bool use_shared;
@@ -150,8 +151,6 @@ typedef struct _elide_reg_cover_info_t {
 struct _bb_info_t {
     bool is_repstr_to_loop;
     reg_id_t shared_reg;
-    /* the instr after which we should spill global regs */
-    instr_t *spill_after;
     /* elide redundant addressable checks for base/index registers */
     bool addressable[NUM_LIVENESS_REGS];
     /* elide redundant eflags definedness check for cmp/test,jcc */
@@ -235,15 +234,8 @@ void
 instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi, bool check_ignore_unaddr);
 
-/* Whole-bb spilling */
-bool
-whole_bb_spills_enabled(void);
-
 void
 fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi);
-
-void
-fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi);
 
 void
 fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,

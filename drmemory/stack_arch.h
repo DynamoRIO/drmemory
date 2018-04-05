@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -44,7 +44,7 @@ extern byte *shared_esp_slowpath_shadow;
 extern byte *shared_esp_slowpath_defined;
 extern byte *shared_esp_slowpath_zero;
 extern byte *
-shared_esp_fastpath[SP_ADJUST_ACTION_FASTPATH_MAX+1][2][ESP_ADJUST_FAST_LAST+1];
+shared_esp_fastpath[SP_ADJUST_ACTION_FASTPATH_MAX+1][ESP_ADJUST_FAST_LAST+1];
 
 #ifdef X86
 # define ESP_SLOW_SCRATCH1 DR_REG_XCX
@@ -84,7 +84,6 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 void
 generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
-                                    bool eflags_live,
                                     sp_adjust_action_t sp_action,
                                     esp_adjust_t type);
 
