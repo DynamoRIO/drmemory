@@ -214,7 +214,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* Go through eax to get to tls */
             ASSERT(dr_max_opnd_accessible_spill_slot() >= SPILL_SLOT_1,
                    "DR spill slot not accessible");
-            reg_id_t scratch = reserve_register(drcontext, bb, inst, NULL, NULL);
+            reg_id_t scratch = reserve_register(drcontext, bb, inst, NULL, NULL, NULL);
             if (opc == OP_lea) {
                 PRE(bb, inst,
                     INSTR_CREATE_lea(drcontext, opnd_create_reg(scratch), arg));
@@ -265,11 +265,12 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         drvector_t allowed;
         drreg_init_and_fill_vector(&allowed, false);
         drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH1, true);
-        reg_id_t arg_tgt = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        reg_id_t arg_tgt = reserve_register(drcontext, bb, inst, &allowed, NULL, NULL);
         ASSERT(arg_tgt == ESP_SLOW_SCRATCH1, "shared_esp_slowpath reg error");
         drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH1, false);
         drreg_set_vector_entry(&allowed, ESP_SLOW_SCRATCH2, true);
-        reg_id_t retaddr_tgt = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        reg_id_t retaddr_tgt = reserve_register(drcontext, bb, inst, &allowed,
+                                                NULL, NULL);
         ASSERT(retaddr_tgt == ESP_SLOW_SCRATCH2, "shared_esp_slowpath reg error");
         drvector_delete(&allowed);
 
@@ -518,22 +519,22 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     /* set up regs and spill info */
     if (sp_action == SP_ADJUST_ACTION_ZERO) {
-        reg1 = reserve_register(drcontext, bb, inst, NULL, NULL);
-        reg_mod = reserve_register(drcontext, bb, inst, NULL, NULL);
+        reg1 = reserve_register(drcontext, bb, inst, NULL, NULL, NULL);
+        reg_mod = reserve_register(drcontext, bb, inst, NULL, NULL, NULL);
     } else {
         drvector_t allowed;
         drreg_init_and_fill_vector(&allowed, false);
         drreg_set_vector_entry(&allowed, DR_REG_XBX, true);
         drreg_set_vector_entry(&allowed, DR_REG_XDX, true);
-        reg1 = reserve_register(drcontext, bb, inst, &allowed, NULL);
-        reg2 = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        reg1 = reserve_register(drcontext, bb, inst, &allowed, NULL, NULL);
+        reg2 = reserve_register(drcontext, bb, inst, &allowed, NULL, NULL);
         ASSERT((reg2 == DR_REG_XBX && reg1 == DR_REG_XDX) ||
                (reg2 == DR_REG_XDX && reg1 == DR_REG_XBX),
                "shared_esp_fastpath reg error");
         drreg_set_vector_entry(&allowed, DR_REG_XBX, false);
         drreg_set_vector_entry(&allowed, DR_REG_XDX, false);
         drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
-        reg_mod = reserve_register(drcontext, bb, inst, &allowed, NULL);
+        reg_mod = reserve_register(drcontext, bb, inst, &allowed, NULL, NULL);
         drvector_delete(&allowed);
         ASSERT(reg_mod == DR_REG_XCX, "shared_esp_fastpath reg error");
         reserve_aflags(drcontext, bb, inst);

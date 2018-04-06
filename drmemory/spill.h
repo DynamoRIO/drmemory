@@ -110,7 +110,8 @@ unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 
 reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                 drvector_t *reg_allowed, INOUT fastpath_info_t *mi);
+                 drvector_t *reg_allowed,
+                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out);
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,

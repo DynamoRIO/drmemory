@@ -456,23 +456,25 @@ unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
 
 reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                 drvector_t *reg_allowed, INOUT fastpath_info_t *mi)
+                 drvector_t *reg_allowed,
+                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out)
 {
     reg_id_t reg;
     IF_DEBUG(drreg_status_t res =)
         drreg_reserve_register(drcontext, ilist, where, reg_allowed, &reg);
     ASSERT(res == DRREG_SUCCESS, "failed to reserve scratch register");
     if (mi != NULL) {
-        if (reg == mi->reg1) {
-            mi->reg1_8 = reg_ptrsz_to_8(mi->reg1);
-            mi->reg1_16 = reg_ptrsz_to_16(mi->reg1);
-        } else if (reg == mi->reg2) {
-            mi->reg2_16 = reg_ptrsz_to_16(mi->reg2);
-            mi->reg2_8 = reg_ptrsz_to_8(mi->reg2);
-            mi->reg2_8h = reg_ptrsz_to_8h(mi->reg2);
-        } else if (reg == mi->reg3) {
-            mi->reg3_8 = reg_ptrsz_to_8(mi->reg3);
-            mi->reg3_16 = reg_ptrsz_to_16(mi->reg3);
+        ASSERT(reg_out != NULL, "need to know reg dest");
+        if (reg_out == &mi->reg1) {
+            mi->reg1_8 = reg_ptrsz_to_8(reg);
+            mi->reg1_16 = reg_ptrsz_to_16(reg);
+        } else if (reg_out == &mi->reg2) {
+            mi->reg2_16 = reg_ptrsz_to_16(reg);
+            mi->reg2_8 = reg_ptrsz_to_8(reg);
+            mi->reg2_8h = reg_ptrsz_to_8h(reg);
+        } else if (reg_out == &mi->reg3) {
+            mi->reg3_8 = reg_ptrsz_to_8(reg);
+            mi->reg3_16 = reg_ptrsz_to_16(reg);
         }
     }
     return reg;
@@ -512,7 +514,8 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
         if (mi->bb->shared_reg != DR_REG_NULL)
             mi->reg1 = mi->bb->shared_reg;
         else {
-            mi->reg1 = reserve_register(drcontext, ilist, where, reg_allowed, mi);
+            mi->reg1 = reserve_register(drcontext, ilist, where, reg_allowed, mi,
+                                        &mi->reg1);
             mi->bb->shared_reg = mi->reg1;
         }
     } else

@@ -1336,6 +1336,7 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
 
     if (instr_is_meta(inst))
         return DR_EMIT_DEFAULT;
+    fastpath_pre_app_instr(drcontext, bb, inst, &ii->bi);
 
     /* i#2402: Temporarily disable auto predication globally due to poor
      * interaction with internal control flow we emit.

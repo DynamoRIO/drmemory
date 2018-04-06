@@ -1056,7 +1056,6 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
          */
         instr_t *appinst = INSTR_CREATE_label(drcontext);
         if (true ||/*NOCHECKIN*/bi == NULL) {
-            ASSERT(!whole_bb_spills_enabled(), "whole-bb needs tls preserved");
             instru_insert_mov_pc(drcontext, bb, inst,
                                  spill_slot_opnd(drcontext, SPILL_SLOT_1),
                                  decode_pc_opnd);

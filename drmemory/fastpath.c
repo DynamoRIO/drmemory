@@ -155,13 +155,13 @@ get_isa_mode_from_fault_mc(dr_mcontext_t *mc)
 static byte *
 compute_app_address_on_shadow_fault(void *drcontext, byte *target,
                                     dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
-                                    byte *pc_post_fault, bb_saved_info_t *save)
+                                    byte *pc_post_fault)
 {
     app_pc addr;
     uint memopidx;
     bool write;
     instr_t *app_inst = restore_mcontext_on_shadow_fault(drcontext, raw_mc,
-                                                         mc, pc_post_fault, save);
+                                                         mc, pc_post_fault);
     for (memopidx = 0;
          instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
          memopidx++) {
@@ -195,7 +195,6 @@ handle_special_shadow_fault(void *drcontext, byte *target,
     instr_t fault_inst;
     byte *new_shadow;
     opnd_t shadowop;
-    bb_saved_info_t *save;
 #ifdef DEBUG
     tls_util_t *pt = PT_GET(drcontext);
 #endif
@@ -239,11 +238,7 @@ handle_special_shadow_fault(void *drcontext, byte *target,
     instr_init(drcontext, &fault_inst);
     pc = decode(drcontext, raw_mc->pc, &fault_inst);
 
-    hashtable_lock(&bb_table);
-    save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
-    addr = compute_app_address_on_shadow_fault(drcontext, target, raw_mc, mc, pc,
-                                               save);
-    hashtable_unlock(&bb_table);
+    addr = compute_app_address_on_shadow_fault(drcontext, target, raw_mc, mc, pc);
 
     /* Create a non-special shadow block */
     new_shadow = shadow_replace_special(addr);
@@ -476,6 +471,19 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
 }
 
 void
+fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
+{
+    if (!instr_is_app(inst))
+        return;
+    app_pc pc = instr_get_app_pc(inst);
+    if (pc != NULL) {
+        if (bi->first_app_pc == NULL)
+            bi->first_app_pc = pc;
+        bi->last_app_pc = pc;
+    }
+}
+
+void
 fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
                       bb_info_t *bi, bool added_instru, bool translating,
                       bool check_ignore_unaddr)
@@ -487,17 +495,6 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         /* Add to table so we can restore on slowpath or a fault */
         save = (bb_saved_info_t *) global_alloc(sizeof(*save), HEAPSTAT_PERBB);
         memset(save, 0, sizeof(*save));
-        /* We store the pc of the last instr, since everything is restored
-         * already (and NOT present in our tls slots) if have a fault in that
-         * instr: unless it's a transformed repstr, in which case the final
-         * OP_loop won't fault, so a fault will be before the restores (i#532).
-         */
-        if (bi->is_repstr_to_loop)
-            save->last_instr = NULL;
-        else
-            save->last_instr = bi->last_app_pc;
-        /* i#1466: remember the first_restore_pc for restore state in pattern mode */
-        save->first_restore_pc = bi->first_restore_pc;
         save->check_ignore_unaddr = check_ignore_unaddr;
         /* i#826: share_xl8_max_diff can change, save it. */
         save->share_xl8_max_diff = bi->share_xl8_max_diff;

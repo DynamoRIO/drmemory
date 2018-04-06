@@ -411,15 +411,8 @@ bb_save_add_entry(app_pc key, bb_saved_info_t *save)
 static bool
 bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
 {
-    /* last_instr could be changed to last_instr_offs but then we'd need to call
-     * dr_fragment_app_pc(tag) in a few places which doesn't seem worth it
-     */
     bb_saved_info_t *save = (bb_saved_info_t *) payload;
     ASSERT(hashtable_lock_self_owns(&bb_table), "missing lock");
-    save->first_restore_pc =
-        save->first_restore_pc == NULL ?
-        NULL : (app_pc) ((ptr_int_t)save->first_restore_pc + shift);
-    save->last_instr = (app_pc) ((ptr_int_t)save->last_instr + shift);
     bb_save_add_entry((app_pc) key, save);
     return true;
 }
@@ -1150,6 +1143,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             ASSERT(res == DRREG_SUCCESS, "unreserve of aflags should work");
         }
     }
+
+    if (INSTRUMENT_MEMREFS())
+        fastpath_pre_app_instr(drcontext, bb, inst, bi);
 
     opc = instr_get_opcode(inst);
     if (instr_is_syscall(inst)) {

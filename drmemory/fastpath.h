@@ -179,8 +179,6 @@ struct _bb_info_t {
     /* for calculating size of bb */
     app_pc first_app_pc;
     app_pc last_app_pc;
-    /* i#1466: restore state only after first_restore_pc */
-    app_pc first_restore_pc;
     /* for repstr loop xform: fake app pcs to use for slowpath.
      * we used to keep these in note fields but w/ drmgr we can no longer
      * do that.  inserting labels is awkward b/c they get separated from their
@@ -210,8 +208,6 @@ typedef struct _bb_saved_info_t {
     bool pattern_4byte_check_only:1;
     /* we store the size and assume bbs are contiguous so we can free (i#260) */
     ushort bb_size;
-    app_pc first_restore_pc; /* first pc that need restore state */
-    app_pc last_instr;
     /* i#826: share_xl8_max_diff changes over time, so save it. */
     uint share_xl8_max_diff;
 } bb_saved_info_t;
@@ -239,7 +235,7 @@ fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi);
 
 void
 fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
-                       bb_info_t *bi, fastpath_info_t *mi);
+                       bb_info_t *bi);
 
 void
 fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
