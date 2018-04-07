@@ -84,7 +84,6 @@ instru_tls_thread_init(void *drcontext);
 void
 instru_tls_thread_exit(void *drcontext);
 
-//NOCHECKIN only used for drreg -- should drreg provide these
 bool
 instr_is_spill(instr_t *inst);
 
@@ -93,10 +92,6 @@ instr_is_restore(instr_t *inst);
 
 bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);
-
-/* Whole-bb spilling */
-bool
-whole_bb_spills_enabled(void);
 
 /***************************************************************************
  * drreg wrappers that assert on failure and update fastpath_info_t.
@@ -115,7 +110,7 @@ reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-                   INOUT fastpath_info_t *mi);
+                   INOUT fastpath_info_t *mi, bool force_restore_now);
 
 /* For translation sharing we reserve the same register across the whole bb. */
 void
@@ -125,5 +120,15 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 void
 unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
                           INOUT fastpath_info_t *mi, INOUT bb_info_t *bi);
+
+/* Whole-bb spilling */
+bool
+whole_bb_spills_enabled(void);
+
+#ifdef DEBUG
+void
+print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *name,
+                  file_t file);
+#endif
 
 #endif /* _SPILL_H_ */

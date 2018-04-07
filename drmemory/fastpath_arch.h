@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -33,7 +33,7 @@
 instr_t *
 restore_mcontext_on_shadow_fault(void *drcontext,
                                  dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
-                                 byte *pc_post_fault, bb_saved_info_t *save);
+                                 byte *pc_post_fault);
 
 bool
 handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,

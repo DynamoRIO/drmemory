@@ -1134,7 +1134,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          */
         if (whole_bb_spills_enabled() &&
             !(options.pattern != 0 && options.pattern_opt_repstr)) {
-            //NOCHECKIN do we need to do this for reg1+reg2 for non-pattern?
             IF_DEBUG(drreg_status_t res =)
                 drreg_reserve_aflags(drcontext, bb, inst);
             ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");

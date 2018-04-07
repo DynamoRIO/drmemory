@@ -383,8 +383,6 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     return true;
 }
 
-///////////////////////////////////////////////////////////////////////////
-//NOCHECKIN only used for drreg -- should drreg provide these
 bool
 instr_is_spill(instr_t *inst)
 {
@@ -412,9 +410,8 @@ instr_at_pc_is_restore(void *drcontext, byte *pc)
     instr_free(drcontext, &inst);
     return res;
 }
-///////////////////////////////////////////////////////////////////////////
 
-//NOCHECKIN get rid of this
+/* XXX i#1795: we should remove this once everything is converted to drreg */
 bool
 whole_bb_spills_enabled(void)
 {
@@ -482,10 +479,12 @@ reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-                   INOUT fastpath_info_t *mi)
+                   INOUT fastpath_info_t *mi, bool force_restore_now)
 {
     IF_DEBUG(drreg_status_t res =)
         drreg_unreserve_register(drcontext, ilist, where, reg);
+    if (force_restore_now)
+        drreg_get_app_value(drcontext, ilist, where, reg, reg);
     ASSERT(res == DRREG_SUCCESS, "failed to unreserve scratch register");
     if (mi != NULL) {
         if (reg == mi->reg1) {
@@ -528,7 +527,7 @@ unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 {
     ASSERT(bi != NULL, "shared register requires fastpath && bb info");
     if (bi->shared_reg != DR_REG_NULL) {
-        unreserve_register(drcontext, ilist, where, bi->shared_reg, NULL);
+        unreserve_register(drcontext, ilist, where, bi->shared_reg, NULL, false);
         bi->shared_reg = DR_REG_NULL;
         if (mi != NULL) {
             ASSERT(bi->shared_reg == mi->reg1, "shared register inconsistency");
@@ -536,3 +535,27 @@ unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
         }
     }
 }
+
+#ifdef DEBUG
+void
+print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *name,
+                  file_t file)
+{
+    if (reg == DR_REG_NULL)
+        return;
+    bool is_dr, is_dead;
+    uint tls_offs;
+    drreg_status_t res =
+        drreg_reservation_info(drcontext, reg, NULL, &is_dr, &tls_offs);
+    ASSERT(res == DRREG_SUCCESS, "failed to get reservation info");
+    res = drreg_is_register_dead(drcontext, reg, where, &is_dead);
+    ASSERT(res == DRREG_SUCCESS, "failed to get deadness");
+    dr_fprintf(file, "%s=", name);
+    opnd_disassemble(drcontext, opnd_create_reg(reg), file);
+    if (is_dead) {
+        dr_fprintf(file, " dead");
+    } else {
+        dr_fprintf(file, " spill@0x%x%s", tls_offs, is_dr ? " (DR)" : "");
+    }
+}
+#endif

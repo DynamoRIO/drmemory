@@ -29,7 +29,6 @@
 #include "drmemory.h"
 #include "slowpath.h"
 #include "spill.h"
-//NOCHECKIN: prob don't need anymore? #include "fastpath.h"
 #include "stack.h"
 #include "stack_arch.h"
 #include "shadow.h"
@@ -225,7 +224,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_mov_st(drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
                                     opnd_create_reg(scratch)));
-            unreserve_register(drcontext, bb, inst, scratch, NULL);
+            unreserve_register(drcontext, bb, inst, scratch, NULL, false);
         } else {
             ASSERT(opnd_is_reg(arg), "internal error");
             PRE(bb, inst,
@@ -307,8 +306,8 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                         shared_esp_slowpath_defined :
                                         shared_esp_slowpath_shadow))));
         PRE(bb, inst, retaddr);
-        unreserve_register(drcontext, bb, inst, retaddr_tgt, NULL);
-        unreserve_register(drcontext, bb, inst, arg_tgt, NULL);
+        unreserve_register(drcontext, bb, inst, retaddr_tgt, NULL, false);
+        unreserve_register(drcontext, bb, inst, arg_tgt, NULL, false);
     } else {
         dr_insert_clean_call(drcontext, bb, inst,
                              (void *) handle_esp_adjust,
@@ -537,6 +536,9 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         reg_mod = reserve_register(drcontext, bb, inst, &allowed, NULL, NULL);
         drvector_delete(&allowed);
         ASSERT(reg_mod == DR_REG_XCX, "shared_esp_fastpath reg error");
+        /* We spill the flags here since it's much easier than in the gencode
+         * where we have to assume they are live.
+         */
         reserve_aflags(drcontext, bb, inst);
     }
 
@@ -548,7 +550,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         IF_DEBUG(drreg_status_t res =)
             drreg_restore_app_values(drcontext, bb, inst, arg, NULL);
         ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
-        //NOCHECKIN how prevent clobbering bi->shared_reg?  how prevented before?
+        /* FIXME i#1795: how prevent clobbering bi->shared_reg?  how prevented before? */
         ASSERT(bi->shared_reg == DR_REG_NULL || !opnd_uses_reg(arg, bi->shared_reg),
                "xl8 sharing vs esp fastpath conflict");
     }
@@ -594,10 +596,10 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst, retaddr);
     }
 
-    unreserve_register(drcontext, bb, inst, reg1, NULL);
-    unreserve_register(drcontext, bb, inst, reg_mod, NULL);
+    unreserve_register(drcontext, bb, inst, reg1, NULL, false);
+    unreserve_register(drcontext, bb, inst, reg_mod, NULL, false);
     if (sp_action != SP_ADJUST_ACTION_ZERO) {
-        unreserve_register(drcontext, bb, inst, reg2, NULL);
+        unreserve_register(drcontext, bb, inst, reg2, NULL, false);
         unreserve_aflags(drcontext, bb, inst);
     }
 
@@ -669,6 +671,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 
     memset(&mi, 0, sizeof(mi));
     mi.slowpath = INSTR_CREATE_label(drcontext);
+    mi.memsz = sizeof(void*);
 
     /* save the 2 args for retrieval at end */
     PRE(bb, NULL,
@@ -749,6 +752,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_XAX),
                             opnd_create_reg(reg1)));
     /* we don't need a 3rd scratch for the lookup, and we rely on reg3 being preserved */
+    /* caller preserves aflags */
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
                             reg1, reg2, REG_NULL, true/*check alignment*/);
