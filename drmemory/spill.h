@@ -85,10 +85,10 @@ void
 instru_tls_thread_exit(void *drcontext);
 
 bool
-instr_is_spill(instr_t *inst);
+instr_is_spill(instr_t *inst, reg_id_t *reg_spilled OUT);
 
 bool
-instr_is_restore(instr_t *inst);
+instr_is_restore(instr_t *inst, reg_id_t *reg_restored OUT);
 
 bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);
@@ -129,6 +129,13 @@ whole_bb_spills_enabled(void);
 void
 print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *name,
                   file_t file);
+
+/* Ensures there are no scratch reg reservations without a full restore (not just
+ * an unreserve) after the first branch after instru_start.
+ */
+void
+check_scratch_reg_parity(void *drcontext, instrlist_t *bb, instr_t *app_instr,
+                         instr_t *instru_start);
 #endif
 
 #endif /* _SPILL_H_ */

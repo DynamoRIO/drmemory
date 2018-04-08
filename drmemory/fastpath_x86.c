@@ -2941,6 +2941,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool checked_src2 = false, checked_memsrc = false;
 #endif
     bool share_addr = false;
+#ifdef DEBUG
+    instr_t *instru_start = instr_get_prev(inst);
+#endif
 #ifdef TOOL_DR_MEMORY
     instr_t *check_ignore_resume = NULL;
     bool check_ignore_tls = true;
@@ -3039,7 +3042,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (options.check_uninitialized || mi->mem2mem || mi->load2x) {
         /* only pick a,b,c,d: need 8-bit for uninit or mem2mem */
         drreg_init_and_fill_vector(&only_abcd, false);
-        //NOCHECKIN: better to fix drreg        drreg_set_vector_entry(&only_abcd, DR_REG_XAX, true);
+        /* XXX i#1795: if we take xax, aflags spilling is less efficient b/c it
+         * needs a temp scratch reg and it goes to TLS instead of staying in
+         * a reg.  OTOH, ruling out xax as a scratch reg means we may not have
+         * the optimal scratch reg choice.  From measurements, aflags seems to win,
+         * so we do not allow xax as a scratch reg.
+         */
         drreg_set_vector_entry(&only_abcd, DR_REG_XBX, true);
         /* we need xcx for reg3 for these */
         if (!(mi->need_offs || mi->need_offs_early))
@@ -4289,6 +4297,14 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (mi->reg3 != DR_REG_NULL)
             unreserve_register(drcontext, bb, inst, mi->reg3, mi, false);
         unreserve_aflags(drcontext, bb, inst);
+#ifdef DEBUG
+        /* The slowpath must restore the complete app state, which requires us to
+         * have scratch reg parity on all paths that come to the slowpath.
+         * We check that here: there can be no local reservations without a full
+         * restore (not just unreserve) after the first conditional that comes here.
+         */
+        check_scratch_reg_parity(drcontext, bb, inst, instru_start);
+#endif
         instrument_slowpath(drcontext, bb, inst, mi->bb);
     } else {
         /* avoid leaks, be defensive in case we buggily did target it */

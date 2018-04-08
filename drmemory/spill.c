@@ -383,51 +383,6 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     return true;
 }
 
-bool
-instr_is_spill(instr_t *inst)
-{
-    return (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_st, OP_str) &&
-            is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_dst(inst, 0)) &&
-            opnd_is_reg(instr_get_src(inst, 0)));
-}
-
-bool
-instr_is_restore(instr_t *inst)
-{
-    return (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_ld, OP_ldr) &&
-            is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
-            opnd_is_reg(instr_get_dst(inst, 0)));
-}
-
-bool
-instr_at_pc_is_restore(void *drcontext, byte *pc)
-{
-    instr_t inst;
-    bool res;
-    instr_init(drcontext, &inst);
-    res = (decode(drcontext, pc, &inst) != NULL &&
-           instr_is_restore(&inst));
-    instr_free(drcontext, &inst);
-    return res;
-}
-
-/* XXX i#1795: we should remove this once everything is converted to drreg */
-bool
-whole_bb_spills_enabled(void)
-{
-    return (
-#ifdef TOOL_DR_HEAPSTAT
-            options.staleness &&
-#endif
-            /* should we enable whole-bb for -leaks_only?
-             * we'd need to enable bb table and state restore on fault.
-             * since it's rare to have more than one stack adjust in a
-             * single bb, I don't think we'd gain enough perf to be worth
-             * the complexity.
-             */
-            INSTRUMENT_MEMREFS());
-}
-
 /***************************************************************************
  * drreg wrappers that assert on failure and update fastpath_info_t.
  */
@@ -536,6 +491,61 @@ unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
     }
 }
 
+bool
+instr_is_spill(instr_t *inst, reg_id_t *reg_spilled OUT)
+{
+    if (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_st, OP_str) &&
+        is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_dst(inst, 0)) &&
+        opnd_is_reg(instr_get_src(inst, 0))) {
+        if (reg_spilled != NULL)
+            *reg_spilled = opnd_get_reg(instr_get_src(inst, 0));
+        return true;
+    }
+    return false;
+}
+
+bool
+instr_is_restore(instr_t *inst, reg_id_t *reg_restored OUT)
+{
+    if (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_ld, OP_ldr) &&
+        is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
+        opnd_is_reg(instr_get_dst(inst, 0))) {
+        if (reg_restored != NULL)
+            *reg_restored = opnd_get_reg(instr_get_dst(inst, 0));
+        return true;
+    }
+    return false;
+}
+
+bool
+instr_at_pc_is_restore(void *drcontext, byte *pc)
+{
+    instr_t inst;
+    bool res;
+    instr_init(drcontext, &inst);
+    res = (decode(drcontext, pc, &inst) != NULL &&
+           instr_is_restore(&inst, NULL));
+    instr_free(drcontext, &inst);
+    return res;
+}
+
+/* XXX i#1795: we should remove this once everything is converted to drreg */
+bool
+whole_bb_spills_enabled(void)
+{
+    return (
+#ifdef TOOL_DR_HEAPSTAT
+            options.staleness &&
+#endif
+            /* should we enable whole-bb for -leaks_only?
+             * we'd need to enable bb table and state restore on fault.
+             * since it's rare to have more than one stack adjust in a
+             * single bb, I don't think we'd gain enough perf to be worth
+             * the complexity.
+             */
+            INSTRUMENT_MEMREFS());
+}
+
 #ifdef DEBUG
 void
 print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *name,
@@ -556,6 +566,44 @@ print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *nam
         dr_fprintf(file, " dead");
     } else {
         dr_fprintf(file, " spill@0x%x%s", tls_offs, is_dr ? " (DR)" : "");
+    }
+}
+
+void
+check_scratch_reg_parity(void *drcontext, instrlist_t *bb, instr_t *app_instr,
+                         instr_t *instru_start)
+{
+    instr_t *in;
+    tls_util_t *pt = PT_GET(drcontext);
+    if (instru_start == NULL)
+        in = instrlist_first(bb);
+    else
+        in = instr_get_next(instru_start);
+    bool past_cti = false;
+    reg_id_t spilled;
+    for (; in != app_instr; in = instr_get_next(in)) {
+        if (!past_cti && instr_is_cti(in))
+            past_cti = true;
+        if (instr_is_spill(in, &spilled) && past_cti) {
+            instr_t *forw;
+            reg_id_t restored;
+            bool local_restore = false;
+            for (forw = in; forw != app_instr; forw = instr_get_next(forw)) {
+                if (instr_is_restore(forw, &restored) && restored == spilled) {
+                    local_restore = true;
+                    break;
+                }
+                if (instr_is_cti(forw))
+                    break;
+            }
+            if (!local_restore) {
+                ELOGPT(0, pt, "ERROR: local reg spill w/o cti parity for app instr: ");
+                instr_disassemble(drcontext, app_instr, pt->f);
+                ELOGPT(0, pt, "\n\nentire instrlist:");
+                instrlist_disassemble(drcontext, NULL, bb, pt->f);
+                ASSERT(false, "local reg spill w/o cti parity!");
+            }
+        }
     }
 }
 #endif

@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drreg.h"
 #include "drutil.h"
 #include "drmemory.h"
 #include "instru.h"
@@ -1070,7 +1071,27 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
             instru_insert_mov_pc(drcontext, bb, inst,
                                  spill_slot_opnd(drcontext, SPILL_SLOT_2),
                                  opnd_create_instr(appinst));
-            PRE(bb, inst,
+            /* We need a drreg barrier to ensure we have the app state for our
+             * slowpath code, but we need parity with the fastpath, so we can't
+             * change drreg state.
+             */
+            reg_id_t reg;
+            drreg_status_t res;
+            instr_t *pre_jmp = INSTR_CREATE_label(drcontext);
+            instr_t *post_jmp = INSTR_CREATE_label(drcontext);
+            PRE(bb, inst, pre_jmp);
+            PRE(bb, inst, post_jmp);
+            res = drreg_statelessly_restore_app_value(drcontext, bb, DR_REG_NULL,
+                                                      pre_jmp, post_jmp, NULL, NULL);
+            ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_NO_APP_VALUE,
+                   "pre-slowpath aflags barrier failed");
+            for (reg = DR_REG_START_GPR; reg <= DR_REG_STOP_GPR; reg++) {
+                res = drreg_statelessly_restore_app_value(drcontext, bb, reg,
+                                                          pre_jmp, post_jmp, NULL, NULL);
+                ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_NO_APP_VALUE,
+                       "pre-slowpath reg barrier failed");
+            }
+            PRE(bb, pre_jmp,
                 XINST_CREATE_jump(drcontext, opnd_create_pc(shared_slowpath_entry)));
         } else {
 # if 0//NOCHECKIN
