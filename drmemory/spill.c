@@ -423,7 +423,10 @@ reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
         } else if (reg_out == &mi->reg2) {
             mi->reg2_16 = reg_ptrsz_to_16(reg);
             mi->reg2_8 = reg_ptrsz_to_8(reg);
-            mi->reg2_8h = reg_ptrsz_to_8h(reg);
+            if (reg >= DR_REG_XAX && reg <= DR_REG_XBX)
+                mi->reg2_8h = reg_ptrsz_to_8h(reg);
+            else
+                mi->reg2_8h = DR_REG_NULL;
         } else if (reg_out == &mi->reg3) {
             mi->reg3_8 = reg_ptrsz_to_8(reg);
             mi->reg3_16 = reg_ptrsz_to_16(reg);

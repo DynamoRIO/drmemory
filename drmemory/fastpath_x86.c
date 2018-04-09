@@ -1708,7 +1708,8 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                             * the slowpath?
                             */
                            bool ignore_unaddr_pre_slow,
-                           instr_t **fastpath_restore /*IN/OUT*/)
+                           instr_t **fastpath_restore, /*IN/OUT*/
+                           reg_id_t prior_reg1 /*now restored*/)
 {
     instr_t *prev;
     ASSERT(fastpath_restore != NULL, "invalid param");
@@ -1771,9 +1772,9 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             instr_destroy(drcontext, prev);
             prev = NULL;
             ASSERT((mi->store && opnd_is_base_disp(mi->dst[0].shadow) &&
-                    opnd_get_base(mi->dst[0].shadow) == mi->reg1) ||
+                    opnd_get_base(mi->dst[0].shadow) == prior_reg1) ||
                    (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
-                    opnd_get_base(mi->src[0].shadow) == mi->reg1),
+                    opnd_get_base(mi->src[0].shadow) == prior_reg1),
                    "assuming shadow addr is in reg1");
             /* N.B.: handle_slowpath_fault() checks for this exact sequence */
             PRE(bb, inst, INSTR_CREATE_jcc
@@ -1782,7 +1783,8 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     (INSTR_CREATE_ud2a(drcontext), mi->xl8));
             if (SHARING_XL8_ADDR(mi)) {
                 /* Clear address reg */
-                instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1),
+                instru_insert_mov_pc(drcontext, bb, inst,
+                                     opnd_create_reg(mi->bb->shared_reg),
                                      OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
             }
             PRE(bb, inst, skip_fault);
@@ -1987,7 +1989,6 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
      * 3) Result points to 8K shadow chunk
      */
     reg_id_t reg1_8h = REG_NULL;
-    reg_id_t reg2_8h = reg_ptrsz_to_8h(reg2);
     reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_ptrsz_to_8(reg3);
     ASSERT(reg1 != DR_REG_NULL && reg2 != DR_REG_NULL, "spill error");
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
@@ -2084,6 +2085,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* addr is already in reg1 */
     }
     if (need_offs) {
+        reg_id_t reg2_8h = reg_ptrsz_to_8h(reg2);
         reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_ptrsz_to_8h(reg3);
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
         mi->memoffs = (!mi->need_offs && zero_rest_of_offs) ?
@@ -4199,6 +4201,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32(REG_NULL, disp)));
     }
 #endif
+    reg_id_t prior_reg1 = mi->reg1;
     if (mi->reg1 != DR_REG_NULL)
         unreserve_register(drcontext, bb, inst, mi->reg1, mi, false);
     if (mi->reg2 != DR_REG_NULL)
@@ -4211,7 +4214,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             IF_DRMEM_ELSE((check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow)),
                           false);
         add_jmp_done_with_fastpath(drcontext, bb, inst, mi, nextinstr,
-                                   ignore_unaddr_pre_slow, &fastpath_restore);
+                                   ignore_unaddr_pre_slow, &fastpath_restore, prior_reg1);
 #ifdef TOOL_DR_MEMORY
         /* PR 578892: fastpath heap routine unaddr accesses */
         if (mi->need_slowpath) /* may have decided we don't need slowpath */
@@ -4287,16 +4290,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* check again b/c no-uninits may have removed regular slowpath */
     if (mi->need_slowpath) {
         PRE(bb, inst, mi->slowpath);
-        /* To keep things local we unreserve here and let the slowpath handle its
-         * own scratch registers.
-         */
-        if (mi->reg1 != DR_REG_NULL)
-            unreserve_register(drcontext, bb, inst, mi->reg1, mi, false);
-        if (mi->reg2 != DR_REG_NULL)
-            unreserve_register(drcontext, bb, inst, mi->reg2, mi, false);
-        if (mi->reg3 != DR_REG_NULL)
-            unreserve_register(drcontext, bb, inst, mi->reg3, mi, false);
-        unreserve_aflags(drcontext, bb, inst);
 #ifdef DEBUG
         /* The slowpath must restore the complete app state, which requires us to
          * have scratch reg parity on all paths that come to the slowpath.
