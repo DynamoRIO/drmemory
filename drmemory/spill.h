@@ -85,12 +85,6 @@ void
 instru_tls_thread_exit(void *drcontext);
 
 bool
-instr_is_spill(instr_t *inst, reg_id_t *reg_spilled OUT);
-
-bool
-instr_is_restore(instr_t *inst, reg_id_t *reg_restored OUT);
-
-bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);
 
 /***************************************************************************

@@ -1372,11 +1372,39 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
     return false;
 }
 
+/* Restores spilled regs for the lea but preserves mi->reg1 around it.
+ * Stores the address in reg3 (so requires reg3 to be set up).
+ */
+static void
+insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
+                        fastpath_info_t *mi, opnd_t memop)
+{
+    IF_DEBUG(drreg_status_t res;)
+    ASSERT(mi->reg3 != DR_REG_NULL, "reg3 is not set up");
+    /* mi->reg1 holds the first lea so we have to preserve it */
+    if (opnd_uses_reg(memop, mi->reg1)) {
+        PRE(bb, inst, INSTR_CREATE_mov_st
+            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
+             opnd_create_reg(mi->reg1)));
+    }
+    IF_DEBUG(res =)
+        drreg_restore_app_values(drcontext, bb, inst, memop, NULL);
+    ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
+    insert_lea(drcontext, bb, inst, memop, mi->reg3, mi->reg2);
+    if (opnd_uses_reg(memop, mi->reg1)) {
+        PRE(bb, inst, INSTR_CREATE_mov_ld
+            (drcontext, opnd_create_reg(mi->reg1),
+             spill_slot_opnd(drcontext, SPILL_SLOT_1)));
+    }
+}
+
 #ifdef TOOL_DR_MEMORY
+/* The caller needs to preserve aflags. */
 static void
 insert_cmp_for_equality(void *drcontext, instrlist_t *bb, instr_t *inst,
                         fastpath_info_t *mi, opnd_t op, int val)
 {
+    LOG(4, "\t%s @"PFX"\n", __FUNCTION__, instr_get_app_pc(inst));
     /* test with self is smaller instr than cmp to 0, for self=reg */
     if (val == 0 && opnd_is_reg(op)) {
         ASSERT(opnd_get_reg(op) != DR_REG_NULL, "invalid empty reg");
@@ -1396,6 +1424,7 @@ insert_cmp_for_equality(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 /* Adds a check that app_op's shadow in shadow_op has its shadow bits
  * defined.  mi->src_opsz is assumed to be the size.
+ * The caller needs to preserve aflags.
  */
 static void
 insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
@@ -1486,6 +1515,164 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             shadow_op = opnd_create_reg(indir_tgt);
         }
         insert_cmp_for_equality(drcontext, bb, inst, mi, shadow_op, SHADOW_DWORD_DEFINED);
+    }
+}
+
+static void
+insert_check_src_definedness(void *drcontext, instrlist_t *bb, instr_t *inst,
+                             fastpath_info_t *mi, bool checked_src2, bool mark_defined,
+                             bool check_ignore_unaddr, bool check_appval,
+                             bool *checked_memsrc OUT, instr_t *heap_unaddr,
+                             opnd_t *heap_unaddr_shadow OUT)
+{
+    /* Check definedness of sources, if necessary.
+     * We process in reverse order so we can shift mi->src[0].shadow* but we
+     * insert in normal order so we can use reg2 in insert_check_defined.
+     * However, for drreg, we need to reserve aflags before we insert any
+     * conditionals, so we compute the bools up front.
+     */
+    instr_t *marker1 = inst;
+    instr_t *marker2;
+    uint opc = instr_get_opcode(inst);
+    bool src3_needs_check =
+        !opnd_is_null(mi->src[2].app) && !mark_defined &&
+        (mi->check_definedness ||
+         (mi->opnum[2] != -1 &&
+          always_check_definedness(inst, mi->opnum[2])));
+    bool src2_needs_check =
+        !checked_src2 && !opnd_is_null(mi->src[1].app) && !mark_defined &&
+        (mi->check_definedness ||
+         (mi->opnum[1] != -1 &&
+          always_check_definedness(inst, mi->opnum[1])));
+    bool src1_needs_check =
+        !opnd_is_null(mi->src[0].app) && !opnd_is_null(mi->src[0].shadow) &&
+        !mark_defined &&
+        /* Special case: we treat cmovcc like a cmp for checking the flags,
+         * but we still want to propagate the src normally to the dest if
+         * the condition is triggered (i#1456).
+         */
+        !opc_is_cmovcc(opc) && !opc_is_fcmovcc(opc) &&
+        (mi->check_definedness ||
+         (mi->opnum[0] != -1 &&
+          always_check_definedness(inst, mi->opnum[0])));
+    bool cmpxchg_needs_check = opc == OP_cmpxchg8b && options.check_uninitialized;
+    if (src3_needs_check || src2_needs_check || src1_needs_check || cmpxchg_needs_check)
+        reserve_aflags(drcontext, bb, inst);
+    marker2 = instr_get_prev(inst);
+    if (src3_needs_check) {
+        LOG(4, "\tchecking definedness of src3 => %d to propagate\n",
+            mi->num_to_propagate-1);
+        reserve_aflags(drcontext, bb, marker1);
+        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[2],
+                             mi->src[2].app, mi->src[2].shadow);
+        add_jcc_slowpath(drcontext, bb, marker1,
+                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        mi->num_to_propagate--;
+        mi->src[2].shadow = opnd_create_null();
+    }
+    marker1 = instr_get_next(marker2);
+    if (src2_needs_check) {
+        opnd_info_t tmp;
+        LOG(4, "\tchecking definedness of src2 => %d to propagate\n",
+            mi->num_to_propagate-1);
+        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[1],
+                             mi->src[1].app, mi->src[1].shadow);
+        /* relies on src1 undef going to slowpath so only for !opnd_same */
+        if (check_appval && !opnd_same(mi->src[1].app, mi->src[0].app)) {
+            /* handle common cases of undef and/test/or in fastpath: only handling
+             * 2nd src being undef when 1st src is defined and entirely 0 or 1.
+             * i#254 covers doing more.
+             */
+            instr_t *src2_defined = INSTR_CREATE_label(drcontext);
+            opnd_t app_val;
+            PRE(bb, marker1, INSTR_CREATE_jcc(drcontext, OP_je,
+                                              opnd_create_instr(src2_defined)));
+            if (mi->load || mi->store) {
+                /* re-lea */
+                ASSERT(mi->reg3 != REG_NULL, "need reg3");
+                ASSERT(!(mi->need_offs || mi->mem2mem || mi->load2x ||
+                         mi->need_offs_early || mi->need_nonoffs_reg3),
+                       "shouldn't need reg3 for any other reason");
+                insert_lea_preserve_reg(drcontext, bb, inst, mi, mi->memop);
+                app_val = opnd_create_base_disp(mi->reg3, REG_NULL, 0, 0,
+                                                opnd_get_size(mi->memop));
+            } else {
+                app_val = mi->src[0].app;
+            }
+            if (opc == OP_and || opc == OP_test) {
+                if (mi->load || mi->store) {
+                    PRE(bb, marker1, INSTR_CREATE_cmp
+                        (drcontext, app_val, opnd_create_immed_int
+                         (0, opnd_get_size(app_val))));
+                } else
+                    PRE(bb, marker1, INSTR_CREATE_test(drcontext, app_val, app_val));
+            } else {
+                PRE(bb, marker1, INSTR_CREATE_cmp
+                    (drcontext, app_val, opnd_create_immed_int
+                     (~0, opnd_get_size(app_val))));
+            }
+            add_jcc_slowpath(drcontext, bb, marker1,
+                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+            /* having mi->num_to_propagate == 0 implies mark_defined */
+            PRE(bb, marker1, src2_defined);
+        } else {
+            add_jcc_slowpath(drcontext, bb, marker1,
+                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        }
+        mi->num_to_propagate--;
+        tmp = mi->src[1];
+        mi->src[1] = mi->src[2]; /* copy shadow and app */
+        mi->src[2].shadow = opnd_create_null();
+        mi->src[2].app = tmp.app; /* for opnd_same check below */
+        checked_src2 = true;
+    }
+    marker1 = instr_get_next(marker2);
+    if (src1_needs_check) {
+        LOG(4, "\tchecking definedness of src1 => %d to propagate\n",
+            mi->num_to_propagate-1);
+        /* optimization: avoid duplicate check if both sources identical.
+         * we check src2 since if checked_src2 we swapped 1 and 2
+         */
+        if (!checked_src2 || !opnd_same(mi->src[2].app, mi->src[0].app)) {
+            insert_check_defined(drcontext, bb, marker1, mi, &mi->src[0],
+                                 mi->src[0].app, mi->src[0].shadow);
+            ASSERT(opnd_is_null(*heap_unaddr_shadow), "only 1 unaddr check");
+            if (check_ignore_unaddr && opnd_is_null(*heap_unaddr_shadow) &&
+                /* i#1722: do not try to check unaddr for indirected shadow */
+                mi->src[0].indir_size == OPSZ_NA) {
+                /* PR 578892: fastpath heap routine unaddr accesses
+                 * Can't do this for src1 and src2 b/c no support for more than
+                 * one shadow value type to check down below: but this is enough
+                 * for cmp/test/and/or w/ immed, which is the typical alloc code use.
+                 */
+                PRE(bb, marker1,
+                    INSTR_CREATE_jcc(drcontext, OP_jne, opnd_create_instr(heap_unaddr)));
+                mi->need_slowpath = true;
+                *heap_unaddr_shadow = mi->src[0].shadow;
+            } else {
+                add_jcc_slowpath(drcontext, bb, marker1, OP_jne_short, mi);
+            }
+            if (mi->load)
+                *checked_memsrc = true;
+        }
+        mi->num_to_propagate--;
+        mi->src[0] = mi->src[1]; /* copy shadow and app */
+        mi->src[1] = mi->src[2]; /* copy shadow and app */
+        mi->src[2].shadow = opnd_create_null();
+    }
+    marker1 = instr_get_next(marker2); /* may as well check first */
+    if (cmpxchg_needs_check) {
+        /* we keep on fastpath by hardcoding the 4th & 5th sources */
+        opnd_t op4 = instr_get_src(inst, 3);
+        opnd_t op5 = instr_get_src(inst, 4);
+        insert_check_defined(drcontext, bb, marker1, mi, NULL, op4,
+                             opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
+        add_jcc_slowpath(drcontext, bb, marker1,
+                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
+                             opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
+        add_jcc_slowpath(drcontext, bb, marker1,
+                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
     }
 }
 
@@ -2871,32 +3058,6 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 }
 #endif /* TOOL_DR_MEMORY */
 
-/* Restores spilled regs for the lea but preserves mi->reg1 around it.
- * Stores the address in reg3 (so requires reg3 to be set up).
- */
-static void
-insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
-                        fastpath_info_t *mi, opnd_t memop)
-{
-    IF_DEBUG(drreg_status_t res;)
-    ASSERT(mi->reg3 != DR_REG_NULL, "reg3 is not set up");
-    /* mi->reg1 holds the first lea so we have to preserve it */
-    if (opnd_uses_reg(memop, mi->reg1)) {
-        PRE(bb, inst, INSTR_CREATE_mov_st
-            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
-             opnd_create_reg(mi->reg1)));
-    }
-    IF_DEBUG(res =)
-        drreg_restore_app_values(drcontext, bb, inst, memop, NULL);
-    ASSERT(res == DRREG_SUCCESS, "failed to restore app values");
-    insert_lea(drcontext, bb, inst, memop, mi->reg3, mi->reg2);
-    if (opnd_uses_reg(memop, mi->reg1)) {
-        PRE(bb, inst, INSTR_CREATE_mov_ld
-            (drcontext, opnd_create_reg(mi->reg1),
-             spill_slot_opnd(drcontext, SPILL_SLOT_1)));
-    }
-}
-
 /* Fast path for "normal" instructions with a single memory
  * reference using 4-byte addressing registers.
  * Also handles mem2mem in certain cases.
@@ -2936,7 +3097,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef TOOL_DR_MEMORY
     instr_t *heap_unaddr = INSTR_CREATE_label(drcontext);
     opnd_t heap_unaddr_shadow = opnd_create_null();
-    instr_t *marker1, *marker2;
     bool mark_defined;
 #endif
 #ifdef TOOL_DR_MEMORY
@@ -3594,145 +3754,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                     OPND_CREATE_MEM8(mi->reg1, 0)), mi->xl8));
     }
 
-    /* check definedness of sources, if necessary.
-     * we process in reverse order so we can shift mi->src[0].shadow* but we
-     * insert in normal order so we can use reg2 in insert_check_defined.
-     */
-    marker2 = instr_get_prev(inst);
-    marker1 = inst;
-    if (!opnd_is_null(mi->src[2].app) && !mark_defined &&
-        (mi->check_definedness ||
-         (mi->opnum[2] != -1 &&
-          always_check_definedness(inst, mi->opnum[2])))) {
-        LOG(4, "\tchecking definedness of src3 => %d to propagate\n",
-            mi->num_to_propagate-1);
-        reserve_aflags(drcontext, bb, inst);
-        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[2],
-                             mi->src[2].app, mi->src[2].shadow);
-        add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-        mi->num_to_propagate--;
-        mi->src[2].shadow = opnd_create_null();
-    }
-    marker1 = instr_get_next(marker2);
-    if (!checked_src2 && !opnd_is_null(mi->src[1].app) && !mark_defined &&
-        (mi->check_definedness ||
-         (mi->opnum[1] != -1 &&
-          always_check_definedness(inst, mi->opnum[1])))) {
-        opnd_info_t tmp;
-        LOG(4, "\tchecking definedness of src2 => %d to propagate\n",
-            mi->num_to_propagate-1);
-        reserve_aflags(drcontext, bb, inst);
-        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[1],
-                             mi->src[1].app, mi->src[1].shadow);
-        /* relies on src1 undef going to slowpath so only for !opnd_same */
-        if (check_appval && !opnd_same(mi->src[1].app, mi->src[0].app)) {
-            /* handle common cases of undef and/test/or in fastpath: only handling
-             * 2nd src being undef when 1st src is defined and entirely 0 or 1.
-             * i#254 covers doing more.
-             */
-            instr_t *src2_defined = INSTR_CREATE_label(drcontext);
-            opnd_t app_val;
-            PRE(bb, marker1, INSTR_CREATE_jcc(drcontext, OP_je,
-                                              opnd_create_instr(src2_defined)));
-            if (mi->load || mi->store) {
-                /* re-lea */
-                ASSERT(mi->reg3 != REG_NULL, "need reg3");
-                ASSERT(!(mi->need_offs || mi->mem2mem || mi->load2x ||
-                         mi->need_offs_early || mi->need_nonoffs_reg3),
-                       "shouldn't need reg3 for any other reason");
-                insert_lea_preserve_reg(drcontext, bb, inst, mi, mi->memop);
-                app_val = opnd_create_base_disp(mi->reg3, REG_NULL, 0, 0,
-                                                opnd_get_size(mi->memop));
-            } else {
-                app_val = mi->src[0].app;
-            }
-            if (opc == OP_and || opc == OP_test) {
-                if (mi->load || mi->store) {
-                    PRE(bb, marker1, INSTR_CREATE_cmp
-                        (drcontext, app_val, opnd_create_immed_int
-                         (0, opnd_get_size(app_val))));
-                } else
-                    PRE(bb, marker1, INSTR_CREATE_test(drcontext, app_val, app_val));
-            } else {
-                PRE(bb, marker1, INSTR_CREATE_cmp
-                    (drcontext, app_val, opnd_create_immed_int
-                     (~0, opnd_get_size(app_val))));
-            }
-            add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-            /* having mi->num_to_propagate == 0 implies mark_defined */
-            PRE(bb, marker1, src2_defined);
-        } else {
-            add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-        }
-        mi->num_to_propagate--;
-        tmp = mi->src[1];
-        mi->src[1] = mi->src[2]; /* copy shadow and app */
-        mi->src[2].shadow = opnd_create_null();
-        mi->src[2].app = tmp.app; /* for opnd_same check below */
-        checked_src2 = true;
-    }
-    marker1 = instr_get_next(marker2);
-    if (!opnd_is_null(mi->src[0].app) && !opnd_is_null(mi->src[0].shadow) &&
-        !mark_defined &&
-        /* Special case: we treat cmovcc like a cmp for checking the flags,
-         * but we still want to propagate the src normally to the dest if
-         * the condition is triggered (i#1456).
-         */
-        !opc_is_cmovcc(opc) && !opc_is_fcmovcc(opc) &&
-        (mi->check_definedness ||
-         (mi->opnum[0] != -1 &&
-          always_check_definedness(inst, mi->opnum[0])))) {
-        LOG(4, "\tchecking definedness of src1 => %d to propagate\n",
-            mi->num_to_propagate-1);
-        /* optimization: avoid duplicate check if both sources identical.
-         * we check src2 since if checked_src2 we swapped 1 and 2
-         */
-        if (!checked_src2 || !opnd_same(mi->src[2].app, mi->src[0].app)) {
-            reserve_aflags(drcontext, bb, inst);
-            insert_check_defined(drcontext, bb, marker1, mi, &mi->src[0],
-                                 mi->src[0].app, mi->src[0].shadow);
-            ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
-            if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow) &&
-                /* i#1722: do not try to check unaddr for indirected shadow */
-                mi->src[0].indir_size == OPSZ_NA) {
-                /* PR 578892: fastpath heap routine unaddr accesses
-                 * Can't do this for src1 and src2 b/c no support for more than
-                 * one shadow value type to check down below: but this is enough
-                 * for cmp/test/and/or w/ immed, which is the typical alloc code use.
-                 */
-                PRE(bb, marker1,
-                    INSTR_CREATE_jcc(drcontext, OP_jne, opnd_create_instr(heap_unaddr)));
-                mi->need_slowpath = true;
-                heap_unaddr_shadow = mi->src[0].shadow;
-            } else {
-                add_jcc_slowpath(drcontext, bb, marker1, OP_jne_short, mi);
-            }
-            if (mi->load)
-                checked_memsrc = true;
-        }
-        mi->num_to_propagate--;
-        mi->src[0] = mi->src[1]; /* copy shadow and app */
-        mi->src[1] = mi->src[2]; /* copy shadow and app */
-        mi->src[2].shadow = opnd_create_null();
-    }
-    marker1 = instr_get_next(marker2); /* may as well check first */
-    if (opc == OP_cmpxchg8b && options.check_uninitialized) {
-        /* we keep on fastpath by hardcoding the 4th & 5th sources */
-        opnd_t op4 = instr_get_src(inst, 3);
-        opnd_t op5 = instr_get_src(inst, 4);
-        reserve_aflags(drcontext, bb, inst);
-        insert_check_defined(drcontext, bb, marker1, mi, NULL, op4,
-                             opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
-        add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-        insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
-                             opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
-        add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-    }
+    insert_check_src_definedness(drcontext, bb, inst, mi, checked_src2,
+                                 mark_defined, check_ignore_unaddr, check_appval,
+                                 &checked_memsrc, heap_unaddr, &heap_unaddr_shadow);
+
     ASSERT(mi->memsz <= sizeof(void*) || mi->num_to_propagate == 0 || mi->memsz ==16,
            "propagation not suported for odd-sized memops");
     /* optimization to avoid checks on jcc after cmp/test

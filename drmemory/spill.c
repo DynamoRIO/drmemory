@@ -258,30 +258,6 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
     return opnd_create_own_spill_slot(slot);
 }
 
-static bool
-is_spill_slot_opnd(void *drcontext, opnd_t op)
-{
-    static uint offs_min_own, offs_max_own, offs_min_DR, offs_max_DR;
-    if (offs_max_DR == 0) {
-        offs_min_own = opnd_get_disp(opnd_create_own_spill_slot(0));
-        offs_max_own = opnd_get_disp(opnd_create_own_spill_slot
-                                     (options.num_spill_slots - 1));
-        offs_min_DR = opnd_get_disp(dr_reg_spill_slot_opnd(drcontext, SPILL_SLOT_1));
-        offs_max_DR = opnd_get_disp(dr_reg_spill_slot_opnd
-                                    (drcontext, dr_max_opnd_accessible_spill_slot()));
-    }
-    if (opnd_is_far_base_disp(op) &&
-        opnd_get_index(op) == REG_NULL &&
-        opnd_get_segment(op) == seg_tls) {
-        uint offs = opnd_get_disp(op);
-        if (offs >= offs_min_own && offs <= offs_max_own)
-            return true;
-        if (offs >= offs_min_DR && offs <= offs_max_DR)
-            return true;
-    }
-    return false;
-}
-
 /***************************************************************************
  * STATE RESTORATION
  */
@@ -394,6 +370,7 @@ reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
         drreg_reserve_aflags(drcontext, ilist, where);
     /* We're ok with IN_USE b/c of our "lazy spill, single restore" strategy. */
     ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_IN_USE, "failed to reserve aflags");
+    LOG(4, "\t%s @"PFX"\n", __FUNCTION__, instr_get_app_pc(where));
 }
 
 void
@@ -404,6 +381,7 @@ unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
     /* We're ok with INVALID b/c of our "lazy spill, single restore" strategy. */
     ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_INVALID_PARAMETER,
            "failed to unreserve aflags");
+    LOG(4, "\t%s @"PFX"\n", __FUNCTION__, instr_get_app_pc(where));
 }
 
 reg_id_t
@@ -494,30 +472,24 @@ unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
     }
 }
 
-bool
-instr_is_spill(instr_t *inst, reg_id_t *reg_spilled OUT)
+static bool
+instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT)
 {
-    if (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_st, OP_str) &&
-        is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_dst(inst, 0)) &&
-        opnd_is_reg(instr_get_src(inst, 0))) {
-        if (reg_spilled != NULL)
-            *reg_spilled = opnd_get_reg(instr_get_src(inst, 0));
-        return true;
-    }
-    return false;
+    bool spill;
+    drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, &spill,
+                                                         NULL, reg_spilled);
+    ASSERT(res == DRREG_SUCCESS, "failed to query drreg for spill info");
+    return spill;
 }
 
-bool
-instr_is_restore(instr_t *inst, reg_id_t *reg_restored OUT)
+static bool
+instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored OUT)
 {
-    if (instr_get_opcode(inst) == IF_X86_ELSE(OP_mov_ld, OP_ldr) &&
-        is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
-        opnd_is_reg(instr_get_dst(inst, 0))) {
-        if (reg_restored != NULL)
-            *reg_restored = opnd_get_reg(instr_get_dst(inst, 0));
-        return true;
-    }
-    return false;
+    bool restore;
+    drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, NULL,
+                                                         &restore, reg_restored);
+    ASSERT(res == DRREG_SUCCESS, "failed to query drreg for spill info");
+    return restore;
 }
 
 bool
@@ -527,7 +499,7 @@ instr_at_pc_is_restore(void *drcontext, byte *pc)
     bool res;
     instr_init(drcontext, &inst);
     res = (decode(drcontext, pc, &inst) != NULL &&
-           instr_is_restore(&inst, NULL));
+           instr_is_restore(drcontext, &inst, NULL));
     instr_free(drcontext, &inst);
     return res;
 }
@@ -587,12 +559,16 @@ check_scratch_reg_parity(void *drcontext, instrlist_t *bb, instr_t *app_instr,
     for (; in != app_instr; in = instr_get_next(in)) {
         if (!past_cti && instr_is_cti(in))
             past_cti = true;
-        if (instr_is_spill(in, &spilled) && past_cti) {
+        if (instr_is_spill(drcontext, in, &spilled) && past_cti) {
+#if 1//NOCHECKIN
+            ELOGPT(0, pt, "Found spill: ");
+            instr_disassemble(drcontext, in, pt->f);
+#endif
             instr_t *forw;
             reg_id_t restored;
             bool local_restore = false;
             for (forw = in; forw != app_instr; forw = instr_get_next(forw)) {
-                if (instr_is_restore(forw, &restored) && restored == spilled) {
+                if (instr_is_restore(drcontext, forw, &restored) && restored == spilled) {
                     local_restore = true;
                     break;
                 }
