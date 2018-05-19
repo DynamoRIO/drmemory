@@ -560,10 +560,6 @@ check_scratch_reg_parity(void *drcontext, instrlist_t *bb, instr_t *app_instr,
         if (!past_cti && instr_is_cti(in))
             past_cti = true;
         if (instr_is_spill(drcontext, in, &spilled) && past_cti) {
-#if 1//NOCHECKIN
-            ELOGPT(0, pt, "Found spill: ");
-            instr_disassemble(drcontext, in, pt->f);
-#endif
             instr_t *forw;
             reg_id_t restored;
             bool local_restore = false;
