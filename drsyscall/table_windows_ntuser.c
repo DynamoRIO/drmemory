@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2604,6 +2604,58 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN14,0},"NtUserStopAndEndInertia", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN14,0},"NtUserWOWCleanup", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN14,0},"NtUserWindowFromDC", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    /* Added in Windows 10 1803 */
+    /* FIXME i#1750: fill in details */
+    {{WIN15,0},"NtCloseCompositionInputSink", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDCompositionCreateSynchronizationObject", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDCompositionGetBatchId", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDCompositionSuspendAnimations", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkGetProcessList", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkRegisterVailProcess", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkSubmitPresentBltToHwQueue", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkVailConnect", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkVailDisconnect", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtDxgkVailPromoteCompositionSurface", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtEnableOneCoreTransformMode", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectAddContent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerAcquirePresent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerAdjustUsageReference", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerBeginProcessPresent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerEndProcessPresent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerPostMessage", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectConsumerQueryBufferInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectDisconnectEndpoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectQueryBufferAvailableEvent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectQueryEndpointConnected", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectQueryNextMessageToProducer", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectReadNextMessageToProducer", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectRemoveContent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtFlipObjectSetContent", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtIsOneCoreTransformMode", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtMITDispatchCompletion", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtMITSetInputDelegationMode", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtMITSetLastInputRecipient", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtMapVisualRelativePoints", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtTokenManagerCreateFlipObjectReturnTokenHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtTokenManagerCreateFlipObjectTokenHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserCreatePalmRejectionDelayZone", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserCreateWindowGroup", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserDeleteWindowGroup", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserDestroyPalmRejectionDelayZone", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserEnableSoftwareCursorForScreenCapture", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserEnableWindowGroupPolicy", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserGetMonitorBrightness", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserGetOemBitmapSize", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserGetSystemDpiForProcess", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserGetWindowGroupId", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserGetWindowProcessHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserLogicalToPhysicalDpiPointForWindow", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserPhysicalToLogicalDpiPointForWindow", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserRequestMoveSizeOperation", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserSetBridgeWindowChild", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserSetDimUndimTransitionTime", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserSetMonitorBrightness", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtUserSetWindowGroup", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_USER32_SYSCALLS \

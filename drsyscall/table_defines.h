@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -66,6 +66,7 @@
 # define WIN12    DR_WINDOWS_VERSION_10_1607
 # define WIN13    DR_WINDOWS_VERSION_10_1703
 # define WIN14    DR_WINDOWS_VERSION_10_1709
+# define WIN15    DR_WINDOWS_VERSION_10_1803
 #endif
 
 #endif /* _TABLE_DEFINES_H 1 */
