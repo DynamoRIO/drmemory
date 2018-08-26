@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -46,8 +46,10 @@ int main()
 #ifdef LINUX
     struct mallinfo info;
 
+# if 0 /* Removing since cfree was removed from glibc 2.26+ */
     p = malloc(37);
     cfree(p);
+# endif
 
     mallopt(M_MMAP_THRESHOLD, 32 * 1024);
 
@@ -57,8 +59,10 @@ int main()
 
     malloc_stats();
 
+# if 0 /* Removing since malloc_get_state was removed from glibc 2.25+ */
     p = malloc_get_state();
     free(p);
+# endif
 #elif defined(MACOS)
     /* Tests for malloc zones (i#1699) are in mac_zones.c */
 #endif

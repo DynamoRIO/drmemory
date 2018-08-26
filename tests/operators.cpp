@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -28,13 +28,9 @@
 #include "stdlib.h"
 #include "limits.h"
 
-// Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff
-#if defined(MACOS) || defined(__clang__)
-/* clang won't let it get bigger */
-# define SIZE_OOM 0xfffffff
-#else
-# define SIZE_OOM 0x7fffffff
-#endif
+// Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff;
+// Clang and gcc 7.3.2 complain if it's over 0xfffffff.
+#define SIZE_OOM 0xfffffff
 #define SIZE_OOM_ARR 1024
 #ifdef UNIX
 # define IF_UNIX_ELSE(x,y) x
@@ -129,7 +125,7 @@ test_throw()
         // On Linux if the size is too small we don't run out of memory until
         // we've constructed most of the elements, which takes a long
         // time and causes issues under drmem w/ DR doing resets, etc.
-        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM,SIZE_OOM/sizeof(hasdtr))];
+        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM/2,SIZE_OOM/sizeof(hasdtr))];
         lots[0].y = 4;
     } catch (std::bad_alloc&) {
         std::cout << "caught bad_alloc" << std::endl;

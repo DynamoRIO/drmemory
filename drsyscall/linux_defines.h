@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -58,7 +58,7 @@
  */
 # define __need_siginfo_t
 # define __need_sigevent_t
-# include <bits/siginfo.h>
+# include <asm/siginfo.h>
 #else
 # include <signal.h>
 #endif

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -615,6 +615,10 @@ if (WIN32)
   endif (TOOL_DR_MEMORY)
 endif (WIN32)
 
+# The docs claim plain "-Wno-alloc-size-larger-than" should disable but it doesn't.
+CHECK_C_COMPILER_FLAG("-Wno-alloc-size-larger-than=4294967295"
+  HAVE_ALLOC_SIZE_WARNING_INTERNAL)
+
 if (TOOL_DR_MEMORY)
   if (NOT ARM) # XXX i#1726: port to ARM
     # PR 525807: test malloc stacks
@@ -686,8 +690,14 @@ if (TOOL_DR_MEMORY)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
-  if (APPLE)
+  if (UNIX)
     append_test_compile_flags(suppress "-Wno-uninitialized")
+    if (HAVE_ALLOC_SIZE_WARNING_INTERNAL)
+      # XXX: I can't get gcc 7.3.0 to not warn on the CallocOverflow test no matter
+      # what -Wno-alloc-size-larger-than* I try.  The only solution I came up with is
+      # to live with warnings :(
+      append_test_compile_flags(suppress "-Wno-error")
+    endif ()
   endif ()
   if (WIN32)
     tobuild_lib(suppress-mod-foo suppress-mod-foo.c "" "/nodefaultlib /noentry")
