@@ -480,14 +480,16 @@ endif ()
 newtest_ex(cs2bug cs2bug.cpp "" "" ""  OFF ${cs2bug_res} 0)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
-# On Linux this test is very slow trying to hit OOM.  We tweak the options to try
-# and speed it up.
+# On Linux this test is very slow trying to hit OOM and then leak checking.
+# We tweak the options to try and speed it up and not timeout on Travis.
 if (UNIX)
   set(operators_dr_ops "-checklevel 0 -no_enable_reset -vm_size 64M")
+  set(operators_drm_ops "-no_count_leaks")
 else ()
   set(operators_dr_ops "")
+  set(operators_drm_ops "")
 endif()
-newtest_ex(operators operators.cpp "" "" "${operators_dr_ops}" OFF ""
+newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops}" OFF ""
   # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
   "ANY")
 newtest(float float.c)
@@ -691,8 +693,9 @@ if (TOOL_DR_MEMORY)
         newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} 0)
       endif ()
     endif ()
-    newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-      "" OFF "operators" 0 "")
+    newtest_nobuild_ex(wrap_operators operators ""
+      "-no_replace_malloc;${operators_drm_ops}" "${operators_dr_ops}"
+      OFF "operators" 0 "")
   endif ()
 
   # shared by all suppress tests

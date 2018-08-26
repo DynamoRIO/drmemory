@@ -136,7 +136,8 @@ test_throw()
     }
 }
 
-int main()
+int
+main()
 {
     test_placement();
 
