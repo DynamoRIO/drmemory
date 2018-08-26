@@ -30,7 +30,11 @@
 
 // Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff;
 // Clang and gcc 7.3.2 complain if it's over 0xfffffff.
-#define SIZE_OOM 0xfffffff
+#ifdef UNIX
+# define SIZE_OOM 0xfffffff
+#else
+# define SIZE_OOM 0x7fffffff
+#endif
 #define SIZE_OOM_ARR 1024
 #ifdef UNIX
 # define IF_UNIX_ELSE(x,y) x
@@ -111,7 +115,7 @@ test_nothrow()
         }
     }
     for (unsigned int j = 0; j <= i && j < SIZE_OOM_ARR; j++)
-        delete p[j];
+        delete[] p[j];
     delete[] p;
 }
 

@@ -477,10 +477,17 @@ else ()
   set(cs2bug_res "cs2bugMTd")
   set(cs2bug_flags "/DSKIP_MISMATCH_DTR")
 endif ()
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} 0)
+newtest_ex(cs2bug cs2bug.cpp "" "" ""  OFF ${cs2bug_res} 0)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
-newtest_ex(operators operators.cpp "" "" "" OFF ""
+# On Linux this test is very slow trying to hit OOM.  We tweak the options to try
+# and speed it up.
+if (UNIX)
+  set(operators_dr_ops "-checklevel 0 -no_enable_reset -vm_size 64M")
+else ()
+  set(operators_dr_ops "")
+endif()
+newtest_ex(operators operators.cpp "" "" "${operators_dr_ops}" OFF ""
   # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
   "ANY")
 newtest(float float.c)

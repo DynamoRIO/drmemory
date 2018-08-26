@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -20,54 +20,54 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:70
+memalign.c:74
 Note: refers to 1 byte(s) before next malloc
 
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:71
+memalign.c:75
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:86
+memalign.c:90
 Note: refers to 1 byte(s) before next malloc
 
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:87
+memalign.c:91
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 Error #5: WARNING: heap allocation failed
-memalign.c:91
+memalign.c:95
 
 Error #6: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:99
+memalign.c:103
 Note: refers to 1 byte(s) before next malloc
 
 Error #7: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:100
+memalign.c:104
 
 %if !MACOS
 Error #8: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:107
+memalign.c:111
 Note: refers to 1 byte(s) before next malloc
 
 Error #9: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:108
+memalign.c:112
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 %endif
 
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:115
+memalign.c:119
 Note: refers to 1 byte(s) before next malloc
 
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:116
+memalign.c:120
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 %if !MACOS
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:123
+memalign.c:127
 Note: refers to 1 byte(s) before next malloc
 
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:125
+memalign.c:129
 %endif
