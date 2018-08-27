@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -79,7 +79,7 @@ static hashtable_t usercall_table;
 
 static const char * const usercall_names[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     #type"."#name,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -88,15 +88,23 @@ static const char * const usercall_names[] = {
 
 static const char * const usercall_primary[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     #type,
+#include "drsyscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int win10_1803_usercall_nums[] = {
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
+    w11, w12, w13, w14, w15) \
+    w15,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win10_1709_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w14,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -104,7 +112,7 @@ static const int win10_1709_usercall_nums[] = {
 
 static const int win10_1703_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w13,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -112,7 +120,7 @@ static const int win10_1703_usercall_nums[] = {
 
 static const int win10_1607_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w12,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -120,7 +128,7 @@ static const int win10_1607_usercall_nums[] = {
 
 static const int win10_1511_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w11,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -128,7 +136,7 @@ static const int win10_1511_usercall_nums[] = {
 
 static const int win10_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w10,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -136,7 +144,7 @@ static const int win10_usercall_nums[] = {
 
 static const int win81_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w81,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -144,7 +152,7 @@ static const int win81_usercall_nums[] = {
 
 static const int win8_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w8,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -152,7 +160,7 @@ static const int win8_usercall_nums[] = {
 
 static const int win7_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w7,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -160,7 +168,7 @@ static const int win7_usercall_nums[] = {
 
 static const int winvistaSP2_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     vistaSP2,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -168,7 +176,7 @@ static const int winvistaSP2_usercall_nums[] = {
 
 static const int winvistaSP01_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     vistaSP01,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -176,7 +184,7 @@ static const int winvistaSP01_usercall_nums[] = {
 
 static const int win2003_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w2003,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -184,7 +192,7 @@ static const int win2003_usercall_nums[] = {
 
 static const int winxp_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     xp,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -192,7 +200,7 @@ static const int winxp_usercall_nums[] = {
 
 static const int win2k_usercall_nums[] = {
 #define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8, w81, w10,\
-    w11, w12, w13, w14) \
+    w11, w12, w13, w14, w15) \
     w2k,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
@@ -281,6 +289,7 @@ drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *
     LOG(1, "Windows version is %d.%d.%d\n", ver->version, ver->service_pack_major,
         ver->service_pack_minor);
     switch (ver->version) {
+    case DR_WINDOWS_VERSION_10_1803: usercalls = win10_1803_usercall_nums; break;
     case DR_WINDOWS_VERSION_10_1709: usercalls = win10_1709_usercall_nums; break;
     case DR_WINDOWS_VERSION_10_1703: usercalls = win10_1703_usercall_nums; break;
     case DR_WINDOWS_VERSION_10_1607: usercalls = win10_1607_usercall_nums; break;

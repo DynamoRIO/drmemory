@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -902,7 +902,7 @@ init_os_version(void)
     if (!dr_get_os_version(&os_version)) {
         ASSERT(false, "unable to get Windows version");
         /* assume latest just to make progress: good chance of working */
-        os_version.version = DR_WINDOWS_VERSION_10_1709;
+        os_version.version = DR_WINDOWS_VERSION_10_1803;
         os_version.service_pack_major = 1;
         os_version.service_pack_minor = 0;
     }

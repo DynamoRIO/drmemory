@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -41,10 +41,12 @@
 #define EXPANDSTR(x) #x
 #define STRINGIFY(x) EXPANDSTR(x)
 
-#ifdef WINDOWS
-# define LINK_ONCE __declspec(selectany)
-#else
-# define LINK_ONCE __attribute__ ((weak))
+#ifndef LINK_ONCE
+# ifdef WINDOWS
+#  define LINK_ONCE __declspec(selectany)
+# else
+#  define LINK_ONCE __attribute__ ((weak))
+# endif
 #endif
 
 /* Version checking.

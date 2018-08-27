@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -3221,6 +3221,12 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN14,0},"NtGdiDdDDISetMonitorColorSpaceTransform", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN14,0},"NtGdiDdDDIUnOrderedPresentSwapChain", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{WIN14,0},"NtGdiEnsureDpiDepDefaultGuiFontForPlateau", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    /* Added in Windows 10 1709 */
+    /* FIXME i#1750: fill in details */
+    {{WIN15,0},"NtGdiDdDDIGetProcessDeviceRemovalSupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtGdiDdDDIOpenBundleObjectNtHandleFromName", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtGdiDdDDIOpenKeyedMutexFromNtHandle", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN15,0},"NtGdiDdDDISetProcessDeviceRemovalSupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
 
 };
 #define NUM_GDI32_SYSCALLS \

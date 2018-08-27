@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -3540,6 +3540,10 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN14,0},"NtNotifyChangeDirectoryFileEx", UNKNOWN, RNTST, 10, },
     {{WIN14,0},"NtQueryDirectoryFileEx", UNKNOWN, RNTST, 10, },
     {{WIN14,0},"NtTerminateEnclave", UNKNOWN, RNTST, 2, },
+    /* Added in Windows 10 1803 */
+    /* FIXME i#1750: fill in details */
+    {{WIN15,0},"NtAllocateVirtualMemoryEx", UNKNOWN, RNTST, 7, },
+    {{WIN15,0},"NtMapViewOfSectionEx", UNKNOWN, RNTST, 9, },
 };
 
 #define NUM_NTDLL_SYSCALLS \

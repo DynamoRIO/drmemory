@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -77,6 +77,9 @@ my %numx2index = (
     'w14x86' => 29,
     'w14wow' => 30,
     'w14x64' => 31,
+    'w15x86' => 32,
+    'w15wow' => 33,
+    'w15x64' => 34,
     );
 
 # Maps OS labels in drsyscall_callx.h to our array from drsyscall_usercallx.h
@@ -94,6 +97,7 @@ my %callx2indices = (
     'w12'  => [$numx2index{'w12x86'}, $numx2index{'w12wow'}, $numx2index{'w12x64'}],
     'w13'  => [$numx2index{'w13x86'}, $numx2index{'w13wow'}, $numx2index{'w13x64'}],
     'w14'  => [$numx2index{'w14x86'}, $numx2index{'w14wow'}, $numx2index{'w14x64'}],
+    'w15'  => [$numx2index{'w15x86'}, $numx2index{'w15wow'}, $numx2index{'w15x64'}],
     );
 
 my %os_numx2flavor_map = (
@@ -129,6 +133,9 @@ my %os_numx2flavor_map = (
     'w14x86' => 'x86',
     'w14wow' => 'wow64',
     'w14x64' => 'x64',
+    'w15x86' => 'x86',
+    'w15wow' => 'wow64',
+    'w15x64' => 'x64',
     );
 
 my ($scriptname,$scriptpath,$suffix) = fileparse($0);
