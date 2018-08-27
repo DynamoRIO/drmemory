@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -477,10 +477,19 @@ else ()
   set(cs2bug_res "cs2bugMTd")
   set(cs2bug_flags "/DSKIP_MISMATCH_DTR")
 endif ()
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} 0)
+newtest_ex(cs2bug cs2bug.cpp "" "" ""  OFF ${cs2bug_res} 0)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
-newtest_ex(operators operators.cpp "" "" "" OFF ""
+# On Linux this test is very slow trying to hit OOM and then leak checking.
+# We tweak the options to try and speed it up and not timeout on Travis.
+if (UNIX)
+  set(operators_dr_ops "-checklevel 0 -no_enable_reset -vm_size 64M")
+  set(operators_drm_ops "-no_count_leaks")
+else ()
+  set(operators_dr_ops "")
+  set(operators_drm_ops "")
+endif()
+newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops}" OFF ""
   # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
   "ANY")
 newtest(float float.c)
@@ -615,6 +624,10 @@ if (WIN32)
   endif (TOOL_DR_MEMORY)
 endif (WIN32)
 
+# The docs claim plain "-Wno-alloc-size-larger-than" should disable but it doesn't.
+CHECK_C_COMPILER_FLAG("-Wno-alloc-size-larger-than=4294967295"
+  HAVE_ALLOC_SIZE_WARNING_INTERNAL)
+
 if (TOOL_DR_MEMORY)
   if (NOT ARM) # XXX i#1726: port to ARM
     # PR 525807: test malloc stacks
@@ -680,14 +693,21 @@ if (TOOL_DR_MEMORY)
         newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} 0)
       endif ()
     endif ()
-    newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-      "" OFF "operators" 0 "")
+    newtest_nobuild_ex(wrap_operators operators ""
+      "-no_replace_malloc;${operators_drm_ops}" "${operators_dr_ops}"
+      OFF "operators" 0 "")
   endif ()
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
-  if (APPLE)
+  if (UNIX)
     append_test_compile_flags(suppress "-Wno-uninitialized")
+    if (HAVE_ALLOC_SIZE_WARNING_INTERNAL)
+      # XXX: I can't get gcc 7.3.0 to not warn on the CallocOverflow test no matter
+      # what -Wno-alloc-size-larger-than* I try.  The only solution I came up with is
+      # to live with warnings :(
+      append_test_compile_flags(suppress "-Wno-error")
+    endif ()
   endif ()
   if (WIN32)
     tobuild_lib(suppress-mod-foo suppress-mod-foo.c "" "/nodefaultlib /noentry")

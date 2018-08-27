@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2015-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,30 +19,30 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:71
+memalign.c:75
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:87
+memalign.c:91
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 Error #3: WARNING: heap allocation failed
-memalign.c:91
+memalign.c:95
 
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:100
+memalign.c:104
 
 %if !MACOS
 Error #5: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:108
+memalign.c:112
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 %endif
 
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:116
+memalign.c:120
 Note: refers to 0 byte(s) beyond last valid byte in prior malloc
 
 %if !MACOS
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-memalign.c:125
+memalign.c:129
 %endif

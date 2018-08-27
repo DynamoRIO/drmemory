@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -46,6 +46,12 @@ add_executable(app_suite_tests
                "${GTEST_ROOT}/src/gtest_main.cc")
 
 if (UNIX)
+  if (HAVE_ALLOC_SIZE_WARNING_INTERNAL)
+    # XXX: I can't get gcc 7.3.1 to not warn on the CallocOverflow test no matter
+    # what -Wno-alloc-size-larger-than* I try.  The only solution I came up with is
+    # to live with warnings :(
+    append_compile_flags(app_suite_tests "-Wno-error")
+  endif ()
   if (APPLE)
     append_compile_flags(app_suite_tests "-DMACOS -DUNIX")
     # Avoid gtest-internal warnings

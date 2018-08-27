@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -28,9 +28,9 @@
 #include "stdlib.h"
 #include "limits.h"
 
-// Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff
-#if defined(MACOS) || defined(__clang__)
-/* clang won't let it get bigger */
+// Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff;
+// Clang and gcc 7.3.2 complain if it's over 0xfffffff.
+#ifdef UNIX
 # define SIZE_OOM 0xfffffff
 #else
 # define SIZE_OOM 0x7fffffff
@@ -40,6 +40,11 @@
 # define IF_UNIX_ELSE(x,y) x
 #else
 # define IF_UNIX_ELSE(x,y) y
+#endif
+#ifdef X64
+# define IF_X64_ELSE(x,y) x
+#else
+# define IF_X64_ELSE(x,y) y
 #endif
 
 class hasdtr {
@@ -115,7 +120,7 @@ test_nothrow()
         }
     }
     for (unsigned int j = 0; j <= i && j < SIZE_OOM_ARR; j++)
-        delete p[j];
+        delete[] p[j];
     delete[] p;
 }
 
@@ -129,14 +134,18 @@ test_throw()
         // On Linux if the size is too small we don't run out of memory until
         // we've constructed most of the elements, which takes a long
         // time and causes issues under drmem w/ DR doing resets, etc.
-        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM,SIZE_OOM/sizeof(hasdtr))];
+        // gcc 7.3+ forces us to use the new smaller SIZE_OOM/2 for 32-bit,
+        // but that causes 64-bit to take forever here so we up it.
+        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(IF_X64_ELSE(0x7fffffff,SIZE_OOM/2),
+                                               SIZE_OOM/sizeof(hasdtr))];
         lots[0].y = 4;
     } catch (std::bad_alloc&) {
         std::cout << "caught bad_alloc" << std::endl;
     }
 }
 
-int main()
+int
+main()
 {
     test_placement();
 

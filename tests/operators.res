@@ -20,9 +20,9 @@
 #
 %if X32
 : WARNING: heap allocation failed
-operators.cpp:97
+operators.cpp:102
 : WARNING: heap allocation failed
-operators.cpp:111
+operators.cpp:116
 %endif
 : WARNING: heap allocation failed
-operators.cpp:132
+operators.cpp:140
