@@ -41,6 +41,11 @@
 #else
 # define IF_UNIX_ELSE(x,y) y
 #endif
+#ifdef X64
+# define IF_X64_ELSE(x,y) x
+#else
+# define IF_X64_ELSE(x,y) y
+#endif
 
 class hasdtr {
 public:
@@ -129,7 +134,10 @@ test_throw()
         // On Linux if the size is too small we don't run out of memory until
         // we've constructed most of the elements, which takes a long
         // time and causes issues under drmem w/ DR doing resets, etc.
-        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM/2,SIZE_OOM/sizeof(hasdtr))];
+        // gcc 7.3+ forces us to use the new smaller SIZE_OOM/2 for 32-bit,
+        // but that causes 64-bit to take forever here so we up it.
+        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(IF_X64_ELSE(0x7fffffff,SIZE_OOM/2),
+                                               SIZE_OOM/sizeof(hasdtr))];
         lots[0].y = 4;
     } catch (std::bad_alloc&) {
         std::cout << "caught bad_alloc" << std::endl;
