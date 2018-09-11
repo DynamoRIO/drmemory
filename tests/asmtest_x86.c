@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -462,7 +462,7 @@ GLOBAL_LABEL(FUNCNAME:)
         DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      eax, 0
-        movdqu   [8 + REG_XSP + REG_XAX], xmm0
+        movdqu   XMMWORD [8 + REG_XSP + REG_XAX], xmm0
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
