@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -32,6 +32,7 @@
 void asm_test(char *undef, char *def);
 void asm_test_avx(char *undef, char *def);
 void asm_test_i1680(char *buf);
+void asm_test_reach(void);
 
 static void
 asm_test_C(void)
@@ -41,6 +42,7 @@ asm_test_C(void)
     asm_test(undef, def);
     asm_test_avx(undef, def);
     asm_test_i1680(def);
+    asm_test_reach();
 }
 
 int
@@ -449,6 +451,18 @@ GLOBAL_LABEL(FUNCNAME:)
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
         pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME asm_test_reach
+/* Tests i#2118 reachability. */
+/* void asm_test_reach(); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      eax, 0
+        movdqu   XMMWORD [8 + REG_XSP + REG_XAX], xmm0
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
