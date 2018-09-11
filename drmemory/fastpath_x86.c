@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1836,7 +1836,11 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             add_jcc_slowpath(drcontext, bb, inst,
                              /* short doesn't quite reach for mem2mem's 1st check
                               * FIXME: use short for 2nd though! */
+                             /* XXX DRi#56: have a pass to auto-convert short jumps
+                              * to long that don't reach; some new drx_ utility maybe. */
                              (mi->mem2mem || mi->load2x ||
+                              /* i#2118: 16-byte add_check_partial_undefined() */
+                              mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
@@ -1855,6 +1859,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             mark_eflags_used(drcontext, bb, mi->bb);
             add_jcc_slowpath(drcontext, bb, inst,
                              (mi->mem2mem || mi->load2x ||
+                              /* i#2118: 16-byte add_check_partial_undefined() */
+                              mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
