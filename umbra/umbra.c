@@ -51,11 +51,9 @@ static bool   umbra_initialized;
 ptr_uint_t
 umbra_map_scale_app_to_shadow(umbra_map_t *map, ptr_uint_t value)
 {
-    if (UMBRA_MAP_SCALE_IS_DOWN(map->options.scale)) {
+    if (UMBRA_MAP_SCALE_IS_DOWN(map->options.scale))
         value >>= map->shift;
-        if (value == 0)
-            value = 1;
-    } else if (UMBRA_MAP_SCALE_IS_UP(map->options.scale))
+    else if (UMBRA_MAP_SCALE_IS_UP(map->options.scale))
         value <<= map->shift;
     return value;
 }
