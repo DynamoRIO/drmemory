@@ -1031,7 +1031,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    byte  *shadow_start, *shadow_addr;
+    byte  *shadow_start, *shadow_addr = NULL;
     size_t shadow_size, iter_size;
 
     if (value > USHRT_MAX || (value_size != 1 && value_size != 2))
@@ -1064,9 +1064,8 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
         shadow_size = umbra_map_scale_app_to_shadow(map, iter_size);
         if (value_size == 1) {
             shadow_addr = memchr(shadow_start, (int)value, shadow_size);
-        } else {
+        } else if (shadow_size > 0) {
             byte *first_byte = shadow_start;
-            shadow_addr = NULL;
             while (first_byte != NULL) {
                 first_byte = memchr(first_byte, (char)value,
                                     shadow_size - 1 - (first_byte - shadow_start));
