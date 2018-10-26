@@ -252,7 +252,7 @@ typedef struct _umbra_map_options_t {
      * If a cross block access occurs, a fault is triggered. This is an
      * optimisation, because rather than requiring the user to perform explicit
      * checks on redzone access, a fault will indicate the case. User may
-     * then take further action action by defining a fault handler, similar to
+     * then take further action by defining a fault handler, similar to
      * that done for shared block access (if enabled).
      *
      * Overrides redzone data specified in the struct, including redzone_size.
