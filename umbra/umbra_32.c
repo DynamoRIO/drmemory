@@ -100,6 +100,8 @@ shadow_table_init_redzone(umbra_map_t *map, byte *block)
     IF_DEBUG(bool ok;)
     if (map->options.redzone_size != 0) {
         if (map->options.make_redzone_faulty) {
+            ASSERT(ALIGNED(block, PAGE_SIZE), "pre-redzone not page aligned");
+
             /* Set redzone permission to be faulty on reads and writes. */
             IF_DEBUG(ok = )
             dr_memory_protect(block, map->options.redzone_size, DR_MEMPROT_NONE);
@@ -112,14 +114,18 @@ shadow_table_init_redzone(umbra_map_t *map, byte *block)
     block += map->options.redzone_size;
 
     if (map->options.redzone_size != 0) {
+
+        byte *post_redzone = block + map->shadow_block_size;
+
         if (map->options.make_redzone_faulty) {
+            ASSERT(ALIGNED(post_redzone, PAGE_SIZE), "post-redzone not page aligned");
+
             /* Again, set redzone permission. */
             IF_DEBUG(ok = )
-            dr_memory_protect(block + map->shadow_block_size,
-                              map->options.redzone_size, DR_MEMPROT_NONE);
+            dr_memory_protect(post_redzone, map->options.redzone_size, DR_MEMPROT_NONE);
             ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
         } else {
-            memset(block + map->shadow_block_size, map->options.redzone_value,
+            memset(post_redzone, map->options.redzone_value,
                    map->options.redzone_size);
         }
     }
@@ -600,7 +606,7 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
      * We assume that the shadow block is completely within page sizes.
      * This allows us to set permissions
      */
-    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page size");
+    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page sizes");
 
     map->app_block_size = APP_BLOCK_SIZE;
     map->shadow_block_size = umbra_map_scale_app_to_shadow(map, APP_BLOCK_SIZE);
