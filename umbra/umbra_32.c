@@ -85,20 +85,43 @@ shadow_table_get_block_offset(umbra_map_t *map, app_pc app_addr)
 static void
 shadow_table_delete_block(umbra_map_t *map, byte *shadow_start)
 {
-    global_free(shadow_start - map->options.redzone_size,
-                map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    if (map->options.make_redzone_faulty) {
+        nonheap_free(shadow_start - map->options.redzone_size,
+                     map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    } else {
+        global_free(shadow_start - map->options.redzone_size,
+                    map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    }
 }
 
 static byte *
 shadow_table_init_redzone(umbra_map_t *map, byte *block)
 {
-    if (map->options.redzone_size != 0)
-        memset(block, map->options.redzone_value, map->options.redzone_size);
-    block += map->options.redzone_size;
+    IF_DEBUG(bool ok;)
     if (map->options.redzone_size != 0) {
-        memset(block + map->shadow_block_size,
-               map->options.redzone_value,
-               map->options.redzone_size);
+        if (map->options.make_redzone_faulty) {
+            /* Set redzone permission to be faulty on reads and writes. */
+            IF_DEBUG(ok = )
+            dr_memory_protect(block, map->options.redzone_size, DR_MEMPROT_NONE);
+            ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
+        } else {
+            memset(block, map->options.redzone_value, map->options.redzone_size);
+        }
+    }
+
+    block += map->options.redzone_size;
+
+    if (map->options.redzone_size != 0) {
+        if (map->options.make_redzone_faulty) {
+            /* Again, set redzone permission. */
+            IF_DEBUG(ok = )
+            dr_memory_protect(block + map->shadow_block_size,
+                              map->options.redzone_size, DR_MEMPROT_NONE);
+            ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
+        } else {
+            memset(block + map->shadow_block_size, map->options.redzone_value,
+                   map->options.redzone_size);
+        }
     }
     return block;
 }
@@ -107,7 +130,19 @@ static byte *
 shadow_table_create_block(umbra_map_t *map)
 {
     byte *block;
-    block = global_alloc(map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+
+    if (map->options.make_redzone_faulty) {
+        /* We need to ensure page alignment for redzones, so that we may then
+         * assign them no access.
+         */
+        block = nonheap_alloc(map->shadow_block_alloc_size,
+                              DR_MEMPROT_READ | DR_MEMPROT_WRITE,
+                              HEAPSTAT_SHADOW);
+        } else {
+            block = global_alloc(map->shadow_block_alloc_size,
+                                 HEAPSTAT_SHADOW);
+        }
+
     block = shadow_table_init_redzone(map, block);
     LOG(UMBRA_VERBOSE, "created new shadow block "PFX"\n", block);
     return block;
@@ -537,6 +572,20 @@ umbra_arch_exit()
 drmf_status_t
 umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
 {
+    /*
+     * Override redzone size. We must make it a page size to control
+     * its permissions.
+     *
+     * FIXME Potentially support larger redzone sizes to be even more safe.
+     * It is perhaps unlikely that a translated address would be used in
+     * pointer arithmetic that results in jumping over the 1 paged sized
+     * redzone. Nevertheless, we can be even more safe and leave this
+     * decision up to the user, and not blindly setting the redzone size
+     * to a page size.
+     */
+    if (ops->make_redzone_faulty)
+        map->options.redzone_size = PAGE_SIZE;
+
     if (ops->redzone_size != 0) {
         if (ops->redzone_value_size != 1 || ops->redzone_value > UCHAR_MAX) {
             ASSERT(false, "NYI: we only support byte-size value now");
@@ -546,6 +595,12 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
             return DRMF_ERROR_INVALID_PARAMETER;
         }
     }
+
+    /*
+     * We assume that the shadow block is completely within page sizes.
+     * This allows us to set permissions
+     */
+    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page size");
 
     map->app_block_size = APP_BLOCK_SIZE;
     map->shadow_block_size = umbra_map_scale_app_to_shadow(map, APP_BLOCK_SIZE);
