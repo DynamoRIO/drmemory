@@ -203,7 +203,8 @@ shadow_table_create_special_block_helper(umbra_map_t     *map,
 
     /* we will never write to the special */
     IF_DEBUG(ok = )
-        dr_memory_protect(block, map->shadow_block_alloc_size, DR_MEMPROT_READ);
+        dr_memory_protect(block - map->options.redzone_size,
+                          map->shadow_block_alloc_size, DR_MEMPROT_READ);
     ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
     LOG(UMBRA_VERBOSE, "created new shadow special block "PFX"\n", block);
     special_block->start = block;
