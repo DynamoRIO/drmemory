@@ -233,10 +233,16 @@ endif (APPLE)
 
 # N.B.: when updating this, update the git tag in .travis.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "1.11.${VERSION_NUMBER_PATCHLEVEL}")
-# do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
+if (WIN32)
+  # Windows is still missing 64-bit uninitialized read support so we're still calling
+  # it 1.11.xxx.
+  set(VERSION_NUMBER_DEFAULT "1.11.${VERSION_NUMBER_PATCHLEVEL}")
+else ()
+  set(VERSION_NUMBER_DEFAULT "2.0.${VERSION_NUMBER_PATCHLEVEL}")
+endif ()
+# Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
-# avoid "VERSION_NUMBER" name since conflics w/ DR's var
+# Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
 set(TOOL_VERSION_NUMBER "" CACHE STRING "Version number: leave empty for default")
 if ("${TOOL_VERSION_NUMBER}" STREQUAL "")
   set(TOOL_VERSION_NUMBER ${VERSION_NUMBER_DEFAULT})
