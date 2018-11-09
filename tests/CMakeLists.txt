@@ -500,7 +500,7 @@ newtest_ex(state state.c "" "" "" OFF "" "ANY")
 if (UNIX)
   newtest(signal signal.c)
   if (NOT X64) # FIXME i#111: failing on Travis
-    newtest(syscalls_unix syscalls_unix.c)
+    #newtest(syscalls_unix syscalls_unix.c)
   endif ()
 
   if (NOT APPLE
@@ -536,7 +536,7 @@ if (UNIX)
           VERBATIM)
       add_custom_target("${kmod_name}"
           DEPENDS "${kmod_bin}")
-      add_dependencies(syscalls_unix "${kmod_name}")
+      #add_dependencies(syscalls_unix "${kmod_name}")
       set(kmod_build_files "${kmod_bin_dir}/modules.order"
           "${kmod_bin_dir}/Module.symvers"
           "${kmod_bin_dir}/${kmod_name}.c"

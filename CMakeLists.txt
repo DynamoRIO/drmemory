@@ -819,6 +819,10 @@ set(DynamoRIO_VERSION_REQUIRED "7.0.17843")
 
 set(DR_install_dir "dynamorio")
 
+set(DynamoRIO_PAGE_SIZE_COMPATIBILITY ON)
+
+set(DynamoRIO_LOG_COMPATIBILITY ON)
+
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
   # relative to source dir not build dir, so we change that here.
