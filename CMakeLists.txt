@@ -815,9 +815,13 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "6.2.17499")
+set(DynamoRIO_VERSION_REQUIRED "7.0.17855")
 
 set(DR_install_dir "dynamorio")
+
+set(DynamoRIO_PAGE_SIZE_COMPATIBILITY ON)
+
+set(DynamoRIO_LOG_COMPATIBILITY ON)
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
@@ -1050,7 +1054,7 @@ endif ()
 
 function (copy_target_to_device target)
   if (DRM_COPY_TO_DEVICE)
-    DynamoRIO_copy_target_to_device(${target} ${DRM_DEVICE_BASEDIR})
+    DynamoRIO_copy_target_to_device(${target} ${DRM_DEVICE_BASEDIR} "${_DR_location_suffix}")
   endif ()
 endfunction (copy_target_to_device)
 
@@ -1068,9 +1072,9 @@ endfunction (copy_file_to_device)
 
 function (get_target_path_for_execution out target)
   if (ANDROID)
-    DynamoRIO_get_target_path_for_execution(local ${target} ${DRM_DEVICE_BASEDIR})
+    DynamoRIO_get_target_path_for_execution(local ${target} ${DRM_DEVICE_BASEDIR} "${_DR_location_suffix}")
   else ()
-    DynamoRIO_get_target_path_for_execution(local ${target} "")
+    DynamoRIO_get_target_path_for_execution(local ${target} "" "${_DR_location_suffix}")
   endif ()
   set(${out} ${local} PARENT_SCOPE)
 endfunction (get_target_path_for_execution)
