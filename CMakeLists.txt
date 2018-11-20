@@ -561,7 +561,9 @@ if (WIN32)
     # We look in both paths (Program Files and Program Files (x86)) because some versions of
     # Visual Studio put dbghelp.dll in progfiles (especially 2008) and some in progfiles32.
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/dbghelp.dll")
+
   if (X64)
     set(dbghelp_paths ${dbghelp_paths}
       # For older versions of windbg, x64 dbghelp.dll resides here.
@@ -610,7 +612,9 @@ if (WIN32)
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
-    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll")
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/symsrv.dll")
+
   if (X64)
     set(symsrv_paths ${symsrv_paths}
       # For older versions of windbg, x64 symsrv.dll resides here.
