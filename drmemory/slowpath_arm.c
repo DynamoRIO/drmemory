@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2018 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -51,12 +51,6 @@
 /***************************************************************************
  * ISA
  */
-
-bool
-reg_is_gpr(reg_id_t reg)
-{
-    return (reg >= DR_REG_START_GPR && reg <= DR_REG_STOP_GPR);
-}
 
 bool
 reg_is_8bit(reg_id_t reg)

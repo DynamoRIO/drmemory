@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -69,12 +69,6 @@ reg_is_caller_saved(reg_id_t reg)
     return (reg == DR_REG_XAX || reg == DR_REG_XDX || reg == DR_REG_XCX);
 }
 #endif
-
-bool
-reg_is_gpr(reg_id_t reg)
-{
-    return (reg >= REG_RAX && reg <= REG_DIL);
-}
 
 bool
 reg_is_8bit(reg_id_t reg)

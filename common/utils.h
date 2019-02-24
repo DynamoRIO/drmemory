@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -193,10 +193,12 @@ extern "C" {
 #define CROSSES_ALIGNMENT(addr, size, alignment) \
     (ALIGN_MOD(addr, size, alignment) < (size)-1)
 
-#define TEST(mask, var) (((mask) & (var)) != 0)
-#define TESTANY TEST
-#define TESTALL(mask, var) (((mask) & (var)) == (mask))
-#define TESTONE(mask, var) test_one_bit_set((mask) & (var))
+#ifndef TESTANY
+# define TEST(mask, var) (((mask) & (var)) != 0)
+# define TESTANY TEST
+# define TESTALL(mask, var) (((mask) & (var)) == (mask))
+# define TESTONE(mask, var) test_one_bit_set((mask) & (var))
+#endif
 
 #define IS_POWER_OF_2(x) ((x) != 0 && ((x) & ((x)-1)) == 0)
 
@@ -302,7 +304,7 @@ extern "C" {
 
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;
-extern uint op_verbose_level;
+extern int op_verbose_level;
 extern bool op_pause_at_assert;
 extern bool op_pause_via_loop;
 extern bool op_ignore_asserts;
@@ -385,6 +387,13 @@ print_prefix_to_console(void);
 #define NOTIFY_COND(cond, f, ...) do { \
     ELOGF(0, f, __VA_ARGS__); \
     if ((cond) && op_print_stderr) { \
+        print_prefix_to_console(); \
+        PRINT_CONSOLE(__VA_ARGS__); \
+    }                                         \
+} while (0)
+#define NOTIFY_VERBOSE(level, ...) do { \
+    ELOG(0, __VA_ARGS__); \
+    if (op_verbose_level >= level && op_print_stderr) { \
         print_prefix_to_console(); \
         PRINT_CONSOLE(__VA_ARGS__); \
     }                                         \
@@ -860,6 +869,14 @@ cast_to_func(void *p)
 
 #ifdef WINDOWS
 # include "windefs.h"
+
+/* i#1908: we support loading numbers from a file */
+# define SYSNUM_FILE IF_X64_ELSE("syscalls_x64.txt", "syscalls_x86.txt")
+# define SYSNUM_FILE_WOW64 "syscalls_wow64.txt"
+
+# ifndef STATUS_INVALID_KERNEL_INFO_VERSION
+#  define STATUS_INVALID_KERNEL_INFO_VERSION 0xc000a004
+# endif
 
 TEB *
 get_TEB(void);

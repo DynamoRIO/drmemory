@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -613,6 +613,9 @@ OPTION_CLIENT_BOOL(drmemscope, ignore_kernel, false,
 OPTION_CLIENT_BOOL(drmemscope, use_syscall_tables, true,
                    "Use Dr. Memory's own syscall tables where possible",
                    "On by default, this allows disabling the use of Dr. Memory's own syscall tables, in case the check for whether they match the underlying kernel is inaccurate.")
+OPTION_CLIENT_STRING(drmemscope, syscall_number_path, "",
+                   "Points at a directory containing a system call number file",
+                   "When running on an operating system version that this version of Dr. Memory does not have direct support for, a system call number file can be used to provide needed operating system information.  These files are named syscalls_{x86,wow64,x64}.txt.  This parameter should point at the directory containing the file.  By default these are located in -symcache_dir.")
 OPTION_CLIENT_BOOL(drmemscope, coverage, false,
                    "Measure and provide code coverage information",
                    "Measure code coverage during application execution.  The resulting data is written to a separate file named with a 'drcov' prefix in the same directory as Dr. Memory's other results files.  The raw data can be turned into a human-readable format using the drcov2lcov utility.")

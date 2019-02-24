@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -128,6 +128,17 @@ static const char * const bool_string[2] = {
 };
 
 drmemory_options_t options = {
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+    defval,
+#define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
+    /*nothing*/
+    /* we use <> so other tools can override the optionsx.h in "." */
+#include <optionsx.h>
+};
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
+
+drmemory_options_t option_defaults = {
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     defval,
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
@@ -314,6 +325,13 @@ option_disable_memory_checks()
     options.shadowing = false;
     options.check_uninitialized = false;
     options.pattern = 0;
+}
+
+void
+options_reset_to_defaults(void)
+{
+    memcpy(&options, &option_defaults, sizeof(options));
+    memset(&option_specified, 0, sizeof(option_specified));
 }
 
 void

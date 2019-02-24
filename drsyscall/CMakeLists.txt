@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -71,7 +71,8 @@ else (UNIX)
     table_windows_ntgdi.c
     table_windows_kernel32.c
     drsyscall_wingdi.c
-    drsyscall_fileparse.c)
+    drsyscall_fileparse.c
+    pdb2sysfile.cpp)
   if (SYSCALL_DRIVER)
     set(srcs ${srcs}
       drmemory/syscall_driver.c)
@@ -97,7 +98,7 @@ macro(configure_drsyscall_target target)
   # a pain to export w/ the proper link rules.  But we at least use the
   # same flags and avoid compiling the same file differently.
   set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-  target_link_libraries(${target} ${ntimp_lib})
+  target_link_libraries(${target} drfrontendlib ${ntimp_lib})
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     add_dependencies(${target} ntdll_imports)
   endif ()
@@ -125,6 +126,7 @@ set(PREFERRED_BASE 0x77000000)
 configure_DynamoRIO_client(drsyscall)
 use_DynamoRIO_extension(drsyscall drmgr)
 use_DynamoRIO_extension(drsyscall drcontainers)
+use_DynamoRIO_extension(drsyscall drsyms)
 set_library_version(drsyscall ${DRMF_VERSION_MAJOR_MINOR})
 configure_drsyscall_target(drsyscall)
 export_drsyscall_target(drsyscall "drmgr")
@@ -139,6 +141,7 @@ add_library(drsyscall_static STATIC ${srcs_static} ${external_srcs})
 configure_DynamoRIO_client(drsyscall_static)
 use_DynamoRIO_extension(drsyscall_static drmgr_static)
 use_DynamoRIO_extension(drsyscall_static drcontainers)
+use_DynamoRIO_extension(drsyscall_static drsyms_static)
 configure_drsyscall_target(drsyscall_static)
 add_static_lib_debug_info(drsyscall_static ${DRMF_INSTALL_BIN})
 export_drsyscall_target(drsyscall_static "drmgr_static")
@@ -149,13 +152,11 @@ add_library(drsyscall_int STATIC ${srcs_static})
 configure_DynamoRIO_client(drsyscall_int)
 use_DynamoRIO_extension(drsyscall_int drmgr_static)
 use_DynamoRIO_extension(drsyscall_int drcontainers)
-if (DEBUG_BUILD)
-  if (STATIC_DRSYMS)
-    use_DynamoRIO_extension(drsyscall_int drsyms_static)
-  else ()
-    use_DynamoRIO_extension(drsyscall_int drsyms)
-  endif ()
-endif (DEBUG_BUILD)
+if (STATIC_DRSYMS)
+  use_DynamoRIO_extension(drsyscall_int drsyms_static)
+else ()
+  use_DynamoRIO_extension(drsyscall_int drsyms)
+endif ()
 configure_drsyscall_target(drsyscall_int)
 
 # Documentation is handled as part of the main tool docs processing.
