@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2019 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -114,11 +114,13 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                    'wrap_wincrt' => 1, # i#1741: flaky.
                                    'app_suite.pattern' => 1,
                                    'app_suite' => 1,
-                                   'drstrace_unit_tests' => 1);
+                                   'drstrace_unit_tests' => 1, # i#2156: sym fetch
+                                   'syscall_file_gen' => 1); # i#2156: sym fetch
             %ignore_failures_64 = ('handle' => 1,
                                    'app_suite' => 1,
                                    'app_suite.pattern' => 1,
-                                   'drstrace_unit_tests' => 1);
+                                   'drstrace_unit_tests' => 1, # i#2156: sym fetch
+                                   'syscall_file_gen' => 1); # i#2156: sym fetch
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
             %ignore_failures_64 = ('malloc' => 1);
