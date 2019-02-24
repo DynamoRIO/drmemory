@@ -233,29 +233,29 @@ look_for_usercall_targets(const char *dll_path, byte *map_base, size_t map_size,
         else if (i == NUM_USERCALL - 1)
             imp_name = sym_prefix + alt_twoparam;
 #endif
-        NOTIFY(3, "Looking for %s\n", imp_name.c_str());
+        NOTIFY(3, "Looking for %s" NL, imp_name.c_str());
         drsym_error_t symres = drsym_lookup_symbol(dll_path, imp_name.c_str(), &offs, 0);
         if (symres != DRSYM_SUCCESS) {
-            NOTIFY(3, "Looking for %s\n", imp_name.c_str());
+            NOTIFY(3, "Looking for %s" NL, imp_name.c_str());
             imp_name = sym_prefix + imp_prefixB + usercall_names[i];
             symres = drsym_lookup_symbol(dll_path, imp_name.c_str(), &offs, 0);
         }
         if (symres == DRSYM_SUCCESS) {
             usercall_addr[i] = map_base + offs;
             ++num_found;
-            NOTIFY(2, "%s = %d +0x%x == " PFX "\n", imp_name.c_str(), symres, offs,
+            NOTIFY(2, "%s = %d +0x%x == " PFX "" NL, imp_name.c_str(), symres, offs,
                    usercall_addr[i]);
         } else {
-            NOTIFY(3, "Looking for %s\n", imp_name.c_str());
+            NOTIFY(3, "Looking for %s" NL, imp_name.c_str());
             imp_name = sym_prefix + usercall_names[i];
             symres = drsym_lookup_symbol(dll_path, imp_name.c_str(), &offs, 0);
             if (symres == DRSYM_SUCCESS) {
                 usercall_addr[i] = map_base + offs;
                 ++num_found;
-                NOTIFY(2, "%s = %d +0x%x == " PFX "\n", usercall_names[i], symres,
+                NOTIFY(2, "%s = %d +0x%x == " PFX "" NL, usercall_names[i], symres,
                        offs, usercall_addr[i]);
             } else {
-                NOTIFY(2, "Error locating usercall %s\n", usercall_names[i]);
+                NOTIFY(2, "Error locating usercall %s" NL, usercall_names[i]);
             }
         }
     }
@@ -334,7 +334,7 @@ look_for_usercall(void *dcontext, byte *entry, const char *sym, byte *mod_end,
                     sysname = sysname_from_wrapper(sym);
                     if (!sysname.empty())
                         sysnum = imm;
-                    NOTIFY(2, "Call #0x%02x to %s at %s+0x%x == %s,%d\n", imm,
+                    NOTIFY(2, "Call #0x%02x to %s at %s+0x%x == %s,%d" NL, imm,
                            usercall_names[i], sym, pre_pc - entry, sysname.c_str(),
                            sysnum);
                     found = true;
@@ -357,7 +357,7 @@ look_for_usercall(void *dcontext, byte *entry, const char *sym, byte *mod_end,
                     sysname = sysname_from_wrapper(sym);
                     if (!sysname.empty())
                         sysnum = imm;
-                    NOTIFY(2, "Call #0x%02x to %s at %s+0x%x == %s,%d\n", imm,
+                    NOTIFY(2, "Call #0x%02x to %s at %s+0x%x == %s,%d" NL, imm,
                            usercall_names[i], sym, pre_pc - entry, sysname.c_str(),
                            sysnum);
                     found = true;
@@ -745,7 +745,7 @@ typedef struct _search_data_t {
 static bool
 search_syms_cb(const char *name, size_t modoffs, void *data)
 {
-    NOTIFY(3, "Found symbol \"%s\" at offs "PIFX"\n" NL, name, modoffs);
+    NOTIFY(3, "Found symbol \"%s\" at offs "PIFX NL, name, modoffs);
     search_data_t *sd = (search_data_t *) data;
     /* XXX DRi#2715: drsyms sometimes passes bogus offsets so we're robust here */
     if (modoffs >= sd->dll_size)
@@ -765,7 +765,7 @@ search_syms_cb(const char *name, size_t modoffs, void *data)
             look_for_usercall(sd->dcontext, sd->dll_base + modoffs, name,
                               sd->dll_base + sd->dll_size, sd->usercall_addr);
         if (name_num.second != -1) {
-            NOTIFY(2, "Adding usercall %s = 0x%x\n", name_num.first.c_str(),
+            NOTIFY(2, "Adding usercall %s = 0x%x" NL, name_num.first.c_str(),
                    name_num.second);
             ++sd->usercalls_found;
             (*sd->name2num)[name_num.first] = name_num.second;
