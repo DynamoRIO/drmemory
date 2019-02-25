@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -968,18 +968,21 @@ _tmain(int argc, TCHAR *targv[])
             verbose = true;
             /* Enable verbosity in pdf2sysfile.cpp */
             op_verbose_level = 1;
+            drfront_set_verbose(op_verbose_level);
             continue;
         }
         else if (strcmp(argv[i], "-vv") == 0) {
             verbose = true;
             /* Enable verbosity in pdf2sysfile.cpp */
             op_verbose_level = 2;
+            drfront_set_verbose(op_verbose_level);
             continue;
         }
         else if (strcmp(argv[i], "-vvv") == 0) {
             verbose = true;
             /* Enable extra verbosity in pdf2sysfile.cpp */
             op_verbose_level = 3;
+            drfront_set_verbose(op_verbose_level);
             continue;
         }
         else if (strcmp(argv[i], "-h") == 0 ||
