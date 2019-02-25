@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -65,6 +65,8 @@ The changes between \TOOL_VERSION and version 1.11.0 include:
    checking) support for Linux.
  - Added preliminary support for the Windows Subsystem for Linux
    environment with the regular Dr. Memory Linux package.
+ - Added automated generation of system call information on Windows,
+   enabling running on new releases of Windows 10.
  - Added support for Windows 10 1703.
  - Added support for Windows 10 1709.
  - Added support for Windows 10 1803.

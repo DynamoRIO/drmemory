@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -819,7 +819,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "7.0.17855")
+set(DynamoRIO_VERSION_REQUIRED "7.1.17952")
 
 set(DR_install_dir "dynamorio")
 
