@@ -1079,7 +1079,7 @@ if (NOT APPLE AND NOT ARM)
       # Run enough tests to generate some errors w/o accurate syscall info.
       # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
       "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
-      "-vv;-no_use_syscall_tables;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+      "-no_use_syscall_tables;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
       "-checklevel;1" OFF "syscall_file")
   endif ()
 endif ()

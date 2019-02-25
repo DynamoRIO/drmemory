@@ -912,9 +912,11 @@ write_file(const std::unordered_map<std::string, int> &name2num, const std::stri
         else if (w15 != -1) { /* Assume once gone it's not coming back */ \
             ++num; \
             /* If an entry was removed we'll collide.  Just skip in that case. */\
+            /* Since the table order is not perfect we'll miss some. */\
             if (num2name.find(num) == num2name.end()) { \
-                NOTIFY(2, "%s == 0x%x" NL, sysname.c_str(), num);           \
-                dr_fprintf(f, "%s=0x%x\n", sysname.c_str(), num);   \
+                NOTIFY(2, "%s == 0x%x" NL, sysname.c_str(), num); \
+                dr_fprintf(f, "%s=0x%x\n", sysname.c_str(), num); \
+                num2name[num] = sysname; \
             }\
         } \
     } while (false);
