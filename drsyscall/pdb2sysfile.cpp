@@ -427,11 +427,11 @@ drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_lib
         NULL_TERMINATE_BUFFER(buf);
         if (drfront_access(buf, DRFRONT_READ, &readable) == DRFRONT_SUCCESS &&
             readable) {
-            NOTIFY(1, "%s: %s is readable\n", __FUNCTION__, buf);
+            NOTIFY(1, "%s: %s is readable" NL, __FUNCTION__, buf);
             dll_readable[i] = true;
             ++count;
         } else {
-            NOTIFY(1, "%s: %s is NOT readable\n", __FUNCTION__, buf);
+            NOTIFY(1, "%s: %s is NOT readable" NL, __FUNCTION__, buf);
             dll_readable[i] = false;
         }
     }
