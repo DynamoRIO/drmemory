@@ -113,14 +113,10 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                    'malloc_callstacks' => 1,
                                    'wrap_wincrt' => 1, # i#1741: flaky.
                                    'app_suite.pattern' => 1,
-                                   'app_suite' => 1,
-                                   'drstrace_unit_tests' => 1, # i#2156: sym fetch
-                                   'syscall_file_gen' => 1); # i#2156: sym fetch
+                                   'app_suite' => 1);
             %ignore_failures_64 = ('handle' => 1,
                                    'app_suite' => 1,
-                                   'app_suite.pattern' => 1,
-                                   'drstrace_unit_tests' => 1, # i#2156: sym fetch
-                                   'syscall_file_gen' => 1); # i#2156: sym fetch
+                                   'app_suite.pattern' => 1);
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
             %ignore_failures_64 = ('malloc' => 1);

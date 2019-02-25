@@ -399,16 +399,10 @@ drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_lib
 {
     if (num_sysnum_libs == nullptr)
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (*num_sysnum_libs < NUM_SYSCALL_DLLS) {
-        *num_sysnum_libs = NUM_SYSCALL_DLLS;
-        return DRMF_ERROR_INVALID_SIZE;
-    }
-    if (sysnum_lib_paths == nullptr)
-        return DRMF_ERROR_INVALID_PARAMETER;
-    *num_sysnum_libs = NUM_SYSCALL_DLLS;
+
+    /* First, get %SystemRoot%. */
     TCHAR system_rootw[MAXIMUM_PATH];
     char system_root[MAXIMUM_PATH];
-    /* Get %SystemRoot%. */
     DWORD len = GetWindowsDirectory(system_rootw, BUFFER_SIZE_ELEMENTS(system_rootw));
     if (len == 0) {
         _tcsncpy(system_rootw, _T("C:\\Windows"), BUFFER_SIZE_ELEMENTS(system_rootw));
@@ -419,10 +413,44 @@ drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_lib
         NOTIFY(0, "Failed to determine system root" NL);
         return DRMF_ERROR_NOT_FOUND;
     }
+
+    /* Next, get the count of dlls that exist on this machine
+     * (win32u.dll and kernelbase.dll do not exist on older Windows).
+     */
+    int count = 0;
+    int dll_readable[NUM_SYSCALL_DLLS];
+    char buf[MAXIMUM_PATH];
     for (int i = 0; i < NUM_SYSCALL_DLLS; ++i) {
-        _snprintf(sysnum_lib_paths[i], MAXIMUM_PATH, "%s%csystem32%c%s",
+        bool readable;
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s%csystem32%c%s",
                   system_root, DIRSEP, DIRSEP, syscall_dlls[i]);
-        sysnum_lib_paths[i][MAXIMUM_PATH-1] = '\0';
+        NULL_TERMINATE_BUFFER(buf);
+        if (drfront_access(buf, DRFRONT_READ, &readable) == DRFRONT_SUCCESS &&
+            readable) {
+            NOTIFY(1, "%s: %s is readable" NL, __FUNCTION__, buf);
+            dll_readable[i] = true;
+            ++count;
+        } else {
+            NOTIFY(1, "%s: %s is NOT readable" NL, __FUNCTION__, buf);
+            dll_readable[i] = false;
+        }
+    }
+
+    if (*num_sysnum_libs < count) {
+        *num_sysnum_libs = count;
+        return DRMF_ERROR_INVALID_SIZE;
+    }
+    if (sysnum_lib_paths == nullptr)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *num_sysnum_libs = count;
+    int index = 0;
+    for (int i = 0; i < NUM_SYSCALL_DLLS; ++i) {
+        if (!dll_readable[i])
+            continue;
+        _snprintf(sysnum_lib_paths[index], MAXIMUM_PATH, "%s%csystem32%c%s",
+                  system_root, DIRSEP, DIRSEP, syscall_dlls[i]);
+        sysnum_lib_paths[index][MAXIMUM_PATH-1] = '\0';
+        ++index;
     }
     return DRMF_SUCCESS;
 }
@@ -884,9 +912,11 @@ write_file(const std::unordered_map<std::string, int> &name2num, const std::stri
         else if (w15 != -1) { /* Assume once gone it's not coming back */ \
             ++num; \
             /* If an entry was removed we'll collide.  Just skip in that case. */\
+            /* Since the table order is not perfect we'll miss some. */\
             if (num2name.find(num) == num2name.end()) { \
-                NOTIFY(2, "%s == 0x%x" NL, sysname.c_str(), num);           \
-                dr_fprintf(f, "%s=0x%x\n", sysname.c_str(), num);   \
+                NOTIFY(2, "%s == 0x%x" NL, sysname.c_str(), num); \
+                dr_fprintf(f, "%s=0x%x\n", sysname.c_str(), num); \
+                num2name[num] = sysname; \
             }\
         } \
     } while (false);
