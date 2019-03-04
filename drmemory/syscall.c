@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -698,8 +698,11 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
     res = drsys_init(client_id, &ops);
 #ifdef WINDOWS
     if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
-        NOTIFY_ERROR("Running on an unsupported operating system version."
-                     "%s" NL, options.ignore_kernel ? "" :
+        char os_ver[96];
+        get_windows_version_string(os_ver, BUFFER_SIZE_ELEMENTS(os_ver));
+        NOTIFY_ERROR("Running on an unsupported operating system version: %s."
+                     "%s" NL, os_ver,
+                     options.ignore_kernel ? "" :
                      " Exiting to trigger auto-generation of system call information."
                      " Re-run with -ignore_kernel to attempt to continue instead.");
         if (options.ignore_kernel)

@@ -805,6 +805,13 @@ _tmain(int argc, TCHAR *targv[])
 
 #ifdef WINDOWS
     time_t start_time, end_time;
+# ifdef DEBUG
+    /* Avoid stderr printing in debug build from version init on new win10
+     * (otherwise we get 2 prints, one here and in the client).
+     */
+    if (!SetEnvironmentVariable(L"DYNAMORIO_OPTIONS", L"-stderr_mask 0"))
+        info("Failed to quiet frontend DR messages");
+# endif
 #endif
 
     drfront_status_t sc;
