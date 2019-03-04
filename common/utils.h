@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -30,7 +30,11 @@ extern "C" {
 #ifdef WINDOWS
 /* DRi#1424: avoid pulling in features from recent versions to keep compatibility */
 # ifndef _WIN32_WINNT
-#  define _WIN32_WINNT _WIN32_WINNT_WIN2K
+#  ifdef X64
+#   define _WIN32_WINNT _WIN32_WINNT_WIN2003
+#  else
+#   define _WIN32_WINNT _WIN32_WINNT_WINXP
+#  endif
 # endif
 #endif
 
@@ -926,6 +930,9 @@ running_on_Vista_or_later(void);
 
 dr_os_version_t
 get_windows_version(void);
+
+void
+get_windows_version_string(char *buf OUT, size_t bufsz);
 
 app_pc
 get_highest_user_address(void);
