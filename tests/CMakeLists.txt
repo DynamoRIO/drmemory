@@ -424,9 +424,8 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
-# FIXME i#111: 64-bit full mode doesn't quite support Windows yet.
 # i#1726: ARM is only supported in pattern mode.
-if (NOT ARM AND UNIX OR NOT X64)
+if (NOT ARM)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -447,9 +446,7 @@ else ()
 endif ()
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
-  if (NOT X64) # FIXME i#111: failing on Travis
-    newtest(multierror multierror.cpp)
-  endif ()
+  newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
 if (NOT ARM) # XXX i#1726: port to ARM
   newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
