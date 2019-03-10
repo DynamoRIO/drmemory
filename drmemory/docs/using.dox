@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -54,22 +54,6 @@ install using a standalone Dr. Memory package.
 \endif
 
 ********************
-\section sec_linux_utils System Requirements
-
-For uninitialized read detection which is not yet supported by Dr. Memory
-for 64-bit applications, ensure your Linux installation is able to build
-32-bit applications. On 64-bit Ubuntu you will want these packages:
-
-\verbatim
-sudo apt-get install g++-multilib
-\endverbatim
-
-On Ubuntu older than 13.04, the `ia32-libs` package should also be
-installed.  On 13.04 and higher, 32-bit libraries must be chosen
-individually, but normally they are installed by default in most
-distributions.
-
-********************
 \section sec_linux_install Installing
 
 Download the \p .tar.gz version of Dr. Memory.  Untar the package into a
@@ -96,8 +80,9 @@ install using a standalone Dr. Memory package.
 ********************
 \section sec_macos_utils System Requirements
 
-Ensure your compiler is able to build 32-bit applications.  XCode by
-default is able to do so.
+Ensure your compiler is able to build 32-bit applications, since
+Dr. Memory does not yet support 64-bit applications on Mac OSX.  XCode
+by default is able to do so.
 
 Operating systems older than OSX 10.9 (Mavericks) are not officially
 supported.
@@ -210,13 +195,6 @@ before giving specific compiler parameters for each platform.
 These cross-platform steps apply to Linux, Mac, and Windows.
 
 ********************
-\subsection sec_prep_32bit 32-bit
-
-Currently, Dr. Memory does not yet support uninitialized read detection for
-64-bit applications, so we recommend compiling your target application as
-32-bit.
-
-********************
 \subsection sec_prep_debuginfo Debug Information
 
 In order to obtain line number information, compile your target
@@ -245,18 +223,6 @@ but should eliminate skipped frames.
 ********************
 \section sec_prep_linux Linux
 
-For uninitialized read detection, ensure your Linux installation is able to
-build 32-bit applications.  On 64-bit Ubuntu you will want these packages:
-
-\verbatim
-sudo apt-get install g++-multilib
-\endverbatim
-
-On Ubuntu older than 13.04, the `ia32-libs` package should also be
-installed.  On 13.04 and higher, 32-bit libraries must be chosen
-individually, but normally they are installed by default in most
-distributions.
-
 Dr. Memory currently only supports DWARF2 line information, not stabs.
 DWARF2 is the default for modern versions of \p gcc.
 
@@ -264,7 +230,7 @@ Here is a sample command line for compiling your application that combines
 all of the above recommendations:
 
 \verbatim
-g++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+g++ -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 \endverbatim
 
 ********************
@@ -285,9 +251,6 @@ c++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 ********************
 \section sec_prep_windows Windows Visual Studio
 
-Visual Studio builds 32-bit applications by default, so no action is
-required on that front.
-
 To include debug information, use the \p /Zi flag to the Visual Studio
 compiler.  From the IDE, Press Alt-F7 to bring up the configuration
 properties of your build target. Under "Configuration Properties | C/C++ |
@@ -298,6 +261,10 @@ Additionally, under "Configuration Properties | Linker | Debugging", the
 2015, under "Configuration Properties | Linker | Debugging", the
 "Generate Debug Info" entry should say "Optimize for debugging (/DEBUG)" --
 it should <em>not</em> say "Optimize for faster linking (/DEBUG:FASTLINK)".
+For Visual Studio 2017 it should say "Generate Debug Information
+optimized for sharing and publishing (/DEBUG:FULL)" -- it should
+<em>not</em> say "Generate Debug Information (/DEBUG)" nor "Generate
+Debug Information optimized for faster links (/DEBUG:FASTLINK)".
 
 To disable inlining as recommended above, use the \p /Ob0 parameter.  In
 the Visual Studio IDE, press Alt-F7 and then under "Configuration
