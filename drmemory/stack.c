@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -504,7 +504,8 @@ bool
 instrument_esp_adjust(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi,
                       sp_adjust_action_t sp_action)
 {
-    if (options.esp_fastpath)
+    /* i#677: We don't need -esp_fastpath gencode for insert_zeroing_loop(). */
+    if (options.esp_fastpath || sp_action == SP_ADJUST_ACTION_ZERO)
         return instrument_esp_adjust_fastpath(drcontext, bb, inst, bi, sp_action);
     else
         return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi, sp_action);
