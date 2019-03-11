@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -662,7 +662,11 @@ if (TOOL_DR_MEMORY)
   # note that we can't run the realloc test b/c the races will result in unaddrs.
   newtest_nobuild(noreplace_realloc malloc "" "-no_replace_realloc" "" OFF "malloc")
   # test redzone sizes
-  newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
+  if (X64)
+    newtest_nobuild(redzone16 malloc "" "-redzone_size;16" "" OFF "malloc")
+  else ()
+    newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
+  endif ()
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
@@ -679,7 +683,10 @@ if (TOOL_DR_MEMORY)
 
   # -replace_malloc is now the default, so test wrapping
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
-    newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+    endif ()
   endif ()
   # i#2030: we do not support wrap tests on x64
   if (NOT X64)
@@ -777,7 +784,10 @@ if (TOOL_DR_MEMORY)
     newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" 0)
     # i#1532: we only report C vs Win mismatches for /MD*
     append_test_compile_flags(wincrt "/MD")
-    newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
+    endif ()
 
     # FIXME: Re-enable when it doesn't break the build.
     #newtest(rtl_memory_zones rtl_memory_zones.c)
@@ -791,7 +801,11 @@ if (TOOL_DR_MEMORY)
       tobuild(wincrtdbg wincrt.cpp)
       append_test_compile_flags(wincrtdbg "/MTd")
       newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
-      newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF "wincrtdbg")
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
+          "wincrtdbg")
+      endif ()
 
       newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
@@ -801,7 +815,11 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF "cs2bugMTd")
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
+          "cs2bugMTd")
+      endif ()
 
       # Test i#607 part D
       tobuild(operatorsMDd operators.cpp)
@@ -809,8 +827,11 @@ if (TOOL_DR_MEMORY)
       newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
         # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
         "ANY" "")
-      newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
           "-no_replace_malloc" "" OFF operators 0 "")
+      endif ()
     endif (USE_DRSYMS)
 
     if (GCC)
@@ -844,7 +865,11 @@ if (TOOL_DR_MEMORY)
     target_link_libraries(realloc pthread)
   endif ()
 
-  newtest(annotations annotations.c)
+  if (WIN32 AND X64)
+    # Valgrind annotations are not available for 64-bit Windows. */
+  else ()
+    newtest(annotations annotations.c)
+  endif ()
 
   if (UNIX AND NOT ANDROID) # Android doesn't seem to support these alloc routines
     newtest(memalign memalign.c)
@@ -920,7 +945,10 @@ if (WIN32)
   # char test, so we stick to wrapping for this test.
   # Wrapping doesn't work on win8 so we disable the test there.
   if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-    newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string 0)
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string 0)
+    endif ()
   endif ()
 
   # Ensure we don't spit out false positives when there are no symbols for the app
