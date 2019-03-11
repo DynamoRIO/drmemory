@@ -2083,7 +2083,9 @@ else (BUILDING_SUB_PACKAGE)
       DESTINATION ${INSTALL_PREFIX}${DR_install_dir}/${LIB_ARCH}
       FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE
-      PATTERN "libdrdecode*" EXCLUDE)
+      PATTERN "libdrdecode*" EXCLUDE
+      # Static DR is large and we do not need it.
+      PATTERN "libdynamorio_static*" EXCLUDE)
     # ext dir is currently empty but we need it to avoid drrun error (i#427)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/${build_type}\")")
     # CPack seems to ignore empty dirs so add a README file
@@ -2310,7 +2312,9 @@ if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
   if (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # install to drmemory exports dir
     install(DIRECTORY "${DynamoRIO_DIR}/../${LIB_ARCH}"
-      DESTINATION "${DR_install_dir}")
+      DESTINATION "${DR_install_dir}"
+      # Static DR is large and we do not need it.
+      PATTERN "dynamorio_static*" EXCLUDE)
     # we don't need ext/ at all b/c we use static libs
   else (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # don't take time and space copying: user can pass same dr to frontend,
