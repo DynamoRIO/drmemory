@@ -541,6 +541,9 @@ options_init(const char *opstr)
         if (options.handle_leaks_only)
             usage_error("-handle_leaks_only cannot be used with pattern mode", "");
 # endif
+    } else {
+        if (!ALIGNED(options.redzone_size, IF_X64_ELSE(16,8)))
+            usage_error("redzone size must be " IF_X64_ELSE("16","8") "-aligned", "");
     }
     if (option_specified.fuzz ||
         option_specified.fuzz_module ||

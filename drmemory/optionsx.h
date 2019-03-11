@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -427,7 +427,7 @@ OPTION_CLIENT_SCOPE(drmemscope, stack_swap_threshold, int, 0x9000, 256, INT_MAX,
                     "Stack change amount to consider a swap instead of an allocation or de-allocation on the same stack.  "TOOLNAME" attempts to dynamically tune this value unless it is changed from its default.")
 OPTION_CLIENT_SCOPE(drmemscope, redzone_size, uint, 16, 0, 32*1024,
                     "Buffer on either side of each malloc",
-                    "Buffer on either side of each malloc.  This should be a multiple of 8.")
+                    "Buffer on either side of each malloc.  This should be a multiple of 8 for 32-bit and 16 for 64-bit.")
 OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
                     "Maximum non-leak errors to report (-1=no limit)",
                     "Maximum non-leak errors to report (-1=no limit).  This includes 'potential' errors listed separately.")
