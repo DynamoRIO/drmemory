@@ -1453,6 +1453,22 @@ _tmain(int argc, TCHAR *targv[])
         DRFRONT_SUCCESS ||
         drfront_set_symbol_search_path(symsrv_dir) != DRFRONT_SUCCESS)
         warn("Can't set symbol search path. Symbol lookup may fail.");
+
+    /* XXX i#2164: Until DR supports the delay-load features needed for timezone
+     * utilities used by dbghelp loading symbols, we work around a crash when
+     * the "TZ" environment variable is unset by setting it.  This is a
+     * transparency violation so we should remove this once DR's private loader
+     * is improved.
+     */
+    if (drfront_get_env_var("TZ", buf, BUFFER_SIZE_ELEMENTS(buf)) != DRFRONT_SUCCESS ||
+        strlen(buf) == 0) {
+        TIME_ZONE_INFORMATION tzinfo;
+        if (GetTimeZoneInformation(&tzinfo) != TIME_ZONE_ID_INVALID) {
+            info("Setting TZ to %S for i#2164 workaround", tzinfo.StandardName);
+            if (!SetEnvironmentVariable(L"TZ", tzinfo.StandardName))
+                info("Failed to set TZ for i#2164 workaround");
+        }
+    }
 #endif
 
     /* i#1638: fall back to temp dirs if there's no HOME/USERPROFILE set */
