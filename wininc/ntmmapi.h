@@ -14,26 +14,26 @@
 #ifndef __PHLIB_NTMMAPI_H
 #define __PHLIB_NTMMAPI_H
 
-NTSTATUS
-NTAPI
-NtOpenSession(
-    __out PHANDLE SessionHandle,
-    __in ACCESS_MASK DesiredAccess,
-    __in POBJECT_ATTRIBUTES ObjectAttributes
-    );
+typedef enum _VIRTUAL_MEMORY_INFORMATION_CLASS {
+    VmPrefetchInformation,
+    VmPagePriorityInformation,
+    VmCfgCallTargetInformation
+} VIRTUAL_MEMORY_INFORMATION_CLASS;
+
+typedef struct _MEMORY_RANGE_ENTRY {
+    PVOID VirtualAddress;
+    SIZE_T NumberOfBytes;
+} MEMORY_RANGE_ENTRY, *PMEMORY_RANGE_ENTRY;
 
 NTSTATUS
 NTAPI
-NtNotifyChangeSession(
-    __in HANDLE SessionHandle,
-    __in ULONG IoStateSequence,
-    __in PVOID Reserved,
-    __in ULONG Action,
-    __in IO_SESSION_STATE IoState,
-    __in IO_SESSION_STATE IoState2,
-    __in PVOID Buffer,
-    __in ULONG BufferSize
-    );
+NtSetInformationVirtualMemory(
+    _In_ HANDLE ProcessHandle,
+    _In_ VIRTUAL_MEMORY_INFORMATION_CLASS VmInformationClass,
+    _In_ ULONG_PTR NumberOfEntries,
+    _In_reads_(NumberOfEntries) PMEMORY_RANGE_ENTRY VirtualAddresses,
+    _In_reads_bytes_(VmInformationLength) PVOID VmInformation,
+    _In_ ULONG VmInformationLength);
 
 #endif /* __PHLIB_NTMMAPI_H */
 
