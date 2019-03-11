@@ -865,7 +865,11 @@ if (TOOL_DR_MEMORY)
     target_link_libraries(realloc pthread)
   endif ()
 
-  newtest(annotations annotations.c)
+  if (WIN32 AND X64)
+    # Valgrind annotations are not available for 64-bit Windows. */
+  else ()
+    newtest(annotations annotations.c)
+  endif ()
 
   if (UNIX AND NOT ANDROID) # Android doesn't seem to support these alloc routines
     newtest(memalign memalign.c)
