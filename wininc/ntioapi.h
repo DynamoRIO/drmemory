@@ -74,6 +74,53 @@ NtFlushBuffersFileEx(
     _Out_ PIO_STATUS_BLOCK IoStatusBlock
     );
 
+
+typedef enum _IO_SESSION_STATE {
+    IoSessionStateCreated,
+    IoSessionStateInitialized,
+    IoSessionStateConnected,
+    IoSessionStateDisconnected,
+    IoSessionStateDisconnectedLoggedOn,
+    IoSessionStateLoggedOn,
+    IoSessionStateLoggedOff,
+    IoSessionStateTerminated,
+    IoSessionStateMax
+} IO_SESSION_STATE;
+
+NTAPI
+NtOpenSession(
+    __out PHANDLE SessionHandle,
+    __in ACCESS_MASK DesiredAccess,
+    __in POBJECT_ATTRIBUTES ObjectAttributes
+    );
+
+NTSTATUS
+NTAPI
+NtNotifyChangeSession(
+    __in HANDLE SessionHandle,
+    __in ULONG IoStateSequence,
+    __in PVOID Reserved,
+    __in ULONG Action,
+    __in IO_SESSION_STATE IoState,
+    __in IO_SESSION_STATE IoState2,
+    __in PVOID Buffer,
+    __in ULONG BufferSize
+    );
+
+
+NTSTATUS
+NTAPI
+NtAssociateWaitCompletionPacket(
+    _In_ HANDLE WaitCompletionPacketHandle,
+    _In_ HANDLE IoCompletionHandle,
+    _In_ HANDLE TargetObjectHandle,
+    _In_opt_ PVOID KeyContext,
+    _In_opt_ PVOID ApcContext,
+    _In_ NTSTATUS IoStatus,
+    _In_ ULONG_PTR IoStatusInformation,
+    _Out_opt_ PBOOLEAN AlreadySignaled
+    );
+
 #endif /* __PHLIB_NTIOAPI_H */
 
 /* EOF */

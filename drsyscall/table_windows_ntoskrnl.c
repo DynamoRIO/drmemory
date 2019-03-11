@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -40,7 +40,9 @@
 #include "../wininc/ntalpctyp.h"
 #include "../wininc/wdm.h"
 #include "../wininc/ntddk.h"
+#include "../wininc/ntexapi.h"
 #include "../wininc/ntifs.h"
+#include "../wininc/ntmmapi.h"
 #include "../wininc/tls.h"
 #include "../wininc/ktmtypes.h"
 #include "../wininc/winnt_recent.h"
@@ -3420,7 +3422,18 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN8,0},"NtAdjustTokenClaimsAndDeviceGroups", UNKNOWN, RNTST, 16, },
     {{WIN8,0},"NtAlertThreadByThreadId", UNKNOWN, RNTST, 1, },
     {{WIN8,0},"NtAlpcConnectPortEx", UNKNOWN, RNTST, 11, },
-    {{WIN8,0},"NtAssociateWaitCompletionPacket", UNKNOWN, RNTST, 8, },
+    {{WIN8,0},"NtAssociateWaitCompletionPacket", OK, RNTST, 8,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {5, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
+         {6, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+     }
+    },
     {{WIN8,0},"NtCancelWaitCompletionPacket", UNKNOWN, RNTST, 2, },
     {{WIN8,0},"NtCreateDirectoryObjectEx", UNKNOWN, RNTST, 5, },
     {{WIN8,0},"NtCreateIRTimer", UNKNOWN, RNTST, 2, },
@@ -3442,10 +3455,28 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{WIN8,0},"NtGetCachedSigningLevel", UNKNOWN, RNTST, 6, },
-    {{WIN8,0},"NtQueryWnfStateData", UNKNOWN, RNTST, 6, },
+    {{WIN8,0},"NtQueryWnfStateData", OK, RNTST, 6,
+     {
+         {0, sizeof(WNF_STATE_NAME), R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(WNF_TYPE_ID), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {3, sizeof(WNF_CHANGE_STAMP), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, -5, WI},
+         {5, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN8,0},"NtQueryWnfStateNameInformation", UNKNOWN, RNTST, 5, },
     {{WIN8,0},"NtSetCachedSigningLevel", UNKNOWN, RNTST, 5, },
-    {{WIN8,0},"NtSetInformationVirtualMemory", UNKNOWN, RNTST, 6, },
+    {{WIN8,0},"NtSetInformationVirtualMemory", OK, RNTST, 6,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -2, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(MEMORY_RANGE_ENTRY)},
+         {4, -5, R},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN8,0},"NtSetIRTimer", UNKNOWN, RNTST, 2, },
     {{WIN8,0},"NtSubscribeWnfStateChange", UNKNOWN, RNTST, 4, },
     {{WIN8,0},"NtUnmapViewOfSectionEx", UNKNOWN, RNTST, 3,
@@ -3456,7 +3487,17 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{WIN8,0},"NtUnsubscribeWnfStateChange", UNKNOWN, RNTST, 1, },
-    {{WIN8,0},"NtUpdateWnfStateData", UNKNOWN, RNTST, 7, },
+    {{WIN8,0},"NtUpdateWnfStateData", OK, RNTST, 7,
+     {
+         {0, sizeof(WNF_STATE_NAME), R|HT, DRSYS_TYPE_STRUCT},
+         {1, -2, R},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(WNF_TYPE_ID), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_VOID},
+         {5, sizeof(WNF_CHANGE_STAMP), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(LOGICAL), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN8,0},"NtWaitForAlertByThreadId", UNKNOWN, RNTST, 2, },
     {{WIN8,WIN8},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
     {{WIN8,0},"NtWow64AllocateVirtualMemory64", UNKNOWN, RNTST, 7,

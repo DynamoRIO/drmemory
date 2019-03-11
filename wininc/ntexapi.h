@@ -12,6 +12,8 @@
 #ifndef _NTEXAPI_H_
 #define _NTEXAPI_H_ 1
 
+#include "ndk_iotypes.h"
+
 NTSTATUS NTAPI
 NtEnumerateBootEntries(
     __out_bcount_opt(*BufferLength) PVOID Buffer,
@@ -199,7 +201,7 @@ NTSTATUS
 NTAPI
 NtWaitForWorkViaWorkerFactory(
     __in HANDLE WorkerFactoryHandle,
-    __out _FILE_IO_COMPLETION_INFORMATION *MiniPacket
+    __out FILE_IO_COMPLETION_INFORMATION *MiniPacket
     );
 
 NTSTATUS
@@ -232,6 +234,66 @@ NtSetTimer2(
     __in PLARGE_INTEGER DueTime,
     __in_opt PLARGE_INTEGER Period,
     __in PT2_SET_PARAMETERS Parameters
+    );
+
+typedef struct _WNF_STATE_NAME {
+    ULONG Data[2];
+} WNF_STATE_NAME, *PWNF_STATE_NAME;
+
+typedef const WNF_STATE_NAME *PCWNF_STATE_NAME;
+
+typedef enum _WNF_STATE_NAME_LIFETIME {
+    WnfWellKnownStateName,
+    WnfPermanentStateName,
+    WnfPersistentStateName,
+    WnfTemporaryStateName
+} WNF_STATE_NAME_LIFETIME;
+
+typedef enum _WNF_STATE_NAME_INFORMATION {
+    WnfInfoStateNameExist,
+    WnfInfoSubscribersPresent,
+    WnfInfoIsQuiescent
+} WNF_STATE_NAME_INFORMATION;
+
+typedef enum _WNF_DATA_SCOPE {
+    WnfDataScopeSystem,
+    WnfDataScopeSession,
+    WnfDataScopeUser,
+    WnfDataScopeProcess
+} WNF_DATA_SCOPE;
+
+typedef struct _WNF_TYPE_ID {
+    GUID TypeId;
+} WNF_TYPE_ID, *PWNF_TYPE_ID;
+
+typedef const WNF_TYPE_ID *PCWNF_TYPE_ID;
+
+typedef ULONG WNF_CHANGE_STAMP, *PWNF_CHANGE_STAMP;
+
+typedef ULONG LOGICAL;
+typedef ULONG *PLOGICAL;
+
+NTSTATUS
+NTAPI
+NtQueryWnfStateData(
+    _In_ PCWNF_STATE_NAME StateName,
+    _In_opt_ PCWNF_TYPE_ID TypeId,
+    _In_opt_ const VOID* ExplicitScope,
+    _Out_ PWNF_CHANGE_STAMP ChangeStamp,
+    _Out_writes_bytes_to_opt_(*BufferSize, *BufferSize) PVOID Buffer,
+    _Inout_ PULONG BufferSize
+    );
+
+NTSTATUS
+NTAPI
+NtUpdateWnfStateData(
+    _In_ PCWNF_STATE_NAME StateName,
+    _In_reads_bytes_opt_(Length) const VOID* Buffer,
+    _In_opt_ ULONG Length,
+    _In_opt_ PCWNF_TYPE_ID TypeId,
+    _In_opt_ const PVOID ExplicitScope,
+    _In_ WNF_CHANGE_STAMP MatchingChangeStamp,
+    _In_ LOGICAL CheckStamp
     );
 
 #endif /* _NTEXAPI_H_ 1 */
