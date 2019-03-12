@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -42,7 +42,7 @@ Error #10: UNINITIALIZED READ: reading register eflags
 registers.c_asm.asm:1158
 Error #11: UNINITIALIZED READ: reading register cl
 registers.c_asm.asm:1163
-Error #12: UNINITIALIZED READ: reading register ecx
+Error #12: UNINITIALIZED READ: reading register xcx
 registers.c_asm.asm:1183
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
 registers.c_asm.asm:1214
