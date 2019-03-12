@@ -366,7 +366,7 @@ foreach (str ${patterns})
     endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
   else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
     if (WIN32)
-      string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif UNIX\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       # Support "endif UNIX" to handle nested inside cs2bug.res.
       # XXX: Should change every endif to have a qualifier.
       string(REGEX REPLACE "(^|\n)%if UNIX.+\n%endif UNIX\n" "\\1" ${str} "${${str}}")
