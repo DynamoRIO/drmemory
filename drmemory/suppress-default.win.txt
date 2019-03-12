@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -1055,6 +1055,13 @@ fshook32.dll!*
 # i#1825: GdiAddFontResourceW bug
 
 UNINITIALIZED READ
-name=default i#1824 GdiAddFontResourceW
+name=default i#1825 GdiAddFontResourceW
 system call NtGdiAddFontResourceW parameter value #4
 GDI32.dll!GdiAddFontResourceW
+
+##################################################
+# i#2170: RtlRestoreContext context copying bug
+
+UNINITIALIZED READ
+name=default i#2170 RtlRestoreContext
+ntdll.dll!RtlRestoreContext

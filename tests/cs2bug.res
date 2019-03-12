@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -110,7 +110,8 @@ cs2bug.cpp:86
 : LEAK 8 direct bytes + 31 indirect bytes
 %endif
 cs2bug.cpp:172
-%endif
+# Nested %if is only supported with "endif UNIX".
+%endif UNIX
 %OPTIONAL # Linux/VS2005
 %if X32
 : LEAK 88 direct bytes + 168 indirect bytes
