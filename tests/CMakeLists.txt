@@ -589,7 +589,7 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
     # these tests share a temp file so they can't run in parallel
-    set_property(TEST procterm.nativeparent APPEND PROPERTY DEPENDS procterm)
+#    set_property(TEST procterm.nativeparent APPEND PROPERTY DEPENDS procterm)
   endif (WIN32)
 endif (TOOL_DR_MEMORY)
 
