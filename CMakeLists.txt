@@ -550,9 +550,13 @@ if (WIN32)
       set(DDK_SFX "i386")
     endif (X64)
   endif ()
+  # Allow packaging to specify a glob for a prefered path for x86 and x64.
+  set(DBGHELP_GLOB "" CACHE STRING
+    "Preferred path for dbghelp.dll with wildcard expansion")
   # Even the VS2005 copy is 6.5 (despite its headers being < 6.3) so we can
   # use those as well as the later SDK and standalone DTFW versions.
   set(dbghelp_paths
+    "${DBGHELP_GLOB}"
     "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
@@ -607,7 +611,11 @@ if (WIN32)
   else ()
     message(STATUS "Using ${DBGHELP_DLL}")
   endif ()
+  # Allow packaging to specify a glob for a prefered path for x86 and x64.
+  set(SYMSRV_GLOB "" CACHE STRING
+    "Preferred path for dbghelp.dll with wildcard expansion")
   set(symsrv_paths
+    "{SYMSRV_GLOB}"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
