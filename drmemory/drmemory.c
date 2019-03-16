@@ -1500,7 +1500,7 @@ create_global_logfile(void)
         dr_abort();
     }
 
-    f_global = open_logfile("global", true/*pid suffix*/, -1);
+    f_global = STDERR;//NOCHECKIN open_logfile("global", true/*pid suffix*/, -1);
 #ifdef UNIX
     /* make it easier for wrapper script to find this logfile */
     dr_fprintf(f_global, "process=%d, parent=%d\n",
@@ -1555,7 +1555,7 @@ event_fork(void *drcontext)
 # ifndef USE_DRSYMS
     file_t f_parent_fork = f_fork;
 # endif
-    close_file(f_global);
+    //NOCHECKIN close_file(f_global);
     create_global_logfile();
 
 # ifndef USE_DRSYMS

@@ -272,6 +272,9 @@ set(cmd_script -P "${PROJECT_BINARY_DIR}/tests/runtest.cmake")
 # to use.
 function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postprocess resbase
     exit_code path_append timeout)
+  if (NOT test MATCHES "^registers") #NOCHECKIN
+    return ()
+  endif ()
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
@@ -437,7 +440,8 @@ if (ARM)
 endif (ARM)
 newtest(badjmp badjmp.c)
 if (NOT ARM) # XXX i#1726: port to ARM
-  newtest(registers registers.c)
+  newtest_ex(registers registers.c "" "-verbose;3" "" OFF "registers" 0)
+  newtest_ex(registersB registers.c "" "-verbose;3" "" OFF "registers" 0)
 endif ()
 if (ARM)
   newtest(asmtest asmtest_arm.c)
