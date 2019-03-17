@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -136,8 +136,13 @@ test_throw()
         // time and causes issues under drmem w/ DR doing resets, etc.
         // gcc 7.3+ forces us to use the new smaller SIZE_OOM/2 for 32-bit,
         // but that causes 64-bit to take forever here so we up it.
-        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(IF_X64_ELSE(0x7fffffff,SIZE_OOM/2),
-                                               SIZE_OOM/sizeof(hasdtr))];
+#ifdef X64
+        // We indirect through a variable for a larger size to avoid taking forever.
+        size_t count = 0x7ffffffffffff;
+        hasdtr *lots = new hasdtr[count];
+#else
+        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM/2,SIZE_OOM/sizeof(hasdtr))];
+#endif
         lots[0].y = 4;
     } catch (std::bad_alloc&) {
         std::cout << "caught bad_alloc" << std::endl;

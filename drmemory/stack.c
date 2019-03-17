@@ -410,6 +410,26 @@ handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*
         pc = decode(drcontext, pc, &inst);
         ASSERT(instr_valid(&inst), "unknown suspect instr");
         if (instr_writes_esp(&inst)) {
+#ifdef X64
+            /* Handle DR's rip-rel mangling where we'll have 2 steps:
+             *  48bc706808a8f77f0000 mov rsp,offset varstack!stack1 (00007ff7`a8086870)
+             *  488b2424        mov     rsp,qword ptr [rsp]
+             */
+            ptr_int_t ignored;
+            if (instr_is_mov_constant(&inst, &ignored)) {
+                bool skip = false;
+                instr_t next;
+                instr_init(drcontext, &next);
+                decode(drcontext, pc, &next);
+                if (instr_writes_esp(&next))
+                    skip = true;
+                instr_free(drcontext, &next);
+                if (skip) {
+                    instr_reset(drcontext, &inst);
+                    continue;
+                }
+            }
+#endif
             /* ret gets mangled: we'll skip the ecx save and hit the pop */
             type = get_esp_adjust_type(&inst, true/*mangled*/);
             ASSERT(needs_esp_adjust(&inst, sp_action) ||
