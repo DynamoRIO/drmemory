@@ -1065,3 +1065,7 @@ GDI32.dll!GdiAddFontResourceW
 UNINITIALIZED READ
 name=default i#2170 RtlRestoreContext
 ntdll.dll!RtlRestoreContext
+
+UNINITIALIZED READ
+name=default i#2170 RcConsolidateFrames
+ntdll.dll!RcConsolidateFrames
