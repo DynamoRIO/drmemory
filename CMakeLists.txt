@@ -589,8 +589,18 @@ if (WIN32)
     math(EXPR dbghelp_max "${dbghelp_max} - 1")
     set(dbghelp_index 0)
     list(GET dbghelp_hint 0 dbghelp_default)
-    while (X64 AND dbghelp_default MATCHES "Visual Studio 8" AND
-        ${dbghelp_index} LESS ${dbghelp_max})
+    while (${dbghelp_index} LESS ${dbghelp_max})
+      if (X64 AND dbghelp_default MATCHES "Visual Studio 8")
+        # Keep looking.
+      elseif (X64 AND dbghelp_default MATCHES "/x86/")
+        # Keep looking.
+      elseif (NOT X64 AND dbghelp_default MATCHES "/x64/")
+        # Keep looking.
+      elseif (NOT X64 AND dbghelp_default MATCHES "/amd64/")
+        # Keep looking.
+      else ()
+        break ()
+      endif ()
       math(EXPR dbghelp_index "${dbghelp_index} + 1")
       list(GET dbghelp_hint ${dbghelp_index} dbghelp_default)
     endwhile()
@@ -636,6 +646,22 @@ if (WIN32)
   file(GLOB symsrv_hint ${symsrv_paths})
   if (symsrv_hint)
     list(GET symsrv_hint 0 symsrv_default)
+    list(LENGTH symsrv_hint symsrv_max)
+    math(EXPR symsrv_max "${symsrv_max} - 1")
+    set(symsrv_index 0)
+    while (${symsrv_index} LESS ${symsrv_max})
+      if (X64 AND symsrv_default MATCHES "/x86/")
+        # Keep looking.
+      elseif (NOT X64 AND symsrv_default MATCHES "/x64/")
+        # Keep looking.
+      elseif (NOT X64 AND symsrv_default MATCHES "/amd64/")
+        # Keep looking.
+      else ()
+        break ()
+      endif ()
+      math(EXPR symsrv_index "${symsrv_index} + 1")
+      list(GET symsrv_hint ${symsrv_index} symsrv_default)
+    endwhile()
   else ()
     set(symsrv_default "SYMSRV_DLL-NOTFOUND")
   endif ()
