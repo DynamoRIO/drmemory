@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -25,4 +25,9 @@ operators.cpp:102
 operators.cpp:116
 %endif
 : WARNING: heap allocation failed
-operators.cpp:140
+%if X64
+operators.cpp:142
+%endif
+%if X32
+operators.cpp:144
+%endif
