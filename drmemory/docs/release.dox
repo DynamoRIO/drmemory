@@ -60,7 +60,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.11.0 include:
+The changes between \TOOL_VERSION and version 2.1.0 include:
+ - Nothing yet.
+
+The changes between version 2.1.0 and version 1.11.0 include:
  - Added preliminary 64-bit full mode (i.e., with uninitialized read
    checking) support.
  - Added preliminary support for the Windows Subsystem for Linux
