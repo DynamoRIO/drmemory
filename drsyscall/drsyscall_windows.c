@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -564,15 +564,19 @@ syscall_num_from_name(void *drcontext, const module_data_t *info,
         entry = (*drsys_ops.lookup_internal_symbol)(info, name);
         if (entry != NULL)
             num = syscall_num_from_wrapper(drcontext, entry);
-        if (num == -1 && optional_prefix != NULL) {
+        if (num == -1 && optional_prefix != NULL &&
+            strstr(name, optional_prefix) == name) {
             const char *skip_prefix = name + strlen(optional_prefix);
-            ASSERT(strstr(name, optional_prefix) == name,
-                   "missing syscall prefix");
             entry = (*drsys_ops.lookup_internal_symbol)(info, skip_prefix);
             if (entry != NULL)
                 num = syscall_num_from_wrapper(drcontext, entry);
         }
     }
+    /* Work around DRi#3453: drmgr_decode_sysnum_from_wrapper () should check for
+     * "return 1".
+     */
+    if (num == 1 && strstr(name, "NtUser") == name)
+        num = -1;
     if (num == -1)
         return false;
     num_out->number = num;
