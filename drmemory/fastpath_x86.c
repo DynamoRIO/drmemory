@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1843,6 +1843,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
+                              /* x64 instru is generally longer */
+                              IF_X64(true ||)
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(base) - DR_REG_XAX] = true;
@@ -1863,6 +1865,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
+                              /* x64 instru is generally longer */
+                              IF_X64(true ||)
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(index) - DR_REG_XAX] = true;
@@ -3632,7 +3636,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              mi->src[2].app, mi->src[2].shadow);
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
         mi->num_to_propagate--;
         mi->src[2].shadow = opnd_create_null();
     }
@@ -3682,12 +3687,14 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                      (~0, opnd_get_size(app_val))));
             }
             add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             OP_jne : OP_jne_short, mi);
             /* having mi->num_to_propagate == 0 implies mark_defined */
             PRE(bb, marker1, src2_defined);
         } else {
             add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             OP_jne : OP_jne_short, mi);
         }
         mi->num_to_propagate--;
         tmp = mi->src[1];
@@ -3730,7 +3737,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->need_slowpath = true;
                 heap_unaddr_shadow = mi->src[0].shadow;
             } else {
-                add_jcc_slowpath(drcontext, bb, marker1, OP_jne_short, mi);
+                add_jcc_slowpath(drcontext, bb, marker1,
+                                 IF_X64_ELSE(OP_jne, OP_jne_short), mi);
             }
             if (mi->load)
                 checked_memsrc = true;
@@ -3749,11 +3757,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
         insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
     }
     ASSERT(mi->memsz <= sizeof(void*) || mi->num_to_propagate == 0 || mi->memsz ==16,
            "propagation not suported for odd-sized memops");
@@ -3846,7 +3856,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                   reg_ptrsz_to_32(mi->reg2.reg)));
         } else {
             add_jcc_slowpath(drcontext, bb, inst,
-                             check_ignore_unaddr ? (jcc_unaddr == OP_jne ? OP_jne : OP_je)
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             (jcc_unaddr == OP_jne ? OP_jne : OP_je)
                              : (jcc_unaddr == OP_jne ? OP_jne_short : OP_je_short), mi);
         }
     } else if (mi->store) {
@@ -3866,7 +3877,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
                 add_jcc_slowpath(drcontext, bb, inst,
-                                 (check_ignore_unaddr || mi->memsz < 4) ?
+                                 (IF_X64(true ||) check_ignore_unaddr || mi->memsz < 4) ?
                                  OP_jne : OP_jne_short, mi);
             }
         } else {
@@ -3888,7 +3899,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     heap_unaddr_shadow = mi->dst[0].shadow;
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
-                                     check_ignore_unaddr ? OP_je : OP_je_short, mi);
+                                     (IF_X64(true ||) check_ignore_unaddr) ?
+                                     OP_je : OP_je_short, mi);
                 }
             } else if (options.stores_use_table && mi->memsz <= 4) {
                 /* check for unaddressability.  we used to combine it with
@@ -3951,7 +3963,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     heap_unaddr_shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
-                                     (check_ignore_unaddr || mi->memsz < 4) ?
+                                     (IF_X64(true ||) check_ignore_unaddr ||
+                                      mi->memsz < 4) ?
                                      OP_jne : OP_jne_short, mi);
                 }
            } else {

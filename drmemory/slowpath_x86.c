@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1087,8 +1087,7 @@ map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint sh
         accum_shadow(&comb->dst[opsz*shift + src_bytenum], shadow);
         break;
     case OP_bswap:
-        ASSERT(opsz == 4, "invalid bswap opsz");
-        accum_shadow(&comb->dst[3 - src_bytenum], shadow);
+        accum_shadow(&comb->dst[(opsz - 1) - src_bytenum], shadow);
         return;
 #ifndef X64
     case OP_pusha:

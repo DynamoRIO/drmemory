@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -55,7 +55,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 14
+#define SYMCACHE_VERSION 15
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -321,7 +321,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 #ifdef WINDOWS
     BUFFERED_WRITE(f, buf, bsz, sofar, len,
                    UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
-                   UINT64_FORMAT_STRING",%u,%u,%lu\n",
+                   UINT64_FORMAT_STRING",%u,%u,%zu\n",
                    modcache->module_file_size, modcache->file_version.version,
                    modcache->product_version.version,
                    modcache->checksum, modcache->timestamp,
@@ -449,7 +449,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
         uint checksum;
         size_t module_internal_size;
         if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
-                      UINT64_FORMAT_STRING",%u,%u,%lu",
+                      UINT64_FORMAT_STRING",%u,%u,%zu",
                       &cache_file_size, &module_file_size, &file_version.version,
                       &product_version.version, &checksum, &timestamp,
                       &module_internal_size) != 7) {
@@ -466,7 +466,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
             LOG(2, "\t"UINT64_FORMAT_STRING" vs "UINT64_FORMAT_STRING", "
                 UINT64_FORMAT_STRING" vs "UINT64_FORMAT_STRING", "
                 UINT64_FORMAT_STRING" vs "UINT64_FORMAT_STRING", "
-                "%u vs %u, %u vs %u, %lu vs %lu\n",
+                "%u vs %u, %u vs %u, %zu vs %zu\n",
                 module_file_size, modcache->module_file_size,
                 file_version.version, modcache->file_version.version,
                 product_version.version, modcache->product_version.version,

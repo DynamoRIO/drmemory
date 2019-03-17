@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -107,7 +107,7 @@ use_memory_zones(void)
            (sizeof(*zone) == (INT_PTR)block - (INT_PTR)zone));
     printf("Segment.NextSegment == NULL: %d\n",
            zone->Segment.NextSegment == NULL);
-    printf("Segment.Size: %lu\n", zone->Segment.Size);
+    printf("Segment.Size: %zu\n", zone->Segment.Size);
     printf("Segment.Next: 0x%05lx\n",
            (INT_PTR)zone->Segment.Next - (INT_PTR)zone);
     printf("Segment.Limit: 0x%05lx\n",
