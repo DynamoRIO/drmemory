@@ -476,6 +476,7 @@ shadow_table_init(umbra_map_t *map)
                                           HEAPSTAT_SHADOW);
     } else {
         map->shadow_table = static_shadow_table;
+        static_shadow_table_unused = true;
     }
     /* sets the whole address space to default special block first */
     if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)) {
