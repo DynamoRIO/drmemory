@@ -67,9 +67,6 @@
 #define SHADOW_TABLE_INDEX(addr)   ((ptr_uint_t)(addr) >> APP_BLOCK_BITS)
 #define SHADOW_TABLE_APP_BASE(idx) ((ptr_uint_t)(idx)  << APP_BLOCK_BITS)
 
-static ptr_int_t static_shadow_table[SHADOW_TABLE_ENTRIES];
-static bool      static_shadow_table_unused = false;
-
 /***************************************************************************
  * SHADOW TABLE ROUTINES
  */
@@ -470,13 +467,10 @@ shadow_table_init(umbra_map_t *map)
 {
     uint i;
     LOG(UMBRA_VERBOSE, "shadow_table_init\n");
-    if (static_shadow_table_unused) {
-        map->shadow_table = nonheap_alloc(SHADOW_TABLE_SIZE,
-                                          DR_MEMPROT_READ | DR_MEMPROT_WRITE,
-                                          HEAPSTAT_SHADOW);
-    } else {
-        map->shadow_table = static_shadow_table;
-    }
+    map->shadow_table = nonheap_alloc(SHADOW_TABLE_SIZE,
+                                      DR_MEMPROT_READ | DR_MEMPROT_WRITE,
+                                      HEAPSTAT_SHADOW);
+
     /* sets the whole address space to default special block first */
     if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)) {
         /* default block means the app memory does not have shadow memory */
@@ -515,8 +509,7 @@ shadow_table_exit(umbra_map_t *map)
         }
     }
     shadow_table_delete_default_block(map);
-    if (map->shadow_table != static_shadow_table)
-        nonheap_free(map->shadow_table, SHADOW_TABLE_SIZE, HEAPSTAT_SHADOW);
+    nonheap_free(map->shadow_table, SHADOW_TABLE_SIZE, HEAPSTAT_SHADOW);
     umbra_map_unlock(map);
 }
 
