@@ -60,8 +60,8 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 2.1.0 include:
- - Nothing yet.
+The changes between version 2.2.0 and version 2.1.0 include:
+ - Fixed a problem with Windows 10 1903.
 
 The changes between version 2.1.0 and version 1.11.0 include:
  - Added preliminary 64-bit full mode (i.e., with uninitialized read
