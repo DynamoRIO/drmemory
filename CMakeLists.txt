@@ -233,7 +233,7 @@ endif (APPLE)
 
 # N.B.: when updating this, update the git tag in .travis.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "2.1.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "2.2.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
@@ -847,7 +847,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "7.1.17958")
+set(DynamoRIO_VERSION_REQUIRED "7.91.18077")
 
 set(DR_install_dir "dynamorio")
 
