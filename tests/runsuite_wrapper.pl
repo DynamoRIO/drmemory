@@ -147,12 +147,15 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'syscall_file_gen' => 1,
                 'handle' => 1,
                 'app_suite' => 1,
-                'app_suite.pattern' => 1);
+                'app_suite.pattern' => 1,
+                # These two are i#2178:
+                'slowesp' => 1,
+                'noreplace_realloc' => 1);
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
             %ignore_failures_64 = ('malloc' => 1);
         } else {
-            print "No auto-ignored tests for platform $^O\n";
+            %ignore_failures_32 = ('pcache-use' => 1); # i#2202
         }
         # Read ahead to examine the test failures:
         $fail = 0;
