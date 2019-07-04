@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -142,7 +142,6 @@ config_parse_type(std::string type_name, uint index)
      * in Windows and Linux.
      */
 
-    /* XXX i#1948: We have to extend a list of supported types here. */
     if (type_name.compare("VOID") == 0) {
         arg->type_name = "void";
         arg->type = DRSYS_TYPE_VOID;
@@ -164,6 +163,14 @@ config_parse_type(std::string type_name, uint index)
         arg->type_name = "HANDLE";
         arg->size = sizeof(HANDLE);
         arg->type = DRSYS_TYPE_HANDLE;
+    } else if (type_name.compare("HKEY") == 0) {
+        arg->type_name = "HKEY";
+        arg->size = sizeof(HKEY);
+        arg->type = DRSYS_TYPE_HANDLE;
+    } else if (type_name.compare("HDC") == 0) {
+        arg->type_name = "HDC";
+        arg->size = sizeof(HDC);
+        arg->type = DRSYS_TYPE_HANDLE;
     } else if (type_name.compare("HFILE") == 0) {
         arg->type_name = "HFILE";
         arg->size = sizeof(HFILE);
@@ -175,6 +182,14 @@ config_parse_type(std::string type_name, uint index)
     } else if (type_name.compare("UINT") == 0) {
         arg->type_name = "uint";
         arg->size = sizeof(UINT);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
+    } else if (type_name.compare("ULONG") == 0) {
+        arg->type_name = "ULONG";
+        arg->size = sizeof(ULONG);
+        arg->type = DRSYS_TYPE_UNSIGNED_INT;
+    } else if (type_name.compare("ULONGLONG") == 0) {
+        arg->type_name = "ULONGLONG";
+        arg->size = sizeof(ULONGLONG);
         arg->type = DRSYS_TYPE_UNSIGNED_INT;
     } else if (type_name.compare("DWORD") == 0) {
         arg->type_name = "DWORD";
@@ -209,8 +224,10 @@ config_parse_type(std::string type_name, uint index)
         arg->type_name = "wchar_t";
         arg->type = DRSYS_TYPE_CWSTRING;
     } else {
+        /* XXX i#1948: We have to extend a list of supported types here. */
         arg->type_name = "<unknown>";
-        VNOTIFY(0, "found unknown type %s in the config file" NL, type_name.c_str());
+        DO_ONCE(VNOTIFY(0, "<Found unknown types in the config file>" NL););
+        VNOTIFY(2, "Found unknown type %s in the config file" NL, type_name.c_str());
     }
 
     return arg;

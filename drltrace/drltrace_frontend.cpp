@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2017-2019 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -118,7 +118,7 @@ print_version() {
 static void
 configure_application(char *app_name, char **app_argv, void **inject_data,
                       const char *dr_root, const char *lib_path, const char *log_dir,
-                      const char *config_dir)
+                      const char *config_file, const char *sysnum_file)
 {
     bool is_debug = false;
 #ifdef DEBUG
@@ -145,9 +145,13 @@ configure_application(char *app_name, char **app_argv, void **inject_data,
         BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
                  "-logdir `%s` ", log_dir);
     }
-    if (config_dir[0] != '\0') {
+    if (config_file[0] != '\0') {
         BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
-                 "-config `%s` ", config_dir);
+                 "-config `%s` ", config_file);
+    }
+    if (sysnum_file[0] != '\0') {
+        BUFPRINT(drltrace_option, BUFFER_SIZE_ELEMENTS(drltrace_option), sofar, len,
+                 "-sysnum_file `%s` ", sysnum_file);
     }
 
 #ifdef UNIX
@@ -224,6 +228,40 @@ check_logdir_path(char *logdir, size_t logdir_len) {
     logdir[logdir_len - 1] = '\0';
 }
 
+#ifdef WINDOWS
+/* XXX: Can we share this code with Dr. Memory?  Make it part of DRMF? */
+static bool
+generate_sysnum_file(const char *outfile, const char *cache_dir)
+{
+    int i;
+    size_t lib_count = 0;
+    char **lib_paths;
+    void *drcontext = dr_standalone_init();
+    if (drcontext == NULL)
+        return false;
+    drmf_status_t res = drsys_find_sysnum_libs(NULL, &lib_count);
+    if (res != DRMF_ERROR_INVALID_SIZE)
+        return false;
+    lib_paths = reinterpret_cast<char**>(malloc(lib_count * sizeof(lib_paths[0])));
+    if (lib_paths == NULL)
+        return false;
+    for (i = 0; i < lib_count; ++i) {
+        lib_paths[i] = reinterpret_cast<char*>(malloc(MAXIMUM_PATH));
+        if (lib_paths[i] == NULL)
+            return false;
+    }
+    res = drsys_find_sysnum_libs(lib_paths, &lib_count);
+    if (res != DRMF_SUCCESS)
+        return false;
+    res = drsys_generate_sysnum_file(drcontext, const_cast<const char**>(lib_paths),
+                                     lib_count, outfile, cache_dir);
+    for (i = 0; i < lib_count; ++i)
+        free(lib_paths[i]);
+    free(lib_paths);
+    return (res == DRMF_SUCCESS);
+}
+#endif
+
 int
 _tmain(int argc, const TCHAR *targv[])
 {
@@ -254,11 +292,14 @@ _tmain(int argc, const TCHAR *targv[])
     char full_dr_root_path[MAXIMUM_PATH];
     char full_drlibtrace_path[MAXIMUM_PATH];
     char logdir[MAXIMUM_PATH];
-    char config_dir[MAXIMUM_PATH];
+    char config_file[MAXIMUM_PATH];
 
     int last_index;
     std::string parse_err;
     drfront_status_t sc;
+#ifdef WINDOWS
+    bool tried_generating_sysnum_file = false;
+#endif
 
 #if defined(WINDOWS) && !defined(_UNICODE)
 # error _UNICODE must be defined
@@ -274,6 +315,7 @@ _tmain(int argc, const TCHAR *targv[])
         DRLTRACE_ERROR("Usage error: %s\n Usage:\n%s\n", parse_err.c_str(),
                        droption_parser_t::usage_short(DROPTION_SCOPE_ALL).c_str());
     }
+    op_verbose_level = op_verbose.get_value();
 
     if (op_version.get_value()) {
         print_version();
@@ -316,15 +358,15 @@ _tmain(int argc, const TCHAR *targv[])
         dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s/drltrace.config",
                     full_frontend_path /* binary path */);
         NULL_TERMINATE_BUFFER(tmp_path);
-        sc = drfront_get_absolute_path(tmp_path, config_dir,
-                                       BUFFER_SIZE_ELEMENTS(config_dir));
+        sc = drfront_get_absolute_path(tmp_path, config_file,
+                                       BUFFER_SIZE_ELEMENTS(config_file));
         if (sc != DRFRONT_SUCCESS)
             DRLTRACE_ERROR("drfront_get_absolute_path failed, error code = %d\n", sc);
     } else {
-        dr_snprintf(config_dir, BUFFER_SIZE_ELEMENTS(config_dir), "%s",
+        dr_snprintf(config_file, BUFFER_SIZE_ELEMENTS(config_file), "%s",
                     op_config_file.get_value().c_str());
     }
-    NULL_TERMINATE_BUFFER(config_dir);
+    NULL_TERMINATE_BUFFER(config_file);
 
     dr_snprintf(tmp_path, BUFFER_SIZE_ELEMENTS(tmp_path), "%s../dynamorio",
                 full_frontend_path);
@@ -356,23 +398,112 @@ _tmain(int argc, const TCHAR *targv[])
         logdir[0] = '\0';
     }
 
+    if (op_sysnum_file.get_value().empty() || op_symcache_dir.get_value().empty()) {
+        bool use_root;
+        char local_root_dir[MAXIMUM_PATH];
+        char root_dir[MAXIMUM_PATH];
+        char drmem_dir[MAXIMUM_PATH];
+        char cache_dir[MAXIMUM_PATH];
+        char sysnum_file[MAXIMUM_PATH];
+        /* We assume we're in a bin/ subdir */
+        _snprintf(local_root_dir, BUFFER_SIZE_ELEMENTS(local_root_dir), "%s%c..",
+                  full_frontend_path, DIRSEP);
+        NULL_TERMINATE_BUFFER(local_root_dir);
+        drfront_status_t res = drfront_get_absolute_path(local_root_dir, root_dir,
+                                                         BUFFER_SIZE_ELEMENTS(root_dir));
+        if (res != DRFRONT_SUCCESS)
+            DRLTRACE_ERROR("failed to locate root directory");
+        NULL_TERMINATE_BUFFER(root_dir);
+
+        sc = drfront_appdata_logdir(root_dir, "Dr. Memory", &use_root,
+                                    drmem_dir, BUFFER_SIZE_ELEMENTS(drmem_dir));
+        if (sc == DRFRONT_SUCCESS) {
+            /* Try to use Dr. Memory's dir. */
+            if (use_root) {
+                /* A zip install has drmemory/logs/symcache, though it has to be created
+                 * (which we try to do just below if another tool has not yet run).
+                 */
+                _snprintf(cache_dir, BUFFER_SIZE_ELEMENTS(cache_dir),
+                          "%s%cdrmemory%clogs%csymcache", root_dir, DIRSEP, DIRSEP,
+                          DIRSEP);
+                NULL_TERMINATE_BUFFER(cache_dir);
+                /* A local build has logs/symcache */
+                if (!dr_directory_exists(cache_dir) && !dr_create_dir(cache_dir)) {
+                    _snprintf(cache_dir, BUFFER_SIZE_ELEMENTS(cache_dir),
+                              "%s%clogs%csymcache", root_dir, DIRSEP, DIRSEP);
+                    NULL_TERMINATE_BUFFER(cache_dir);
+                }
+                /* Fall back to logs if it's there. */
+                if (!dr_directory_exists(cache_dir) && !dr_create_dir(cache_dir)) {
+                    _snprintf(cache_dir, BUFFER_SIZE_ELEMENTS(cache_dir),
+                              "%s%clogs", root_dir, DIRSEP);
+                    NULL_TERMINATE_BUFFER(cache_dir);
+                }
+            } else {
+                _snprintf(cache_dir, BUFFER_SIZE_ELEMENTS(cache_dir),
+                          "%s%csymcache", drmem_dir, DIRSEP);
+                NULL_TERMINATE_BUFFER(cache_dir);
+            }
+            if (!dr_directory_exists(cache_dir) && !dr_create_dir(cache_dir)) {
+                /* Fall back to specified log dir. */
+                _snprintf(cache_dir, BUFFER_SIZE_ELEMENTS(cache_dir),
+                          "%s", logdir);
+                NULL_TERMINATE_BUFFER(cache_dir);
+            }
+            op_symcache_dir.set_value(cache_dir);
+
+            _snprintf(sysnum_file, BUFFER_SIZE_ELEMENTS(sysnum_file),
+                      "%s%c%s", cache_dir, DIRSEP,
+                      dr_is_wow64() ? SYSNUM_FILE_WOW64 : SYSNUM_FILE);
+            NULL_TERMINATE_BUFFER(sysnum_file);
+            op_sysnum_file.set_value(sysnum_file);
+        }
+    }
+
     dr_standalone_init();
 
-    configure_application(full_target_app_path, &argv[last_index],
-                          &inject_data, full_dr_root_path, full_drlibtrace_path, logdir,
-                          config_dir);
+    do {
+        configure_application(full_target_app_path, &argv[last_index], &inject_data,
+                              full_dr_root_path, full_drlibtrace_path, logdir,
+                              config_file, op_sysnum_file.get_value().c_str());
 
-    if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL))
-        DRLTRACE_ERROR("unable to inject");
+        if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL))
+            DRLTRACE_ERROR("unable to inject");
 
-    if (!dr_inject_process_run(inject_data))
-        DRLTRACE_ERROR("unable to execute target application");
+        if (!dr_inject_process_run(inject_data))
+            DRLTRACE_ERROR("unable to execute target application");
 
-    DRLTRACE_INFO(1, "%s sucessfully started, waiting app for exit", full_target_app_path);
+        DRLTRACE_INFO(1, "%s sucessfully started, waiting app for exit",
+                      full_target_app_path);
 
-    dr_inject_wait_for_child(inject_data, 0/*wait forever*/);
+        dr_inject_wait_for_child(inject_data, 0/*wait forever*/);
 
-    exitcode = dr_inject_process_exit(inject_data, false);
+        exitcode = dr_inject_process_exit(inject_data, false);
+#ifdef WINDOWS
+        if (exitcode == STATUS_INVALID_KERNEL_INFO_VERSION) {
+            DRLTRACE_WARN("Missing system call information for this operating system "
+                          "version.");
+            if (tried_generating_sysnum_file)
+                DRLTRACE_ERROR("Failed to auto-generate information.  Aborting.");
+            DRLTRACE_INFO(0, "Attempting to auto-generate system call information...");
+            DRLTRACE_INFO(1, "Target file is %s", op_sysnum_file.get_value().c_str());
+            tried_generating_sysnum_file = true;
+            /* Give the user some visible feedback. */
+            int prior_verbose = op_verbose_level;
+            if (op_verbose_level <= 0)
+                op_verbose_level = 1;
+            if (generate_sysnum_file(op_sysnum_file.get_value().c_str(),
+                                     op_symcache_dir.get_value().c_str())) {
+                DRLTRACE_INFO(0, "Auto-generation succeeded. "
+                              "Re-launching the application.");
+                op_verbose_level = prior_verbose;
+                continue; /* restart app */
+            }
+            op_verbose_level = prior_verbose;
+        }
+#endif
+        break;
+    } while (true);
 
     sc = drfront_cleanup_args(argv, argc);
     if (sc != DRFRONT_SUCCESS)

@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -401,7 +401,7 @@ open_log_file(void)
                                           DR_FILE_ALLOW_LARGE,
                                           buf, BUFFER_SIZE_ELEMENTS(buf));
         ASSERT(outf != INVALID_FILE, "failed to open log file");
-        VNOTIFY(0, "drltrace log file is %s" NL, buf);
+        VNOTIFY(0, "<drltrace log file is %s>" NL, buf);
 
     }
 }
@@ -490,7 +490,36 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     dr_enable_console_printing();
 #endif
     if (op_max_args.get_value() > 0) {
-        drsys_init(id, &ops);
+        /* get_value() makes a copy which will be thrown away!  We need a permanent
+         * copy.
+         */
+        const std::string& sysnum_permanent = op_sysnum_file.get_value();
+        const char *sysnum_file = NULL;
+        if (!op_sysnum_file.get_value().empty()) {
+            sysnum_file = sysnum_permanent.c_str();
+            if (dr_file_exists(sysnum_file)) {
+                VNOTIFY(1, "<Using system call file %s>" NL, sysnum_file);
+                ops.sysnum_file = sysnum_file;
+            } else {
+                VNOTIFY(2, "<System call file %s does not exist>" NL, sysnum_file);
+            }
+        } else
+            VNOTIFY(1, "sysnum_file is empty" NL);
+        drmf_status_t res = drsys_init(id, &ops);
+#ifdef WINDOWS
+        if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
+            dr_os_version_info_t os_version = {sizeof(os_version),};
+            dr_get_os_version(&os_version);
+            NOTIFY_ERROR("System call information is missing for this operating system: "
+                         "WinVer=%u;Rel=%s;Build=%u;Edition=%s. Restarting "
+                         "to trigger auto-generation of system call information." NL,
+                         os_version.version, os_version.release_id,
+                         os_version.build_number, os_version.edition);
+            dr_abort_with_code(STATUS_INVALID_KERNEL_INFO_VERSION);
+        }
+#endif
+        if (res != DRMF_SUCCESS)
+            ASSERT(false, "drsys failed to init");
         parse_config();
     }
 

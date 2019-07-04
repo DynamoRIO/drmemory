@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1022,9 +1022,7 @@ DR_EXPORT
  * @param[in] num_sysnum_libs   The length of the \p sysnum_lib_paths array.
  * @param[in] outfile  The name of the output text file to be written.
  * @param[in] cache_dir  The path where retrieved symbol data should be cached (and
- *   searched if already retrieved).  If not set, the _NT_SYMBOL_PATH environment
- *   variable will be used, if set; else whatever default dbghelp.dll uses will be
- *   used.
+ *   searched if already retrieved).
  *
  * \note Windows-only.
  */
