@@ -802,6 +802,7 @@ _tmain(int argc, TCHAR *targv[])
     bool exit0 = false;
     bool dr_logdir_specified = false;
     bool doubledash_present = false;
+    bool launched_other_frontend = false;
 
 #ifdef WINDOWS
     time_t start_time, end_time;
@@ -1278,7 +1279,9 @@ _tmain(int argc, TCHAR *targv[])
                                           INFINITE);
             if (errcode != WAIT_OBJECT_0)
                 info("failed to wait for frontend: %d\n", errcode);
-            dr_inject_process_exit(inject_data, false);
+            /* Be sure to capture and propagate the exit code (i#2206). */
+            errcode = dr_inject_process_exit(inject_data, false);
+            launched_other_frontend = true;
 #else
             fatal("failed to exec frontend to match target app bitwidth");
 #endif
@@ -1640,7 +1643,7 @@ _tmain(int argc, TCHAR *targv[])
     sc = drfront_cleanup_args(argv, argc);
     if (sc != DRFRONT_SUCCESS)
         fatal("failed to free memory for args: %d", sc);
-    if (errcode != 0) {
+    if (errcode != 0 && !launched_other_frontend) {
         /* We use a prefix to integrate better with tool output, esp inside
          * the VS IDE as an External Tool.
          */
