@@ -877,7 +877,7 @@ write_file(const std::unordered_map<std::string, int> &name2num, const std::stri
     }
     file_t f = dr_open_file(outf.c_str(), DR_FILE_WRITE_OVERWRITE);
     if (f == INVALID_FILE) {
-        NOTIFY(0, "Failed to write to %s" NL, outf);
+        NOTIFY(0, "Failed to open %s" NL, outf.c_str());
         return DRMF_ERROR_ACCESS_DENIED;
     }
     NOTIFY(1, "Writing to \"%s\"" NL, outf.c_str());

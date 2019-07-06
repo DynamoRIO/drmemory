@@ -700,10 +700,10 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
     if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
         char os_ver[96];
         get_windows_version_string(os_ver, BUFFER_SIZE_ELEMENTS(os_ver));
-        NOTIFY_ERROR("Running on an unsupported operating system version: %s."
+        NOTIFY_ERROR("System call information is missing for this operating system: %s."
                      "%s" NL, os_ver,
                      options.ignore_kernel ? "" :
-                     " Exiting to trigger auto-generation of system call information."
+                     " Restarting to trigger auto-generation of system call information."
                      " Re-run with -ignore_kernel to attempt to continue instead.");
         if (options.ignore_kernel)
             res = DRMF_SUCCESS;

@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -40,6 +40,8 @@ extern droption_t<unsigned int> op_unknown_args;
 extern droption_t<int> op_max_args;
 extern droption_t<bool> op_config_file_default;
 extern droption_t<std::string> op_config_file;
+extern droption_t<std::string> op_sysnum_file;
+extern droption_t<std::string> op_symcache_dir;
 extern droption_t<bool> op_ignore_underscore;
 extern droption_t<std::string> op_only_to_lib;
 extern droption_t<bool> op_help;

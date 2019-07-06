@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -92,6 +92,13 @@ static bool top_stats;
 #define info(msg, ...) do { \
     if (verbose) { \
         fprintf(stderr, "INFO: " msg "\n", ##__VA_ARGS__); \
+        fflush(stderr); \
+    } \
+} while (0)
+
+#define notify(msg, ...) do { \
+    if (!quiet) { \
+        fprintf(stderr, msg "\n", ##__VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
@@ -193,6 +200,39 @@ get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
         fatal("drfront_get_app_full_path failed: %d\n", sc);
 }
 
+#ifdef WINDOWS
+/* XXX: Can we share this code with Dr. Memory?  Make it part of DRMF? */
+static bool
+generate_sysnum_file(const char *outfile, const char *cache_dir)
+{
+    int i;
+    size_t lib_count = 0;
+    char **lib_paths;
+    void *drcontext = dr_standalone_init();
+    if (drcontext == NULL)
+        return false;
+    drmf_status_t res = drsys_find_sysnum_libs(NULL, &lib_count);
+    if (res != DRMF_ERROR_INVALID_SIZE)
+        return false;
+    lib_paths = malloc(lib_count * sizeof(lib_paths[0]));
+    if (lib_paths == NULL)
+        return false;
+    for (i = 0; i < lib_count; ++i) {
+        lib_paths[i] = malloc(MAXIMUM_PATH);
+        if (lib_paths[i] == NULL)
+            return false;
+    }
+    res = drsys_find_sysnum_libs(lib_paths, &lib_count);
+    if (res != DRMF_SUCCESS)
+        return false;
+    res = drsys_generate_sysnum_file(drcontext, lib_paths, lib_count, outfile, cache_dir);
+    for (i = 0; i < lib_count; ++i)
+        free(lib_paths[i]);
+    free(lib_paths);
+    return (res == DRMF_SUCCESS);
+}
+#endif
+
 int
 _tmain(int argc, TCHAR *targv[])
 {
@@ -215,6 +255,7 @@ _tmain(int argc, TCHAR *targv[])
     char pdb_path[MAXIMUM_PATH];
     char dr_logdir[MAXIMUM_PATH];
     char symdll_path[MAXIMUM_PATH];
+    char sysfile[MAXIMUM_PATH];
 
     size_t drops_sofar = 0; /* for BUFPRINT to dr_ops */
     ssize_t len; /* shared by all BUFPRINT */
@@ -241,6 +282,9 @@ _tmain(int argc, TCHAR *targv[])
     bool res;
     bool is64, is32;
     bool load_symbols = true;
+#ifdef WINDOWS
+    bool tried_generating_sysnum_file = false;
+#endif
 
     dr_standalone_init();
 
@@ -292,8 +336,13 @@ _tmain(int argc, TCHAR *targv[])
             /* leave i alone: this is the app itself */
             break;
         }
-        else if (strcmp(argv[i], "-v") == 0) {
+        else if (strcmp(argv[i], "-verbose") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            op_verbose_level = atoi(argv[++i]);
             verbose = true;
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "-verbose `%s` ", argv[i]);
             continue;
         }
         else if (strcmp(argv[i], "-dr_debug") == 0) {
@@ -589,79 +638,127 @@ _tmain(int argc, TCHAR *targv[])
         warn("symbol initialization error.  Symbol lookup will be disabled.");
     }
 
+    /* First, try to share Dr. Memory's file. */
+    /* A zip install has drmemory/logs/symcache */
+    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s%cdrmemory%clogs%csymcache",
+              drstrace_root, DIRSEP, DIRSEP, DIRSEP);
+    NULL_TERMINATE_BUFFER(buf);
+    if (!dr_directory_exists(buf) && !dr_create_dir(buf)) {
+        /* A local build has logs/symcache.  sym_path ends in logs/.
+         * An .msi install has <userdir>/symcache.
+         */
+        _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), "%s%csymcache",
+                  sym_path, DIRSEP);
+        NULL_TERMINATE_BUFFER(buf);
+    }
+    if (dr_directory_exists(buf) || dr_create_dir(buf)) {
+        _snprintf(sysfile, BUFFER_SIZE_ELEMENTS(sysfile), "%s%c%s",
+                  buf, DIRSEP, dr_is_wow64() ? SYSNUM_FILE_WOW64 : SYSNUM_FILE);
+        NULL_TERMINATE_BUFFER(sysfile);
+    } else {
+        _snprintf(sysfile, BUFFER_SIZE_ELEMENTS(sysfile), "%s%c%s",
+                  sym_path, DIRSEP, dr_is_wow64() ? SYSNUM_FILE_WOW64 : SYSNUM_FILE);
+        NULL_TERMINATE_BUFFER(sysfile);
+    }
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-sysnum_file `%s` ", sysfile);
+
     /* i#1638: fall back to temp dirs if there's no HOME/USERPROFILE set */
     dr_get_config_dir(false/*local*/, true/*use temp*/, buf, BUFFER_SIZE_ELEMENTS(buf));
     info("DynamoRIO configuration directory is %s", buf);
 
+    do {
 #ifdef UNIX
-    errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
+        errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv,
+                                            &inject_data);
 #else
-    errcode = dr_inject_process_create(app_name, (const char **)app_argv, &inject_data);
+        errcode = dr_inject_process_create(app_name, (const char **)app_argv,
+                                           &inject_data);
 #endif
-    /* Mismatch is just a warning */
-    if (errcode != 0 && errcode != WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
+        /* Mismatch is just a warning */
+        if (errcode != 0 && errcode != WARN_IMAGE_MACHINE_TYPE_MISMATCH_EXE) {
 #ifdef WINDOWS
-        int sofar =
+            int sofar =
 #endif
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                      "failed to create process for \"%s\": ", app_name);
+                _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                          "failed to create process for \"%s\": ", app_name);
 #ifdef WINDOWS
-        if (sofar > 0) {
-            FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                          NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                          (LPTSTR) buf + sofar,
-                          BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
+            if (sofar > 0) {
+                FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                              NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                              (LPTSTR) buf + sofar,
+                              BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
+            }
+            NULL_TERMINATE_BUFFER(buf);
+#endif
+            fatal("%s", buf);
+            goto error; /* actually won't get here */
         }
-        NULL_TERMINATE_BUFFER(buf);
-#endif
-        fatal("%s", buf);
-        goto error; /* actually won't get here */
-    }
 
-    pid = dr_inject_get_process_id(inject_data);
+        pid = dr_inject_get_process_id(inject_data);
 
-    process = dr_inject_get_image_name(inject_data);
-    /* we don't care if this app is already registered for DR b/c our
-     * this-pid config will override
-     */
-    info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
-    if (dr_register_process(process, pid,
-                            false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
-                            use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
-        fatal("failed to register DynamoRIO configuration");
-        goto error; /* actually won't get here */
-    }
-    info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
-    if (dr_register_client(process, pid,
-                           false/*local*/, DR_PLATFORM_DEFAULT, CLIENT_ID,
-                           0, client_path, client_ops) != DR_SUCCESS) {
-        fatal("failed to register DynamoRIO client configuration");
-        goto error; /* actually won't get here */
-    }
-    if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
-        fatal("unable to inject");
-        goto error; /* actually won't get here */
-    }
+        process = dr_inject_get_image_name(inject_data);
+        /* we don't care if this app is already registered for DR b/c our
+         * this-pid config will override
+         */
+        info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
+        if (dr_register_process(process, pid,
+                                false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
+                                use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
+            fatal("failed to register DynamoRIO configuration");
+            goto error; /* actually won't get here */
+        }
+        info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
+        if (dr_register_client(process, pid,
+                               false/*local*/, DR_PLATFORM_DEFAULT, CLIENT_ID,
+                               0, client_path, client_ops) != DR_SUCCESS) {
+            fatal("failed to register DynamoRIO client configuration");
+            goto error; /* actually won't get here */
+        }
+        if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
+            fatal("unable to inject");
+            goto error; /* actually won't get here */
+        }
 
-    if (top_stats)
-        start_time = time(NULL);
-    dr_inject_process_run(inject_data);
+        if (top_stats)
+            start_time = time(NULL);
+        dr_inject_process_run(inject_data);
 #ifdef UNIX
-    fatal("failed to exec application");
+        fatal("failed to exec application");
 #else
-    info("waiting for app to exit...");
-    errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
-    if (errcode != WAIT_OBJECT_0)
-        info("failed to wait for app: %d\n", errcode);
+        info("waiting for app to exit...");
+        errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
+        if (errcode != WAIT_OBJECT_0)
+            info("failed to wait for app: %d\n", errcode);
 #endif
-    if (top_stats) {
-        double wallclock;
-        end_time = time(NULL);
-        wallclock = difftime(end_time, start_time);
-        dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
-    }
-    errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
-    goto cleanup;
+        if (top_stats) {
+            double wallclock;
+            end_time = time(NULL);
+            wallclock = difftime(end_time, start_time);
+            dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
+        }
+        errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
+#ifdef WINDOWS
+        if (errcode == STATUS_INVALID_KERNEL_INFO_VERSION) {
+            warn("Missing system call information for this operating system version.");
+            if (tried_generating_sysnum_file)
+                fatal("Failed to auto-generate information.  Aborting.");
+            notify("Attempting to auto-generate system call information...");
+            tried_generating_sysnum_file = true;
+            /* Give the user some visible feedback. */
+            int prior_verbose = op_verbose_level;
+            if (op_verbose_level <= 0)
+                op_verbose_level = 1;
+            if (generate_sysnum_file(sysfile, sym_path)) {
+                notify("Auto-generation succeeded.  Re-launching the application.");
+                op_verbose_level = prior_verbose;
+                continue; /* restart app */
+            }
+            op_verbose_level = prior_verbose;
+        }
+#endif
+        goto cleanup;
+    } while (true);
  error:
     dr_inject_process_exit(inject_data, false);
     errcode = 1;

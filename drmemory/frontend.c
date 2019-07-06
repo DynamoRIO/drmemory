@@ -1613,8 +1613,8 @@ _tmain(int argc, TCHAR *targv[])
 #ifdef WINDOWS
         if (errcode == STATUS_INVALID_KERNEL_INFO_VERSION &&
             !tried_generating_syscall_file) {
-            warn("Running on an unsupported operating system version.  Attempting to "
-                 "auto-generate system call information...");
+            warn("System call information is missing for this operating system version. "
+                 "Attempting to auto-generate system call information...");
             tried_generating_syscall_file = true;
             /* Give the user some visible feedback. */
             if (op_verbose_level < 1)
