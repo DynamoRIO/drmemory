@@ -398,6 +398,7 @@ _tmain(int argc, const TCHAR *targv[])
         logdir[0] = '\0';
     }
 
+#ifdef WINDOWS
     if (op_sysnum_file.get_value().empty() || op_symcache_dir.get_value().empty()) {
         bool use_root;
         char local_root_dir[MAXIMUM_PATH];
@@ -459,6 +460,7 @@ _tmain(int argc, const TCHAR *targv[])
             op_sysnum_file.set_value(sysnum_file);
         }
     }
+#endif
 
     dr_standalone_init();
 
