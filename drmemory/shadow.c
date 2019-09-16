@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1011,10 +1011,6 @@ shadow_memory_is_shadow(app_pc addr)
  *
  * Table lookup is most performant way to do many operations, when we're
  * instrumenting so much code that code size is a bottleneck.
- */
-
-/* To ensure we can access the tables in 64-bit, we copy them into a low-2GB
- * mmap NOCHECK
  */
 
 /*
