@@ -1407,9 +1407,10 @@ insert_table_access_pre(void *drcontext, instrlist_t *bb, instr_t *inst,
         __FUNCTION__, table_addr);
     PRE(bb, inst,
         INSTR_CREATE_ror(drcontext, opnd_create_reg(base_reg), OPND_CREATE_INT8(32)));
+    int top_bits = (int)((table_addr - disp) >> 32);
     PRE(bb, inst,
         INSTR_CREATE_or(drcontext, opnd_create_reg(base_reg),
-                        OPND_CREATE_INT32((int)(table_addr >> 32))));
+                        OPND_CREATE_INT32(top_bits)));
     PRE(bb, inst,
         INSTR_CREATE_ror(drcontext, opnd_create_reg(base_reg), OPND_CREATE_INT8(32)));
 #endif
@@ -1420,8 +1421,8 @@ static void
 insert_table_access_post(void *drcontext, instrlist_t *bb, instr_t *inst,
                          ptr_int_t table_addr, reg_id_t base_reg)
 {
-    int disp = (int) table_addr;
 #ifdef X64
+    int disp = (int) table_addr;
     if (disp == table_addr)
         return;
     /* Clear the top bits again. */
