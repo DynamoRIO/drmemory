@@ -1013,6 +1013,10 @@ shadow_memory_is_shadow(app_pc addr)
  * instrumenting so much code that code size is a bottleneck.
  */
 
+/* To ensure we can access the tables in 64-bit, we copy them into a low-2GB
+ * mmap NOCHECK
+ */
+
 /*
 0000
 0001

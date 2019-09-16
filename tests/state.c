@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -55,8 +55,11 @@ typedef struct sigcontext sigcontext_t;
 # endif
 #elif defined(MACOS)
 # ifdef X64
-typedef _STRUCT_MCONTEXT_AVX64 sigcontext_t;
-#  define SIGCXT_FROM_UCXT(ucxt) ((sigcontext_t*)((ucxt)->uc_mcontext64))
+/* XCode 10.1 (probably others too) toolchain wants _STRUCT_MCONTEXT
+ * w/o _AVX64 and has a field named uc_mcontext with no 64.
+ */
+typedef _STRUCT_MCONTEXT64 sigcontext_t;
+#  define SIGCXT_FROM_UCXT(ucxt) ((sigcontext_t*)((ucxt)->uc_mcontext))
 #  define XAX __ss.__rax
 # else
 typedef _STRUCT_MCONTEXT_AVX32 sigcontext_t;

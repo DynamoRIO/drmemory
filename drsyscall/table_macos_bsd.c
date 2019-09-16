@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -40,7 +40,14 @@
 #include <sys/semaphore.h>
 #include <sys/event.h>
 #include <poll.h>
-#include <security/mac.h>
+#ifdef X64
+struct mac {
+  size_t m_buflen;
+  char *m_string;
+};
+#else
+# include <security/mac.h>
+#endif
 #include <mach/shared_region.h>
 
 #ifdef MACOS
@@ -1080,8 +1087,11 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(u_long), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(u_long), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(u_long), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(u_long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_exchangedata /*223*/}, "exchangedata", OK, RLONG, 3,
@@ -1645,7 +1655,10 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {5, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_psynch_cvsignal /*304*/}, "psynch_cvsignal", OK, DRSYS_TYPE_UNSIGNED_INT, 8,
@@ -1656,8 +1669,11 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {4, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {5, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_psynch_cvwait /*305*/}, "psynch_cvwait", OK, DRSYS_TYPE_UNSIGNED_INT, 8,
@@ -1668,8 +1684,11 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {4, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(int64_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {7, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_psynch_rw_rdlock /*306*/}, "psynch_rw_rdlock", OK, DRSYS_TYPE_UNSIGNED_INT, 5,
@@ -1727,7 +1746,10 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(uint32_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_aio_fsync /*313*/}, "aio_fsync", OK, RLONG, 2,
@@ -1791,7 +1813,10 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {4, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
          {5, sizeof(pid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(uint64_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#endif
      }
     },
     {{SYS_mlockall /*324*/}, "mlockall", OK, RLONG, 1,
@@ -2069,7 +2094,10 @@ syscall_info_t syscall_info_bsd[] = {
          {3, sizeof(struct kevent64_s), W|HT, DRSYS_TYPE_STRUCT},
          {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {5, sizeof(unsigned int), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+#if !(defined(MACOS) && defined(X64))
+         /* FIXME i#1438: how are 7th and 8th args passed on Mac64?!? */
          {6, sizeof(struct timespec), W|HT, DRSYS_TYPE_STRUCT},
+#endif
      }
     },
     {{SYS___old_semwait_signal /*370*/}, "__old_semwait_signal", OK, RLONG, 5,
