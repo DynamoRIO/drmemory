@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -28,7 +28,7 @@
 #ifdef WINDOWS
 /* We need extra room for dup entries for diff in vs out size to writes. */
 # define MAX_ARGS_IN_ENTRY 18 /* 17 is max known */
-#elif defined(MACOS)
+#elif defined(MACOS) && !defined(X64)
 # define MAX_ARGS_IN_ENTRY 8
 #else
 # define MAX_ARGS_IN_ENTRY 6 /* 6 is max on Linux */

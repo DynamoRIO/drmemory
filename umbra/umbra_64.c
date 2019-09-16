@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -308,12 +308,12 @@ typedef struct _app_segment_t {
     umbra_map_t *map[MAX_NUM_MAPS];
 } app_segment_t;
 
-#ifdef LINUX
+#ifdef UNIX /* TODO i#1438: Update for Mac64. */
 # define PIE_DEF_SEGMENT       (app_pc)((ptr_uint_t)0x55 << NUM_SEG_BITS)
 # define PIE_DEF_SEG_2X_DISP   ((ptr_uint_t)0x48 << 36)
 # define PIE_ALT_SEGMENT       (app_pc)((ptr_uint_t)0x56 << NUM_SEG_BITS)
 # define PIE_ALT_SEG_2X_DISP   ((ptr_uint_t)0x58 << 36)
-#endif /* LINUX */
+#endif
 
 static ptr_uint_t map_disp[] = {
 #ifdef WINDOWS

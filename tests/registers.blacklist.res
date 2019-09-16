@@ -21,13 +21,13 @@
 #
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1396
+registers.c_asm.asm:1398
 Error #2: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1408
+registers.c_asm.asm:1410
 Error #3: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1421
+registers.c_asm.asm:1423
 Error #4: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1422
+registers.c_asm.asm:1424
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)

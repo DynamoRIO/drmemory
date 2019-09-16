@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -54,6 +54,7 @@ extern size_t count_syscall_info_bsd;
 
 /* FIXME i#1440: add mach syscall table */
 #define SYSCALL_NUM_MARKER_MACH      0x1000000
+#define SYSCALL_NUM_MARKER_BSD       0x2000000 /* x64 only */
 #define SYSCALL_NUM_MARKER_MACHDEP   0x3000000
 
 /* FIXME i#1440: add machdep syscall table */
@@ -197,6 +198,10 @@ drsyscall_os_init(void *drcontext)
 
     dr_recurlock_lock(systable_lock);
     for (i = 0; i < count_syscall_info_bsd; i++) {
+#if defined(MACOS) && defined(X64)
+        /* We want to use SYS_ enums in the table so we add the BSD marker here. */
+        syscall_info_bsd[i].num.number |= SYSCALL_NUM_MARKER_BSD;
+#endif
         IF_DEBUG(bool ok =)
             hashtable_add(&systable, (void *) &syscall_info_bsd[i].num,
                           (void *) &syscall_info_bsd[i]);
@@ -288,7 +293,7 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t 
          */
         return ((ptr_int_t)pt->mc.xax >= 0);
     } else
-        return !TEST(EFLAGS_CF, pt->mc.eflags);
+        return !TEST(EFLAGS_CF, pt->mc.xflags);
 }
 
 bool
