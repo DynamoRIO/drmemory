@@ -108,6 +108,11 @@
 #define DEFAULT_DR_OPS \
     "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -vm_size 256M "\
     "-no_enable_reset"
+#if defined(MACOS) && defined(X64)
+# define DEFAULT_DR_OPS_EXT " -signal_stack_size 64K"
+#else
+# define DEFAULT_DR_OPS_EXT ""
+#endif
 
 #define DRMEM_CLIENT_ID 0
 
@@ -889,7 +894,7 @@ _tmain(int argc, TCHAR *targv[])
     drfront_string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
-             drops_sofar, len, "%s ", DEFAULT_DR_OPS);
+             drops_sofar, len, "%s%s ", DEFAULT_DR_OPS, DEFAULT_DR_OPS_EXT);
 #ifdef WINDOWS
     /* FIXME i#699: early injection crashes the child on 32-bit or on wow64 vista+.
      * We work around it here.  Should remove this once the real bug is fixed.

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -117,8 +117,8 @@ else ()
 endif ()
 
 if (APPLE)
-  # DRi#58: core DR does not yet support 64-bit Mac
-  set(arg_32_only ON)
+  # Macs no longer support 32-bit at all.
+  set(arg_64_only ON)
 endif ()
 
 # i#1099: be sure to set BUILDING_PACKAGE
@@ -151,14 +151,16 @@ else ()
 endif ()
 
 if (NOT arg_drmem_only)
-  testbuild_ex("drheapstat-${name_sfx}release-32" OFF "
-    TOOL_DR_HEAPSTAT:BOOL=ON
-    CMAKE_BUILD_TYPE:STRING=Release
-    " OFF ON "")
-  testbuild_ex("drheapstat-${name_sfx}debug-32" OFF "
-    TOOL_DR_HEAPSTAT:BOOL=ON
-    CMAKE_BUILD_TYPE:STRING=Debug
-    " OFF ON "")
+  if (NOT arg_64_only)
+    testbuild_ex("drheapstat-${name_sfx}release-32" OFF "
+      TOOL_DR_HEAPSTAT:BOOL=ON
+      CMAKE_BUILD_TYPE:STRING=Release
+      " OFF ON "")
+    testbuild_ex("drheapstat-${name_sfx}debug-32" OFF "
+      TOOL_DR_HEAPSTAT:BOOL=ON
+      CMAKE_BUILD_TYPE:STRING=Debug
+      " OFF ON "")
+  endif ()
   testbuild_ex("drheapstat-${name_sfx}release-64" ON "
     TOOL_DR_HEAPSTAT:BOOL=ON
     CMAKE_BUILD_TYPE:STRING=Release
@@ -171,18 +173,20 @@ endif (NOT arg_drmem_only)
 if (NOT arg_32_only)
   testbuild_ex("drmemory-${name_sfx}release-64" ON "
     CMAKE_BUILD_TYPE:STRING=Release
-  " OFF ON "")
+    " OFF ON "")
   testbuild_ex("drmemory-${name_sfx}debug-64" ON "
     CMAKE_BUILD_TYPE:STRING=Debug
-  " OFF ON "")
+    " OFF ON "")
 endif (NOT arg_32_only)
-# 32-bit last, to match DR for embedded packaging
-testbuild_ex("drmemory-${name_sfx}release-32" OFF "
-  CMAKE_BUILD_TYPE:STRING=Release
-  " OFF ON "")
-testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
-  CMAKE_BUILD_TYPE:STRING=Debug
-  " OFF ON "")
+if (NOT arg_64_only)
+  # 32-bit last, to match DR for embedded packaging
+  testbuild_ex("drmemory-${name_sfx}release-32" OFF "
+    CMAKE_BUILD_TYPE:STRING=Release
+    " OFF ON "")
+  testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
+    CMAKE_BUILD_TYPE:STRING=Debug
+    " OFF ON "")
+endif ()
 
 if (arg_cpackappend)
   # ${last_package_build_dir} is a global var set in parent scope by

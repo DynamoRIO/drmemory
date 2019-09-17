@@ -199,8 +199,12 @@ drsyscall_os_init(void *drcontext)
     dr_recurlock_lock(systable_lock);
     for (i = 0; i < count_syscall_info_bsd; i++) {
 #if defined(MACOS) && defined(X64)
-        /* We want to use SYS_ enums in the table so we add the BSD marker here. */
-        syscall_info_bsd[i].num.number |= SYSCALL_NUM_MARKER_BSD;
+        /* We want to use SYS_ enums in the table so we could add the BSD marker
+         * here via:
+         *   syscall_info_bsd[i].num.number |= SYSCALL_NUM_MARKER_BSD;
+         * however, DR is removing the marker from the numbers we see, so we leave it
+         * off.  XXX: Will a user look at raw syscalls and include it?
+         */
 #endif
         IF_DEBUG(bool ok =)
             hashtable_add(&systable, (void *) &syscall_info_bsd[i].num,
