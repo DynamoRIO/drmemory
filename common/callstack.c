@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1980,7 +1980,8 @@ callstack_next_retaddr(dr_mcontext_t *mc)
     app_pc res = NULL;
     packed_callstack_t *pcs;
     packed_callstack_record(&pcs, mc, NULL, 1);
-    res = PCS_FRAME_LOC(pcs, 0).addr;
+    if (pcs->num_frames > 0)
+        res = PCS_FRAME_LOC(pcs, 0).addr;
     packed_callstack_destroy(pcs);
     return res;
 }
