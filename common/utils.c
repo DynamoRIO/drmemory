@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -45,7 +45,7 @@
 /* globals that affect NOTIFY* and *LOG* macros */
 int tls_idx_util = -1;
 bool op_print_stderr = true;
-uint op_verbose_level;
+int op_verbose_level;
 bool op_pause_at_assert;
 bool op_pause_via_loop;
 bool op_ignore_asserts;
@@ -905,6 +905,10 @@ init_os_version(void)
         os_version.version = DR_WINDOWS_VERSION_10_1803;
         os_version.service_pack_major = 1;
         os_version.service_pack_minor = 0;
+        /* Make it clear we don't know these fields: */
+        os_version.build_number = 0;
+        os_version.release_id[0] = '\0';
+        os_version.edition[0] = '\0';
     }
 }
 
@@ -939,6 +943,17 @@ get_windows_version(void)
     if (os_version.version == 0)
         init_os_version();
     return os_version.version;
+}
+
+void
+get_windows_version_string(char *buf OUT, size_t bufsz)
+{
+    if (os_version.version == 0)
+        init_os_version();
+    dr_snprintf(buf, bufsz, "WinVer=%u;Rel=%s;Build=%u;Edition=%s",
+                os_version.version, os_version.release_id, os_version.build_number,
+                os_version.edition);
+    buf[bufsz - 1] = '\0';
 }
 
 GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.    All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.    All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.    All rights reserved.
 # **********************************************************
 
@@ -105,7 +105,7 @@ add_executable(drltrace ${front_srcs})
 
 configure_DynamoRIO_standalone(drltrace)
 
-target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib)
+target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
 
 set_library_version(drltrace ${DRMF_VERSION})
 

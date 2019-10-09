@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -233,10 +233,10 @@ endif (APPLE)
 
 # N.B.: when updating this, update the git tag in .travis.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "1.11.${VERSION_NUMBER_PATCHLEVEL}")
-# do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
+set(VERSION_NUMBER_DEFAULT "2.2.${VERSION_NUMBER_PATCHLEVEL}")
+# Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
-# avoid "VERSION_NUMBER" name since conflics w/ DR's var
+# Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
 set(TOOL_VERSION_NUMBER "" CACHE STRING "Version number: leave empty for default")
 if ("${TOOL_VERSION_NUMBER}" STREQUAL "")
   set(TOOL_VERSION_NUMBER ${VERSION_NUMBER_DEFAULT})
@@ -544,9 +544,13 @@ if (WIN32)
       set(DDK_SFX "i386")
     endif (X64)
   endif ()
+  # Allow packaging to specify a glob for a prefered path for x86 and x64.
+  set(DBGHELP_GLOB "" CACHE STRING
+    "Preferred path for dbghelp.dll with wildcard expansion")
   # Even the VS2005 copy is 6.5 (despite its headers being < 6.3) so we can
   # use those as well as the later SDK and standalone DTFW versions.
   set(dbghelp_paths
+    "${DBGHELP_GLOB}"
     "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
@@ -555,7 +559,9 @@ if (WIN32)
     # We look in both paths (Program Files and Program Files (x86)) because some versions of
     # Visual Studio put dbghelp.dll in progfiles (especially 2008) and some in progfiles32.
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/dbghelp.dll")
+
   if (X64)
     set(dbghelp_paths ${dbghelp_paths}
       # For older versions of windbg, x64 dbghelp.dll resides here.
@@ -577,8 +583,18 @@ if (WIN32)
     math(EXPR dbghelp_max "${dbghelp_max} - 1")
     set(dbghelp_index 0)
     list(GET dbghelp_hint 0 dbghelp_default)
-    while (X64 AND dbghelp_default MATCHES "Visual Studio 8" AND
-        ${dbghelp_index} LESS ${dbghelp_max})
+    while (${dbghelp_index} LESS ${dbghelp_max})
+      if (X64 AND dbghelp_default MATCHES "Visual Studio 8")
+        # Keep looking.
+      elseif (X64 AND dbghelp_default MATCHES "/x86/")
+        # Keep looking.
+      elseif (NOT X64 AND dbghelp_default MATCHES "/x64/")
+        # Keep looking.
+      elseif (NOT X64 AND dbghelp_default MATCHES "/amd64/")
+        # Keep looking.
+      else ()
+        break ()
+      endif ()
       math(EXPR dbghelp_index "${dbghelp_index} + 1")
       list(GET dbghelp_hint ${dbghelp_index} dbghelp_default)
     endwhile()
@@ -599,12 +615,18 @@ if (WIN32)
   else ()
     message(STATUS "Using ${DBGHELP_DLL}")
   endif ()
+  # Allow packaging to specify a glob for a prefered path for x86 and x64.
+  set(SYMSRV_GLOB "" CACHE STRING
+    "Preferred path for dbghelp.dll with wildcard expansion")
   set(symsrv_paths
+    "{SYMSRV_GLOB}"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
-    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll")
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/symsrv.dll")
+
   if (X64)
     set(symsrv_paths ${symsrv_paths}
       # For older versions of windbg, x64 symsrv.dll resides here.
@@ -618,6 +640,22 @@ if (WIN32)
   file(GLOB symsrv_hint ${symsrv_paths})
   if (symsrv_hint)
     list(GET symsrv_hint 0 symsrv_default)
+    list(LENGTH symsrv_hint symsrv_max)
+    math(EXPR symsrv_max "${symsrv_max} - 1")
+    set(symsrv_index 0)
+    while (${symsrv_index} LESS ${symsrv_max})
+      if (X64 AND symsrv_default MATCHES "/x86/")
+        # Keep looking.
+      elseif (NOT X64 AND symsrv_default MATCHES "/x64/")
+        # Keep looking.
+      elseif (NOT X64 AND symsrv_default MATCHES "/amd64/")
+        # Keep looking.
+      else ()
+        break ()
+      endif ()
+      math(EXPR symsrv_index "${symsrv_index} + 1")
+      list(GET symsrv_hint ${symsrv_index} symsrv_default)
+    endwhile()
   else ()
     set(symsrv_default "SYMSRV_DLL-NOTFOUND")
   endif ()
@@ -809,9 +847,13 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "6.2.17499")
+set(DynamoRIO_VERSION_REQUIRED "7.91.18077")
 
 set(DR_install_dir "dynamorio")
+
+set(DynamoRIO_PAGE_SIZE_COMPATIBILITY ON)
+
+set(DynamoRIO_LOG_COMPATIBILITY ON)
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
@@ -1044,7 +1086,7 @@ endif ()
 
 function (copy_target_to_device target)
   if (DRM_COPY_TO_DEVICE)
-    DynamoRIO_copy_target_to_device(${target} ${DRM_DEVICE_BASEDIR})
+    DynamoRIO_copy_target_to_device(${target} ${DRM_DEVICE_BASEDIR} "${_DR_location_suffix}")
   endif ()
 endfunction (copy_target_to_device)
 
@@ -1062,9 +1104,9 @@ endfunction (copy_file_to_device)
 
 function (get_target_path_for_execution out target)
   if (ANDROID)
-    DynamoRIO_get_target_path_for_execution(local ${target} ${DRM_DEVICE_BASEDIR})
+    DynamoRIO_get_target_path_for_execution(local ${target} ${DRM_DEVICE_BASEDIR} "${_DR_location_suffix}")
   else ()
-    DynamoRIO_get_target_path_for_execution(local ${target} "")
+    DynamoRIO_get_target_path_for_execution(local ${target} "" "${_DR_location_suffix}")
   endif ()
   set(${out} ${local} PARENT_SCOPE)
 endfunction (get_target_path_for_execution)
@@ -1362,7 +1404,8 @@ if (USE_DRSYMS)
   set(DynamoRIO_RPATH ON)
   configure_DynamoRIO_standalone(${toolname})
   set(DynamoRIO_RPATH ${old_rpath})
-  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib)
+  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib
+    drsyscall_static)
   if (WIN32)
     set_target_properties(${toolname} PROPERTIES
       VERSION ${TOOL_VERSION_NUMBER}
@@ -2068,7 +2111,9 @@ else (BUILDING_SUB_PACKAGE)
       DESTINATION ${INSTALL_PREFIX}${DR_install_dir}/${LIB_ARCH}
       FILE_PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE
-      PATTERN "libdrdecode*" EXCLUDE)
+      PATTERN "libdrdecode*" EXCLUDE
+      # Static DR is large and we do not need it.
+      PATTERN "libdynamorio_static*" EXCLUDE)
     # ext dir is currently empty but we need it to avoid drrun error (i#427)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/${build_type}\")")
     # CPack seems to ignore empty dirs so add a README file
@@ -2295,7 +2340,9 @@ if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
   if (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # install to drmemory exports dir
     install(DIRECTORY "${DynamoRIO_DIR}/../${LIB_ARCH}"
-      DESTINATION "${DR_install_dir}")
+      DESTINATION "${DR_install_dir}"
+      # Static DR is large and we do not need it.
+      PATTERN "dynamorio_static*" EXCLUDE)
     # we don't need ext/ at all b/c we use static libs
   else (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # don't take time and space copying: user can pass same dr to frontend,

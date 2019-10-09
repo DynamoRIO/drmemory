@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -61,6 +61,9 @@ extern bool stack_swap_threshold_fixed;
 
 void
 options_init(const char *opstr);
+
+void
+options_reset_to_defaults(void);
 
 void
 usage_error(const char *msg, const char *submsg);

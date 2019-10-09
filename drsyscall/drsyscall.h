@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -408,6 +408,9 @@ typedef struct _drsys_options_t {
      * Windows in particular, with a simple data file update.  The file is only
      * examined if the built-in system call tables do not match the current operating
      * system.
+     *
+     * This file can be generated using drsys_find_sysnum_dlls() and
+     * drsys_generate_sysnum_file().
      *
      * The file format is text line-based.  The first line must contain the string
      * "DrSyscall Number File" (#DRSYS_SYSNUM_FILE_HEADER).  The second line must
@@ -973,6 +976,60 @@ DR_EXPORT
 drmf_status_t
 drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data);
 
+/***************************************************************************
+ * WINDOWS SYSCALL NUMBER DETERMINATION
+ */
+
+DR_EXPORT
+/**
+ * Locates the system libraries that contain system calls for the current operating
+ * system for the purpose of passing them to drsys_generate_sysnum_file().  Returns
+ * an array of paths.  The caller must set the capacity of the array in \p
+ * num_sysnum_libs and allocate at least MAXIMUM_PATH bytes for each entry in
+ * the array.  If the array length is too small, this function returns
+ * DRMF_ERROR_INVALID_SIZE and sets \p num_sysnum_libs to the size needed.  On
+ * success, returns DRMF_SUCCESS and the library count in \p num_sysnum_libs.
+ *
+ * @param[out] sysnum_lib_paths  Pointer to an array of length \p num_sysnum_libs
+ *   which will hold the paths of the libraries on success.
+ * @param[in,out] num_sysnum_libs   The caller must set this to the capacity of
+ *   \p sysnum_lib_paths on entry.  On success this will hold the number of paths
+ *   written to the array.  When returning DRMF_ERROR_INVALID_SIZE this will hold
+ *   the required size of the array.
+ *
+ * \note Windows-only.
+ */
+drmf_status_t
+drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_libs);
+
+DR_EXPORT
+/**
+ * Writes out a text file that contains system call numbers for the operating system
+ * whose system libraries are in \p sysnum_lib_paths with a count of \p
+ * num_sysnum_libs.  Typically this list will be obtained for the current operating
+ * system from drsys_find_sysnum_libs().  The text file is written to \p outfile in
+ * the format expected by the sysnum_file field of #drsys_options_t.
+ *
+ * To accomplish this, this function requires debug symbols for each of the
+ * libraries.  It attempts to retrieve the symbols over the network if they are not
+ * found in the \p cache_dir or _NT_SYMBOL_PATH used by dbghelp.dll through the
+ * drsyms extension.
+ *
+ * @param[in] drcontext  The current DynamoRIO thread context or standalone context.
+ * @param[in] sysnum_lib_paths  Pointer to an array of length \p num_sysnum_libs
+ *   which holds the paths of the system libraries from which system call numbers
+ *   should be extracted.
+ * @param[in] num_sysnum_libs   The length of the \p sysnum_lib_paths array.
+ * @param[in] outfile  The name of the output text file to be written.
+ * @param[in] cache_dir  The path where retrieved symbol data should be cached (and
+ *   searched if already retrieved).
+ *
+ * \note Windows-only.
+ */
+drmf_status_t
+drsys_generate_sysnum_file(void *drcontext, const char **sysnum_lib_paths,
+                           size_t num_sysnum_libs, const char *outfile,
+                           const char *cache_dir);
 
 /***************************************************************************
  * SYNCHRONOUS ITERATORS

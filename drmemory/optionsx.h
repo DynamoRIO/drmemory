@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -427,7 +427,7 @@ OPTION_CLIENT_SCOPE(drmemscope, stack_swap_threshold, int, 0x9000, 256, INT_MAX,
                     "Stack change amount to consider a swap instead of an allocation or de-allocation on the same stack.  "TOOLNAME" attempts to dynamically tune this value unless it is changed from its default.")
 OPTION_CLIENT_SCOPE(drmemscope, redzone_size, uint, 16, 0, 32*1024,
                     "Buffer on either side of each malloc",
-                    "Buffer on either side of each malloc.  This should be a multiple of 8.")
+                    "Buffer on either side of each malloc.  This should be a multiple of 8 for 32-bit and 16 for 64-bit.")
 OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
                     "Maximum non-leak errors to report (-1=no limit)",
                     "Maximum non-leak errors to report (-1=no limit).  This includes 'potential' errors listed separately.")
@@ -493,10 +493,8 @@ OPTION_CLIENT_BOOL(drmemscope, handle_leaks_only, false,
                    "Check only for handle leak errors and no other errors",
                    "Puts "TOOLNAME" into a handle-leak-check-only mode that has lower overhead but does not detect other types of errors other than handle leaks in Windows.")
 #endif /* WINDOWS */
-/* XXX i#111: x86_64 full mode is not quite ready on Windows */
 /* XXX i#1726: only pattern is currently supported on ARM */
-OPTION_CLIENT_BOOL(drmemscope, check_uninitialized,
-                   IF_ARM_ELSE(false, IF_WINDOWS_ELSE(IF_X64_ELSE(false, true), true)),
+OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, IF_ARM_ELSE(false, true),
                    "Check for uninitialized read errors",
                    "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
 OPTION_CLIENT_BOOL(drmemscope, check_stack_bounds, false,
@@ -590,11 +588,8 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, unaddr_only, false,
                    "Enables a lightweight mode that detects only unaddressable errors",
                    "This option enables a lightweight mode that only detects critical errors of unaddressable accesses on heap data.  This option cannot be used with 'light' or 'check_uninitialized'.")
-/* XXX i#111: x86_64 full mode is not quite ready on Windows */
 /* XXX i#1726: only pattern is currently supported on ARM */
-OPTION_CLIENT_SCOPE(drmemscope, pattern, uint,
-                    IF_ARM_ELSE(DEFAULT_PATTERN,
-                                IF_WINDOWS_ELSE(IF_X64_ELSE(DEFAULT_PATTERN, 0), 0)),
+OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, IF_ARM_ELSE(DEFAULT_PATTERN, 0),
                     0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.  The value passed as the pattern must be a non-zero 2-byte value.")
@@ -613,6 +608,9 @@ OPTION_CLIENT_BOOL(drmemscope, ignore_kernel, false,
 OPTION_CLIENT_BOOL(drmemscope, use_syscall_tables, true,
                    "Use Dr. Memory's own syscall tables where possible",
                    "On by default, this allows disabling the use of Dr. Memory's own syscall tables, in case the check for whether they match the underlying kernel is inaccurate.")
+OPTION_CLIENT_STRING(drmemscope, syscall_number_path, "",
+                   "Points at a directory containing a system call number file",
+                   "When running on an operating system version that this version of Dr. Memory does not have direct support for, a system call number file can be used to provide needed operating system information.  These files are named syscalls_{x86,wow64,x64}.txt.  This parameter should point at the directory containing the file.  By default these are located in -symcache_dir.")
 OPTION_CLIENT_BOOL(drmemscope, coverage, false,
                    "Measure and provide code coverage information",
                    "Measure code coverage during application execution.  The resulting data is written to a separate file named with a 'drcov' prefix in the same directory as Dr. Memory's other results files.  The raw data can be turned into a human-readable format using the drcov2lcov utility.")

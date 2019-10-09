@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -424,9 +424,8 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
-# FIXME i#111: 64-bit full mode doesn't quite support Windows yet.
 # i#1726: ARM is only supported in pattern mode.
-if (NOT ARM AND UNIX OR NOT X64)
+if (NOT ARM)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -447,9 +446,7 @@ else ()
 endif ()
 if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
-  if (NOT X64) # FIXME i#111: failing on Travis
-    newtest(multierror multierror.cpp)
-  endif ()
+  newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
 if (NOT ARM) # XXX i#1726: port to ARM
   newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
@@ -536,7 +533,9 @@ if (UNIX)
           VERBATIM)
       add_custom_target("${kmod_name}"
           DEPENDS "${kmod_bin}")
-      add_dependencies(syscalls_unix "${kmod_name}")
+      if (NOT X64) # FIXME i#111: failing on Travis
+        add_dependencies(syscalls_unix "${kmod_name}")
+      endif ()
       set(kmod_build_files "${kmod_bin_dir}/modules.order"
           "${kmod_bin_dir}/Module.symvers"
           "${kmod_bin_dir}/${kmod_name}.c"
@@ -663,7 +662,11 @@ if (TOOL_DR_MEMORY)
   # note that we can't run the realloc test b/c the races will result in unaddrs.
   newtest_nobuild(noreplace_realloc malloc "" "-no_replace_realloc" "" OFF "malloc")
   # test redzone sizes
-  newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
+  if (X64)
+    newtest_nobuild(redzone16 malloc "" "-redzone_size;16" "" OFF "malloc")
+  else ()
+    newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
+  endif ()
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
@@ -680,7 +683,10 @@ if (TOOL_DR_MEMORY)
 
   # -replace_malloc is now the default, so test wrapping
   if (WIN32) # i#1781: fails on many Linux machines so disabling there
-    newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+    endif ()
   endif ()
   # i#2030: we do not support wrap tests on x64
   if (NOT X64)
@@ -778,7 +784,10 @@ if (TOOL_DR_MEMORY)
     newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" 0)
     # i#1532: we only report C vs Win mismatches for /MD*
     append_test_compile_flags(wincrt "/MD")
-    newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
+    endif ()
 
     # FIXME: Re-enable when it doesn't break the build.
     #newtest(rtl_memory_zones rtl_memory_zones.c)
@@ -792,7 +801,11 @@ if (TOOL_DR_MEMORY)
       tobuild(wincrtdbg wincrt.cpp)
       append_test_compile_flags(wincrtdbg "/MTd")
       newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
-      newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF "wincrtdbg")
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
+          "wincrtdbg")
+      endif ()
 
       newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
@@ -802,7 +815,11 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF "cs2bugMTd")
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
+          "cs2bugMTd")
+      endif ()
 
       # Test i#607 part D
       tobuild(operatorsMDd operators.cpp)
@@ -810,8 +827,11 @@ if (TOOL_DR_MEMORY)
       newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
         # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
         "ANY" "")
-      newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
+      # i#2030: we do not support wrap tests on x64
+      if (NOT X64)
+        newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
           "-no_replace_malloc" "" OFF operators 0 "")
+      endif ()
     endif (USE_DRSYMS)
 
     if (GCC)
@@ -845,7 +865,11 @@ if (TOOL_DR_MEMORY)
     target_link_libraries(realloc pthread)
   endif ()
 
-  newtest(annotations annotations.c)
+  if (WIN32 AND X64)
+    # Valgrind annotations are not available for 64-bit Windows. */
+  else ()
+    newtest(annotations annotations.c)
+  endif ()
 
   if (UNIX AND NOT ANDROID) # Android doesn't seem to support these alloc routines
     newtest(memalign memalign.c)
@@ -921,7 +945,10 @@ if (WIN32)
   # char test, so we stick to wrapping for this test.
   # Wrapping doesn't work on win8 so we disable the test there.
   if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-    newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string 0)
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string 0)
+    endif ()
   endif ()
 
   # Ensure we don't spit out false positives when there are no symbols for the app
@@ -1051,10 +1078,10 @@ if (NOT APPLE AND NOT ARM)
     # our internal tables.
     find_package(Perl)
     if (NOT PERL_FOUND)
-      message(STATUS "Warning: perl not found: disabling syscall file tests")
+      message(STATUS "Warning: perl not found: disabling syscall_file_all test")
     else ()
-      # DrM looks in the bin dir:
-      set(syscall_file_path "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
+      # Place somewhere that DrM won't look by default:
+      set(syscall_file_path "${CMAKE_CURRENT_BINARY_DIR}")
       add_custom_target(syscall_files ALL
         DEPENDS "${syscall_file_path}/syscalls_x86.txt")
       add_custom_command(
@@ -1065,13 +1092,20 @@ if (NOT APPLE AND NOT ARM)
         COMMAND ${PERL_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/mksyscalltxt.pl
           ${syscall_file_path}
         VERBATIM)
-      newtest_nobuild(syscall_file app_suite_tests
+      newtest_nobuild(syscall_file_all app_suite_tests
         # Run enough tests to generate some errors w/o accurate syscall info.
         # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
         "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
-        "-no_use_syscall_tables;-ignore_kernel;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-        "-checklevel;1" OFF "")
+        "-no_use_syscall_tables;-ignore_kernel;-syscall_number_path;${syscall_file_path};-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+        "-checklevel;1" OFF "syscall_file")
     endif (NOT PERL_FOUND)
+    # Test auto-generating syscall number files (i#1848):
+    newtest_nobuild(syscall_file_gen app_suite_tests
+      # Run enough tests to generate some errors w/o accurate syscall info.
+      # Disable Msgbox (slow) and ScrollDC (GDI error flakiness).
+      "--gtest_filter=ATLTests.*:NtUserTests.*:-NtUserTests.Msgbox:NtUserTests.ScrollDC"
+      "-no_use_syscall_tables;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+      "-checklevel;1" OFF "syscall_file")
   endif ()
 endif ()
 

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1388,6 +1388,50 @@ insert_cmp_for_equality(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 
+/* Assumes base_reg is pointer-sized but only contains data in the bottom 16 bits. */
+static int
+insert_table_access_pre(void *drcontext, instrlist_t *bb, instr_t *inst,
+                        ptr_int_t table_addr, reg_id_t base_reg)
+{
+    int disp = (int) table_addr;
+#ifdef X64
+    if (disp == table_addr)
+        return disp;
+    /* To avoid having to spill yet another register to access a table not in the low
+     * 2GB, we add the high 32 bits of the address to the base register.
+     * An alternative would be to mmap space in the low 2GB and copy our tables there:
+     * but __PAGEZERO makes that impossible on Mac, and we do not have enough TLS
+     * slots to copy our tables there.  Xref i#2083.
+     */
+    LOG(4, "%s: table addr " PFX " >2GB so using ror,or,ror to add upper bits.\n",
+        __FUNCTION__, table_addr);
+    PRE(bb, inst,
+        INSTR_CREATE_ror(drcontext, opnd_create_reg(base_reg), OPND_CREATE_INT8(32)));
+    int top_bits = (int)((table_addr - disp) >> 32);
+    PRE(bb, inst,
+        INSTR_CREATE_or(drcontext, opnd_create_reg(base_reg),
+                        OPND_CREATE_INT32(top_bits)));
+    PRE(bb, inst,
+        INSTR_CREATE_ror(drcontext, opnd_create_reg(base_reg), OPND_CREATE_INT8(32)));
+#endif
+    return disp;
+}
+
+static void
+insert_table_access_post(void *drcontext, instrlist_t *bb, instr_t *inst,
+                         ptr_int_t table_addr, reg_id_t base_reg)
+{
+#ifdef X64
+    int disp = (int) table_addr;
+    if (disp == table_addr)
+        return;
+    /* Clear the top bits again. */
+    reg_id_t reg32 = reg_ptrsz_to_32(base_reg);
+    PRE(bb, inst,
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg32), opnd_create_reg(reg32)));
+#endif
+}
+
 /* Adds a check that app_op's shadow in shadow_op has its shadow bits
  * defined.  mi->src_opsz is assumed to be the size.
  */
@@ -1465,15 +1509,16 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
                      mi->xl8));
         }
         mark_eflags_used(drcontext, bb, mi->bb);
-        ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_defined);
-        ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_defined);
-        disp += (int)(ptr_int_t)
+
+        ptr_int_t table_addr = (ptr_int_t)
             ((sz == 1) ? shadow_byte_defined : shadow_word_defined);
+        disp += insert_table_access_pre(drcontext, bb, inst, table_addr, base);
         /* look up in series of 4 tables, one for each offset */
         PRE(bb, inst,
             INSTR_CREATE_cmp(drcontext,
                              opnd_create_base_disp(base, index, 1, disp, OPSZ_1),
                              OPND_CREATE_INT8(1)));
+        insert_table_access_post(drcontext, bb, inst, table_addr, base);
     } else {
         if (oi != NULL && oi->indir_size != OPSZ_NA) {
             reg_id_t indir_tgt = reg_to_size(mi->reg3.reg, shadow_reg_indir_size(oi));
@@ -1843,6 +1888,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
+                              /* x64 instru is generally longer */
+                              IF_X64(true ||)
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(base) - DR_REG_XAX] = true;
@@ -1863,6 +1910,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               mi->memsz > 8 ||
                               /* new zero-src check => require long */
                               instr_needs_all_srcs_and_vals(inst) ||
+                              /* x64 instru is generally longer */
+                              IF_X64(true ||)
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(index) - DR_REG_XAX] = true;
@@ -2594,15 +2643,14 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 
             if (instr_get_opcode(inst) == OP_movsx) {
                 reg_id_t reg32 = reg_to_pointer_sized(opnd_get_reg(opreg1));
-                int disp;
                 PRE(bb, inst, INSTR_CREATE_movzx
                     (drcontext, opnd_create_reg(reg32), opreg1));
-                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_2_to_dword);
-                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_4_to_dword);
-                disp = (int)(ptr_int_t)((src_opsz == 1) ?
-                                        shadow_2_to_dword : shadow_4_to_dword);
+                ptr_int_t table_addr = (ptr_int_t)
+                    ((src_opsz == 1) ? shadow_2_to_dword : shadow_4_to_dword);
+                int disp = insert_table_access_pre(drcontext, bb, inst, table_addr, reg32);
                 PRE(bb, inst, INSTR_CREATE_mov_ld
                     (drcontext, opreg1, OPND_CREATE_MEM8(reg32, disp)));
+                insert_table_access_post(drcontext, bb, inst, table_addr, reg32);
             }
 
             /* Write result */
@@ -3379,12 +3427,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              */
             ASSERT(mi->memsz == 4, "only word-sized mem2mem prop supported");
             /* Check for unaddressability via table lookup */
-            ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_dword_is_addr_not_bit);
-            disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
+            ptr_int_t table_addr = (ptr_int_t)shadow_dword_is_addr_not_bit;
+            disp = insert_table_access_pre(drcontext, bb, inst, table_addr, mi->reg3.reg);
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext,
                                  OPND_CREATE_MEM8(mi->reg3.reg, disp),
                                  OPND_CREATE_INT8(1)));
+            insert_table_access_post(drcontext, bb, inst, table_addr, mi->reg3.reg);
             mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
             /* shouldn't be other srcs */
             ASSERT(opnd_is_null(mi->src[1].shadow), "mem2mem error");
@@ -3632,7 +3681,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              mi->src[2].app, mi->src[2].shadow);
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
         mi->num_to_propagate--;
         mi->src[2].shadow = opnd_create_null();
     }
@@ -3682,12 +3732,14 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                      (~0, opnd_get_size(app_val))));
             }
             add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             OP_jne : OP_jne_short, mi);
             /* having mi->num_to_propagate == 0 implies mark_defined */
             PRE(bb, marker1, src2_defined);
         } else {
             add_jcc_slowpath(drcontext, bb, marker1,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             OP_jne : OP_jne_short, mi);
         }
         mi->num_to_propagate--;
         tmp = mi->src[1];
@@ -3730,7 +3782,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->need_slowpath = true;
                 heap_unaddr_shadow = mi->src[0].shadow;
             } else {
-                add_jcc_slowpath(drcontext, bb, marker1, OP_jne_short, mi);
+                add_jcc_slowpath(drcontext, bb, marker1,
+                                 IF_X64_ELSE(OP_jne, OP_jne_short), mi);
             }
             if (mi->load)
                 checked_memsrc = true;
@@ -3749,11 +3802,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
         insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
         add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                         (IF_X64(true ||) check_ignore_unaddr) ?
+                         OP_jne : OP_jne_short, mi);
     }
     ASSERT(mi->memsz <= sizeof(void*) || mi->num_to_propagate == 0 || mi->memsz ==16,
            "propagation not suported for odd-sized memops");
@@ -3791,24 +3846,27 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                  * rest of mi->memoffs and in 8h position it's doing x256 already.
                  */
                 reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
-                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_addr_not_bit);
-                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_addr_not_bit);
-                disp = (int)(ptr_int_t) ((mi->memsz == 1) ?
-                                         shadow_byte_addr_not_bit :
-                                         shadow_word_addr_not_bit);
+                ptr_int_t table_addr = (ptr_int_t) ((mi->memsz == 1) ?
+                                                    shadow_byte_addr_not_bit :
+                                                    shadow_word_addr_not_bit);
+                int disp = insert_table_access_pre(drcontext, bb, inst, table_addr,
+                                                   mi->reg2.reg);
                 ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
                                      opnd_create_base_disp(mi->reg2.reg, idx,
                                                            1, disp, OPSZ_1),
                                      OPND_CREATE_INT8(1)));
+                insert_table_access_post(drcontext, bb, inst, table_addr, mi->reg2.reg);
             } else {
-                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_dword_is_addr_not_bit);
-                disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
+                ptr_int_t table_addr = (ptr_int_t)shadow_dword_is_addr_not_bit;
+                disp = insert_table_access_pre(drcontext, bb, inst, table_addr,
+                                               mi->reg2.reg);
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
                                      OPND_CREATE_MEM8(mi->reg2.reg, disp),
                                      OPND_CREATE_INT8(1)));
+                insert_table_access_post(drcontext, bb, inst, table_addr, mi->reg2.reg);
             }
         } else {
             /* Conservative check for addressability: check for definedness.
@@ -3846,7 +3904,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                   reg_ptrsz_to_32(mi->reg2.reg)));
         } else {
             add_jcc_slowpath(drcontext, bb, inst,
-                             check_ignore_unaddr ? (jcc_unaddr == OP_jne ? OP_jne : OP_je)
+                             (IF_X64(true ||) check_ignore_unaddr) ?
+                             (jcc_unaddr == OP_jne ? OP_jne : OP_je)
                              : (jcc_unaddr == OP_jne ? OP_jne_short : OP_je_short), mi);
         }
     } else if (mi->store) {
@@ -3866,7 +3925,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
                 add_jcc_slowpath(drcontext, bb, inst,
-                                 (check_ignore_unaddr || mi->memsz < 4) ?
+                                 (IF_X64(true ||) check_ignore_unaddr || mi->memsz < 4) ?
                                  OP_jne : OP_jne_short, mi);
             }
         } else {
@@ -3888,7 +3947,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     heap_unaddr_shadow = mi->dst[0].shadow;
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
-                                     check_ignore_unaddr ? OP_je : OP_je_short, mi);
+                                     (IF_X64(true ||) check_ignore_unaddr) ?
+                                     OP_je : OP_je_short, mi);
                 }
             } else if (options.stores_use_table && mi->memsz <= 4) {
                 /* check for unaddressability.  we used to combine it with
@@ -3918,28 +3978,28 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     /* PR 503782: check just the bytes referenced.  We've zeroed the
                      * rest of mi->memoffs and in 8h position it's doing x256 already.
                      */
-                    int disp;
                     reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
-                    ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_addr_not_bit);
-                    ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_addr_not_bit);
-                    disp = (int)(ptr_int_t) ((mi->memsz == 1) ?
-                                             shadow_byte_addr_not_bit :
-                                             shadow_word_addr_not_bit);
+                    ptr_int_t table_addr = (ptr_int_t)
+                        ((mi->memsz == 1) ? shadow_byte_addr_not_bit :
+                         shadow_word_addr_not_bit);
+                    int disp = insert_table_access_pre(drcontext, bb, inst, table_addr,
+                                                       scratch);
                     ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                     PRE(bb, inst,
                         INSTR_CREATE_cmp(drcontext,
                                          opnd_create_base_disp(scratch, idx,
                                                                1, disp, OPSZ_1),
                                          OPND_CREATE_INT8(1)));
+                    insert_table_access_post(drcontext, bb, inst, table_addr, scratch);
                 } else {
-                    int disp;
-                    ASSERT_TRUNCATE(disp, int,
-                                    (ptr_int_t)shadow_dword_is_addr_not_bit);
-                    disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
+                    ptr_int_t table_addr = (ptr_int_t)shadow_dword_is_addr_not_bit;
+                    int disp = insert_table_access_pre(drcontext, bb, inst, table_addr,
+                                                       scratch);
                     PRE(bb, inst,
                         INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8
                                          (scratch, disp),
                                          OPND_CREATE_INT8(1)));
+                    insert_table_access_post(drcontext, bb, inst, table_addr, scratch);
                 }
                 /* we only check for 1 unaddr shadow so only check if haven't already */
                 if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
@@ -3951,7 +4011,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     heap_unaddr_shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
-                                     (check_ignore_unaddr || mi->memsz < 4) ?
+                                     (IF_X64(true ||) check_ignore_unaddr ||
+                                      mi->memsz < 4) ?
                                      OP_jne : OP_jne_short, mi);
                 }
            } else {

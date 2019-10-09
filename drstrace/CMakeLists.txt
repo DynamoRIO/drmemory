@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -139,7 +139,7 @@ if (WIN32)
 endif ()
 add_executable(drstrace ${front_srcs})
 configure_DynamoRIO_standalone(drstrace)
-target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib)
+target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
 set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
   get_filename_component(symfetch_name ${symfetch_path} NAME)

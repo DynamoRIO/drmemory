@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -72,10 +72,20 @@ droption_t<bool> op_config_file_default
  "no_use_config and provide a path to custom config file using -config option.");
 
 droption_t<std::string> op_config_file
-(DROPTION_SCOPE_ALL, "config", "", "The path to custom config file.",
+(DROPTION_SCOPE_ALL, "config", "", "The path to a custom config file.",
  "Specify a custom path where config is located. The config file describes the prototype"
  " of library functions for printing library call arguments.  See drltrace documentation"
  " for more details.");
+
+droption_t<std::string> op_sysnum_file
+(DROPTION_SCOPE_ALL, "sysnum_file", "", "The path to a system call number file.",
+ "Specify where a system call number file is, to support running on recent Windows "
+ "versions.  Normally this is file is auto-generated on launch.");
+
+droption_t<std::string> op_symcache_dir
+(DROPTION_SCOPE_ALL, "symcache_dir", "", "A directory for caching symbol files.",
+ "Specify a writable directory for use in caching symbol files while generating "
+ "-sysnum_file.");
 
 droption_t<bool> op_ignore_underscore
 (DROPTION_SCOPE_CLIENT, "ignore_underscore", false, "Ignores library routine names "

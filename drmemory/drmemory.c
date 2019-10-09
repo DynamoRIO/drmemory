@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1819,18 +1819,24 @@ dr_init(client_id_t id)
 #endif
     module_data_t *data;
     const char *opstr;
-    char tool_ver[64];
+    char tool_ver[128];
+    char os_ver[96];
 
-    dr_set_client_name("Dr. Memory", "http://drmemory.org/issues");
+    dr_set_client_name("Dr. Memory", "http://drmemory.org/issues"
+                       /* Try to get more info from users. */
+                       IF_DEBUG_ELSE("", " along with the results of running "
+                                     "'-debug -dr_debug'"));
 
     utils_early_init();
 
+#ifdef WINDOWS
+    get_windows_version_string(os_ver, BUFFER_SIZE_ELEMENTS(os_ver));
+#else
+    os_ver[0] = '\0';
+#endif
     dr_snprintf(tool_ver, BUFFER_SIZE_ELEMENTS(tool_ver),
                 /* we include the date to distinguish RC and custom builds */
-                "%s-%d-(%s)%s%d", VERSION_STRING, BUILD_NUMBER, build_date,
-                /* we include the Windows version here for convenience */
-                IF_WINDOWS_ELSE(" win",""),
-                IF_WINDOWS_ELSE(get_windows_version(),0));
+                "%s-%d-(%s) %s", VERSION_STRING, BUILD_NUMBER, build_date, os_ver);
     NULL_TERMINATE_BUFFER(tool_ver);
     dr_set_client_version_string(tool_ver);
 
@@ -1884,11 +1890,6 @@ dr_init(client_id_t id)
         NOTIFY("WARNING: Dr. Memory for Mac is Beta software.  Please report any"NL);
         NOTIFY("problems encountered to http://drmemory.org/issues."NL);
 #endif
-#if defined(X64) && defined(WINDOWS)
-        /* i#111: full mode not ported yet to 64-bit Windows */
-        if (options.pattern == 0)
-            NOTIFY("WARNING: 64-bit non-pattern modes are experimental on Windows"NL);
-#endif
 #ifdef ARM
         /* i#1726: full mode not ported yet to ARM */
         if (!option_specified.pattern && !option_specified.light)
@@ -1907,7 +1908,11 @@ dr_init(client_id_t id)
            "redzone size not large enough to store size");
 
     create_global_logfile();
-    LOG(0, "options are \"%s\"\n", opstr);
+#ifdef WINDOWS
+    LOG(0, "Windows version: %s\n", os_ver);
+    ELOGF(0, f_results, "Windows version: %s" NL, os_ver);
+#endif
+    LOG(0, "Options are \"%s\"\n", opstr);
 
     /* delayed from getting app_path, etc. until have logfile and ops */
     ASSERT(app_base != NULL, "internal error finding executable base");

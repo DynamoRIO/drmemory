@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -89,7 +89,8 @@ static uint verbose = 1;
 
 typedef struct _drstrace_options_t {
     char logdir[MAXIMUM_PATH];
-    char sympath[MAXIMUM_PATH];
+    char sympath[MAXIMUM_PATH]; /* The path to wintypes.pdb */
+    char sysnum_file[MAXIMUM_PATH]; /* The path to the syscall number file. */
 } drstrace_options_t;
 
 static drstrace_options_t options;
@@ -641,6 +642,11 @@ options_init(client_id_t id)
                              BUFFER_SIZE_ELEMENTS(options.sympath));
             USAGE_CHECK(s != NULL, "missing symcache dir path");
             ALERT(2, "<drstrace symbol source is %s>\n", options.sympath);
+        } else if (strcmp(token, "-sysnum_file") == 0) {
+            s = dr_get_token(s, options.sysnum_file,
+                             BUFFER_SIZE_ELEMENTS(options.sysnum_file));
+            USAGE_CHECK(s != NULL, "missing sysnum_file path");
+            ALERT(2, "<drstrace system call number file is %s>\n", options.sysnum_file);
         } else {
             ALERT(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);
             USAGE_CHECK(false, "invalid option");
@@ -666,7 +672,31 @@ void dr_init(client_id_t id)
     drmgr_init();
     drx_init();
 
-    if (drsys_init(id, &ops) != DRMF_SUCCESS)
+    if (verbose > 0)
+        op_print_stderr = true;
+
+#ifdef WINDOWS
+    if (dr_file_exists(options.sysnum_file)) {
+        ALERT(1, "<Using system call file %s>" NL, options.sysnum_file);
+        ops.sysnum_file = options.sysnum_file;
+    } else
+        ALERT(2, "<System call file %s does not exist>" NL, options.sysnum_file);
+#endif
+
+    drmf_status_t res = drsys_init(id, &ops);
+#ifdef WINDOWS
+    if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
+        dr_os_version_info_t os_version = {sizeof(os_version),};
+        dr_get_os_version(&os_version);
+        NOTIFY_ERROR("System call information is missing for this operating system: "
+                     "WinVer=%u;Rel=%s;Build=%u;Edition=%s. Restarting "
+                     "to trigger auto-generation of system call information." NL,
+                     os_version.version, os_version.release_id,
+                     os_version.build_number, os_version.edition);
+        dr_abort_with_code(STATUS_INVALID_KERNEL_INFO_VERSION);
+    }
+#endif
+    if (res != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
 

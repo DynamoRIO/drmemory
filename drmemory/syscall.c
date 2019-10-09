@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -310,14 +310,6 @@ auxlib_shadow_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 /***************************************************************************
  * SYSCALL HANDLING
  */
-
-#ifdef WINDOWS
-/* i#1908: we support loading numbers from a file */
-# define SYSNUM_FILE IF_X64_ELSE("syscalls_x64.txt", "syscalls_x86.txt")
-# define SYSNUM_FILE_WOW64 "syscalls_wow64.txt"
-static char sysnum_path[MAXIMUM_PATH];
-# define SYSNUM_URL "http://drmemory.org"
-#endif
 
 const char *
 get_syscall_name(drsys_sysnum_t num)
@@ -677,26 +669,46 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 
 #ifdef WINDOWS
     /* i#1908: we support loading numbers from a file */
-    if (!obtain_configfile_path(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path),
-                                sysnum_fname)) {
-        ASSERT(false, "failed to compute sysnum file path");
-    } else
-        ops.sysnum_file = sysnum_path;
+    char sysnum_path[MAXIMUM_PATH];
+    if (options.syscall_number_path[0] != '\0') {
+        _snprintf(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path), "%s%c%s",
+                  options.syscall_number_path, DIRSEP, sysnum_fname);
+    } else {
+        _snprintf(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path), "%s%c%s",
+                  options.symcache_dir, DIRSEP, sysnum_fname);
+    }
+    NULL_TERMINATE_BUFFER(sysnum_path);
+    ops.sysnum_file = sysnum_path;
+    if (!dr_file_exists(sysnum_path)) {
+        /* We don't do a full fallback: we won't fall back on a privilege error
+         * or something, but if there's no logs/symbols/ file at all we'll
+         * try bin/ which is where prior releases put them and asked users to
+         * put manually downloaded files.
+         */
+        if (!obtain_configfile_path(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path),
+                                    sysnum_fname) ||
+            !dr_file_exists(sysnum_path)) {
+            ops.sysnum_file = NULL;
+        }
+    }
+    if (ops.sysnum_file != NULL)
+        NOTIFY("Using system call file %s" NL, ops.sysnum_file);
     ops.skip_internal_tables = !options.use_syscall_tables;
 #endif
     res = drsys_init(client_id, &ops);
 #ifdef WINDOWS
     if (res == DRMF_WARNING_UNSUPPORTED_KERNEL) {
-        NOTIFY_ERROR("Running on an unsupported operating system. Please download "
-                     "%s/%s and save as %s to avoid false positives "
-                     "and other problems. If that fails, please file a bug report."
-                     "%s" NL, SYSNUM_URL, sysnum_fname, sysnum_path,
+        char os_ver[96];
+        get_windows_version_string(os_ver, BUFFER_SIZE_ELEMENTS(os_ver));
+        NOTIFY_ERROR("System call information is missing for this operating system: %s."
+                     "%s" NL, os_ver,
                      options.ignore_kernel ? "" :
-                     " Re-run with -ignore_kernel to attempt continued execution.");
+                     " Restarting to trigger auto-generation of system call information."
+                     " Re-run with -ignore_kernel to attempt to continue instead.");
         if (options.ignore_kernel)
             res = DRMF_SUCCESS;
         else
-            drmemory_abort();
+            dr_abort_with_code(STATUS_INVALID_KERNEL_INFO_VERSION);
     }
 #endif
     if (res != DRMF_SUCCESS) {

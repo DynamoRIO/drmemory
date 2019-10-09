@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1831,6 +1831,13 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
           00a6cc57 8500             test    [eax],eax
           00a6cc59 ebe9             jmp     handle!_chkstk+0x14 (00a6cc44)
         the pattern is the same as gap.exe.
+
+      x64:
+        varstack!__chkstk+0x30 [f:\dd\vctools\crt\crtw32\startup\amd64\chkstk.asm @ 108]:
+          00007ff7`a8071710 4d8d9b00f0ffff  lea     r11,[r11-1000h]
+          00007ff7`a8071717 41c60300        mov     byte ptr [r11],0
+          00007ff7`a807171b 4d3bd3          cmp     r10,r11
+
     */
     /* For now we do an exact pattern match but of course this
      * won't generalize well for other versions of alloca: OTOH we
@@ -1910,6 +1917,23 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
          */
         *now_addressable = false;
     }
+# ifdef X64
+    else if (instr_get_opcode(inst) == OP_mov_st &&
+             opnd_is_base_disp(instr_get_dst(inst, 0)) &&
+             opnd_get_base(instr_get_dst(inst, 0)) == DR_REG_R11 &&
+             opnd_get_index(instr_get_dst(inst, 0)) == REG_NULL &&
+             opnd_get_scale(instr_get_dst(inst, 0)) == 0 &&
+             opnd_get_disp(instr_get_dst(inst, 0)) == 0 &&
+             opnd_is_immed_int(instr_get_src(inst, 0)) &&
+             opnd_get_immed_int(instr_get_src(inst, 0)) == 0 &&
+             /* prev instr is "lea r11,[r11-1000h]" */
+             safe_read(pc-1, sizeof(prev_byte), &prev_byte) &&
+             prev_byte == 0xff) {
+        match = true;
+        /* do NOT mark addressable as the next instr, a push, will do so */
+        *now_addressable = false;
+    }
+# endif
     instr_free(drcontext, &next);
 
     return match;

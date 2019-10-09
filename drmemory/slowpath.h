@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -249,9 +249,6 @@ slowpath_module_unload(void *drcontext, const module_data_t *mod);
  * have jmp_smart (i#56/PR 209710)!
  */
 #define PREXL8M instrlist_meta_fault_preinsert
-
-bool
-reg_is_gpr(reg_id_t reg);
 
 bool
 reg_is_8bit(reg_id_t reg);

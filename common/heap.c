@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -647,7 +647,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         LOG(2, "heap zone %d: %p %s\n", i, zone, malloc_get_zone_name(zone));
 # ifdef DEBUG
         malloc_zone_statistics(zone, &stats);
-        LOG(2, "\tblocks=%u, used=%ld, max used=%ld, reserved=%ld\n",
+        LOG(2, "\tblocks=%u, used=%zd, max used=%zd, reserved=%zd\n",
             stats.blocks_in_use, stats.size_in_use, stats.max_size_in_use,
             stats.size_allocated);
 # endif

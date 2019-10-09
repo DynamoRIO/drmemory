@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -36,9 +36,6 @@
 # include <asm-i386/stat.h>
 #else
 # include <asm/stat.h>
-# ifndef ANDROID
-#  include <sys/ustat.h>
-# endif
 # include <sys/statfs.h>
 #endif
 #include <utime.h> /* struct utimbuf */
@@ -247,5 +244,13 @@ union semun {
 /* not in older defines: version flag or-ed in for semctl, msgctl, shmctl */
 # define IPC_64  0x0100
 #endif
+
+/* ustat is deprecated and the header is not always available. */
+struct ustat {
+    __daddr_t f_tfree;
+    __ino_t f_tinode;
+    char f_fname[6];
+    char f_fpack[6];
+};
 
 #endif /* _LINUX_DEFINES_H */

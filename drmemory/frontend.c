@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -104,12 +104,15 @@
  *   default 128MB reservation.  DR is more efficient when all its
  *   allocations are inside its reservation.
  * DRi#1081: we disable reset until the DR bug is fixed.
- * i#2083: disable hard-to-reach tables via -no_vm_base_near_app until a long-term
- *   fix is in place that loads tables via an extra scratch reg.
  */
 #define DEFAULT_DR_OPS \
     "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -vm_size 256M "\
-    "-no_enable_reset -no_vm_base_near_app"
+    "-no_enable_reset"
+#if defined(MACOS) && defined(X64)
+# define DEFAULT_DR_OPS_EXT " -signal_stack_size 64K"
+#else
+# define DEFAULT_DR_OPS_EXT ""
+#endif
 
 #define DRMEM_CLIENT_ID 0
 
@@ -152,7 +155,7 @@ on_supported_version(void)
     if (uname(&uinfo) != 0)
         return false;
 #   define MIN_DARWIN_VERSION_SUPPORTED 11  /* OSX 10.7.x */
-#   define MAX_DARWIN_VERSION_SUPPORTED 15  /* OSX 10.11.x */
+#   define MAX_DARWIN_VERSION_SUPPORTED 18  /* OSX 10.14.x */
     return (dr_sscanf(uinfo.release, "%d", &kernel_major) == 1 &&
             kernel_major <= MAX_DARWIN_VERSION_SUPPORTED &&
             kernel_major >= MIN_DARWIN_VERSION_SUPPORTED);
@@ -694,6 +697,43 @@ process_results_file(const char *logdir, const char *symdir,
         info("skipping symbol fetching");
     }
 }
+
+static bool
+generate_sysnum_file(const char *symdir)
+{
+    int i;
+    size_t lib_count = 0;
+    char **sysnum_lib_paths;
+    void *drcontext = dr_standalone_init();
+    if (drcontext == NULL)
+        return false;
+    char outfile[MAXIMUM_PATH];
+    _snprintf(outfile, BUFFER_SIZE_ELEMENTS(outfile), "%s%c%s",
+              symdir, DIRSEP, dr_is_wow64() ? SYSNUM_FILE_WOW64 : SYSNUM_FILE);
+    NULL_TERMINATE_BUFFER(outfile);
+    drmf_status_t res = drsys_find_sysnum_libs(NULL, &lib_count);
+    if (res != DRMF_ERROR_INVALID_SIZE)
+        return false;
+    sysnum_lib_paths = malloc(lib_count * sizeof(sysnum_lib_paths[0]));
+    if (sysnum_lib_paths == NULL)
+        return false;
+    for (i = 0; i < lib_count; ++i) {
+        sysnum_lib_paths[i] = malloc(MAXIMUM_PATH);
+        if (sysnum_lib_paths[i] == NULL)
+            return false;
+    }
+    res = drsys_find_sysnum_libs(sysnum_lib_paths, &lib_count);
+    if (res != DRMF_SUCCESS)
+        return false;
+    if (drcontext == NULL)
+        return false;
+    res = drsys_generate_sysnum_file
+        (drcontext, sysnum_lib_paths, lib_count, outfile, symdir);
+    for (i = 0; i < lib_count; ++i)
+        free(sysnum_lib_paths[i]);
+    free(sysnum_lib_paths);
+    return (res == DRMF_SUCCESS);
+}
 #endif /* WINDOWS */
 
 /* check client options and abort on an option error */
@@ -743,6 +783,7 @@ _tmain(int argc, TCHAR *targv[])
     bool use_root_for_logdir;
 #ifdef WINDOWS
     char *pidfile = NULL;
+    bool tried_generating_syscall_file = false;
 #endif
 #ifndef MACOS /* XXX i#1286: implement nudge on MacOS */
     process_id_t nudge_pid = 0;
@@ -764,9 +805,17 @@ _tmain(int argc, TCHAR *targv[])
     bool exit0 = false;
     bool dr_logdir_specified = false;
     bool doubledash_present = false;
+    bool launched_other_frontend = false;
 
 #ifdef WINDOWS
     time_t start_time, end_time;
+# ifdef DEBUG
+    /* Avoid stderr printing in debug build from version init on new win10
+     * (otherwise we get 2 prints, one here and in the client).
+     */
+    if (!SetEnvironmentVariable(L"DYNAMORIO_OPTIONS", L"-stderr_mask 0"))
+        info("Failed to quiet frontend DR messages");
+# endif
 #endif
 
     drfront_status_t sc;
@@ -845,7 +894,7 @@ _tmain(int argc, TCHAR *targv[])
     drfront_string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
-             drops_sofar, len, "%s ", DEFAULT_DR_OPS);
+             drops_sofar, len, "%s%s ", DEFAULT_DR_OPS, DEFAULT_DR_OPS_EXT);
 #ifdef WINDOWS
     /* FIXME i#699: early injection crashes the child on 32-bit or on wow64 vista+.
      * We work around it here.  Should remove this once the real bug is fixed.
@@ -928,6 +977,23 @@ _tmain(int argc, TCHAR *targv[])
 	}
         else if (strcmp(argv[i], "-v") == 0) {
             verbose = true;
+            /* Enable verbosity in pdf2sysfile.cpp */
+            op_verbose_level = 1;
+            drfront_set_verbose(op_verbose_level);
+            continue;
+        }
+        else if (strcmp(argv[i], "-vv") == 0) {
+            verbose = true;
+            /* Enable verbosity in pdf2sysfile.cpp */
+            op_verbose_level = 2;
+            drfront_set_verbose(op_verbose_level);
+            continue;
+        }
+        else if (strcmp(argv[i], "-vvv") == 0) {
+            verbose = true;
+            /* Enable extra verbosity in pdf2sysfile.cpp */
+            op_verbose_level = 3;
+            drfront_set_verbose(op_verbose_level);
             continue;
         }
         else if (strcmp(argv[i], "-h") == 0 ||
@@ -1216,7 +1282,9 @@ _tmain(int argc, TCHAR *targv[])
                                           INFINITE);
             if (errcode != WAIT_OBJECT_0)
                 info("failed to wait for frontend: %d\n", errcode);
-            dr_inject_process_exit(inject_data, false);
+            /* Be sure to capture and propagate the exit code (i#2206). */
+            errcode = dr_inject_process_exit(inject_data, false);
+            launched_other_frontend = true;
 #else
             fatal("failed to exec frontend to match target app bitwidth");
 #endif
@@ -1391,139 +1459,181 @@ _tmain(int argc, TCHAR *targv[])
         DRFRONT_SUCCESS ||
         drfront_set_symbol_search_path(symsrv_dir) != DRFRONT_SUCCESS)
         warn("Can't set symbol search path. Symbol lookup may fail.");
+
+    /* XXX i#2164: Until DR supports the delay-load features needed for timezone
+     * utilities used by dbghelp loading symbols, we work around a crash when
+     * the "TZ" environment variable is unset by setting it.  This is a
+     * transparency violation so we should remove this once DR's private loader
+     * is improved.
+     */
+    if (drfront_get_env_var("TZ", buf, BUFFER_SIZE_ELEMENTS(buf)) != DRFRONT_SUCCESS ||
+        strlen(buf) == 0) {
+        TIME_ZONE_INFORMATION tzinfo;
+        if (GetTimeZoneInformation(&tzinfo) != TIME_ZONE_ID_INVALID) {
+            info("Setting TZ to %S for i#2164 workaround", tzinfo.StandardName);
+            if (!SetEnvironmentVariable(L"TZ", tzinfo.StandardName))
+                info("Failed to set TZ for i#2164 workaround");
+        }
+    }
 #endif
 
     /* i#1638: fall back to temp dirs if there's no HOME/USERPROFILE set */
     dr_get_config_dir(false/*local*/, true/*use temp*/, buf, BUFFER_SIZE_ELEMENTS(buf));
     info("DynamoRIO configuration directory is %s", buf);
 
+    do {
 #ifdef UNIX
-    errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv, &inject_data);
+        errcode = dr_inject_prepare_to_exec(app_name, (const char **)app_argv,
+                                            &inject_data);
 #else
-    errcode = dr_inject_process_create(app_name, (const char **)app_argv, &inject_data);
+        errcode = dr_inject_process_create(app_name, (const char **)app_argv,
+                                           &inject_data);
 #endif
-    if (errcode != 0) {
+        if (errcode != 0) {
 #ifdef WINDOWS
-        int sofar =
+            int sofar =
 #endif
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                      "failed to create process (err=%d) for \"%s\": ",
-                      errcode, app_name);
+                _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                          "failed to create process (err=%d) for \"%s\": ",
+                          errcode, app_name);
 #ifdef WINDOWS
-        if (sofar > 0) {
-            FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                          NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                          (LPTSTR) buf + sofar,
-                          BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
+            if (sofar > 0) {
+                FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                              NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                              (LPTSTR) buf + sofar,
+                              BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
+            }
+#endif
+            NULL_TERMINATE_BUFFER(buf);
+            fatal("%s", buf);
+            goto error; /* actually won't get here */
         }
-#endif
-        NULL_TERMINATE_BUFFER(buf);
-        fatal("%s", buf);
-        goto error; /* actually won't get here */
-    }
 
-    pid = dr_inject_get_process_id(inject_data);
+        pid = dr_inject_get_process_id(inject_data);
 #ifdef WINDOWS
-    if (pidfile != NULL)
-        write_pid_to_file(pidfile, pid);
+        if (pidfile != NULL)
+            write_pid_to_file(pidfile, pid);
 #endif
 
-    /* we need to locate the results file, but only for top-level process (i#328) */
-    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-             cliops_sofar, len, "-resfile %d ", pid);
+        /* we need to locate the results file, but only for top-level process (i#328) */
+        BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                 cliops_sofar, len, "-resfile %d ", pid);
 
-    process = dr_inject_get_image_name(inject_data);
-    /* we don't care if this app is already registered for DR b/c our
-     * this-pid config will override
-     */
-    info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
-    status = dr_register_process(process, pid,
-                                 false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
-                                 use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops);
-    if (status != DR_SUCCESS) {
-        const char *err_msg = dr_config_status_code_to_string(status);
-        fatal("failed to register DynamoRIO configuration for \"%s\"(%d) "
-              "dr_ops=\"%s\".\n"
-              "Error code %d (%s)",
-              process, pid, dr_ops, status, err_msg);
-        goto error; /* actually won't get here */
-    }
-    info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
-    /* check client options and abort on an option error */
-    check_client_options(client_ops);
-    status = dr_register_client(process, pid,
-                                false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
-                                0, client_path, client_ops);
-    if (status != DR_SUCCESS) {
-        const char *err_msg = dr_config_status_code_to_string(status);
-        fatal("failed to register DynamoRIO client configuration for \"%s\","
-              " ops=\"%s\"\n"
-              "Error code %d (%s)",
-              client_path, client_ops, status, err_msg);
-        goto error; /* actually won't get here */
-    }
-
-    if (native_parent) {
-        /* Create a regular config file without -native_parent so the children will
-         * run normally.
+        process = dr_inject_get_image_name(inject_data);
+        /* we don't care if this app is already registered for DR b/c our
+         * this-pid config will override
          */
-        info("configuring child processes");
-        if (dr_process_is_registered(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
-                                     NULL, NULL, NULL, NULL)) {
-            if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
-                == DR_SUCCESS)
-                warn("overriding existing registration");
-            else {
-                fatal("failed to override existing registration");
+        info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
+        status = dr_register_process(process, pid,
+                                     false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
+                                     use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops);
+        if (status != DR_SUCCESS) {
+            const char *err_msg = dr_config_status_code_to_string(status);
+            fatal("failed to register DynamoRIO configuration for \"%s\"(%d) "
+                  "dr_ops=\"%s\".\n"
+                  "Error code %d (%s)",
+                  process, pid, dr_ops, status, err_msg);
+            goto error; /* actually won't get here */
+        }
+        info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
+        /* check client options and abort on an option error */
+        check_client_options(client_ops);
+        status = dr_register_client(process, pid,
+                                    false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
+                                    0, client_path, client_ops);
+        if (status != DR_SUCCESS) {
+            const char *err_msg = dr_config_status_code_to_string(status);
+            fatal("failed to register DynamoRIO client configuration for \"%s\","
+                  " ops=\"%s\"\n"
+                  "Error code %d (%s)",
+                  client_path, client_ops, status, err_msg);
+            goto error; /* actually won't get here */
+        }
+
+        if (native_parent) {
+            /* Create a regular config file without -native_parent so the children will
+             * run normally.
+             */
+            info("configuring child processes");
+            if (dr_process_is_registered(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
+                                         NULL, NULL, NULL, NULL)) {
+                if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
+                    == DR_SUCCESS)
+                    warn("overriding existing registration");
+                else {
+                    fatal("failed to override existing registration");
+                    goto error; /* actually won't get here */
+                }
+            }
+            if (dr_register_process(process, 0, false/*local*/, dr_root,
+                                    DR_MODE_CODE_MANIPULATION, use_dr_debug,
+                                    DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
+                fatal("failed to register child DynamoRIO configuration");
+                goto error; /* actually won't get here */
+            }
+            /* clear out "-native_parent" */
+            memset(client_ops + native_parent_pos, ' ', strlen("-native_parent"));
+            if (dr_register_client(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
+                                   DRMEM_CLIENT_ID, 0, client_path, client_ops)
+                != DR_SUCCESS) {
+                fatal("failed to register child DynamoRIO client configuration");
                 goto error; /* actually won't get here */
             }
         }
-        if (dr_register_process(process, 0, false/*local*/, dr_root,
-                                DR_MODE_CODE_MANIPULATION, use_dr_debug,
-                                DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
-            fatal("failed to register child DynamoRIO configuration");
-            goto error; /* actually won't get here */
-        }
-        /* clear out "-native_parent" */
-        memset(client_ops + native_parent_pos, ' ', strlen("-native_parent"));
-        if (dr_register_client(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
-                               DRMEM_CLIENT_ID, 0, client_path, client_ops)
-            != DR_SUCCESS) {
-            fatal("failed to register child DynamoRIO client configuration");
-            goto error; /* actually won't get here */
-        }
-    }
 
-    if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
-        fatal("unable to inject");
-        goto error; /* actually won't get here */
-    }
+        if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
+            fatal("unable to inject");
+            goto error; /* actually won't get here */
+        }
 
 #ifdef WINDOWS
-    if (top_stats)
-        start_time = time(NULL);
+        if (top_stats)
+            start_time = time(NULL);
 #endif
-    dr_inject_process_run(inject_data);
+        dr_inject_process_run(inject_data);
 #ifdef UNIX
-    fatal("Failed to exec application");
+        fatal("Failed to exec application");
 #else
-    info("waiting for app to exit...");
-    errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
-    if (errcode != WAIT_OBJECT_0)
-        info("failed to wait for app: %d\n", errcode);
-    if (top_stats) {
-        double wallclock;
-        end_time = time(NULL);
-        wallclock = difftime(end_time, start_time);
-        dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
-    }
+        info("waiting for app to exit...");
+        errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data),
+                                      INFINITE);
+        if (errcode != WAIT_OBJECT_0)
+            info("failed to wait for app: %d\n", errcode);
+        if (top_stats) {
+            double wallclock;
+            end_time = time(NULL);
+            wallclock = difftime(end_time, start_time);
+            dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/,
+                                  true/*mem*/);
+        }
 #endif
-    if (native_parent) {
-        if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
-            != DR_SUCCESS)
-            warn("failed to unregister child processes");
-    }
-    errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
+        if (native_parent) {
+            if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
+                != DR_SUCCESS)
+                warn("failed to unregister child processes");
+        }
+        errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
+#ifdef WINDOWS
+        if (errcode == STATUS_INVALID_KERNEL_INFO_VERSION &&
+            !tried_generating_syscall_file) {
+            warn("System call information is missing for this operating system version. "
+                 "Attempting to auto-generate system call information...");
+            tried_generating_syscall_file = true;
+            /* Give the user some visible feedback. */
+            if (op_verbose_level < 1)
+                op_verbose_level = 1;
+            if (generate_sysnum_file(symdir)) {
+                sym_info("Auto-generation succeeded.  Re-launching the application.");
+                /* Some options change values and then complain (e.g.,
+                 * check_stack_bounds).
+                 */
+                options_reset_to_defaults();
+                continue; /* restart app */
+            }
+        }
+#endif
+        break;
+    } while (true);
 #ifdef WINDOWS
     process_results_file(logdir, symdir, pid, app_name, errcode);
 #endif
@@ -1536,7 +1646,7 @@ _tmain(int argc, TCHAR *targv[])
     sc = drfront_cleanup_args(argv, argc);
     if (sc != DRFRONT_SUCCESS)
         fatal("failed to free memory for args: %d", sc);
-    if (errcode != 0) {
+    if (errcode != 0 && !launched_other_frontend) {
         /* We use a prefix to integrate better with tool output, esp inside
          * the VS IDE as an External Tool.
          */

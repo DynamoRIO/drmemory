@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -128,6 +128,17 @@ static const char * const bool_string[2] = {
 };
 
 drmemory_options_t options = {
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+    defval,
+#define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
+    /*nothing*/
+    /* we use <> so other tools can override the optionsx.h in "." */
+#include <optionsx.h>
+};
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
+
+drmemory_options_t option_defaults = {
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     defval,
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
@@ -317,6 +328,13 @@ option_disable_memory_checks()
 }
 
 void
+options_reset_to_defaults(void)
+{
+    memcpy(&options, &option_defaults, sizeof(options));
+    memset(&option_specified, 0, sizeof(option_specified));
+}
+
+void
 options_init(const char *opstr)
 {
     const char *s;
@@ -432,12 +450,6 @@ options_init(const char *opstr)
             options.check_gdi = false;
     }
 #endif
-    /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath
-     * XXX: there is nothing fundamentally impossible, it is just we didn't
-     * bother to make it work as such combination is not very useful.
-     */
-    if (options.leaks_only && !options.esp_fastpath)
-        usage_error("-leaks_only cannot be used with -no_esp_fastpath", "");
     if (options.perturb_only) {
         options.perturb = true;
         options.track_allocs = false;
@@ -529,6 +541,9 @@ options_init(const char *opstr)
         if (options.handle_leaks_only)
             usage_error("-handle_leaks_only cannot be used with pattern mode", "");
 # endif
+    } else {
+        if (!ALIGNED(options.redzone_size, IF_X64_ELSE(16,8)))
+            usage_error("redzone size must be " IF_X64_ELSE("16","8") "-aligned", "");
     }
     if (option_specified.fuzz ||
         option_specified.fuzz_module ||

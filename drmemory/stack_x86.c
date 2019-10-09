@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -57,6 +57,7 @@ get_esp_adjust_type(instr_t *inst, bool mangled)
     switch (opc) {
     case OP_mov_st:
     case OP_mov_ld:
+    case OP_mov_imm:
     case OP_lea:
     case OP_xchg:
     case OP_cmovb:
