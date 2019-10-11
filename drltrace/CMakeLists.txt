@@ -101,6 +101,21 @@ if (WIN32)
   set(front_srcs ${front_srcs} ${PROJECT_SOURCE_DIR}/make/resources.rc)
 endif ()
 
+macro(fix_win32_flags srcfile)
+  if (WIN32)
+    if (DEBUG)
+      get_property(cur SOURCE ${srcfile} PROPERTY COMPILE_FLAGS)
+      string(REPLACE "/MT " "" cur "${cur}") # Avoid override warning.
+      set_source_files_properties(${srcfile} PROPERTIES COMPILE_FLAGS "${cur} /EHsc /MTd")
+      append_property_string(SOURCE ${srcfile} LINK_FLAGS "/nodefaultlib:libcmt")
+    else ()
+      append_property_string(SOURCE ${srcfile} COMPILE_FLAGS "/EHsc /MT")
+    endif ()
+  endif ()
+endmacro ()
+
+fix_win32_flags(drltrace_frontend.cpp)
+
 add_executable(drltrace ${front_srcs})
 
 configure_DynamoRIO_standalone(drltrace)
