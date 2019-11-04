@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -142,6 +142,12 @@ use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
 
 set(asm_defs "${asm_defs}" -I "${CMAKE_CURRENT_SOURCE_DIR}") # for umbra_test_shared.h
 add_drmf_test_app(umbra_app umbra_app.c)
+if (WIN32)
+  # Try to test i#2184 where Control Flow Guard allocates a 2TB reservation
+  # crossing multiple Umbra segments.  I can only repro that with VS2017, but
+  # we put this in place in anticipation of updating to VS2017.
+  append_property_string(TARGET umbra_app COMPILE_FLAGS "/guard:cf")
+endif ()
 target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_empty      umbra_app umbra_client_empty.c
@@ -167,3 +173,6 @@ use_DynamoRIO_extension(umbra_test_consistency.client drreg)
 use_DynamoRIO_extension(umbra_test_consistency.client drutil)
 target_include_directories(umbra_test_consistency.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_allscales umbra_app umbra_client_allscales.c
+  umbra "" ".*TEST PASSED")
