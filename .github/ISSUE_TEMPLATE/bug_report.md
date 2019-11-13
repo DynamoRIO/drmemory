@@ -18,10 +18,11 @@ Steps to reproduce the behavior:
 2. Precise command line for running the application.
 3. Exact output or incorrect behavior.
 
-Please also answer these questions:
- - Does the problem go away when running in light mode (pass "-light" to Dr. Memory)?
- - Does the problem go away when running with the options "-leaks_only -no_count_leaks -no_track_allocs"?
- - What happens with the debug version of Dr. Memory and of its underlying engine DynamoRIO?  Try this by passing "-debug -dr_debug -pause_at_assert".  Are any messages reported?
+Please also answer these questions drawn from  https://github.com/DynamoRIO/drmemory/wiki/Debugging#narrowing-down-the-source-of-the-problem :
+ - Does the problem go away when running in light mode (pass `-light` to Dr. Memory)?
+ - Does the problem go away when running with the options `-leaks_only -no_count_leaks -no_track_allocs`?
+ - Does the problem go away when running under plain DynamoRIO?  Do this by running `dynamorio/bin32/drrun -- <application and args>` or `dynamorio/bin64/drrun -- <application and args>` depending on the bitwidth of your applicaiton.  (Ignore warnings about "incomplete installation".)
+ - What happens with the debug version of Dr. Memory and of its underlying engine DynamoRIO?  Try this by passing `-debug -dr_debug -pause_at_assert`.  Are any messages reported?
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
@@ -43,5 +44,3 @@ https://github.com/DynamoRIO/drmemory/wiki/Latest-Build solve the problem?
 
 **Additional context**
 Add any other context about the problem here.
-
-Please also see the "Narrowing Down the Source of the Problem" section of https://github.com/DynamoRIO/drmemory/wiki/Debugging.
