@@ -1069,3 +1069,13 @@ ntdll.dll!RtlRestoreContext
 UNINITIALIZED READ
 name=default i#2170 RcConsolidateFrames
 ntdll.dll!RcConsolidateFrames
+
+##################################################
+# i#2237: __strncnt
+# This needs more analysis but we are suppressing for
+# now as this is not in user app code.
+
+UNINITIALIZED READ
+name=default i#2237 __strncnt
+*!__strncnt
+*!__acrt*
