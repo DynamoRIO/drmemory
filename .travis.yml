@@ -33,9 +33,9 @@ branches:
   only:
   - master
 
-# We use Trusty to get cmake 2.8.12 instead of 2.8.7 from Precise:
+# We use Xenial to match DR.
 sudo: required
-dist: trusty
+dist: xenial
 
 language:
   - c
@@ -50,6 +50,16 @@ jobs:
       env: DEPLOY=yes
     - os: linux
       compiler: clang
+      # We need clang 9.0 to avoid a compiler bug: DRi#3989.
+      env: CC=clang-9 && CXX=clang++-9
+      addons:
+        apt:
+          sources:
+          - ubuntu-toolchain-r-test
+          - sourceline: 'deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial-9 main'
+            key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+          - clang-9
     - os: osx
       # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we only run clang.
       compiler: clang
@@ -65,7 +75,7 @@ install:
   # on 11/15/17.  Xref https://github.com/travis-ci/travis-ci/issues/8552.
   - if [[ "`uname`" == "Darwin" ]]; then brew update; brew install nasm; fi
   # ImageMagick is present but these are not:
-  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen transfig; fi
+  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib ghostscript doxygen transfig; fi
 
 script:
   - tests/runsuite_wrapper.pl travis
