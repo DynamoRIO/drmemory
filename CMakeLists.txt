@@ -354,6 +354,12 @@ if (UNIX)
   # disabling strict aliasing since giving weird warning I'm not sure how to fix:
   #   alloc.c:716: warning: dereferencing type-punned pointer will break strict-aliasing rules
   set(WARN "-Wall -Werror -Wno-strict-aliasing")
+  # Disabling format-truncation due to too many warnings about string construction
+  # where truncating added strings is fine if the final doesn't fit anyway.
+  CHECK_C_COMPILER_FLAG("-Wno-format-truncation" have_format_truncation_warning)
+  if (have_format_truncation_warning)
+    set(WARN "${WARN} -Wno-format-truncation")
+  endif ()
   if (CMAKE_C_COMPILER MATCHES "/build/toolchain")
     # needed for linux/ipmi.h (PR 531644)
     set(EXTRA_FLAGS "-idirafter /build/toolchain/lin32/glibc-2007q3-51/usr/include")

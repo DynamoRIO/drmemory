@@ -2457,12 +2457,15 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
         app_pc base;
         size_t sz = allocation_size(addr, &base);
         if (sz > 0 && base != NULL) {
-            LOG(1, "WARNING: unknown region "PFX"-"PFX": marking as defined\n",
-                base, base+sz);
+            LOG(1, "WARNING: unknown region " PFX " => " PFX "-" PFX
+                ": marking as defined\n", addr, base, base+sz);
             ASSERT(!dr_memory_is_dr_internal(addr) &&
                    !dr_memory_is_in_client(addr),
                    "App is using tool's memory: please report this!");
-            shadow_set_range(base, base+sz, SHADOW_DEFINED);
+            /* There can be reserved-only regions inside, which can be quite large,
+             * so be sure to skip them (i#2184).
+             */
+            mmap_walk(base, sz, IF_WINDOWS_(NULL) true/*add*/);
             return true;
         }
     }

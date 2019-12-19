@@ -773,30 +773,29 @@ mmap_walk(app_pc start, size_t size,
 {
 #ifdef WINDOWS
     app_pc start_base;
-    app_pc pc = start;
+    app_pc pc;
     MEMORY_BASIC_INFORMATION mbi = {0};
-    app_pc map_base = mbi.AllocationBase;
-    app_pc map_end = (byte *)mbi.AllocationBase + mbi.RegionSize;
+    app_pc map_base, map_end;
     ASSERT(options.shadowing, "shadowing disabled");
     if (mbi_start == NULL) {
         if (dr_virtual_query(start, &mbi, sizeof(mbi)) != sizeof(mbi)) {
             ASSERT(false, "error walking initial memory mappings");
-            return pc; /* FIXME: return error code */
+            return start; /* FIXME: return error code */
         }
     } else
         mbi = *mbi_start;
     if (mbi.State == MEM_FREE)
-        return pc;
+        return start;
     map_base = mbi.AllocationBase;
     start_base = map_base;
-    map_end = (byte *)mbi.AllocationBase + mbi.RegionSize;
+    if (POINTER_OVERFLOW_ON_ADD(map_base, mbi.RegionSize))
+        return NULL;
+    map_end = map_base + mbi.RegionSize;
     LOG(2, "mmap_walk %s "PFX": alloc base is "PFX"\n", add ? "add" : "remove",
          start, start_base);
     if (mbi.State == MEM_RESERVE)
         map_end = map_base;
-    if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
-        return NULL;
-    pc += mbi.RegionSize;
+    pc = map_end;
     while (dr_virtual_query(pc, &mbi, sizeof(mbi)) == sizeof(mbi) &&
            mbi.AllocationBase == start_base /*not map_base: we skip reserved pieces*/ &&
            (size == 0 || pc < start+size)) {
@@ -817,6 +816,7 @@ mmap_walk(app_pc start, size_t size,
         if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
             return NULL;
         pc += mbi.RegionSize;
+        ASSERT(pc == map_end, "pc and map_end should match");
     }
     if (map_end > map_base) {
         shadow_set_range(map_base, map_end, add ? SHADOW_DEFINED : SHADOW_UNADDRESSABLE);
@@ -1966,7 +1966,7 @@ dr_init(client_id_t id)
 
     if (options.shadowing) {
         if (umbra_init(client_id) != DRMF_SUCCESS)
-            ASSERT(false, "fail to init Umbra");
+            ASSERT(false, "failed to initialize Umbra");
         shadow_init();
     }
 
