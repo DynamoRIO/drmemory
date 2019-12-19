@@ -40,9 +40,9 @@
 #include "umbra.h"
 
 /* We don't want a popup so we don't use DR_ASSERT_MSG. */
-#define CHECK(cond, msg) ((cond) ? 0 :                                      \
-                     dr_fprintf(STDERR,  "ASSERT FAILURE: %s:%d: %s (%s)\n", \
-                                __FILE__, __LINE__, #cond, msg), dr_abort(), 0)
+#define CHECK(cond, msg) ((void)((cond) ? 0 :                   \
+    (dr_fprintf(STDERR,  "ASSERT FAILURE: %s:%d: %s (%s)\n",    \
+                __FILE__, __LINE__, #cond, msg), dr_abort(), 0)))
 
 static void
 test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label)
