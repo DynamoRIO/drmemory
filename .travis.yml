@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2016-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -33,9 +33,9 @@ branches:
   only:
   - master
 
-# We use Trusty to get cmake 2.8.12 instead of 2.8.7 from Precise:
+# We use Xenial to match DR.
 sudo: required
-dist: trusty
+dist: xenial
 
 language:
   - c
