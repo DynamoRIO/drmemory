@@ -199,5 +199,17 @@ libc.so.6!...
 libc.so.6!getenv
 
 UNINITIALIZED READ
+name=i#2241 xenial setlocale
 libc.so.6!...
 libc.so.6!setlocale
+
+UNADDRESSABLE ACCESS
+name=i#2241 xenial gethostbyname
+libc.so.6!...
+libc.so.6!gethostbyname
+
+UNINITIALIZED READ
+name=i#2241 xenial nss
+libc.so.6!*
+libnss_files.so.2!...
+libnss_files.so.2!_nss_files_gethostbyname3_r
