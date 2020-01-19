@@ -157,6 +157,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
         } else {
             %ignore_failures_32 = ('pcache-use' => 1, # i#2202
                                    'fuzz_threads' => 1); # i#2242
+            %ignore_failures_64 = ('pcache' => 1); # i#2243
         }
         # Read ahead to examine the test failures:
         $fail = 0;
