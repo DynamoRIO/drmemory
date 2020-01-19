@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -155,7 +155,8 @@ for (my $i = 0; $i < $#lines; ++$i) {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
             %ignore_failures_64 = ('malloc' => 1);
         } else {
-            %ignore_failures_32 = ('pcache-use' => 1); # i#2202
+            %ignore_failures_32 = ('pcache-use' => 1, # i#2202
+                                   'fuzz_threads' => 1); # i#2242
         }
         # Read ahead to examine the test failures:
         $fail = 0;

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -56,9 +56,10 @@ name=default i#1241 python malloc
 # ld-linux*!dl_open_worker
 # ld-linux*!_dl_catch_error
 
+# Unfortunately we are now seeing just 2 ld-linux frames instead of the 3
+# mentioned above, so this callstack requires just the 2.
 UNINITIALIZED READ
-name=default (ld-linux_3_libc_0)
-ld-linux*!*
+name=default (ld-linux_2_libc_0)
 ld-linux*!*
 ld-linux*!*
 
