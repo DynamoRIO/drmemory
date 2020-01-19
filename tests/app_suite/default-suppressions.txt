@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -189,3 +189,27 @@ RPCRT4.dll!*BindingCopy
 POSSIBLE LEAK
 name=default i#1875: Concurrency x64
 *!Concurrency::details::SchedulerBase::GetSubAllocator
+
+##################################################
+# i#2241: app_suite unaddrs in gtest, uninits in setlocale
+# Needs analysis.
+UNADDRESSABLE ACCESS
+name=i#2241 xenial gtest
+libc.so.6!...
+libc.so.6!getenv
+
+UNINITIALIZED READ
+name=i#2241 xenial setlocale
+libc.so.6!...
+libc.so.6!setlocale
+
+UNADDRESSABLE ACCESS
+name=i#2241 xenial gethostbyname
+libc.so.6!...
+libc.so.6!gethostbyname
+
+UNINITIALIZED READ
+name=i#2241 xenial nss
+libc.so.6!*
+libnss_files.so.2!...
+libnss_files.so.2!_nss_files_gethostbyname3_r

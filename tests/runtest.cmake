@@ -648,6 +648,8 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
           if (NOT "${real_out}" STREQUAL "")
             set(msg "${msg}, found \"${real_out}\" instead")
           endif ()
+          # TODO: Have a "CI" or "Travis" arg and print out the results file
+          # in that case, to ease remote debugging.
           message(FATAL_ERROR "${msg}")
         endif ()
       else ()
