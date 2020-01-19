@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -104,12 +104,8 @@ cs2bug.cpp:225
 cs2bug.cpp:86
 %if UNIX
 # FIXME PR 587093: string code disabled for now on Windows
-%if X32
-: LEAK 4 direct bytes + 19 indirect bytes
-%endif
-%if X64
-: LEAK 8 direct bytes + 31 indirect bytes
-%endif
+# std::string can have different sizes so we're not picky.
+: LEAK
 cs2bug.cpp:172
 %endif
 %OPTIONAL # Linux/VS2005
