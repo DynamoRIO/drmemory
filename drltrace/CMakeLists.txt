@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2019 Google, Inc.    All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.    All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.    All rights reserved.
 # **********************************************************
 
@@ -119,6 +119,7 @@ fix_win32_flags(drltrace_frontend.cpp)
 add_executable(drltrace ${front_srcs})
 
 configure_DynamoRIO_standalone(drltrace)
+use_DynamoRIO_extension(drltrace droption)
 
 target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
 

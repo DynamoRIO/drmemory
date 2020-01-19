@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -380,10 +380,12 @@ if (UNIX)
         "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
     endif ()
   endif ()
+  # We use C++11.
+  set(EXTRA_CXXFLAGS "-std=c++11")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
   set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
+    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS} ${EXTRA_CXXFLAGS}")
 else (UNIX)
   # FIXME i#1204: fix warnings and up to /W4
   set(WARN "/W2 /WX")
