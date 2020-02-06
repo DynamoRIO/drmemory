@@ -233,7 +233,7 @@ endif (APPLE)
 
 # N.B.: when updating this, update the git tag in .travis.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "2.2.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "2.3.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # Avoid "VERSION_NUMBER" name since conflics w/ DR's var.

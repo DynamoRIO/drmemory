@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -393,6 +393,7 @@ static const app_segment_t app_segments_initial[] = {
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
 };
+# ifdef WINDOWS
 static const app_segment_t app_segments_initial_81[] = {
     {(app_pc)0x0000000000000000,  (app_pc)0x0000030000000000, 0},
     /* To ensure we cover large mappings such as from Control Flow Guard without
@@ -407,6 +408,7 @@ static const app_segment_t app_segments_initial_81[] = {
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
 };
+# endif
 #endif
 #define MAX_NUM_APP_SEGMENTS sizeof(app_segments_initial)/sizeof(app_segments_initial[0])
 static app_segment_t app_segments[MAX_NUM_APP_SEGMENTS];
