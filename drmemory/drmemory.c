@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1034,11 +1034,11 @@ memory_walk(void)
                 LOG(2, "  => heap\n");
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
                 if (info.prot == DR_MEMPROT_NONE) {
-                    /* DR's -emulate_brk mmaps a page that we do not want to mark
+                    /* DR's -emulate_brk mmaps 4MB that we do not want to mark
                      * defined, so skip it:
                      */
                     LOG(2, "  initial heap is empty: skipping -emulate_brk page\n");
-                    info.size += PAGE_SIZE;
+                    info.size += 4*1024*1024;
                 }
             } else if (hashtable_lookup(&known_table, (void*)PAGE_START(pc)) != NULL) {
                 /* we assume there's only one entry in the known_table:

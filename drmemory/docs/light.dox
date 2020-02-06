@@ -21,12 +21,12 @@
  */
 
 /* Conventions:
- * + We use \verbatim b/c it nicely highlights command lines, but
- *   because aliases aren't expanded in \verbatim (or \code), we have
+ * + We use \\verbatim b/c it nicely highlights command lines, but
+ *   because aliases aren't expanded in \\verbatim (or \\code), we have
  *   a pre-processing pass that replaces them.  We used to use
- *   \par<tt>...</tt> to get aliases expanded but it doesn't look
- *   as nice.  Note that \if is NOT supported by the script so
- *   use it outside the \verbatim.
+ *   \\par<tt>...</tt> to get aliases expanded but it doesn't look
+ *   as nice.  Note that \\if is NOT supported by the script so
+ *   use it outside the \\verbatim.
  */
 
 /**

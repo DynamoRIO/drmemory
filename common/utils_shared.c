@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -85,8 +85,9 @@ drmem_strdup(const char *src, heapstat_t type)
 {
     char *dup = NULL;
     if (src != NULL) {
-        dup = global_alloc(strlen(src)+1, type);
-        strncpy(dup, src, strlen(src)+1);
+        size_t len = strlen(src);
+        dup = global_alloc(len+1, type);
+        strncpy(dup, src, len+1);
     }
     return dup;
 }
