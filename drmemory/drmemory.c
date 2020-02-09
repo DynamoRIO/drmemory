@@ -1193,7 +1193,7 @@ set_thread_initial_structures(void *drcontext)
          *   7d4e7d75 8b80700f0000     mov     eax,[eax+0xf70]
          *   7d4e7d7b 8b80d0140000     mov     eax,[eax+0x14d0]
          */
-        app_pc ref1 = (app_pc) teb->GdiBatchCount;
+        app_pc ref1 = (app_pc)(ptr_uint_t) teb->GdiBatchCount;
         if (ref1 != NULL &&
             PAGE_START(ref1) == PAGE_START(teb) - 2*PAGE_SIZE) {
             /* I used to only allow the +14d0-+14d4 but in other apps I see

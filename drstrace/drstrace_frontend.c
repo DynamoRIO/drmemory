@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -701,7 +701,7 @@ _tmain(int argc, TCHAR *targv[])
         /* we don't care if this app is already registered for DR b/c our
          * this-pid config will override
          */
-        info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
+        info("configuring %s =" PIDFMT " dr_ops=\"%s\"", process, pid, dr_ops);
         if (dr_register_process(process, pid,
                                 false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
                                 use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {

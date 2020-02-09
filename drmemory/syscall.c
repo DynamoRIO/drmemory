@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -520,7 +520,7 @@ event_post_syscall(void *drcontext, int sysnum)
     dr_mcontext_t *mc;
     drsys_syscall_t *syscall;
     bool success = false;
-    uint errno;
+    uint error;
     uint64 ret_val;
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "shouldn't fail");
@@ -533,9 +533,9 @@ event_post_syscall(void *drcontext, int sysnum)
 
     LOG(SYSCALL_VERBOSE, "system call #%d==%d.%d %s ", sysnum,
         sysnum_full.number, sysnum_full.secondary, get_syscall_name(sysnum_full));
-    if (drsys_cur_syscall_result(drcontext, &success, &ret_val, &errno)
+    if (drsys_cur_syscall_result(drcontext, &success, &ret_val, &error)
         != DRMF_SUCCESS || !success) {
-        LOG(SYSCALL_VERBOSE, "failed with error "PIFX"\n", errno);
+        LOG(SYSCALL_VERBOSE, "failed with error "PIFX"\n", error);
     } else {
         LOG(SYSCALL_VERBOSE, "succeeded with return value "PIFX"\n", ret_val);
     }

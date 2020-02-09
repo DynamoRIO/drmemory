@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,6 +27,7 @@
 #include "leak.h"
 #include "alloc.h"
 #include "heap.h"
+#include "spill.h"
 #include "redblack.h"
 #ifdef TOOL_DR_MEMORY
 # include "shadow.h"

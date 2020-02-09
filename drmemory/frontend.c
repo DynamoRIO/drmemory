@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -347,7 +347,7 @@ write_pid_to_file(const char *pidfile, process_id_t pid)
         char pidbuf[16];
         BOOL ok;
         DWORD written;
-        _snprintf(pidbuf, BUFFER_SIZE_ELEMENTS(pidbuf), "%d\n", pid);
+        _snprintf(pidbuf, BUFFER_SIZE_ELEMENTS(pidbuf), PIDFMT "\n", pid);
         NULL_TERMINATE_BUFFER(pidbuf);
         ok = WriteFile(f, pidbuf, (DWORD)strlen(pidbuf), &written, NULL);
         assert(ok && written == strlen(pidbuf));
@@ -679,7 +679,7 @@ process_results_file(const char *logdir, const char *symdir,
             _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), wfname, wresfile);
             NULL_TERMINATE_BUFFER(cmd);
             if (!CreateProcess(wfname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-                warn("cannot run \"%s\": %d", cmd, GetLastError());
+                warn("cannot run \"%S\": %d", cmd, GetLastError());
             } else {
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
@@ -1210,7 +1210,8 @@ _tmain(int argc, TCHAR *targv[])
         status = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, NUDGE_LEAK_SCAN, INFINITE);
         if (status != DR_SUCCESS) {
             const char *err_msg = dr_config_status_code_to_string(status);
-            fatal("error nudging %d, error code %d (%s)", nudge_pid, status, err_msg);
+            fatal("error nudging " PIDFMT ", error code %d (%s)",
+                  nudge_pid, status, err_msg);
             assert(false); /* shouldn't get here */
         }
         exit(0);
@@ -1523,13 +1524,13 @@ _tmain(int argc, TCHAR *targv[])
         /* we don't care if this app is already registered for DR b/c our
          * this-pid config will override
          */
-        info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
+        info("configuring %s pid=" PIDFMT " dr_ops=\"%s\"", process, pid, dr_ops);
         status = dr_register_process(process, pid,
                                      false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
                                      use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops);
         if (status != DR_SUCCESS) {
             const char *err_msg = dr_config_status_code_to_string(status);
-            fatal("failed to register DynamoRIO configuration for \"%s\"(%d) "
+            fatal("failed to register DynamoRIO configuration for \"%s\"(" PIDFMT ") "
                   "dr_ops=\"%s\".\n"
                   "Error code %d (%s)",
                   process, pid, dr_ops, status, err_msg);

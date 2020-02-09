@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -229,7 +229,7 @@ wingdi_get_secondary_syscall_num(const char *name, uint primary_num)
     drsys_sysnum_t num;
     const char *skip_primary;
 
-    num.secondary = (uint) hashtable_lookup(&usercall_table, (void *)name);
+    num.secondary = (uint)(ptr_uint_t) hashtable_lookup(&usercall_table, (void *)name);
     if (num.secondary == 0) {
         LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", name);
         return -1;
@@ -260,7 +260,8 @@ wingdi_add_usercall(const char *name, int num)
     }
     LOG(SYSCALL_VERBOSE + 1, "name2num usercall: adding %s => %d\n", name, num);
     IF_DEBUG(ok =)
-        hashtable_add(&usercall_table, (void *)name, (void *)(num + 1/*avoid 0*/));
+        hashtable_add(&usercall_table, (void *)name,
+                      (void *)(ptr_uint_t)(num + 1/*avoid 0*/));
     DOLOG(1, {
       if (!ok)
           LOG(1, "Dup usercall entry for %s\n", name);
