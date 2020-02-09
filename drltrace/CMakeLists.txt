@@ -79,8 +79,8 @@ if (UNIX)
   # to avoid conflicts with new declaration with "C" linkage in utils.h
   append_property_string(TARGET drltracelib COMPILE_FLAGS "-DNOLINK_STRCASESTR")
 endif()
-if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  # i#1805: see comment in drstrace/CMakeLists.txt
+if (WIN32)
+  # i#1805: see comment in drstrace/CMakeLists.txt.  For VS2017 avoid _isdigit.
   append_property_string(TARGET drltracelib LINK_FLAGS "/force:multiple")
 endif ()
 
