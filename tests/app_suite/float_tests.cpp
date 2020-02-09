@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -22,9 +22,8 @@
 #include "gtest/gtest.h"
 #include <map>
 #ifdef WIN32
-# include <hash_map>
-# include <hash_set>
-# define STD_HASH stdext
+# include <unordered_map>
+# include <unordered_set>
 #endif
 
 TEST(FloatTests, CopyConstructor) {
@@ -67,9 +66,9 @@ TEST(FloatTests, CopyConstructor) {
 #ifdef WIN32
 TEST(FloatTests, StdSwap) {
     /* Test i#931: std::swap<float> VS2010 false pos */
-    typedef STD_HASH::hash_set<std::string> myset_t;
+    typedef std::unordered_set<std::string> myset_t;
     myset_t myset;
-    std::map<std::string, myset_t> mymap;
+    std::unordered_map<std::string, myset_t> mymap;
     myset.insert("test");
     mymap["foo"] = myset;
 }

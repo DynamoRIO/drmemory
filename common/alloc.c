@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -4509,7 +4509,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                      * may have to implement the complex scheme in my notes
                      * for handling failed frees
                      */
-                    client_invalid_heap_arg((app_pc)sysnum/*use sysnum as pc*/,
+                    client_invalid_heap_arg((app_pc)(ptr_int_t)sysnum/*use sysnum as pc*/,
                                             base, mc, "HeapFree", true);
                 } else {
                     pt->expect_sys_to_fail = false;
@@ -5230,7 +5230,7 @@ set_auxarg(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             /* Note that these do not reflect what's really being freed if
              * -delay_frees > 0
              */
-            pt->alloc_flags = (uint) drwrap_get_arg(wrapcxt, 1);
+            pt->alloc_flags = (uint)(ptr_uint_t) drwrap_get_arg(wrapcxt, 1);
             pt->auxarg = (ptr_int_t) drwrap_get_arg(wrapcxt, 0);
         } else if (type == HEAP_ROUTINE_FREE_DBG) {
             pt->alloc_flags = 0;
@@ -5241,7 +5241,7 @@ set_auxarg(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         }
     } else if (is_size_routine(type)) {
         if (type == RTL_ROUTINE_SIZE) {
-            pt->alloc_flags = (uint) drwrap_get_arg(wrapcxt, 1);
+            pt->alloc_flags = (uint)(ptr_uint_t) drwrap_get_arg(wrapcxt, 1);
             pt->auxarg = (ptr_int_t) drwrap_get_arg(wrapcxt, 0);
         } else if (type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
             pt->alloc_flags = 0;
@@ -5254,7 +5254,7 @@ set_auxarg(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                is_realloc_routine(type) ||
                is_calloc_routine(type)) {
         if (is_rtl_routine(type)) {
-            pt->alloc_flags = (uint) drwrap_get_arg(wrapcxt, 1);
+            pt->alloc_flags = (uint)(ptr_uint_t) drwrap_get_arg(wrapcxt, 1);
             pt->auxarg = (ptr_int_t) drwrap_get_arg(wrapcxt, 0);
         } else if (type == HEAP_ROUTINE_MALLOC_DBG) {
             pt->alloc_flags = 0;
@@ -5730,7 +5730,7 @@ handle_malloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 # define RTL_LFH_BLOCK_FLAG 0x800000
 # define RTL_LOOKASIDE_BLOCK_FLAGS (HEAP_ZERO_MEMORY | HEAP_GROWABLE)
     if (is_rtl_routine(type)) {
-        uint flags = (uint) drwrap_get_arg(wrapcxt, 1);
+        uint flags = (uint)(ptr_uint_t) drwrap_get_arg(wrapcxt, 1);
         if (TEST(RTL_LFH_BLOCK_FLAG, flags)) {
             LOG(2, "%s is LFH block size="PIFX" alloc: ignoring\n", routine->name, size);
             pt->ignored_alloc = true;

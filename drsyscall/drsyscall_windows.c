@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2035,7 +2035,7 @@ get_TEB(void)
 static uint
 getpid(void)
 {
-    return (uint) get_TEB()->ClientId.UniqueProcess;
+    return (uint)(ptr_uint_t) get_TEB()->ClientId.UniqueProcess;
 }
 
 DR_EXPORT
@@ -2420,7 +2420,7 @@ handle_SetInformationFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t
                                     DRSYS_TYPE_STRUCT,
                                     "FILE_{LINK,RENAME}_INFORMATION"))
                 return;
-            if (safe_read((ULONG *)link_info->FileNameLength,
+            if (safe_read((ULONG *)&link_info->FileNameLength,
                           sizeof(name_length), &name_length) &&
                 name_length != 0) {
                 if (!report_memarg_type(ii, 2, SYSARG_READ,
@@ -2442,7 +2442,7 @@ handle_SetInformationFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t
                                     "FILE_NAME_INFORMATION.FileNameLength",
                                     DRSYS_TYPE_STRUCT, "FILE_NAME_INFORMATION"))
                 return;
-            if (safe_read((ULONG *)name_info->FileNameLength,
+            if (safe_read((ULONG *)&name_info->FileNameLength,
                           sizeof(name_length), &name_length) &&
                 name_length > 0) {
                 if (!report_memarg_type(ii, 2, SYSARG_READ,

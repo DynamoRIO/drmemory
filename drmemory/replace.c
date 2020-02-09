@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1197,7 +1197,8 @@ enumerate_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
                      * avoid this type lookup next time.
                      */
                     name = replace_routine_wide_alt[i-1];
-                    i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
+                    i = (uint)(ptr_uint_t)
+                        hashtable_lookup(&replace_name_table, (void *)name);
                 } else
                     replace = false;
             } else if (arg_type->elt_type->kind != DRSYM_TYPE_INT ||
@@ -1259,7 +1260,7 @@ wrap_UuidCreate_post(void *wrapcxt, void *user_data)
     /* Check for success.  It's not clear if the output is written on other
      * status codes.
      */
-    status = (RPC_STATUS) drwrap_get_retval(wrapcxt);
+    status = (RPC_STATUS)(ptr_uint_t) drwrap_get_retval(wrapcxt);
     if (status != RPC_S_OK && status != RPC_S_UUID_LOCAL_ONLY)
         return;
     /* Mark the outparam as defined. */

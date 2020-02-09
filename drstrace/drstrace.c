@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -545,7 +545,7 @@ event_post_syscall(void *drcontext, int sysnum)
 {
     drsys_syscall_t *syscall;
     bool success = false;
-    uint errno;
+    uint error;
     drmf_status_t res;
     buf_info_t buf;
     buf.sofar = 0;
@@ -553,13 +553,13 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
 
-    if (drsys_cur_syscall_result(drcontext, &success, NULL, &errno) != DRMF_SUCCESS)
+    if (drsys_cur_syscall_result(drcontext, &success, NULL, &error) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall_result failed");
 
     if (success)
         OUTPUT(&buf, "    succeeded =>\n");
     else
-        OUTPUT(&buf, "    failed (error="IF_WINDOWS_ELSE(PIFX, "%d")") =>\n", errno);
+        OUTPUT(&buf, "    failed (error="IF_WINDOWS_ELSE(PIFX, "%d")") =>\n", error);
     res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, &buf);
     if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
         ASSERT(false, "drsys_iterate_args failed post-syscall");
