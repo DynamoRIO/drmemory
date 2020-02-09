@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -72,10 +72,12 @@ use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
 add_dependencies(drstracelib drsyscall)
 
-if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+if (WIN32)
   # i#1805: to avoid strtol dup symbol errors (libcmt vs ntdll_imports) we just
   # force the link.  Alternatives include splitting ntdll_imports into Nt+Rtl vs
   # libc, dropping support for cmake < 3, or dropping non-Ninja support.
+  # We also do this for Ninja generators with VS2017 on Appveyor where we hit
+  # _isdigit dup symbol errors (libucrt vs ntdll_imports).
   append_property_string(TARGET drstracelib LINK_FLAGS "/force:multiple")
 endif ()
 
