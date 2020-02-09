@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -245,6 +245,7 @@ union semun {
 # define IPC_64  0x0100
 #endif
 
+#ifndef ANDROID
 /* ustat is deprecated and the header is not always available. */
 struct ustat {
     __daddr_t f_tfree;
@@ -252,5 +253,6 @@ struct ustat {
     char f_fname[6];
     char f_fpack[6];
 };
+#endif
 
 #endif /* _LINUX_DEFINES_H */
