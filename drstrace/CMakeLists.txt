@@ -185,8 +185,8 @@ if (WIN32)
   # that we try multiple times (i#1925).
   set_tests_properties(drstrace_unit_tests PROPERTIES TIMEOUT 240)
 
-  if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-    # i#1805: avoid tolower dup symbol errors
+  if (WIN32)
+    # i#1805: avoid tolower dup symbol errors.  For VS2017 avoid _isdigit.
     append_property_string(TARGET drstrace_unit_tests LINK_FLAGS "/force:multiple")
   endif ()
 endif (WIN32)
