@@ -97,7 +97,7 @@ if ($child) {
         my $version = $1;
         $args .= ";version=${version}";
     }
-    my $cmd = "ctest -VV -S \"${osdir}/../make/package.cmake${args}\"";
+    my $cmd = "ctest -VV -S \"${osdir}/../package.cmake${args}\"";
     print "Running ${cmd}\n";
     system("${cmd} 2>&1");
     exit 0;
