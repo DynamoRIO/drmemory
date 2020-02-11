@@ -64,11 +64,11 @@ jobs:
       compiler: clang
     #######################################################################
     # Package jobs
-    - if: env(TRAVIS_EVENT_TYPE) = cron
+    - if: env(TRAVIS_EVENT_TYPE) = cronDISABLE #TEMPORARY
       os: linux
       compiler: gcc
       env: DEPLOY=yes
-    - if: env(TRAVIS_EVENT_TYPE) = cron
+    - if: env(TRAVIS_EVENT_TYPE) = cronDISABLE #TEMPORARY
       os: osx
       compiler: clang
       env: DEPLOY=yes

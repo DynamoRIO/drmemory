@@ -83,6 +83,9 @@ install:
 
   ##################################################
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
+  - dir "c:\Program Files (x86)\WiX Toolset"*  #TEMPORARY
+  - dir "c:\Program Files (x86)\WiX Toolset v3.11"  #TEMPORARY
+  - dir "c:\Program Files (x86)\WiX Toolset v3.11\bin"  #TEMPORARY
 
 before_build:
   - if "%configuration%"=="2013" call "c:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" x86
