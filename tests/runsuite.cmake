@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -350,7 +350,7 @@ if (UNIX AND ARCH_IS_X86)
   set(ARCH_IS_X86 ON)
 endif (UNIX AND ARCH_IS_X86)
 
-if (NOT arg_vmk_only AND NOT arg_already_built)
+if (NOT arg_vmk_only AND NOT arg_already_built AND NOT arg_travis)
   set(build_package ON)
 else ()
   set(build_package OFF)
