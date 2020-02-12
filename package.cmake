@@ -48,6 +48,7 @@ set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
 set(arg_use_nmake OFF) # use nmake even if gnu make is present
 set(arg_cpackappend "")# string to append to CPackConfig.cmake before packaging
+set(arg_travis OFF)
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
@@ -83,6 +84,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^drmem_only" OR
       ${arg} MATCHES "^drmemory_only")
     set(arg_drmem_only ON)
+  endif ()
+  if (${arg} STREQUAL "travis")
+    set(arg_travis ON)
   endif ()
 endforeach (arg)
 
@@ -198,8 +202,12 @@ endif ()
 
 if (NOT arg_sub_package)
   set(build_package ON)
-  # some packagers request an official source tarball, so we create one (i#1287):
-  set(build_source_package ON)
+  # Some packagers request an official source tarball, so we create one (i#1287).
+  # However, this fails on Appveyor for as-yet-undiagnosed reasons (i#2255),
+  # and Github supplies its own source tarball, so we disable there.
+  if (NOT arg_travis)
+    set(build_source_package ON)
+  endif ()
   include("${runsuite_include_path}/runsuite_common_post.cmake")
 
   # copy the final archive into cur dir

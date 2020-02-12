@@ -2326,7 +2326,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${toolname_cap_spc} Memory Debugging Tool
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/license.txt")
 set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README")
 
-set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git" ".ninja_deps" ".ninja_log")
+set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git")
 
 set(CPACK_PACKAGE_VERSION "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE
