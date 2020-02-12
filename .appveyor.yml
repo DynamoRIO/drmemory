@@ -81,6 +81,12 @@ install:
   - 7z x WinFIG62.zip > nul || true
   - set PATH=c:\projects\install\WinFig;%PATH%
 
+  # AppVeyor has WiX installed but it is not on the PATH.
+  # We first print out all versions to make it easier to update this if
+  # the version changes.
+  - dir "c:\Program Files (x86)\WiX Toolset"*
+  - set PATH="c:\Program Files (x86)\WiX Toolset v3.11\bin";%PATH%
+
   ##################################################
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
 
@@ -93,11 +99,6 @@ build_script:
   - git submodule update --init --recursive
   - mkdir build
   - cd build
-  # AppVeyor has WiX installed but it is not on the PATH.
-  # We first print out all versions to make it easier to update this if
-  # the version changes.
-  - dir "c:\Program Files (x86)\WiX Toolset"*
-  - set PATH="c:\Program Files (x86)\WiX Toolset v3.11\bin";%PATH%
   - echo %PATH%
   - candle /? #TEMPORARY
   # The perl in c:\perl can't open a pipe so we use cygwin perl.
