@@ -85,7 +85,7 @@ install:
   # We first print out all versions to make it easier to update this if
   # the version changes.
   - dir "c:\Program Files (x86)\WiX Toolset"*
-  - set PATH="c:\Program Files (x86)\WiX Toolset v3.11\bin";%PATH%
+  - set PATH=c:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
 
   ##################################################
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
