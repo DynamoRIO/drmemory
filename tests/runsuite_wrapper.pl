@@ -131,6 +131,10 @@ for (my $i = 0; $i < $#lines; ++$i) {
         $fail = 1;
         $should_print = 1;
         $name = "diff pre-commit checks";
+    } elsif ($line =~ /^FAILED: CMakeFiles/package/) {
+        $fail = 1;
+        $should_print = 1;
+        $name = "packaging step";
     }
     if ($fail && $is_CI  && $line =~ /tests failed/) {
         my $is_32 = $line =~ /-32/;

@@ -99,6 +99,7 @@ build_script:
   - dir "c:\Program Files (x86)\WiX Toolset"*
   - set PATH="c:\Program Files (x86)\WiX Toolset v3.11\bin";%PATH%
   - echo %PATH%
+  - candle /? #TEMPORARY
   # The perl in c:\perl can't open a pipe so we use cygwin perl.
   - c:\cygwin\bin\perl ../tests/runsuite_wrapper.pl travis use_ninja %EXTRA_ARGS%
 

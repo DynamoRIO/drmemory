@@ -2257,6 +2257,7 @@ else (UNIX)
       "${CMAKE_VERSION}" VERSION_GREATER "3.3")
     # WIX's candle.exe must be on the path for cpack to run it, so hints don't help
     message(STATUS "Looking for candle from WIX") #TEMPORARY
+    message(STATUS "PATH is $ENV{PATH}") #TEMPORARY
     find_program(WIX candle DOC "WIX for creating installer")
   endif ()
   # Prefer WIX
@@ -2311,7 +2312,7 @@ else (UNIX)
     message(STATUS "Neither NSIS nor WIX found (please install and add to path if desired).  Creating only a zip package.")
     set(CPACK_GENERATOR "ZIP")
   endif ()
-  set(CPACK_SOURCE_GENERATOR "") #TEMPORARY
+  set(CPACK_SOURCE_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "Windows")
   if (USE_DRSYMS)
     set(CPACK_SYSTEM_NAME "Windows")
@@ -2327,7 +2328,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${toolname_cap_spc} Memory Debugging Tool
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/license.txt")
 set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README")
 
-set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git")
+set(CPACK_SOURCE_IGNORE_FILES "~$" "/\\.svn" "/\\.git" "\\.ninja_deps")
 
 set(CPACK_PACKAGE_VERSION "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE
