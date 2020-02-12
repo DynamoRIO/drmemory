@@ -2256,8 +2256,6 @@ else (UNIX)
   if ("${CMAKE_VERSION}" VERSION_EQUAL "3.3" OR
       "${CMAKE_VERSION}" VERSION_GREATER "3.3")
     # WIX's candle.exe must be on the path for cpack to run it, so hints don't help
-    message(STATUS "Looking for candle from WIX") #TEMPORARY
-    message(STATUS "PATH is $ENV{PATH}") #TEMPORARY
     find_program(WIX candle DOC "WIX for creating installer")
   endif ()
   # Prefer WIX
@@ -2328,7 +2326,7 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${toolname_cap_spc} Memory Debugging Tool
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/license.txt")
 set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README")
 
-set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git" ".ninja_deps")
+set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git" ".ninja_deps" ".ninja_log")
 
 set(CPACK_PACKAGE_VERSION "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE

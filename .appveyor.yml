@@ -102,7 +102,6 @@ build_script:
   - mkdir build
   - cd build
   - echo %PATH%
-  - candle /? #TEMPORARY
   # The perl in c:\perl can't open a pipe so we use cygwin perl.
   - c:\cygwin\bin\perl ../tests/runsuite_wrapper.pl travis use_ninja %EXTRA_ARGS%
 
