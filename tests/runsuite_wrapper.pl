@@ -237,28 +237,6 @@ for (my $i = 0; $i < $#lines; ++$i) {
             print "Failed to open $log\n";
         }
         close(LOG);
-        $log =~ s/wix\.log/files.wxs/;
-        if (open(LOG, "< $log")) {
-            print "\n\n----------------- START $log -----------\n";
-            while (<LOG>) {
-                print $_;
-            }
-            print "\n----------------- END $log -----------\n\n";
-        } else {
-            print "Failed to open $log\n";
-        }
-        close(LOG);
-        $log =~ s/files\.wxs/features.wxs/;
-        if (open(LOG, "< $log")) {
-            print "\n\n----------------- START $log -----------\n";
-            while (<LOG>) {
-                print $_;
-            }
-            print "\n----------------- END $log -----------\n\n";
-        } else {
-            print "Failed to open $log\n";
-        }
-        close(LOG);
     }
 }
 if (!$should_print) {

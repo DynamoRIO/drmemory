@@ -68,17 +68,18 @@ install:
 
   ##################################################
   # Install packages for docs.
-  # DRi#2616: internet outages have caused builds to spin for tens of minutes, only to fail
-  # due to chocolatey and fig2dev download errors. We instead ignore errors here and
-  # continue to build and test anyway.
-  - choco install --timeout 600 -y doxygen.portable imagemagick.tool ghostscript || true
+  # We need the docs for building packages so we do not ignore errors here.
+  - choco install --timeout 600 -y imagemagick.tool ghostscript
   # The ghostscript package is an install that doesn't add to PATH.
-  # FIXME i#2145: fig2dev is failing to launch ghostscript, so for now
-  # we're disabling to get the initial AppVeyor to be green.
-  #- set PATH=C:\Program Files\gs\gs9.20\bin;%PATH%
-  # Install fig2dev. DRi#2616: we ignore fig2dev download errors.
-  - appveyor DownloadFile http://www.winfig.com/WinFIG-Dateien/WinFIG62.zip || true
-  - 7z x WinFIG62.zip > nul || true
+  - dir "c:\Program Files\gs"
+  - set PATH=C:\Program Files\gs\gs9.50\bin;%PATH%
+  # i#4000: choco fails to download doxygen.portable so we install ourselves:
+  - appveyor DownloadFile http://doxygen.nl/files/doxygen-1.8.17.windows.x64.bin.zip
+  - 7z x doxygen-1.8.17.windows.x64.bin.zip -oc:\projects\install\doxygen > nul
+  - set PATH=c:\projects\install\doxygen;%PATH%
+  # Install fig2dev.
+  - appveyor DownloadFile http://www.winfig.com/WinFIG-Dateien/WinFIG62.zip
+  - 7z x WinFIG62.zip > nul
   - set PATH=c:\projects\install\WinFig;%PATH%
 
   # AppVeyor has WiX installed but it is not on the PATH.
