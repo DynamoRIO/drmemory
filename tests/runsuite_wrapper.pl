@@ -221,7 +221,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
         print "\n====> FAILURE in $name <====\n";
     }
     print "$line\n" if ($should_print);
-    if ($line =~ /^Please check '([^']+)' for errors/) {
+    if ($line =~ /Please check '([^']+)' for errors/) {
         my $log = $1;
         $log = `/usr/bin/cygpath -u \"$log\"`;
         chomp $log;
