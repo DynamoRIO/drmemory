@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -73,9 +73,54 @@ set(optionsdir_orig "${optionsdir}")
 set(commondir_orig "${commondir}")
 set(outdir_orig "${outdir}")
 
+#TEMPORARY to test; will then commit to DR
+# Transforms each variable in list_of_path_vars in-place to become
+# a path suitable for passing to DOXYGEN_EXECUTABLE.
+function (doxygen_path_xform_local DOXYGEN_EXECUTABLE list_of_path_vars)
+  if (WIN32)
+    # We can't rely on the presence of "cygwin" in the path to indicate this
+    # is a cygwin executable, as some users place native-Windows apps in
+    # c:/cygwin/usr/local/bin.  We thus try to write to a cygwin path.
+    # Doxygen will happily clobber if our temp file already exists.
+    execute_process(COMMAND
+      ${DOXYGEN_EXECUTABLE} -g /tmp/_test_doxygen_.dox
+      RESULT_VARIABLE doxygen_query_result
+      ERROR_VARIABLE doxygen_query_error
+      OUTPUT_VARIABLE doxygen_query_out
+      )
+    if (NOT doxygen_query_result)
+      # Cygwin doxygen cannot handle mixed paths!
+      #    *** E:/cygwin/bin/doxygen.exe failed: ***
+      #    Failed to open temporary file
+      #    /d/derek/opensource/dynamorio/build/api/docs/D:/derek/opensource/dynamorio/build/api/docs/doxygen_objdb_3156.tmp
+      # We're using native windows cmake, so
+      #   file(TO_CMAKE_PATH) => mixed, file(TO_NATIVE_PATH) => windows
+      # and thus we invoke cygpath.  But, caller should keep the
+      # original path to use for passing to process_doxyfile().
+      find_program(CYGPATH cygpath)
+      if (NOT CYGPATH)
+        message(FATAL_ERROR "cannot find cygpath: thus cannot use cygwin doxygen")
+      endif (NOT CYGPATH)
+      foreach (var ${list_of_path_vars})
+        execute_process(COMMAND
+          ${CYGPATH} -u "${${var}}"
+          RESULT_VARIABLE cygpath_result
+          ERROR_VARIABLE cygpath_err
+          OUTPUT_VARIABLE ${var}
+          )
+        if (cygpath_result OR cygpath_err)
+          message(FATAL_ERROR "*** ${CYGPATH} failed: ***\n${cygpath_err}")
+        endif (cygpath_result OR cygpath_err)
+        string(REGEX REPLACE "[\r\n]" "" ${var} "${${var}}")
+        set(${var} ${${var}} PARENT_SCOPE)
+      endforeach (var)
+    endif (is_cygwin)
+  endif (WIN32)
+endfunction (doxygen_path_xform_local)
+
 include("${DynamoRIO_DIR}/docs_doxyutils.cmake")
 set(input_paths srcdir outdir optionsdir commondir)
-doxygen_path_xform(${DOXYGEN_EXECUTABLE} "${input_paths}")
+doxygen_path_xform_local(${DOXYGEN_EXECUTABLE} "${input_paths}")
 
 configure_file(${commondir_orig}/Doxyfile.in ${outfile} COPYONLY)
 process_doxyfile(${outfile} ${DOXYGEN_EXECUTABLE} ${doxygen_ver})
