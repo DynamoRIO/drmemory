@@ -221,6 +221,20 @@ for (my $i = 0; $i < $#lines; ++$i) {
         print "\n====> FAILURE in $name <====\n";
     }
     print "$line\n" if ($should_print);
+    if ($line =~ /^Please check '([^']+)' for errors/) {
+        my $log = $1;
+        $log = `/usr/bin/cygpath -u \"$log\"`;
+        chomp $log;
+        if (open(LOG, "< $log")) {
+            print "\n\n----------------- START $log -----------\n";
+            while (<LOG>) {
+                print $_;
+            }
+            print "\n----------------- END $log -----------\n\n";
+        } else {
+            print "Failed to open $log\n";
+        }
+    }
 }
 if (!$should_print) {
     print "Error: RESULTS line not found\n";
