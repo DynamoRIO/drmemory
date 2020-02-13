@@ -223,7 +223,9 @@ for (my $i = 0; $i < $#lines; ++$i) {
     print "$line\n" if ($should_print);
     if ($line =~ /Please check '([^']+)' for errors/) {
         my $log = $1;
-        $log = `/usr/bin/cygpath -u \"$log\"`;
+        if ($^O eq 'cygwin') {
+            $log = `/usr/bin/cygpath -u \"$log\"`;
+        }
         chomp $log;
         if (open(LOG, "< $log")) {
             print "\n\n----------------- START $log -----------\n";
@@ -234,6 +236,29 @@ for (my $i = 0; $i < $#lines; ++$i) {
         } else {
             print "Failed to open $log\n";
         }
+        close(LOG);
+        $log =~ s/wix\.log/files.wxs/;
+        if (open(LOG, "< $log")) {
+            print "\n\n----------------- START $log -----------\n";
+            while (<LOG>) {
+                print $_;
+            }
+            print "\n----------------- END $log -----------\n\n";
+        } else {
+            print "Failed to open $log\n";
+        }
+        close(LOG);
+        $log =~ s/files\.wxs/features.wxs/;
+        if (open(LOG, "< $log")) {
+            print "\n\n----------------- START $log -----------\n";
+            while (<LOG>) {
+                print $_;
+            }
+            print "\n----------------- END $log -----------\n\n";
+        } else {
+            print "Failed to open $log\n";
+        }
+        close(LOG);
     }
 }
 if (!$should_print) {
