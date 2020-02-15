@@ -48,6 +48,15 @@ for (my $i = 0; $i <= $#ARGV; $i++) {
     }
 }
 
+my $osdir = $mydir;
+if ($^O eq 'cygwin') {
+    # CMake is native Windows so pass it a Windows path.
+    # We use the full path to cygpath as git's cygpath is earlier on
+    # the PATH for AppVeyor and it fails.
+    $osdir = `/usr/bin/cygpath -wi \"$mydir\"`;
+    chomp $osdir;
+}
+
 # We have no way to access the log files, so we use -VV to ensure
 # we can diagnose failures.
 # We tee to stdout to provide incremental output and avoid the 10-min
@@ -63,19 +72,41 @@ if ($child) {
         $res .= $_;
     }
     close(CHILD);
-} else {
-    if ($^O eq 'cygwin') {
-        # CMake is native Windows so pass it a Windows path.
-        # We use the full path to cygpath as git's cygpath is earlier on
-        # the PATH for AppVeyor and it fails.
-        $mydir = `/usr/bin/cygpath -wi \"$mydir\"`;
-        chomp $mydir;
+} elsif ($ENV{'TRAVIS_EVENT_TYPE'} eq 'cron' ||
+         $ENV{'APPVEYOR_REPO_TAG'} eq 'true') {
+    # A package build.
+    my $build = "0";
+    # We trigger by setting VERSION_NUMBER in Travis.
+    # That sets a tag and we propagate the name into the Appveyor build from the tag:
+    if ($ENV{'APPVEYOR_REPO_TAG_NAME'} =~ /release_(.*)/) {
+        $ENV{'VERSION_NUMBER'} = $1;
     }
+    if ($ENV{'VERSION_NUMBER'} =~ /-(\d+)$/) {
+        $build = $1;
+    }
+    if ($args eq '') {
+        $args = ",";
+    } else {
+        $args .= ";";
+    }
+    $args .= "drmem_only;build=${build}";
+    if ($^O eq 'darwin' || $^O eq 'MacOS') {
+        $args .= ";64_only";
+    }
+    if ($ENV{'VERSION_NUMBER'} =~ /^(\d+\.\d+\.\d+)/) {
+        my $version = $1;
+        $args .= ";version=${version}";
+    }
+    my $cmd = "ctest -VV -S \"${osdir}/../package.cmake${args}\"";
+    print "Running ${cmd}\n";
+    system("${cmd} 2>&1");
+    exit 0;
+} else {
     # To shrink the log sizes and make Travis and Appveyor error pages easier
     # to work with we omit a second V and instead use --output-on-failure.
     # We rely on runsuite_common_post.cmake extracting configure and build error
     # details from the xml files, as they don't show up with one V.
-    system("ctest --output-on-failure -V -S \"${mydir}/runsuite.cmake${args}\" 2>&1");
+    system("ctest --output-on-failure -V -S \"${osdir}/runsuite.cmake${args}\" 2>&1");
     exit 0;
 }
 
@@ -100,6 +131,10 @@ for (my $i = 0; $i < $#lines; ++$i) {
         $fail = 1;
         $should_print = 1;
         $name = "diff pre-commit checks";
+    } elsif ($line =~ /^FAILED: CMakeFiles\/package/) {
+        $fail = 1;
+        $should_print = 1;
+        $name = "packaging step";
     }
     if ($fail && $is_CI  && $line =~ /tests failed/) {
         my $is_32 = $line =~ /-32/;
@@ -186,6 +221,23 @@ for (my $i = 0; $i < $#lines; ++$i) {
         print "\n====> FAILURE in $name <====\n";
     }
     print "$line\n" if ($should_print);
+    if ($line =~ /Please check '([^']+)' for errors/) {
+        my $log = $1;
+        if ($^O eq 'cygwin') {
+            $log = `/usr/bin/cygpath -u \"$log\"`;
+        }
+        chomp $log;
+        if (open(LOG, "< $log")) {
+            print "\n\n----------------- START $log -----------\n";
+            while (<LOG>) {
+                print $_;
+            }
+            print "\n----------------- END $log -----------\n\n";
+        } else {
+            print "Failed to open $log\n";
+        }
+        close(LOG);
+    }
 }
 if (!$should_print) {
     print "Error: RESULTS line not found\n";

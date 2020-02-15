@@ -2374,8 +2374,14 @@ endif (WIN32 AND NOT BUILDING_SUB_PACKAGE)
 # CPACK_TEMPORARY_PACKAGE_FILE_NAME if I hardcode the exentsion: but maybe
 # having the full version in the base dir is a good thing, though I'm not
 # sure about the caps.
+# We omit the -NN suffix for the build number if it is zero.
+if ("${TOOL_BUILD_NUMBER}" STREQUAL "0")
+  set(PACKAGE_SUFFIX "")
+else ()
+  set(PACKAGE_SUFFIX "-${TOOL_BUILD_NUMBER}")
+endif ()
 set(CPACK_PACKAGE_FILE_NAME
-  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}")
+  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}${PACKAGE_SUFFIX}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${toolname_cap}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}-Source")
 
