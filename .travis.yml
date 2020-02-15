@@ -41,33 +41,28 @@ language:
   - c
   - cpp
 
-# TEMPORARY to test cron builds.
-env:
-  global:
-    - TRAVIS_EVENT_TYPE=cron
-
 # We use a jobs include approach rather than an os, compiler, env matrix
 # with exludes so we can use conditional builds (plus it's clearer this way).
 jobs:
   include:
     #######################################################################
     # Regular test jobs
-#TEMPORARY    - if: type != cron
-#TEMPORARY      os: linux
-#TEMPORARY      compiler: gcc
-#TEMPORARY    - if: type != cron
-#TEMPORARY      os: linux
-#TEMPORARY      compiler: clang
-#TEMPORARY    - if: type != cron
-#TEMPORARY      os: osx
-#TEMPORARY      compiler: clang
+    - if: type != cron
+      os: linux
+      compiler: gcc
+    - if: type != cron
+      os: linux
+      compiler: clang
+    - if: type != cron
+      os: osx
+      compiler: clang
     #######################################################################
     # Package jobs
-    - if: env(TRAVIS_EVENT_TYPE) = cron #TEMPORARY; should be "type = cron"
+    - if: type = cron
       os: linux
       compiler: gcc
       env: DEPLOY=yes
-    - if: env(TRAVIS_EVENT_TYPE) = cron #TEMPORARY; should be "type = cron"
+    - if: type = cron
       os: osx
       compiler: clang
       env: DEPLOY=yes
@@ -103,7 +98,7 @@ before_deploy:
   # We handle races among our 4 package jobs by ignoring failure here.
   # XXX: That could mask a real failure: we could try to distinguish the
   # type of error.
-#TEMPORARY  - (git tag $GIT_TAG -a -m "Travis auto-generated tag for build $TRAVIS_BUILD_NUMBER." || true)
+  - (git tag $GIT_TAG -a -m "Travis auto-generated tag for build $TRAVIS_BUILD_NUMBER." || true)
 deploy:
   provider: releases
   api_key:
