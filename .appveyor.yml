@@ -109,7 +109,7 @@ deploy:
   provider: GitHub
   auth_token:
     secure: R1N347WZ23p/t8XtU1VK/7zYUzXkKQ8f2HA7PzE6zYVISv2hDJuc3F552bIQZPNE
-  artifact: DrMem.zip
+  artifact: DrMem.zip,DrMem.msi
   draft: false
   prerelease: false
   # We want to use the same release as Travis.
