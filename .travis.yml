@@ -52,23 +52,22 @@ jobs:
   include:
     #######################################################################
     # Regular test jobs
-    - if: env(TRAVIS_EVENT_TYPE) != cron
-      os: linux
-      compiler: gcc
-    - if: env(TRAVIS_EVENT_TYPE) != cron
-      os: linux
-      compiler: clang
-    - if: env(TRAVIS_EVENT_TYPE) != cron
-      os: osx
-      # gcc on Travis claims to not be CMAKE_COMPILER_IS_GNUCC so we only run clang.
-      compiler: clang
+#TEMPORARY    - if: type != cron
+#TEMPORARY      os: linux
+#TEMPORARY      compiler: gcc
+#TEMPORARY    - if: type != cron
+#TEMPORARY      os: linux
+#TEMPORARY      compiler: clang
+#TEMPORARY    - if: type != cron
+#TEMPORARY      os: osx
+#TEMPORARY      compiler: clang
     #######################################################################
     # Package jobs
-    - if: env(TRAVIS_EVENT_TYPE) = cronDISABLE #TEMPORARY
+    - if: env(TRAVIS_EVENT_TYPE) = cron #TEMPORARY; should be "type = cron"
       os: linux
       compiler: gcc
       env: DEPLOY=yes
-    - if: env(TRAVIS_EVENT_TYPE) = cronDISABLE #TEMPORARY
+    - if: env(TRAVIS_EVENT_TYPE) = cron #TEMPORARY; should be "type = cron"
       os: osx
       compiler: clang
       env: DEPLOY=yes
@@ -79,8 +78,7 @@ install:
   # XXX: Remove the "brew update" step once Travis fixes their Mac VM's
   # on 11/15/17.  Xref https://github.com/travis-ci/travis-ci/issues/8552.
   - if [[ "`uname`" == "Darwin" ]]; then brew update; brew install nasm; fi
-  # ImageMagick is present but these are not:
-  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib ghostscript doxygen transfig; fi
+  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen; fi
 
 script:
   - tests/runsuite_wrapper.pl travis

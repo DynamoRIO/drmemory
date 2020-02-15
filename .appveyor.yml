@@ -68,25 +68,16 @@ install:
 
   ##################################################
   # Install packages for docs.
-  # We need the docs for building packages so we do not ignore errors here.
-  - choco install --timeout 600 -y imagemagick.tool ghostscript
-  # The ghostscript package is an install that doesn't add to PATH.
-  - dir "c:\Program Files\gs"
-  - set PATH=C:\Program Files\gs\gs9.50\bin;%PATH%
-  # i#4000: choco fails to download doxygen.portable so we install ourselves:
+  # DRi#4000: choco fails to download doxygen.portable so we install ourselves:
   - appveyor DownloadFile http://doxygen.nl/files/doxygen-1.8.17.windows.x64.bin.zip
   - 7z x doxygen-1.8.17.windows.x64.bin.zip -oc:\projects\install\doxygen > nul
   - set PATH=c:\projects\install\doxygen;%PATH%
-  # Install fig2dev.
-  - appveyor DownloadFile http://www.winfig.com/WinFIG-Dateien/WinFIG76.zip
-  - 7z x WinFIG76.zip > nul
-  - set PATH=c:\projects\install\WinFig;%PATH%
 
   # AppVeyor has WiX installed but it is not on the PATH.
   # We first print out all versions to make it easier to update this if
   # the version changes.
   - dir "c:\Program Files (x86)\WiX Toolset"*
-  # Work around runsuite_common_pre.cmake appending x64 to bin here.
+  # DRi#4108: Work around runsuite_common_pre.cmake appending x64 to bin here.
   - ps: $wixpath=& c:\cygwin64\bin\cygpath -d 'C:\Program Files (x86)\WiX Toolset v3.11\bin'
   - ps: $env:PATH="$wixpath;$env:PATH"
 
