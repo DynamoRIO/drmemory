@@ -43,26 +43,30 @@ language:
 
 # We use a jobs include approach rather than an os, compiler, env matrix
 # with exludes so we can use conditional builds (plus it's clearer this way).
+# For packages, "type = cron" is for the real cron builds, and the env var
+# TRAVIS_EVENT_TYPE is set for manually-triggered package builds (that
+# same env var is set by Travis for "type = cron" but the env var is not
+# set during job matrix setup: only once a job starts).
 jobs:
   include:
     #######################################################################
     # Regular test jobs
-    - if: type != cron
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
       os: linux
       compiler: gcc
-    - if: type != cron
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
       os: linux
       compiler: clang
-    - if: type != cron
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
       os: osx
       compiler: clang
     #######################################################################
     # Package jobs
-    - if: type = cron
+    - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: linux
       compiler: gcc
       env: DEPLOY=yes
-    - if: type = cron
+    - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: osx
       compiler: clang
       env: DEPLOY=yes
