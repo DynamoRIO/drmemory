@@ -90,6 +90,9 @@ if ($child) {
         $args .= ";";
     }
     $args .= "drmem_only;build=${build}";
+    if ($ENV{'DEPLOY_DOCS'} eq 'yes') {
+        $args .= ";copy_docs";
+    }
     if ($^O eq 'darwin' || $^O eq 'MacOS') {
         $args .= ";64_only";
     }

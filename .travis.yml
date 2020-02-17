@@ -66,7 +66,7 @@ jobs:
     - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: linux
       compiler: gcc
-      env: DEPLOY=yes
+      env: DEPLOY=yes DEPLOY_DOCS=ye
     - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: osx
       compiler: clang
@@ -85,6 +85,8 @@ script:
 
 # We switch to package.cmake for these builds in runsuite_wrapper.pl by looking
 # for $TRAVIS_EVENT_TYPE=="cron".
+# The before_deploy commands are run before each deployer, so they are also
+# run for DEPLOY_DOCS.  We'll just have a git tag failure since it exists.
 before_deploy:
   - git config --local user.name "Travis Auto-Tag"
   - git config --local user.email "drmemory-devs@googlegroups.com"
@@ -105,17 +107,27 @@ before_deploy:
   # type of error.
   - (git tag $GIT_TAG -a -m "Travis auto-generated tag for build $TRAVIS_BUILD_NUMBER." || true)
 deploy:
-  provider: releases
-  api_key:
-    secure: HDMWsqw+DqxPg1lhy9pk23EyHI5PdTBo3/SA//h41tIKi2+uEtvoETidRXa/ePkEymVRGyzF7F5RVNFeKu4gM3taxa7JUbOc1OgC8o7oRVfYXZd1qALdDf03EyYAtw3iTeLKlOBSR1cnRZcoOZ6Ja9E6OZC9qjAPrXywNzZkkv4=
-  file_glob: true
-  file: "DrMemory*.tar.gz"
-  skip_cleanup: true
-  # The name must just be the tag in order to match Appveyor.
-  name: $GIT_TAG
-  # This body is clobbered by Appveyor.
-  body: "Auto-generated periodic build."
-  on:
-    repo: DynamoRIO/drmemory
-    branch: master
-    condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY = yes
+  - provider: releases
+    api_key:
+      secure: HDMWsqw+DqxPg1lhy9pk23EyHI5PdTBo3/SA//h41tIKi2+uEtvoETidRXa/ePkEymVRGyzF7F5RVNFeKu4gM3taxa7JUbOc1OgC8o7oRVfYXZd1qALdDf03EyYAtw3iTeLKlOBSR1cnRZcoOZ6Ja9E6OZC9qjAPrXywNzZkkv4=
+    file_glob: true
+    file: "DrMemory*.tar.gz"
+    skip_cleanup: true
+    # The name must just be the tag in order to match Appveyor.
+    name: $GIT_TAG
+    # This body is clobbered by Appveyor.
+    body: "Auto-generated periodic build."
+    on:
+      repo: DynamoRIO/drmemory
+      branch: master
+      condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY = yes
+  - provider: pages
+    repo: DynamoRIO/drmemory_docs
+    target_branch: master
+    local_dir: html
+    github_token:
+      secure: Nfqal6Ssh8nvg2nY6me9s1emxSpA7pPX+s/rlgB3Evr8LfYsqYAQfv/G7pdS74Y2H/BAMQLf7k4ZVBnw+mkjvfXfiH3os8Oq9sUjc475aOEwemzbt5Hg+tGwbVSD1wyknGR/yf6NyrohYRhx9y1kM7CW490pLXJGh/XvNk4m9Kc=
+    skip_cleanup: true
+    on:
+      branch: master
+      condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY_DOCS = yes
