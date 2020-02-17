@@ -226,6 +226,11 @@ endif ()
 
 file(WRITE ${outfile} "${string}")
 
+# Newer doxygen complains if header.html and footer.html are missing and we
+# don't create those until CMake_rundoxygen.cmake.
+file(WRITE header.html "placeholder")
+file(WRITE footer.html "placeholder")
+
 # Now update to latest doxygen.  Suppress warnings since they're misleading:
 # they say "please run doxygen -u" but we're currently doing just that.
 execute_process(COMMAND
