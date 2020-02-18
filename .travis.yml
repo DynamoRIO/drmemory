@@ -126,7 +126,7 @@ deploy:
     target_branch: master
     local_dir: html
     github_token:
-      secure: Nfqal6Ssh8nvg2nY6me9s1emxSpA7pPX+s/rlgB3Evr8LfYsqYAQfv/G7pdS74Y2H/BAMQLf7k4ZVBnw+mkjvfXfiH3os8Oq9sUjc475aOEwemzbt5Hg+tGwbVSD1wyknGR/yf6NyrohYRhx9y1kM7CW490pLXJGh/XvNk4m9Kc=
+      secure: mZb4iOba+W4h2Vv2gpu07a1Mszh5Lk5L1CPAWBhbvVp0YVbVRr68eEYBTCKnIoIOdxPCAzZEiSumLFgjnd/neJE/RsDNo/7+7PAmiBzLNFNxGanMlMF9TleMo8l+ZiqaAi6SjrMKR/UApogESZiLsXFvuCiUBUBDNSk6lMn+lS4=
     skip_cleanup: true
     on:
       branch: master
