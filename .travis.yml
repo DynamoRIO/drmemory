@@ -66,7 +66,7 @@ jobs:
     - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: linux
       compiler: gcc
-      env: DEPLOY=yes DEPLOY_DOCS=ye
+      env: DEPLOY=yes DEPLOY_DOCS=yes
     - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
       os: osx
       compiler: clang
