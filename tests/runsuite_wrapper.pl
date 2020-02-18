@@ -194,8 +194,12 @@ for (my $i = 0; $i < $#lines; ++$i) {
             %ignore_failures_64 = ('malloc' => 1);
         } else {
             %ignore_failures_32 = ('pcache-use' => 1, # i#2202
-                                   'fuzz_threads' => 1); # i#2242
-            %ignore_failures_64 = ('pcache' => 1); # i#2243
+                                   'fuzz_threads' => 1, # i#2242
+                                   'wrap_cs2bug' => 1,
+                                   'app_suite.pattern' => 1,
+                                   'app_suite' => 1);
+            %ignore_failures_64 = ('pcache' => 1, # i#2243
+                                   'app_suite.pattern' => 1);
         }
         # Read ahead to examine the test failures:
         $fail = 0;

@@ -223,8 +223,7 @@ foreach (tool ${tools})
   endif ("${tool}" MATCHES "HEAPSTAT")
 
   if (NOT arg_vmk_only)
-    # DRi#58: core DR does not yet support 64-bit Mac
-    if ("${tool}" MATCHES "MEMORY" AND NOT APPLE)
+    if ("${tool}" MATCHES "MEMORY")
       # 64-bit builds cannot be last as that messes up the package build
       # for Ninja (i#1763).
       testbuild_ex("${name}-dbg-64" ON "
@@ -240,20 +239,23 @@ foreach (tool ${tools})
          CMAKE_BUILD_TYPE:STRING=Release
          " ON ON "") # no release tests in short suite
     endif ()
-    testbuild_ex("${name}-dbg-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Debug
-      " ${dbg_tests_only_in_long} ON "")
-    # Skipping drheap rel to speed up AppVeyor.
-    if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
-      testbuild_ex("${name}-rel-32" OFF "
+    # We do not support 32-bit Mac.
+    if (NOT APPLE)
+      testbuild_ex("${name}-dbg-32" OFF "
         ${base_cache}
         ${tool}
         ${DR_entry}
-        CMAKE_BUILD_TYPE:STRING=Release
-        " ON ON "") # no release tests in short suite
+        CMAKE_BUILD_TYPE:STRING=Debug
+        " ${dbg_tests_only_in_long} ON "")
+      # Skipping drheap rel to speed up AppVeyor.
+      if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
+        testbuild_ex("${name}-rel-32" OFF "
+          ${base_cache}
+          ${tool}
+          ${DR_entry}
+          CMAKE_BUILD_TYPE:STRING=Release
+          " ON ON "") # no release tests in short suite
+      endif ()
     endif ()
   endif (NOT arg_vmk_only)
   if (UNIX)
