@@ -53,6 +53,16 @@ build:
 configuration:
   - 2017
 
+
+#TEMPORARY
+environment:
+  APPVEYOR_RDP_PASSWORD: DiagnoseDrMExits
+
+init:
+  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+#ENDTEMPORARY
+
+
 install:
   ##################################################
   # Install ninja so we have readable output.
