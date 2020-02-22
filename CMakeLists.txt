@@ -544,6 +544,9 @@ if (WIN32)
   else ()
     set(PROGFILES "$ENV{PROGRAMW6432}")
     set(PROGFILES32 "$ENV{PROGRAMFILES(x86)}")
+    if ("${PROGFILES32}" STREQUAL "")
+      set(PROGFILES32 "$ENV{PROGRAMFILES}")
+    endif ()
     if (X64)
       set(ARCH_SFX "x64")
       set(DDK_SFX "amd64")
@@ -568,7 +571,8 @@ if (WIN32)
     # Visual Studio put dbghelp.dll in progfiles (especially 2008) and some in progfiles32.
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
     "${PROGFILES32}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/dbghelp.dll")
+    "${PROGFILES32}/Microsoft Visual Studio */Common7/Packages/Debugger/${ARCH_SFX}/dbghelp.dll"
+    "${PROGFILES32}/Microsoft Visual Studio/*/Professional/Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll")
 
   if (X64)
     set(dbghelp_paths ${dbghelp_paths}

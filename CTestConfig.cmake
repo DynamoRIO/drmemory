@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -53,31 +53,16 @@
 set(CTEST_PROJECT_NAME "DrMemory") # must match project() name
 
 if (SUBMIT_LOCAL)
-  set(CTEST_DROP_METHOD "scp")
-  if (WIN32)
-    # Cygwin scp won't take : later in path (and interprets drive as host like
-    # unix scp would) so we use cp, which is ok with drive-letter paths.
-    # Note that CTEST_SCP_COMMAND must be a single executable so we can't
-    # use "cmake -E copy".
-    if (EXISTS "${CTEST_SCRIPT_DIRECTORY}/tests/copy.bat")
-      set(CTEST_SCP_COMMAND "${CTEST_SCRIPT_DIRECTORY}/tests/copy.bat")
-    elseif (EXISTS "${CTEST_SCRIPT_DIRECTORY}/copy.bat")
-      set(CTEST_SCP_COMMAND "${CTEST_SCRIPT_DIRECTORY}/copy.bat")
-    else ()
-      message(FATAL_ERROR "cannot find copy.bat")
-    endif ()
-  else (WIN32)
-    find_program(CTEST_SCP_COMMAND scp DOC "scp command for local copy of results")
-  endif (WIN32)
+  # There is no longer support for "cp" or "scp methods in cmake 3.14+: there is no
+  # way to copy locally using ctest_submit().  We copy ourselves manually.
+  set(CTEST_SUBMIT_URL "none")
+  set(CTEST_DROP_METHOD "none")
   set(CTEST_TRIGGER_SITE "")
   set(CTEST_DROP_SITE_USER "")
-  # CTest does "scp file ${CTEST_DROP_SITE}:${CTEST_DROP_LOCATION}" so for
-  # local copy w/o needing sshd on localhost we arrange to have : in the
-  # absolute filepath (when absolute, scp interprets as local even if : later)
   if (NOT EXISTS "${CTEST_DROP_SITE}:${CTEST_DROP_LOCATION}")
     message(FATAL_ERROR
       "must set ${CTEST_DROP_SITE}:${CTEST_DROP_LOCATION} to an existing directory")
-  endif (NOT EXISTS "${CTEST_DROP_SITE}:${CTEST_DROP_LOCATION}")
+  endif ()
 else (SUBMIT_LOCAL)
   # Nightly runs will use sources as of this time
   set(CTEST_NIGHTLY_START_TIME "04:00:00 EST")

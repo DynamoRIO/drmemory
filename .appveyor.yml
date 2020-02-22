@@ -43,15 +43,15 @@ branches:
 
 platform: x64
 
-image: Visual Studio 2013
+image: Visual Studio 2017
 
 build:
   verbosity: detailed
 
-# We stick with just one config (we've dropped VS2010 support) to speed
-# up the build (xref DRi#2406).
+# We stick with just one config (we've dropped VS2010 support, and no
+# longer actively support VS2013) to speed up the build (xref DRi#2406).
 configuration:
-  - 2013
+  - 2017
 
 install:
   ##################################################
@@ -81,7 +81,7 @@ install:
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
 
 before_build:
-  - if "%configuration%"=="2013" call "c:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" x86
+  - if "%configuration%"=="2017" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars32.bat"
   - cd c:\projects\drmemory
 
 build_script:
