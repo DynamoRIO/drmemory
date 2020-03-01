@@ -59,7 +59,7 @@ jobs:
       os: linux
       compiler: clang
       # We need clang 9.0 for asm goto support (DRi#1799) for annotations.
-      env: CC=clang-9 && CXX=clang++-9
+      env: CC=clang-9 CXX=clang++-9
       addons:
         apt:
           sources:
