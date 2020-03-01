@@ -1690,7 +1690,7 @@ endif (WIN32)
 copy_file_to_device("${defsupp_out}")
 
 ###########################################################################
-# Dr. Memory Framework (DRMF) directories
+# Dr. Memory Framework (DRMF) setup needed for tests
 
 set(DRMF_BASEDIR "drmf")
 set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
@@ -1700,6 +1700,58 @@ set(DRMF_INSTALL_INC "${DRMF_INSTALL}/include")
 set(framework_dir "${PROJECT_BINARY_DIR}/${DRMF_BASEDIR}")
 set(framework_incdir "${framework_dir}/include")
 set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
+
+# Versioning: we use separate versioning for DRMF from the tool versioning.
+# This is major*100 + minor.
+set(DRMF_VERSION_DEFAULT "1.0.${VERSION_NUMBER_PATCHLEVEL}")
+set(DRMF_VERSION "" CACHE STRING "DRMF version number: leave empty for default")
+if ("${DRMF_VERSION}" STREQUAL "")
+  set(DRMF_VERSION ${DRMF_VERSION_DEFAULT})
+endif()
+message(STATUS "DRMF version number: ${DRMF_VERSION}")
+string(REGEX REPLACE "^([0-9]+)\\..*" "\\1" DRMF_VERSION_MAJOR "${DRMF_VERSION}")
+string(REGEX REPLACE "^[0-9]+\\.([0-9]+)\\..*" "\\1" DRMF_VERSION_MINOR "${DRMF_VERSION}")
+# We use just major.minor for .so versioning (and no, SOVERSION is not sufficient
+# here: we have to set VERSION to control the file name and import dependence).
+string(REGEX REPLACE "^([0-9]+\\.[0-9]+)\\..*" "\\1"
+  DRMF_VERSION_MAJOR_MINOR "${DRMF_VERSION}")
+math(EXPR DRMF_VERSION_INTEGER "${DRMF_VERSION_MAJOR}*100 + ${DRMF_VERSION_MINOR}")
+set(DRMF_VERSION_COMPAT 9)                # Oldest compatible version
+set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
+
+configure_file(framework/public.h
+  ${framework_incdir}/drmemory_framework.h)
+configure_file(drmemory/annotations_public.h
+  ${framework_incdir}/drmemory_annotations.h)
+configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
+  ${framework_incdir}/dr_annotations_asm.h)
+configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
+  ${framework_incdir}/dr_annotations.h)
+include_directories(${framework_incdir})
+
+# Annotation support using DR's infrastructure (non-Valgrind-style).
+if (UNIX)
+  set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
+else ()
+  set(annot_cflags "/Od /Ob0 /GL- /wd4715")
+endif ()
+if (UNIX)
+  # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
+  # the DR annotation infrastructure.  But, we can't just do a version check
+  # because Apple's clang has a completely separate version number.
+  try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
+    SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
+    ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
+    -DINCLUDE_DIRECTORIES=${framework_incdir}
+    -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
+  if (DR_ANNOTATIONS_SUPPORTED)
+    message(STATUS "DR annotations are supported")
+  else ()
+    message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+  endif ()
+else ()
+  set(DR_ANNOTATIONS_SUPPORTED ON)
+endif ()
 
 ###########################################################################
 # Tests
@@ -1779,34 +1831,6 @@ endif ()
 # framework-shared code goes here.  Things that should be global we
 # put into functions for invocation inside extension subdirs.
 
-# Versioning: we use separate versioning for DRMF from the tool versioning.
-# This is major*100 + minor.
-set(DRMF_VERSION_DEFAULT "1.0.${VERSION_NUMBER_PATCHLEVEL}")
-set(DRMF_VERSION "" CACHE STRING "DRMF version number: leave empty for default")
-if ("${DRMF_VERSION}" STREQUAL "")
-  set(DRMF_VERSION ${DRMF_VERSION_DEFAULT})
-endif()
-message(STATUS "DRMF version number: ${DRMF_VERSION}")
-string(REGEX REPLACE "^([0-9]+)\\..*" "\\1" DRMF_VERSION_MAJOR "${DRMF_VERSION}")
-string(REGEX REPLACE "^[0-9]+\\.([0-9]+)\\..*" "\\1" DRMF_VERSION_MINOR "${DRMF_VERSION}")
-# We use just major.minor for .so versioning (and no, SOVERSION is not sufficient
-# here: we have to set VERSION to control the file name and import dependence).
-string(REGEX REPLACE "^([0-9]+\\.[0-9]+)\\..*" "\\1"
-  DRMF_VERSION_MAJOR_MINOR "${DRMF_VERSION}")
-math(EXPR DRMF_VERSION_INTEGER "${DRMF_VERSION_MAJOR}*100 + ${DRMF_VERSION_MINOR}")
-set(DRMF_VERSION_COMPAT 9)                # Oldest compatible version
-set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
-
-configure_file(framework/public.h
-  ${framework_incdir}/drmemory_framework.h)
-configure_file(drmemory/annotations_public.h
-  ${framework_incdir}/drmemory_annotations.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
-  ${framework_incdir}/dr_annotations_asm.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
-  ${framework_incdir}/dr_annotations.h)
-include_directories(${framework_incdir})
-
 configure_file(framework/drmf.cmake.in
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   @ONLY)
@@ -1852,29 +1876,6 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebI
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
 
-# Annotation support using DR's infrastructure (non-Valgrind-style).
-if (UNIX)
-  set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
-else ()
-  set(annot_cflags "/Od /Ob0 /GL- /wd4715")
-endif ()
-if (UNIX)
-  # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
-  # the DR annotation infrastructure.  But, we can't just do a version check
-  # because Apple's clang has a completely separate version number.
-  try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
-    SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
-    ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
-    -DINCLUDE_DIRECTORIES=${framework_incdir}
-    -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
-  if (DR_ANNOTATIONS_SUPPORTED)
-    message(STATUS "DR annotations are supported")
-  else ()
-    message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
-  endif ()
-else ()
-  set(DR_ANNOTATIONS_SUPPORTED ON)
-endif ()
 if (DR_ANNOTATIONS_SUPPORTED)
   add_library(drmemory_annotations STATIC drmemory/annotations_public.c)
   # TODO i#2266: Provide a CMake function like use_DynamoRIO_annotations.
