@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -23,7 +23,8 @@
 # * cmd = command to run, with intra-arg space=@@ and inter-arg space=@
 # * TOOL_DR_HEAPSTAT = whether the tool is Dr. Heapstat instead of Dr. Memory
 # * outpat = file containing expected patterns in output
-# * respat = file containing expected patterns in results.txt
+# * respat = file containing expected patterns in resfile
+# * resmark = prefix in output to file path(s) to compare ${respat} to
 # * nudge = command to run perl script that takes -nudge for nudge
 # * toolbindir = location of DynamoRIO tools dir
 # * VMKERNEL = whether running on vmkernel
@@ -45,9 +46,9 @@
 # * DRMEMORY_CTEST_SRC_DIR = source dir
 # * DRMEMORY_CTEST_DR_DIR = DynamoRIO cmake dir
 #
-# any regex chars in the patterns will be escaped.
-# a line beginning with # is a comment and is ignored.
-# basic conditionals are "%if WINDOWS" and "%if UNIX" ending with
+# Any regex chars in the patterns will be escaped.
+# A line beginning with # is a comment and is ignored.
+# Basic conditionals are "%if WINDOWS" and "%if UNIX" ending with
 # "%endif".
 
 ##################################################
@@ -337,13 +338,20 @@ endif ()
 # process the patterns
 
 foreach (str ${patterns})
-  # turn regex chars into literals
-  string(REGEX REPLACE "([\\^\\$\\.\\*\\+\\?\\|\\(\\)\\[])" "\\\\\\1" ${str} "${${str}}")
-  # \\] somehow messes up the match when inside the long string so we separate it
-  string(REGEX REPLACE "\\]" "\\\\]" ${str} "${${str}}")
-
+  # Square brackets cause a lot of problem.  In the .res file, they cause failures
+  # to treat as a list when we split on newlines:
+  #    55: ******* line is |  "heap objects": \[
+  #    55: ;    {
+  #    55: ;      "address": "0x900007f655e313fb0",|
+  # We replace them with angle brackets here and in the actual output below
+  # as a workaround.
+  string(REPLACE "]" ">" ${str} "${${str}}")
+  string(REPLACE "[" "<" ${str} "${${str}}")
+  # Turn regex chars into literals.
+  string(REGEX REPLACE "([\\^\\$\\.\\*\\+\\?\\|\\(\\)\\[])" "\\\\\\1"
+    ${str} "${${str}}")
   # remove comments
-  string(REGEX REPLACE "(^|\n)#[^\n]*\n" "\\1\n" ${str} "${${str}}")
+  string(REGEX REPLACE "(^|\n)#[^\n]*\n" "\\1" ${str} "${${str}}")
 
   # evaluate conditionals
   # cmake's regex matcher is maximal unfortunately: for now we disallow %
@@ -473,6 +481,9 @@ endif (WIN32)
 
 # remove trailing spaces
 string(REGEX REPLACE " *\n" "\n" cmd_tomatch "${cmd_tomatch}")
+# See above: CMake has bugs handling square brackets.
+string(REPLACE "]" ">" cmd_tomatch "${cmd_tomatch}")
+string(REPLACE "[" "<" cmd_tomatch "${cmd_tomatch}")
 
 foreach (line ${lines})
   set(remove_line ON)
@@ -517,7 +528,7 @@ foreach (line ${lines})
 endforeach (line)
 
 ##################################################
-# check results.txt
+# check results file
 # XXX i#1688: Disable leak tests for Dr. Heapstat until the offline
 # processor is refactored.
 if (resmatch AND NOT TOOL_DR_HEAPSTAT)
@@ -525,21 +536,16 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
     string(REGEX REPLACE "@@" " " postcmd "${postcmd}")
     string(REGEX REPLACE "@" ";" postcmd "${postcmd}")
   endif (NOT "${postcmd}" STREQUAL "")
-  if ("${postcmd}" STREQUAL "")
-    set(data_prefix "Details: ")
-  else ()
-    set(data_prefix "To obtain results, run with: -results ")
-  endif ()
   # it may not be created yet
   set(iters 0)
-  while (NOT "${cmd_err}" MATCHES "${data_prefix}")
+  while (NOT "${cmd_err}" MATCHES "${resmark}")
     execute_process(COMMAND ${SLEEP_SHORT})
     math(EXPR iters "${iters} + 1")
     if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
       message(FATAL_ERROR "Timed out waiting for Dr. Memory to finish")
     endif ()
   endwhile ()
-  string(REGEX MATCHALL "${data_prefix}([^\n]+)[\n]" resfiles "${cmd_err}")
+  string(REGEX MATCHALL "${resmark}([^\n]+)[\n]" resfiles "${cmd_err}")
 
   set(maxlen 0)
   foreach (resfile ${resfiles})
@@ -547,12 +553,13 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
     # available on vmkernel (grrr...) so we take the largest (can't rely
     # on last being the right one, and exec target malloc will produce
     # larger log than parent or pre-exec child)
-    string(REGEX REPLACE "${data_prefix}" "" resfile "${resfile}")
+    string(REGEX REPLACE "${resmark} *" "" resfile "${resfile}")
     string(REGEX REPLACE "[\n]" "" resfile "${resfile}")
 
     if (NOT "${postcmd}" STREQUAL "")
       # generate resfile
       set(thiscmd "${postcmd};${resfile}")
+      message("Running ${thiscmd}")
       execute_process(COMMAND ${thiscmd}
         RESULT_VARIABLE postcmd_result
         ERROR_VARIABLE postcmd_err
@@ -561,7 +568,9 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
         message(FATAL_ERROR
           "*** ${thiscmd} failed (${postcmd_result}): ${postcmd_err}***\n")
       endif (postcmd_result)
-      set(resfile "${resfile}/results.txt")
+      if (${postcmd} MATCHES "-results")
+        set(resfile "${resfile}/results.txt")
+      endif ()
     else (NOT "${postcmd}" STREQUAL "")
       set(postcmd_err "")
     endif (NOT "${postcmd}" STREQUAL "")
@@ -592,8 +601,8 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
   endforeach (resfile)
 
   # remove absolute addresses (from PR 535568)
-  string(REGEX REPLACE " 0x[0-9a-f]+-0x[0-9a-f]+" "" results "${results}")
-  string(REGEX REPLACE " 0x[0-9a-f]+" "" results "${results}")
+  string(REGEX REPLACE " *0x[0-9a-f]+-0x[0-9a-f]+" "" results "${results}")
+  string(REGEX REPLACE " *0x[0-9a-f]+" "" results "${results}")
   # canonicalize by removing ".exe" (XXX: maybe should have regex in .res instead?)
   string(REGEX REPLACE "\\.exe!" "!" results "${results}")
   # canonicalize asm file name, which varies by VS vs ninja vs gcc
@@ -602,6 +611,10 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
   #     gcc: registers.c_asm.asm:720
   string(REGEX REPLACE "c_asm\\.asm[\\.a-z]*" "c_asm.asm" results "${results}")
   string(REGEX REPLACE "cpp_asm\\.asm[\\.a-z]*" "cpp_asm.asm" results "${results}")
+
+  # See above: CMake has bugs handling square brackets.
+  string(REPLACE "]" ">" results "${results}")
+  string(REPLACE "[" "<" results "${results}")
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   set(require_in_order 1)

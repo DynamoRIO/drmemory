@@ -78,7 +78,7 @@ install:
   # XXX: Remove the "brew update" step once Travis fixes their Mac VM's
   # on 11/15/17.  Xref https://github.com/travis-ci/travis-ci/issues/8552.
   - if [[ "`uname`" == "Darwin" ]]; then brew update; brew install nasm; fi
-  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen; fi
+  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install g++-multilib doxygen jsonlint; fi
 
 script:
   - tests/runsuite_wrapper.pl travis

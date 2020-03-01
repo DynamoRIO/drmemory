@@ -1220,6 +1220,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/report.c
     drmemory/replace.c
     drmemory/leak.c
+    drmemory/memlayout.c
     drmemory/perturb.c
     common/utils.c
     common/utils_shared.c
@@ -1689,6 +1690,18 @@ endif (WIN32)
 copy_file_to_device("${defsupp_out}")
 
 ###########################################################################
+# Dr. Memory Framework (DRMF) directories
+
+set(DRMF_BASEDIR "drmf")
+set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
+set(DRMF_INSTALL "${INSTALL_PREFIX}${DRMF_BASEDIR}")
+set(DRMF_INSTALL_BIN "${DRMF_INSTALL}/${DRMF_BINBASE}")
+set(DRMF_INSTALL_INC "${DRMF_INSTALL}/include")
+set(framework_dir "${PROJECT_BINARY_DIR}/${DRMF_BASEDIR}")
+set(framework_incdir "${framework_dir}/include")
+set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
+
+###########################################################################
 # Tests
 
 # We need to add_subdirectory after we know where ntdll_imports.lib is.
@@ -1766,15 +1779,6 @@ endif ()
 # framework-shared code goes here.  Things that should be global we
 # put into functions for invocation inside extension subdirs.
 
-set(DRMF_BASEDIR "drmf")
-set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
-set(DRMF_INSTALL "${INSTALL_PREFIX}${DRMF_BASEDIR}")
-set(DRMF_INSTALL_BIN "${DRMF_INSTALL}/${DRMF_BINBASE}")
-set(DRMF_INSTALL_INC "${DRMF_INSTALL}/include")
-set(framework_dir "${PROJECT_BINARY_DIR}/${DRMF_BASEDIR}")
-set(framework_incdir "${framework_dir}/include")
-set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
-
 # Versioning: we use separate versioning for DRMF from the tool versioning.
 # This is major*100 + minor.
 set(DRMF_VERSION_DEFAULT "1.0.${VERSION_NUMBER_PATCHLEVEL}")
@@ -1795,6 +1799,12 @@ set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
 
 configure_file(framework/public.h
   ${framework_incdir}/drmemory_framework.h)
+configure_file(drmemory/annotations_public.h
+  ${framework_incdir}/drmemory_annotations.h)
+configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
+  ${framework_incdir}/dr_annotations_asm.h)
+configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
+  ${framework_incdir}/dr_annotations.h)
 include_directories(${framework_incdir})
 
 configure_file(framework/drmf.cmake.in
@@ -1841,6 +1851,23 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebI
   set(exported_targets_append "${exported_targets_append}${toadd}")
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
+
+add_library(drmemory_annotations STATIC drmemory/annotations_public.c)
+# TODO i#2266: Provide a CMake function like use_DynamoRIO_annotations.
+# We would both use it here and export it.
+# For now we make a library, which is actually a little easier than the
+# user having to compile our source file with special flags.
+# So the CMake function would just set up the include path and link to the lib.
+if (UNIX)
+  _DR_append_property_string(SOURCE drmemory/annotations_public.c
+    COMPILE_FLAGS "-O0 -Wno-unused-variable -Wno-return-type")
+else ()
+  _DR_append_property_string(SOURCE drmemory/annotations_public.c
+    COMPILE_FLAGS "/Od /Ob0 /GL- /wd4715")
+endif ()
+export_target(drmemory_annotations)
+install(TARGETS drmemory_annotations EXPORT ${exported_targets_name}
+    DESTINATION ${DRMF_INSTALL_BIN})
 
 # Included prior to add_subdirectory() for building version.c which
 # includes utils.h which includes drsyscall.h.
@@ -2188,7 +2215,12 @@ else (BUILDING_SUB_PACKAGE)
 endif (BUILDING_SUB_PACKAGE)
 
 # DRMF install rules
-install(FILES ${framework_incdir}/drmemory_framework.h DESTINATION ${DRMF_INSTALL_INC})
+install(FILES
+  ${framework_incdir}/drmemory_framework.h
+  ${framework_incdir}/drmemory_annotations.h
+  ${framework_incdir}/dr_annotations.h
+  ${framework_incdir}/dr_annotations_asm.h
+  DESTINATION ${DRMF_INSTALL_INC})
 install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   DESTINATION ${DRMF_INSTALL})

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -40,6 +40,7 @@
 #include "options.h"
 #ifdef TOOL_DR_MEMORY
 # include "alloc_drmem.h"
+# include "memlayout.h"
 #else
 extern void check_reachability(bool at_exit);
 #endif
@@ -74,6 +75,13 @@ handle_do_leak_check(dr_vg_client_request_t *request)
     check_reachability(false/*!at_exit*/);
     return 0;
 }
+
+void handle_dump_memory_layout(void)
+{
+# ifdef TOOL_DR_MEMORY
+    memlayout_dump_layout();
+# endif
+}
 #endif
 
 void
@@ -87,6 +95,16 @@ annotate_init(void)
     dr_annotation_register_valgrind(DR_VG_ID__DO_LEAK_CHECK,
                                     handle_do_leak_check);
 # endif
+#endif
+
+#ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
+    /* TODO i#2266: We want to pass the PC to the handler. */
+    if (!dr_annotation_register_call("drmemory_dump_memory_layout",
+                                     handle_dump_memory_layout, false, 0,
+                                     DR_ANNOTATION_CALL_TYPE_FASTCALL)) {
+        NOTIFY_ERROR("ERROR: Failed to register annotations"NL);
+        dr_abort();
+    }
 #endif
 }
 

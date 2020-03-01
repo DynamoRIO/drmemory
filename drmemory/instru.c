@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -29,6 +29,7 @@
 #include "drutil.h"
 #include "drmemory.h"
 #include "slowpath.h"
+#include "memlayout.h"
 #include "spill.h"
 #include "fastpath.h"
 #include "stack.h"
@@ -1001,6 +1002,8 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 
     LOG(4, "ilist before analysis:\n");
     DOLOG(4, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
+
+    memlayout_handle_new_block(drcontext, tag);
 
 #ifdef USE_DRSYMS
     /* symbol of each bb is very useful for debugging */
