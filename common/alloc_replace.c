@@ -146,8 +146,8 @@ enum {
     /* i#1532: only check for non-static libc.  This is Windows-only but it's
      * cleaner to avoid all the ifdefs down below.
      */
-    CHUNK_LAYER_NOCHECK =                              0x1000,
-    CHUNK_SKIP_ITER   =                                0x2000,
+    CHUNK_LAYER_NOCHECK = MALLOC_RESERVED_9,
+    CHUNK_SKIP_ITER   =   MALLOC_RESERVED_10,
 
     /* meta-flags */
 #ifdef WINDOWS

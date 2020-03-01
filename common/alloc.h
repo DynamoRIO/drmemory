@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -118,8 +118,11 @@ enum {
     MALLOC_RESERVED_7 = 0x0400,
     MALLOC_RESERVED_8 = 0x0800,
     MALLOC_RESERVED_9 = 0x1000,
+    MALLOC_RESERVED_10= 0x2000,
+    MALLOC_CLIENT_5 =   0x4000,
     MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
-                                    MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
+                                    MALLOC_CLIENT_3 | MALLOC_CLIENT_4 |
+                                    MALLOC_CLIENT_5),
 };
 
 /* Info on a malloc chunk used for malloc iteration and client notification */

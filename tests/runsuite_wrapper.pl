@@ -61,15 +61,29 @@ if ($^O eq 'cygwin') {
 # we can diagnose failures.
 # We tee to stdout to provide incremental output and avoid the 10-min
 # no-output timeout on Travis.
+print "Forking child for stdout tee\n";
 my $res = '';
 my $child = open(CHILD, '-|');
 die "Failed to fork: $!" if (!defined($child));
 if ($child) {
     # Parent
-    my $output;
-    while (<CHILD>) {
-        print STDOUT $_;
-        $res .= $_;
+    # i#4126: We include extra printing to help diagnose hangs on Travis.
+    if ($^O ne 'cygwin') {
+        print "Parent tee-ing child stdout...\n";
+        local $SIG{ALRM} = sub {
+            print "\nxxxxxxxxxx 30s elapsed xxxxxxxxxxx\n";
+            alarm(30);
+        };
+        alarm(30);
+        while (<CHILD>) {
+            print STDOUT $_;
+            $res .= $_;
+        }
+    } else {
+        while (<CHILD>) {
+            print STDOUT $_;
+            $res .= $_;
+        }
     }
     close(CHILD);
 } elsif ($ENV{'TRAVIS_EVENT_TYPE'} eq 'cron' ||
@@ -105,11 +119,11 @@ if ($child) {
     system("${cmd} 2>&1");
     exit 0;
 } else {
-    # To shrink the log sizes and make Travis and Appveyor error pages easier
-    # to work with we omit a second V and instead use --output-on-failure.
-    # We rely on runsuite_common_post.cmake extracting configure and build error
-    # details from the xml files, as they don't show up with one V.
-    system("ctest --output-on-failure -V -S \"${osdir}/runsuite.cmake${args}\" 2>&1");
+    # Despite creating larger log files, -VV makes it easier to diagnose issues.
+    my $cmd = "ctest --output-on-failure -VV -S \"${osdir}/runsuite.cmake${args}\"";
+    print "Running ${cmd}\n";
+    system("${cmd} 2>&1");
+    print "Finished running ${cmd}\n";
     exit 0;
 }
 

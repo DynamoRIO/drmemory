@@ -45,6 +45,7 @@ enum {
     MALLOC_MAYBE_REACHABLE = MALLOC_CLIENT_3,
     /* Indirect leak (PR 576032) */
     MALLOC_INDIRECTLY_REACHABLE = MALLOC_CLIENT_4,
+    MALLOC_BEFORE_MAIN  = MALLOC_CLIENT_5,
 };
 
 /* the lowest possbile pointer value */
