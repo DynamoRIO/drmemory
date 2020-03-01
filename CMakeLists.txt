@@ -1852,22 +1852,42 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebI
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
 
-add_library(drmemory_annotations STATIC drmemory/annotations_public.c)
-# TODO i#2266: Provide a CMake function like use_DynamoRIO_annotations.
-# We would both use it here and export it.
-# For now we make a library, which is actually a little easier than the
-# user having to compile our source file with special flags.
-# So the CMake function would just set up the include path and link to the lib.
+# Annotation support using DR's infrastructure (non-Valgrind-style).
 if (UNIX)
-  _DR_append_property_string(SOURCE drmemory/annotations_public.c
-    COMPILE_FLAGS "-O0 -Wno-unused-variable -Wno-return-type")
+  set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
 else ()
-  _DR_append_property_string(SOURCE drmemory/annotations_public.c
-    COMPILE_FLAGS "/Od /Ob0 /GL- /wd4715")
+  set(annot_cflags "/Od /Ob0 /GL- /wd4715")
 endif ()
-export_target(drmemory_annotations)
-install(TARGETS drmemory_annotations EXPORT ${exported_targets_name}
+if (UNIX)
+  # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
+  # the DR annotation infrastructure.  But, we can't just do a version check
+  # because Apple's clang has a completely separate version number.
+  try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
+    SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
+    ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
+    -DINCLUDE_DIRECTORIES=${framework_incdir}
+    -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
+  if (DR_ANNOTATIONS_SUPPORTED)
+    message(STATUS "DR annotations are supported")
+  else ()
+    message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+  endif ()
+else ()
+  set(DR_ANNOTATIONS_SUPPORTED ON)
+endif ()
+if (DR_ANNOTATIONS_SUPPORTED)
+  add_library(drmemory_annotations STATIC drmemory/annotations_public.c)
+  # TODO i#2266: Provide a CMake function like use_DynamoRIO_annotations.
+  # We would both use it here and export it.
+  # For now we make a library, which is actually a little easier than the
+  # user having to compile our source file with special flags.
+  # So the CMake function would just set up the include path and link to the lib.
+  _DR_append_property_string(SOURCE drmemory/annotations_public.c
+    COMPILE_FLAGS "${annot_cflags}")
+  export_target(drmemory_annotations)
+  install(TARGETS drmemory_annotations EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
+endif ()
 
 # Included prior to add_subdirectory() for building version.c which
 # includes utils.h which includes drsyscall.h.

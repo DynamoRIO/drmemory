@@ -921,11 +921,13 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
   endif ()
 
-  if (NOT ARM) # XXX DRi#1672: add ARM annotation support to DR
+  # XXX DRi#1672: add ARM annotation support to DR
+  if (DR_ANNOTATIONS_SUPPORTED AND NOT ARM)
     set(memlayout.resmark "Memory layout written to:")
     find_program(JSONLINT jsonlint-php DOC "JSON linter from jsonlint package")
     if (JSONLINT)
       set(memlayout.postcmd "${JSONLINT}")
+      message(STATUS "Found ${JSONLINT}: will use to validate json output")
     endif ()
     tobuild(memlayout memlayout.cpp)
     target_link_libraries(memlayout drmemory_annotations)

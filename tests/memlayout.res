@@ -22,7 +22,12 @@
   "heap objects": [
     {
       "address": "",
+%if X32
+      "size": "12",
+%endif
+%if X64
       "size": "24",
+%endif
       "contents": [
         {
           "address": "",
