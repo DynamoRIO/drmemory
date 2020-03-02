@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2015-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,28 +18,13 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "3.1")
-  cmake_policy(SET CMP0053 OLD)
-  cmake_policy(SET CMP0054 OLD)
-endif ()
-
 if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
     "${CMAKE_VERSION}" VERSION_GREATER "3.0")
-  # XXX i#1651: put in actual changes to support CMake 3.x
-  cmake_policy(SET CMP0026 OLD)
-  # XXX i#1652: update to cmake 2.8.12's better handling of interface exports
+  # TODO i#1652: switch to ctest --build_and_test.
+  # (Unfortunately this is printed for multiple subdirectories: passing
+  # "-Wno-deprecated" to cmake will silence it.)
   cmake_policy(SET CMP0024 OLD)
 endif ()
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.12")
-  # XXX i#1481: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0022 OLD)
-endif ()
-
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")
-  # XXX DRi#1418: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0020 OLD)
-endif ()
+# i#1418: We are updated to the new scheme.
+cmake_policy(SET CMP0022 NEW)

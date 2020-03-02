@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,13 +18,9 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.12")
-  # XXX DRi#1481: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0022 OLD)
-endif ()
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
 set_output_dirs(${framework_bindir})
 
@@ -70,11 +66,11 @@ endmacro(configure_drsymcache_target)
 macro(export_drsymcache_target target drmgr drsyms)
   # We need to clear the dependents that come from DR to avoid the prefix
   # from affecting them too.
-  set_target_properties(${target} PROPERTIES LINK_INTERFACE_LIBRARIES "")
+  set_target_properties(${target} PROPERTIES INTERFACE_LINK_LIBRARIES "")
   export_target(${target})
   # Now put in our imports (w/o any namespace)
   set_target_properties(${target} PROPERTIES
-    LINK_INTERFACE_LIBRARIES "dynamorio;${drmgr}")
+    INTERFACE_LINK_LIBRARIES "dynamorio;${drmgr}")
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files
