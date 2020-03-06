@@ -984,10 +984,14 @@ if (WIN32)
   # only at the end of the file to all targets, and there's no /Zi- or /debug:no,
   # is there any better way to disable symbols than removing the pdb?
   append_property_string(TARGET nosyms LINK_FLAGS "/incremental:no")
-  get_target_property(nosyms_pdb nosyms LOCATION${location_suffix})
-  string(REGEX REPLACE "exe$" "pdb" nosyms_pdb ${nosyms_pdb})
+  set(locvar_name nosymsloc)
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${locvar_name}.cmake" CONTENT
+"set(${locvar_name} \"$<TARGET_FILE:nosyms>\")\n\
+string(REGEX REPLACE \"exe\$\" \"pdb\" ${locvar_name} \${${locvar_name}})\n\
+file(REMOVE \${${locvar_name}})\n")
   add_custom_command(TARGET nosyms POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove ${nosyms_pdb} VERBATIM)
+    COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/${locvar_name}.cmake"
+    VERBATIM)
 
 endif (WIN32)
 

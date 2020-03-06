@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2015-2017 Google, Inc.    All rights reserved.
+# Copyright (c) 2015-2020 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -28,13 +28,9 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.12")
-  # XXX DRi#1481: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0022 OLD)
-endif ()
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
 set(srcs
   drfuzz.c
@@ -73,11 +69,11 @@ endmacro(configure_drfuzz_target)
 macro(export_drfuzz_target target drwrap drmgr)
   # We need to clear the dependents that come from DR to avoid the prefix
   # from affecting them too.
-  set_target_properties(${target} PROPERTIES LINK_INTERFACE_LIBRARIES "")
+  set_target_properties(${target} PROPERTIES INTERFACE_LINK_LIBRARIES "")
   export_target(${target})
   # Now put in our imports (w/o any namespace on them)
   set_target_properties(${target} PROPERTIES
-    LINK_INTERFACE_LIBRARIES "dynamorio;${drwrap};${drmgr};drcontainers")
+    INTERFACE_LINK_LIBRARIES "dynamorio;${drwrap};${drmgr};drcontainers")
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files

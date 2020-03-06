@@ -35,6 +35,7 @@ function (check_version_resources BASEDIR VERINFO)
     ${BASEDIR}/drmf/*/*/*.dll
     ${BASEDIR}/drmf/*/*/*.exe)
   foreach (bin ${binaries})
+    message("Running |${VERINFO}| on |${bin}|")
     if (NOT bin MATCHES "dbghelp.dll")
       execute_process(COMMAND
         ${VERINFO} ${bin}

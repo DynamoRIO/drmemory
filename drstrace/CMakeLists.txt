@@ -99,7 +99,6 @@ install(TARGETS drstracelib
 
 if (WIN32)
   add_library(symfetch SHARED symfetch.c ${PROJECT_SOURCE_DIR}/make/resources.rc)
-  get_target_property(symfetch_path symfetch LOCATION${location_suffix})
 
   # We manually set PDBALTPATH here b/c compiler sets absolute path
   # to pdb which we don't need here. We disable INCREMENTAL b/c we
@@ -122,7 +121,7 @@ if (WIN32)
   endif ()
   add_custom_command(TARGET symfetch POST_BUILD COMMAND ${PERL_EXECUTABLE}
                      "${CMAKE_CURRENT_SOURCE_DIR}/mksymguid.pl"
-                     "${symfetch_path}" VERBATIM)
+                     "$<TARGET_FILE:symfetch>" VERBATIM)
   install(TARGETS symfetch DESTINATION "${INSTALL_BIN}"
     PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
@@ -144,9 +143,8 @@ configure_DynamoRIO_standalone(drstrace)
 target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
 set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
-  get_filename_component(symfetch_name ${symfetch_path} NAME)
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
-    ${DEFINES_NO_D} RC_IS_DRSTRACE SYMBOL_DLL_NAME="${symfetch_name}")
+    ${DEFINES_NO_D} RC_IS_DRSTRACE SYMBOL_DLL_NAME="$<TARGET_FILE_NAME:symfetch>")
 else ()
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
@@ -173,12 +171,10 @@ if (WIN32)
   # XXX DRi#1409/DRi#1503/i#1805: we get link errors about dup symbols
   # dr_get_stderr_file() in drdecode and dynamorio libs unless we link w/
   # drinjectlib, and if we link w/ drinjectlib we get duplicate IR link errors
-  # w/ drdecode (i#1805).  We solve by moving drfrontendlib earlier via the link
-  # flags.
-  get_target_property(drfront_path drfrontendlib LOCATION${location_suffix})
-  append_property_string(TARGET drstrace_unit_tests LINK_FLAGS ${drfront_path})
-  add_dependencies(drstrace_unit_tests drfrontendlib)
-  add_dependencies(drstrace_unit_tests drsyscall)
+  # w/ drdecode (i#1805).  We used to solve by moving drfrontendlib earlier via
+  # LINK_FLAGS, but generator expressions are not honored there, and we'd need
+  # CMake 3.13 for LINK_OPTIONS.  We instead solve by /force:multiple..
+  target_link_libraries(drstrace_unit_tests drfrontendlib)
   add_test(drstrace_unit_tests
            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/drstrace_unit_tests")
   # We increase test timeout in case of slow Internet connection, esp now
@@ -187,6 +183,8 @@ if (WIN32)
 
   if (WIN32)
     # i#1805: avoid tolower dup symbol errors.  For VS2017 avoid _isdigit.
+    # Also avoid drfrontendlib duplicate IR link errors as documented above
+    # DRi#1409/DRi#1503/i#1805.
     append_property_string(TARGET drstrace_unit_tests LINK_FLAGS "/force:multiple")
   endif ()
 endif (WIN32)
@@ -195,9 +193,8 @@ endif (WIN32)
 # drstrace test
 
 if (BUILD_TOOL_TESTS)
-  get_target_property(app_path drsyscall_app LOCATION${location_suffix})
-  get_target_property(drstrace_path drstrace LOCATION${location_suffix})
-  add_test(drstrace ${drstrace_path} -dr ${DynamoRIO_DIR}/.. -- ${app_path})
+  add_test(NAME drstrace COMMAND $<TARGET_FILE:drstrace> -dr ${DynamoRIO_DIR}/.. --
+    $<TARGET_FILE:drsyscall_app>)
 endif (BUILD_TOOL_TESTS)
 
 ##################################################
