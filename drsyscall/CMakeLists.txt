@@ -126,6 +126,8 @@ use_DynamoRIO_extension(drsyscall drsyms)
 set_library_version(drsyscall ${DRMF_VERSION_MAJOR_MINOR})
 configure_drsyscall_target(drsyscall)
 export_drsyscall_target(drsyscall "drmgr" "drsyms")
+# Make a build-dir copy for the drmf_proj test.
+configure_file(drsyscall.h "${framework_incdir}/drsyscall.h" @ONLY)
 install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 
 # Since the license is LGPL, SHARED and not STATIC by default.

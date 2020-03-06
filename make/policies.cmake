@@ -18,13 +18,5 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "3.0")
-  # TODO i#1652: switch to ctest --build_and_test.
-  # (Unfortunately this is printed for multiple subdirectories: passing
-  # "-Wno-deprecated" to cmake will silence it.)
-  cmake_policy(SET CMP0024 OLD)
-endif ()
-
 # i#1418: We are updated to the new scheme.
 cmake_policy(SET CMP0022 NEW)

@@ -1082,6 +1082,8 @@ add_asm_target(common/${asm_file} asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
+set(DrMemory_INTERNAL ON) # Do not import exported targets.
+
 if (ANDROID)
   # We cache this for us in sub-projects like framework/samples/
   set(TOP_BINARY_DIR ${PROJECT_BINARY_DIR})
@@ -1929,6 +1931,28 @@ endif (TOOL_DR_MEMORY)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
+
+  # Test using our exported config.
+  if (DEBUG)
+    set(debug_cfg -DCMAKE_BUILD_TYPE=Debug)
+  else ()
+    set(debug_cfg -DCMAKE_BUILD_TYPE=RelWithDebInfo)
+  endif ()
+  set(drmf_bindir "${PROJECT_BINARY_DIR}/framework/samples")
+  file(COPY "${PROJECT_SOURCE_DIR}/framework/samples/strace.c"
+    DESTINATION "${drmf_bindir}")
+  add_test(drmf_proj ${CMAKE_CTEST_COMMAND}
+    --build-and-test "${drmf_bindir}"
+    "${PROJECT_BINARY_DIR}/tests/drmf_proj"
+    --build-generator ${CMAKE_GENERATOR}
+    --build-project DRMF_samples # Needed for VS generators.
+    --build-makeprogram ${CMAKE_MAKE_PROGRAM}
+    --build-options ${debug_cfg} -DDrMemoryFramework_DIR:PATH=${framework_dir}
+    -DDynamoRIO_DIR:PATH=${DynamoRIO_DIR})
+  if (UNIX AND X86 AND NOT X64)
+    set_tests_properties(drmf_proj PROPERTIES ENVIRONMENT
+      "CFLAGS=-m32;CXXFLAGS=-m32")
+  endif ()
 
   if (TOOL_DR_MEMORY)
     # unit tests
