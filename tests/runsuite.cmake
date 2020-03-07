@@ -44,6 +44,8 @@ set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
 set(arg_travis OFF)
 set(arg_package OFF)
+set(cross_aarchxx_linux_only OFF)
+set(cross_android_only OFF)
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "test_vmk")
@@ -76,6 +78,13 @@ foreach (arg ${CTEST_SCRIPT_ARG})
     set(arg_package ON)
   endif ()
 endforeach (arg)
+
+if ($ENV{DRMEMORY_CROSS_AARCHXX_LINUX_ONLY} MATCHES "yes")
+  set(cross_aarchxx_linux_only ON)
+endif()
+if ($ENV{DRMEMORY_CROSS_ANDROID_ONLY} MATCHES "yes")
+  set(cross_android_only ON)
+endif()
 
 if (arg_test_vmk AND arg_vmk_only)
   message(FATAL_ERROR "you can't specify both test_vmk and vmk_only")
@@ -206,8 +215,9 @@ if (arg_travis AND WIN32)
 endif ()
 
 set(tools "")
-# build drmemory last, so our package is a drmem package
-if (NOT arg_drmemory_only)
+# Build drmemory last, so our package is a drmem package.
+# We do not support drheapstat on ARM.
+if (NOT arg_drmemory_only AND NOT cross_aarchxx_linux_only AND NOT cross_android_only)
   set(tools ${tools} "TOOL_DR_HEAPSTAT:BOOL=ON")
 endif ()
 if (NOT arg_drheapstat_only)
@@ -222,7 +232,7 @@ foreach (tool ${tools})
     set(dbg_tests_only_in_long OFF)
   endif ("${tool}" MATCHES "HEAPSTAT")
 
-  if (NOT arg_vmk_only)
+  if (NOT cross_aarchxx_linux_only AND NOT cross_android_only AND NOT arg_vmk_only)
     if ("${tool}" MATCHES "MEMORY")
       # 64-bit builds cannot be last as that messes up the package build
       # for Ninja (i#1763).
@@ -282,7 +292,9 @@ if (UNIX AND ARCH_IS_X86)
   # Optional cross-compilation for ARM/Linux and ARM/Android if the cross
   # compilers are on the PATH.
   # XXX: can we share w/ the DR code this is based on?
-  set(optional_cross_compile ON)
+  if (NOT cross_aarchxx_linux_only AND NOT cross_android_only)
+    set(optional_cross_compile ON)
+  endif ()
   set(ARCH_IS_X86 OFF)
   set(ENV{CFLAGS} "") # environment vars do not obey the normal scope rules--must reset
   set(ENV{CXXFLAGS} "")
@@ -327,6 +339,13 @@ if (UNIX AND ARCH_IS_X86)
     set(android_extra_rel "")
     set(run_tests OFF) # build tests but don't run them
   endif ()
+  # Pass through toolchain file.
+  if (DEFINED ENV{DRMEMORY_ANDROID_TOOLCHAIN})
+    set(android_extra_dbg "${android_extra_dbg}
+                           ANDROID_TOOLCHAIN:PATH=$ENV{DRMEMORY_ANDROID_TOOLCHAIN}")
+    set(android_extra_rel "${android_extra_dbg}
+                           ANDROID_TOOLCHAIN:PATH=$ENV{DRMEMORY_ANDROID_TOOLCHAIN}")
+  endif()
   testbuild_ex("drmemory-android-dbg-32" OFF "
     ${base_cache}
     TOOL_DR_MEMORY:BOOL=ON
@@ -335,7 +354,7 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
     ${android_extra_dbg}
     " OFF OFF "")
-  if (NOT TEST_LONG)
+  if (cross_android_only OR NOT TEST_LONG)
     set(run_tests OFF) # build tests but don't run them
   endif ()
   testbuild_ex("drmemory-android-rel-32" OFF "

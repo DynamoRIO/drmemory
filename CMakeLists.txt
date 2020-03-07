@@ -1725,36 +1725,44 @@ set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
 
 configure_file(framework/public.h
   ${framework_incdir}/drmemory_framework.h)
-configure_file(drmemory/annotations_public.h
-  ${framework_incdir}/drmemory_annotations.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
-  ${framework_incdir}/dr_annotations_asm.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
-  ${framework_incdir}/dr_annotations.h)
+# TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+if (X86)
+  configure_file(drmemory/annotations_public.h
+    ${framework_incdir}/drmemory_annotations.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
+    ${framework_incdir}/dr_annotations_asm.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
+    ${framework_incdir}/dr_annotations.h)
+endif ()
 include_directories(${framework_incdir})
 
-# Annotation support using DR's infrastructure (non-Valgrind-style).
-if (UNIX)
-  set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
+if (NOT X86)
+  # TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+  set(DR_ANNOTATIONS_SUPPORTED OFF)
 else ()
-  set(annot_cflags "/Od /Ob0 /GL- /wd4715")
-endif ()
-if (UNIX)
-  # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
-  # the DR annotation infrastructure.  But, we can't just do a version check
-  # because Apple's clang has a completely separate version number.
-  try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
-    SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
-    ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
-    -DINCLUDE_DIRECTORIES=${framework_incdir}
-    -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
-  if (DR_ANNOTATIONS_SUPPORTED)
-    message(STATUS "DR annotations are supported")
+  # Annotation support using DR's infrastructure (non-Valgrind-style).
+  if (UNIX)
+    set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
   else ()
-    message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+    set(annot_cflags "/Od /Ob0 /GL- /wd4715")
   endif ()
-else ()
-  set(DR_ANNOTATIONS_SUPPORTED ON)
+  if (UNIX)
+    # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
+    # the DR annotation infrastructure.  But, we can't just do a version check
+    # because Apple's clang has a completely separate version number.
+    try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
+      SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
+      ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
+      -DINCLUDE_DIRECTORIES=${framework_incdir}
+      -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
+    if (DR_ANNOTATIONS_SUPPORTED)
+      message(STATUS "DR annotations are supported")
+    else ()
+      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+    endif ()
+  else ()
+    set(DR_ANNOTATIONS_SUPPORTED ON)
+  endif ()
 endif ()
 
 ###########################################################################
