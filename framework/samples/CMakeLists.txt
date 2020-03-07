@@ -113,9 +113,9 @@ else ()
   string(REGEX REPLACE "# NON-COMBINED" "" string "${string}")
 endif ()
 string(REGEX REPLACE "# START NON-EXPORTED SECTION.*$" "" string "${string}")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in" "${string}")
-configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt"
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt.in" "${string}")
+configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt"
   @ONLY)
 
 if (BUILD_TOOL_TESTS)
@@ -148,8 +148,8 @@ endif (X64)
 
 install(TARGETS strace DESTINATION ${INSTALL_SAMPLES_BIN})
 install(FILES strace.c DESTINATION ${INSTALL_SAMPLES})
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt"
-  DESTINATION "${INSTALL_SAMPLES}" RENAME CMakeLists.txt)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt"
+  DESTINATION "${INSTALL_SAMPLES}")
 
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION ${INSTALL_SAMPLES_BIN}
