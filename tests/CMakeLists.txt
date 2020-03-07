@@ -921,8 +921,7 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
   endif ()
 
-  # XXX DRi#1672: add ARM annotation support to DR
-  if (DR_ANNOTATIONS_SUPPORTED AND NOT ARM)
+  if (DR_ANNOTATIONS_SUPPORTED)
     set(memlayout.resmark "Memory layout written to:")
     find_program(JSONLINT jsonlint-php DOC "JSON linter from jsonlint package")
     if (JSONLINT)
