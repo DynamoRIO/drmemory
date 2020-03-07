@@ -49,22 +49,32 @@ cs2bug.cpp:195
 cs2bug.cpp:200
 memory was allocated here:
 cs2bug.cpp:198
+%OPTIONAL # only when wrapping
 : UNINITIALIZED READ
 cs2bug.cpp:116
 cs2bug.cpp:203
+%ENDOPTIONAL
 : INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
 cs2bug.cpp:203
 memory was allocated here:
 cs2bug.cpp:201
 %OPTIONAL # VS2008 Win7
 : UNINITIALIZED READ
+cs2bug.cpp:203
 %ENDOPTIONAL
 : UNADDRESSABLE ACCESS
 cs2bug.cpp:206
+%OPTIONAL
+# MinGW xp64 crashes rather than reporting final mismatch
+: UNADDRESSABLE ACCESS
+cs2bug.cpp:206
+%ENDOPTIONAL
+%OPTIONAL
 : INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
 cs2bug.cpp:206
 memory was allocated here:
 cs2bug.cpp:204
+%ENDOPTIONAL
 %OPTIONAL # Linux
 : INVALID HEAP ARGUMENT to free
 %ENDOPTIONAL
@@ -96,7 +106,8 @@ cs2bug.cpp:86
 # std::string can have different sizes so we're not picky.
 : LEAK
 cs2bug.cpp:172
-%endif
+# Nested %if is only supported with "endif UNIX".
+%endif UNIX
 %OPTIONAL # Linux/VS2005
 %if X32
 : LEAK 88 direct bytes + 168 indirect bytes

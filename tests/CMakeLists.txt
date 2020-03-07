@@ -657,7 +657,7 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   endif ()
   newtest_nobuild(addronly free "" "-light" "" OFF "")
-  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF ${cs2bug_res})
+  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
   if (USE_DRSYMS)

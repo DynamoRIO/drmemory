@@ -353,6 +353,10 @@ foreach (str ${patterns})
   # remove comments
   string(REGEX REPLACE "(^|\n)#[^\n]*\n" "\\1" ${str} "${${str}}")
 
+  # Support for ".*" (should we instead switch to full regex support
+  # and make all the files escape their own literals?)
+  string(REGEX REPLACE "%ANY%" ".*" ${str} "${${str}}")
+
   # evaluate conditionals
   # cmake's regex matcher is maximal unfortunately: for now we disallow %
   # inside conditional
