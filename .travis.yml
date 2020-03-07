@@ -60,16 +60,11 @@ jobs:
       os: osx
       compiler: clang
       env: DRMEMORY_INSTALL_MULTILIB=yes
-    # AArchXX cross-compile with gcc, no tests:
-    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
-      os: linux
-      compiler: gcc
-      env: DRMEMORY_CROSS_AARCHXX_LINUX_ONLY=yes
     - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
       os: linux
       compiler: clang
       # We need clang 9.0 for asm goto support (DRi#1799) for annotations.
-      env: CC=clang-9 CXX=clang++-9
+      env: CC=clang-9 CXX=clang++-9 DRMEMORY_INSTALL_MULTILIB=yes
       addons:
         apt:
           sources:
@@ -78,6 +73,11 @@ jobs:
             key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
           packages:
           - clang-9
+    # AArchXX cross-compile with gcc, no tests:
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: linux
+      compiler: gcc
+      env: DRMEMORY_CROSS_AARCHXX_LINUX_ONLY=yes
     # Android ARM cross-compile with gcc, no tests:
     - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
       os: linux

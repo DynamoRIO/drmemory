@@ -292,7 +292,8 @@ if (UNIX AND ARCH_IS_X86)
   # Optional cross-compilation for ARM/Linux and ARM/Android if the cross
   # compilers are on the PATH.
   # XXX: can we share w/ the DR code this is based on?
-  if (NOT cross_aarchxx_linux_only AND NOT cross_android_only)
+  set(prev_optional_cross_compile ${optional_cross_compile})
+  if (NOT cross_aarchxx_linux_only)
     set(optional_cross_compile ON)
   endif ()
   set(ARCH_IS_X86 OFF)
@@ -314,8 +315,12 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-arm32.cmake
     " OFF OFF "")
   set(run_tests ${prev_run_tests}) # restore
+  set(optional_cross_compile ${prev_optional_cross_compile})
 
   # Android cross-compilation and running of tests using "adb shell"
+  if (NOT cross_android_only)
+    set(optional_cross_compile ON)
+  endif ()
   find_program(ADB adb DOC "adb Android utility")
   if (ADB)
     execute_process(COMMAND ${ADB} get-state
@@ -367,7 +372,7 @@ if (UNIX AND ARCH_IS_X86)
     " OFF OFF "")
   set(run_tests ${prev_run_tests}) # restore
 
-  set(optional_cross_compile OFF)
+  set(optional_cross_compile ${prev_optional_cross_compile})
   set(ARCH_IS_X86 ON)
 endif (UNIX AND ARCH_IS_X86)
 
