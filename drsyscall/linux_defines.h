@@ -138,6 +138,7 @@
 # define EXT2_IOC_SETVERSION             FS_IOC_SETVERSION
 #endif
 
+#ifndef ANDROID /* Android headers already have this. */
 /* Including linux/resource.h leads to conflicts with other types so we define
  * this struct ourselves:
  */
@@ -145,6 +146,7 @@ struct rlimit64 {
     __u64 rlim_cur;
     __u64 rlim_max;
 };
+#endif
 
 #include <linux/fd.h>
 #include <linux/hdreg.h>
