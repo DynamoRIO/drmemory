@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1082,7 +1082,12 @@ syscall_info_t syscall_info[] = {
     {{PACKNUM(299,337,365),0},"recvmmsg", UNKNOWN, RLONG, 0, },
     {{PACKNUM(300,338,367),0},"fanotify_init", UNKNOWN, RLONG, 0, },
     {{PACKNUM(301,339,368),0},"fanotify_mark", UNKNOWN, RLONG, 0, },
-    {{PACKNUM(302,340,369),0},"prlimit64", UNKNOWN, RLONG, 0, },
+    {{PACKNUM(302,340,369),0},"prlimit64", OK, RLONG, 4,
+     {
+      {2, sizeof(struct rlimit64), R},
+      {3, sizeof(struct rlimit64), W},
+     }
+    },
     {{PACKNUM(303,341,370),0},"name_to_handle_at", UNKNOWN, RLONG, 0, },
     {{PACKNUM(304,342,371),0},"open_by_handle_at", UNKNOWN, RLONG, 0, },
     {{PACKNUM(305,343,372),0},"clock_adjtime", UNKNOWN, RLONG, 0, },
