@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -41,6 +41,7 @@ bye
 %ANYLINE
 # Linux/MinGW
 ~~Dr.M~~      11 unique,    12 total invalid heap argument(s)
+~~Dr.M~~       8 unique,    10 total invalid heap argument(s)
 # MinGW xp64
 ~~Dr.M~~      10 unique,    11 total invalid heap argument(s)
 # MSVC

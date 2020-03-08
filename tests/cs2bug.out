@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -56,8 +56,12 @@ bye
 %ANYLINE
 # Windows: FIXME PR 587093: string code disabled for now
 # MSVC: mismatches don't end up freeing anything
-~~Dr.M~~       4 unique,     4 total,    551 byte(s) of leak(s)
-# Linux/MinGW
-~~Dr.M~~       5 unique,     5 total,    574 byte(s) of leak(s)
+~~Dr.M~~       4 unique,     4 total,   %ANY% byte(s) of leak(s)
+# Linux/MinGW.  Total count varies by compiler version.
+~~Dr.M~~       5 unique,     5 total,   %ANY% byte(s) of leak(s)
 %ENDANYLINE
+%ANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+# Recent Linux g++ ends up with a possible.
+~~Dr.M~~       1 unique,     1 total,   %ANY% byte(s) of possible leak(s)
+%ENDANYLINE
