@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -101,11 +101,20 @@ function(add_drmf_test test_name app_name src_client ext_list client_options pas
   endif ()
 endfunction(add_drmf_test)
 
+# i#2273: We need to locate a sysnum file.  Unfortunately creating one is only
+# supported from a front end so we rely on a Dr. Memory test having created one.
+# These will fail w/ direct-named test launches in a fresh dir but we can live with
+# that for now: a suite run will run "hello" first.
+# TODO: i#2279: Come up with a better method.
+set(symcache_dir "${PROJECT_BINARY_DIR}/logs/symcache")
+
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
 add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
-  drsyscall "" "done\nTEST PASSED")
+  drsyscall "${symcache_dir}" "done\nTEST PASSED")
+set_property(TEST drsyscall_test APPEND PROPERTY DEPENDS hello)
 add_drmf_test(strace_test drsyscall_app strace_client.c
-  drsyscall "" "done\n.*TEST PASSED")
+  drsyscall "${symcache_dir}" "done\n.*TEST PASSED")
+set_property(TEST strace_test APPEND PROPERTY DEPENDS hello)
 
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
