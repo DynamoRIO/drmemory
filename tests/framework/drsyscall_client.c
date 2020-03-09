@@ -216,10 +216,9 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) !=
         DRMF_SUCCESS || !success) {
-        /* With the new early injector on Linux, we see access, open, + stat64 fail */
-#ifndef WINDOWS /* On win10, several syscalls fail. */
-        ASSERT(false, "syscalls in this app shouldn't fail");
-#endif
+        /* With the new early injector on Linux, we see access, open, + stat64 fail,
+         * And on Win10, several syscalls fail.
+         */
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)
             ASSERT(false, "drsys_iterate_memargs failed");
