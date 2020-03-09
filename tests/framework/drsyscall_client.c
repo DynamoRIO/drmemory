@@ -27,7 +27,9 @@
 #include <string.h>
 #ifdef WINDOWS
 # include <windows.h>
+# define IF_WINDOWS_ELSE(x,y) x
 #else
+# define IF_WINDOWS_ELSE(x,y) y
 # include <sys/types.h>
 # include <sys/socket.h>
 #endif
@@ -180,7 +182,7 @@ event_pre_syscall(void *drcontext, int sysnum)
         ASSERT(false, "failed to get syscall return type");
 
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
-        ASSERT(os_version.version >= DR_WINDOWS_VERSION_10_1607,
+        ASSERT(IF_WINDOWS_ELSE(os_version.version >= DR_WINDOWS_VERSION_10_1607, false),
                "no syscalls in this app should be unknown");
 
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
@@ -215,10 +217,8 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) !=
         DRMF_SUCCESS || !success) {
         /* With the new early injector on Linux, we see access, open, + stat64 fail */
-#ifdef WINDOWS
-        /* On win10, several syscalls fail: */
-        ASSERT(os_version.version >= DR_WINDOWS_VERSION_10_1607,
-               "syscalls in this app shouldn't fail");
+#ifndef WINDOWS /* On win10, several syscalls fail. */
+        ASSERT(false, "syscalls in this app shouldn't fail");
 #endif
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)

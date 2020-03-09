@@ -32,6 +32,9 @@
 #include <string.h>
 #ifdef WINDOWS
 # include <windows.h>
+# define IF_WINDOWS_ELSE(x,y) x
+#else
+# define IF_WINDOWS_ELSE(x,y) y
 #endif
 
 #define TEST(mask, var) (((mask) & (var)) != 0)
@@ -171,7 +174,7 @@ event_pre_syscall(void *drcontext, int sysnum)
         dr_fprintf(STDERR, "\treturn type: %d\n", ret_type);
 
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
-        ASSERT(os_version.version >= DR_WINDOWS_VERSION_10_1607,
+        ASSERT(IF_WINDOWS_ELSE(os_version.version >= DR_WINDOWS_VERSION_10_1607, false),
                "no syscalls in this app should be unknown");
 
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
