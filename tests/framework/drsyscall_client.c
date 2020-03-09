@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -27,7 +27,9 @@
 #include <string.h>
 #ifdef WINDOWS
 # include <windows.h>
+# define IF_WINDOWS_ELSE(x,y) x
 #else
+# define IF_WINDOWS_ELSE(x,y) y
 # include <sys/types.h>
 # include <sys/socket.h>
 #endif
@@ -41,7 +43,21 @@
                  __FILE__,  __LINE__, #cond, msg), \
       dr_abort(), 0) : 0))
 
+#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
+#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
+#define BUFFER_LAST_ELEMENT(buf)    (buf)[BUFFER_SIZE_ELEMENTS(buf) - 1]
+#define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
+
+#ifdef WINDOWS
+/* TODO i#2279: Make it easier for clients to auto-generate! */
+# define SYSNUM_FILE IF_X64_ELSE("syscalls_x64.txt", "syscalls_x86.txt")
+# define SYSNUM_FILE_WOW64 "syscalls_wow64.txt"
+#endif
+
 static bool verbose;
+#ifdef WINDOWS
+static dr_os_version_info_t os_version = {sizeof(os_version),};
+#endif
 
 static void
 check_mcontext(void *drcontext)
@@ -166,7 +182,8 @@ event_pre_syscall(void *drcontext, int sysnum)
         ASSERT(false, "failed to get syscall return type");
 
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
-        ASSERT(false, "no syscalls in this app should be unknown");
+        ASSERT(IF_WINDOWS_ELSE(os_version.version >= DR_WINDOWS_VERSION_10_1607, false),
+               "no syscalls in this app should be unknown");
 
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
         ASSERT(false, "drsys_iterate_args failed");
@@ -199,12 +216,9 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (drsys_cur_syscall_result(drcontext, &success, NULL, NULL) !=
         DRMF_SUCCESS || !success) {
-        /* With the new early injector on Linux, we see access, open, + stat64 fail */
-#ifdef WINDOWS
-        /* On win10, NtQueryValueKey fails */
-        ASSERT(strcmp(name, "NtQueryValueKey") == 0,
-               "syscalls in this app shouldn't fail");
-#endif
+        /* With the new early injector on Linux, we see access, open, + stat64 fail,
+         * And on Win10, several syscalls fail.
+         */
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)
             ASSERT(false, "drsys_iterate_memargs failed");
@@ -249,7 +263,7 @@ test_static_queries(void)
     /* test Zw variant */
     num.secondary = 4;
     if (drsys_name_to_syscall("ZwContinue", &syscall) != DRMF_SUCCESS)
-        ASSERT(false, "drsys_name_to_syscall failed");
+        ASSERT(false, "drsys_name_to_syscall failed on ZwContinue");
     res = drsys_syscall_number(syscall, &num);
     ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_syscall failed");
     /* test not found */
@@ -282,15 +296,26 @@ test_static_queries(void)
     ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_syscall_name failed");
 
 #ifdef WINDOWS
-    /* test secondary number to name, in particular where secondary==0 */
-    if (drsys_name_to_syscall("NtUserCallNoParam.CREATEMENU", &syscall) != DRMF_SUCCESS)
-        ASSERT(false, "drsys_name_to_syscall failed");
+    /* Test secondary number to name, in particular where secondary==0 */
+    bool secondary_zero = false;
+    if (drsys_name_to_syscall("NtUserCallNoParam.CREATEMENU", &syscall) == DRMF_SUCCESS)
+        secondary_zero = true;
+    else {
+        /* Some auto-generations don't find CREATEMENU. */
+        if (drsys_name_to_syscall("NtUserCallNoParam.DESTROY_CARET", &syscall) !=
+            DRMF_SUCCESS) {
+            ASSERT(false, "drsys_name_to_syscall failed on NtUserCallNoParam");
+        }
+    }
     res = drsys_syscall_number(syscall, &num);
-    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_syscall_number failed");
+    ASSERT(res == DRMF_SUCCESS && (!secondary_zero || num.secondary == 0),
+           "drsys_syscall_number failed");
     if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_number_to_syscall failed");
     res = drsys_syscall_name(syscall, &name);
-    ASSERT(res == DRMF_SUCCESS && strcmp(name, "NtUserCallNoParam.CREATEMENU") == 0,
+    ASSERT(res == DRMF_SUCCESS &&
+           ((secondary_zero && strcmp(name, "NtUserCallNoParam.CREATEMENU") == 0) ||
+            (!secondary_zero && strcmp(name, "NtUserCallNoParam.DESTROY_CARET") == 0)),
            "drsys_syscall_name failed");
 #endif
 }
@@ -347,6 +372,17 @@ DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
     drsys_options_t ops = { sizeof(ops), 0, };
+#ifdef WINDOWS
+    if (argc > 1) {
+        /* Takes an optional argument pointing at the base dir for a sysnum file. */
+        char sysnum_path[MAXIMUM_PATH];
+        dr_snprintf(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path),
+                    "%s\\%s", argv[1], SYSNUM_FILE);
+        NULL_TERMINATE_BUFFER(sysnum_path);
+        ops.sysnum_file = sysnum_path;
+    }
+    dr_get_os_version(&os_version);
+#endif
     drmgr_init();
     if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");

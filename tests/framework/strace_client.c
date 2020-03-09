@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -32,6 +32,9 @@
 #include <string.h>
 #ifdef WINDOWS
 # include <windows.h>
+# define IF_WINDOWS_ELSE(x,y) x
+#else
+# define IF_WINDOWS_ELSE(x,y) y
 #endif
 
 #define TEST(mask, var) (((mask) & (var)) != 0)
@@ -43,7 +46,22 @@
                  __FILE__,  __LINE__, #cond, msg), \
       dr_abort(), 0) : 0))
 
+#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
+#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
+#define BUFFER_LAST_ELEMENT(buf)    (buf)[BUFFER_SIZE_ELEMENTS(buf) - 1]
+#define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
+
+#ifdef WINDOWS
+/* TODO i#2279: Make it easier for clients to auto-generate! */
+# define SYSNUM_FILE IF_X64_ELSE("syscalls_x64.txt", "syscalls_x86.txt")
+# define SYSNUM_FILE_WOW64 "syscalls_wow64.txt"
+#endif
+
 static bool verbose = true;
+
+#ifdef WINDOWS
+static dr_os_version_info_t os_version = {sizeof(os_version),};
+#endif
 
 static bool
 drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
@@ -156,7 +174,8 @@ event_pre_syscall(void *drcontext, int sysnum)
         dr_fprintf(STDERR, "\treturn type: %d\n", ret_type);
 
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
-        ASSERT(false, "no syscalls in this app should be unknown");
+        ASSERT(IF_WINDOWS_ELSE(os_version.version >= DR_WINDOWS_VERSION_10_1607, false),
+               "no syscalls in this app should be unknown");
 
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
         ASSERT(false, "drsys_iterate_args failed");
@@ -215,6 +234,17 @@ DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
     drsys_options_t ops = { sizeof(ops), 0, };
+#ifdef WINDOWS
+    if (argc > 1) {
+        /* Takes an optional argument pointing at the base dir for a sysnum file. */
+        char sysnum_path[MAXIMUM_PATH];
+        dr_snprintf(sysnum_path, BUFFER_SIZE_ELEMENTS(sysnum_path),
+                    "%s\\%s", argv[1], SYSNUM_FILE);
+        NULL_TERMINATE_BUFFER(sysnum_path);
+        ops.sysnum_file = sysnum_path;
+    }
+    dr_get_os_version(&os_version);
+#endif
     drmgr_init();
     if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
