@@ -734,8 +734,9 @@ DR_EXPORT
  * @param[out] is_scale_down    The pointer where to store the returned flag
  * indicating whether shadow memory is scaled down or up.
  */
-drmf_status_t umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
-                                    bool *is_scale_down);
+drmf_status_t
+umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
+                      bool *is_scale_down);
 
 /*@}*/ /* end doxygen group */
 

@@ -760,33 +760,33 @@ umbra_get_shared_shadow_block(IN  umbra_map_t *map,
 }
 
 DR_EXPORT
-drmf_status_t umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
-                                    OUT bool *is_scale_down) {
+drmf_status_t
+umbra_get_granularity(const umbra_map_t *map, OUT int *scale, OUT bool *is_scale_down)
+{
+    if (map == NULL || scale == NULL || is_scale_down == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
 
-  if (map == NULL || scale == NULL || is_scale_down == NULL)
-    return DRMF_ERROR_INVALID_PARAMETER;
+    *is_scale_down = UMBRA_MAP_SCALE_IS_DOWN(map->options.scale);
 
-  *is_scale_down = UMBRA_MAP_SCALE_IS_DOWN(map->options.scale);
+    switch (map->options.scale) {
+    case UMBRA_MAP_SCALE_DOWN_8X:
+        *scale = 8;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_4X:
+        *scale = 4;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_2X:
+        *scale = 2;
+        break;
+    case UMBRA_MAP_SCALE_SAME_1X:
+        *scale = 1;
+        break;
+    case UMBRA_MAP_SCALE_UP_2X:
+        *scale = 2;
+        break;
+    default:
+        return DRMF_ERROR;
+    }
 
-  switch (map->options.scale) {
-  case UMBRA_MAP_SCALE_DOWN_8X:
-    *scale = 8;
-    break;
-  case UMBRA_MAP_SCALE_DOWN_4X:
-    *scale = 4;
-    break;
-  case UMBRA_MAP_SCALE_DOWN_2X:
-    *scale = 2;
-    break;
-  case UMBRA_MAP_SCALE_SAME_1X:
-    *scale = 1;
-    break;
-  case UMBRA_MAP_SCALE_UP_2X:
-    *scale = 2;
-    break;
-  default:
-    return DRMF_ERROR;
-  }
-
-  return DRMF_SUCCESS;
+    return DRMF_SUCCESS;
 }
