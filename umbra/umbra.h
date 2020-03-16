@@ -735,7 +735,8 @@ DR_EXPORT
  *
  * This feature is only available on 32-bit.
  */
-drmf_status_t umbra_clear_redundant_blocks(umbra_map_t *map);
+drmf_status_t
+umbra_clear_redundant_blocks(umbra_map_t *map);
 
 /*@}*/ /* end doxygen group */
 
