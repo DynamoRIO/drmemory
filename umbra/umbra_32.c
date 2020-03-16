@@ -1059,7 +1059,7 @@ umbra_clear_redundant_blocks(umbra_map_t *map)
     if (map == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
 
-    /* Umbra needs to have create-on-touch optimization enabled */
+    /* Umbra needs to have create-on-touch optimization enabled. */
     if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
         return DRMF_ERROR;
 
