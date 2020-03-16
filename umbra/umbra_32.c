@@ -1049,3 +1049,42 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
 {
     return false;
 }
+
+drmf_status_t
+umbra_clear_redundant_blocks(umbra_map_t *map)
+{
+    byte *shadow_data;
+    uint i, j;
+
+    if (map == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    /* Umbra needs to have create-on-touch optimization enabled */
+    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
+        return DRMF_ERROR;
+
+    umbra_map_lock(map);
+    for (i = 0; i < SHADOW_TABLE_ENTRIES; i++) {
+        shadow_data = shadow_table_get_block(map, i);
+        if (shadow_table_is_in_normal_block(map, shadow_data)) {
+            bool is_all_default_val = true;
+            for (j = 0; j < map->shadow_block_size; i++){
+                if (shadow_data[j] != (byte) map->options.default_value) {
+                    is_all_default_val = false;
+                    break;
+                }
+            }
+            if (is_all_default_val) {
+                byte *special_block = shadow_table_lookup_special_block(map,
+                        map->options.default_value, map->options.default_value_size);
+                ASSERT(special_block[0] == (byte) map->options.default_value,
+                       "default vals not in synch");
+                shadow_table_delete_block(map, shadow_data);
+                shadow_table_set_block(map, i, special_block);
+            }
+        }
+    }
+    umbra_map_unlock(map);
+
+    return DRMF_SUCCESS;
+}

@@ -725,6 +725,17 @@ umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
     info->app_size = 0;
 }
 
+DR_EXPORT
+/**
+ * Clears redundant NULL blocks for \p map.
+ *
+ * Assumes that threads are suspended so that Umbra may safely modify shadow memory.
+ * It is up to the caller to suspend and resume threads.
+ *
+ * This feature is only available on 32-bit.
+ */
+drmf_status_t umbra_clear_redundant_blocks(umbra_map_t *map);
+
 /*@}*/ /* end doxygen group */
 
 #ifdef __cplusplus

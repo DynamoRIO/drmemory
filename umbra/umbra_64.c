@@ -1369,3 +1369,9 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
     }
     return false;
 }
+
+drmf_status_t
+umbra_clear_redundant_blocks(umbra_map_t *map) {
+    /* No operation needed for x64 */
+    return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
+}
