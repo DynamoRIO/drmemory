@@ -63,7 +63,7 @@ test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label,
         CHECK(false, "failed to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
         CHECK(false, "failed to create shadow memory mapping");
-    if (umbra_get_granularity(umbra_map, &scale_val_out,&is_scale_down_out) != DRMF_SUCCESS)
+    if (umbra_get_granularity(umbra_map, &scale_val_out, &is_scale_down_out) != DRMF_SUCCESS)
             CHECK(false, "failed to get granularity info umbra");
     CHECK(scale_val == scale_val_out, "incorrect scale");
     CHECK(is_scale_down == is_scale_down_out, "incorrect scale granularity");
