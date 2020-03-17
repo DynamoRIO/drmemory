@@ -46,7 +46,7 @@
 
 static void
 test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label,
-                   const int scale_val, const bool is_scale_down)
+                   int scale_val, bool is_scale_down)
 {
     dr_printf("\n====================\ntesting scale %d == %s\n", scale, label);
     umbra_map_t *umbra_map;
