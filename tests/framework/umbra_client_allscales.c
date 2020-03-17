@@ -45,10 +45,13 @@
                 __FILE__, __LINE__, #cond, msg), dr_abort(), 0)))
 
 static void
-test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label)
+test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label,
+                   int scale_val, bool is_scale_down)
 {
     dr_printf("\n====================\ntesting scale %d == %s\n", scale, label);
     umbra_map_t *umbra_map;
+    int scale_val_out;
+    bool is_scale_down_out;
     umbra_map_options_t umbra_map_ops;
     memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
     umbra_map_ops.scale = scale;
@@ -60,6 +63,10 @@ test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label)
         CHECK(false, "failed to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
         CHECK(false, "failed to create shadow memory mapping");
+    if (umbra_get_granularity(umbra_map, &scale_val_out, &is_scale_down_out) != DRMF_SUCCESS)
+            CHECK(false, "failed to get granularity info umbra");
+    CHECK(scale_val == scale_val_out, "incorrect scale");
+    CHECK(is_scale_down == is_scale_down_out, "incorrect scale granularity");
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
         CHECK(false, "failed to destroy shadow memory mapping");
     umbra_exit();
@@ -68,9 +75,9 @@ test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label)
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
-    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_8X, "down 8x");
-    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_4X, "down 4x");
-    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_2X, "down 2x");
-    test_umbra_mapping(id, UMBRA_MAP_SCALE_SAME_1X, "one-to-one");
-    test_umbra_mapping(id, UMBRA_MAP_SCALE_UP_2X, "up 2x");
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_8X, "down 8x", 8, true);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_4X, "down 4x", 4, true);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_2X, "down 2x", 2, true);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_SAME_1X, "one-to-one", 1, false);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_UP_2X, "up 2x", 2, false);
 }
