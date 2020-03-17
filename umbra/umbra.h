@@ -732,7 +732,8 @@ DR_EXPORT
  * @param[in]  map              The mapping object to use.
  * @param[out] scale            The pointer where to store the returned scale.
  * @param[out] is_scale_down    The pointer where to store the returned flag
- * indicating whether shadow memory is scaled down or up.
+ *                              indicating whether shadow memory is scaled down
+ *                              or up.
  */
 drmf_status_t
 umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
