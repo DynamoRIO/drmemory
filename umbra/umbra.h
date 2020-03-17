@@ -727,7 +727,10 @@ umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
 
 DR_EXPORT
 /**
- * Returns granularity information of the passed Umbra map.
+ * A convenience routine that returns granularity information of the passed Umbra map.
+ *
+ * Note that the returned scale is the numerical value representation, and not of
+ * type #umbra_map_scale_t.
  *
  * @param[in]  map              The mapping object to use.
  * @param[out] scale            The pointer where to store the returned scale.
