@@ -145,6 +145,8 @@ set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
     ${DEFINES_NO_D} RC_IS_DRSTRACE SYMBOL_DLL_NAME="$<TARGET_FILE_NAME:symfetch>")
+  # DRi#1409/DRi#1503/i#1805: Avoid dup symbol _isdigit with VS2017.
+  append_property_string(TARGET drstrace LINK_FLAGS "/force:multiple")
 else ()
   set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif ()
