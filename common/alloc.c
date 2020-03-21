@@ -4336,14 +4336,13 @@ static void
 malloc_wrap_init(void)
 {
     if (alloc_ops.track_allocs) {
-        hashtable_config_t hashconfig;
+        hashtable_config_t hashconfig = {sizeof(hashconfig),};
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
                           malloc_hash, NULL);
         /* hash lookup can be a bottleneck so it's worth taking some extra space
          * to reduce the collision chains
          */
-        hashconfig.size = sizeof(hashconfig);
         hashconfig.resizable = true;
         hashconfig.resize_threshold = 50; /* default is 75 */
         hashtable_configure(&malloc_table, &hashconfig);

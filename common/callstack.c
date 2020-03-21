@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -331,10 +331,9 @@ callstack_init(callstack_options_t *options)
     module_tree = rb_tree_create(NULL);
 
     if (!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags)) {
-        hashtable_config_t hashconfig;
+        hashtable_config_t hashconfig = {sizeof(hashconfig),};
         hashtable_init(&retaddr_table, RETADDR_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!str_dup*/);
-        hashconfig.size = sizeof(hashconfig);
         hashconfig.resizable = true;
         hashconfig.resize_threshold = 60; /* default is 75 */
         hashtable_configure(&retaddr_table, &hashconfig);
