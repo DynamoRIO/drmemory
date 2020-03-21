@@ -73,9 +73,7 @@ install:
   # We first print out all versions to make it easier to update this if
   # the version changes.
   - dir "c:\Program Files (x86)\WiX Toolset"*
-  # DRi#4108: Work around runsuite_common_pre.cmake appending x64 to bin here.
-  - ps: $wixpath=& c:\cygwin64\bin\cygpath -d 'C:\Program Files (x86)\WiX Toolset v3.11\bin'
-  - ps: $env:PATH="$wixpath;$env:PATH"
+  - set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
 
   ##################################################
   # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
