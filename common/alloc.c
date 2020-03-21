@@ -4336,7 +4336,7 @@ static void
 malloc_wrap_init(void)
 {
     if (alloc_ops.track_allocs) {
-        hashtable_config_t hashconfig;
+        hashtable_config_t hashconfig = {};
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
                           malloc_hash, NULL);
