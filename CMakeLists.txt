@@ -2275,10 +2275,14 @@ endif (BUILDING_SUB_PACKAGE)
 # DRMF install rules
 install(FILES
   ${framework_incdir}/drmemory_framework.h
-  ${framework_incdir}/drmemory_annotations.h
-  ${framework_incdir}/dr_annotations.h
-  ${framework_incdir}/dr_annotations_asm.h
   DESTINATION ${DRMF_INSTALL_INC})
+if (DR_ANNOTATIONS_SUPPORTED)
+  install(FILES
+    ${framework_incdir}/drmemory_annotations.h
+    ${framework_incdir}/dr_annotations.h
+    ${framework_incdir}/dr_annotations_asm.h
+    DESTINATION ${DRMF_INSTALL_INC})
+endif ()
 install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   DESTINATION ${DRMF_INSTALL})
