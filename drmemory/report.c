@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -3551,7 +3551,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%s "PFX"-"PFX"\n", routine, start, end);
         print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/,
-                        NULL, 0, true, options.callstack_max_frames);
+                        NULL, 0, true, options.callstack_max_frames, NULL, NULL);
         report_error_from_buffer(LOGFILE_GET(drcontext), pt->errbuf, false);
     });
 }
@@ -3579,7 +3579,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
                  "%s heap region "PFX"-"PFX"\n",
                  add ? "adding" : "removing", start, end);
         print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0, true,
-                        options.callstack_max_frames);
+                        options.callstack_max_frames, NULL, NULL);
         report_error_from_buffer(f_global, buf, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
@@ -3626,7 +3626,7 @@ report_child_thread(void *drcontext, thread_id_t child)
             print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, false);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
-                            NULL, 0, false, options.callstack_max_frames);
+                            NULL, 0, false, options.callstack_max_frames, NULL, NULL);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_buffer(LOGFILE_GET(drcontext), pt->errbuf);
         } else {

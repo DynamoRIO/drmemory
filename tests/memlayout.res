@@ -19,6 +19,29 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 {
+  "version": "2",
+  "threads": [
+    {
+      "thread_id": "",
+      "stack_frames": [
+        {
+          "program_counter": "",
+          "frame_pointer": "",
+          "function": "memlayout!drmemory_dump_memory_layout"
+        },
+        {
+          "program_counter": "",
+          "frame_pointer": "",
+          "function": "memlayout!foo"
+        },
+        {
+          "program_counter": "",
+          "frame_pointer": "",
+          "function": "memlayout!main"
+        }
+      ]
+    }
+  ],
   "heap objects": [
     {
       "address": "",

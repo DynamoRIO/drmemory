@@ -32,6 +32,6 @@ void
 memlayout_handle_alloc(void *drcontext, app_pc base, size_t size);
 
 void
-memlayout_dump_layout(void);
+memlayout_dump_layout(app_pc pc);
 
 #endif /* _MEMLAYOUT_H_ */
