@@ -27,17 +27,20 @@
         {
           "program_counter": "",
           "frame_pointer": "",
-          "function": "memlayout!drmemory_dump_memory_layout"
+          "function": "%ANY%!drmemory_dump_memory_layout"
         },
         {
           "program_counter": "",
           "frame_pointer": "",
-          "function": "memlayout!foo"
+          "function": "%ANY%!foo"
+# Windows is having callstack troubles.
+%if UNIX
         },
         {
           "program_counter": "",
           "frame_pointer": "",
-          "function": "memlayout!main"
+          "function": "%ANY%!main"
+%endif
         }
       ]
     }
