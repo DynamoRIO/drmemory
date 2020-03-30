@@ -26,10 +26,5 @@ goodbye
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-%if X32
-~~Dr.M~~       2 unique,     2 total,     29 byte(s) of leak(s)
-%endif
-%if X64
-~~Dr.M~~       2 unique,     2 total,     41 byte(s) of leak(s)
-%endif
+~~Dr.M~~   %ANY% unique, %ANY% total, %ANY% byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

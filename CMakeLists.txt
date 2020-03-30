@@ -1754,11 +1754,12 @@ else ()
       SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
       ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
       -DINCLUDE_DIRECTORIES=${framework_incdir}
-      -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
+      -DCMAKE_C_FLAGS:STRING="${annot_cflags}"
+      OUTPUT_VARIABLE try_output)
     if (DR_ANNOTATIONS_SUPPORTED)
       message(STATUS "DR annotations are supported")
     else ()
-      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0: |${try_output}|")
     endif ()
   else ()
     set(DR_ANNOTATIONS_SUPPORTED ON)
