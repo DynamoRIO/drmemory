@@ -624,7 +624,7 @@ if (WIN32)
   set(SYMSRV_GLOB "" CACHE STRING
     "Preferred path for dbghelp.dll with wildcard expansion")
   set(symsrv_paths
-    "{SYMSRV_GLOB}"
+    "${SYMSRV_GLOB}"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
