@@ -169,7 +169,7 @@ def print_regions(layout, regions, consider_shadow_of_shadow):
 
         print('MAP', map_index)
         for i in range(len(regions)):
-            print('\tapp' + str(i) + ':\t', regions[i], ":", regions[i].desc)
+            print('\tapp' + str(i) + ':\t', regions[i], ':', regions[i].desc)
             print('\tshd' + str(i) + ':\t', translated_regions[i])
            
             if consider_shadow_of_shadow: 
@@ -183,10 +183,9 @@ def detect_collisions(merged_regions):
 
     for i in range(len(merged_regions)):
         cur_region = merged_regions[i]
-        print("Checking range:", get_formatted_hex(cur_region.start), get_formatted_hex(cur_region.end))
 
         if (cur_region.start >= cur_region.end):
-            print("Invalid range:", get_formatted_hex(cur_region.start), get_formatted_hex(cur_region.end))
+            print('Invalid range:', get_formatted_hex(cur_region.start), get_formatted_hex(cur_region.end))
             return True
         
         if (i == 0):
@@ -195,7 +194,7 @@ def detect_collisions(merged_regions):
         prev_region = merged_regions[i-1]
 
         if (cur_region.start < prev_region.end):
-            print("Collision:", get_formatted_hex(cur_region.start), get_formatted_hex(prev_region.end))
+            print('Collision:', get_formatted_hex(cur_region.start), get_formatted_hex(prev_region.end))
             return True
 
     return False
@@ -210,9 +209,9 @@ def check(layout, regions, detect_shadow):
         merged_regions = merged_regions + translated_regions
 
     if(detect_collisions(merged_regions)):
-        print('FAILED: memory layout is not valid.\n')
+        print('Result: FAILED\n')
     else:
-        print('SUCCESS: memory layout is valid.\n')
+        print('Result: SUCCESS\n')
 
     print_regions(layout, regions, detect_shadow)
 
@@ -243,15 +242,13 @@ def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detec
     if scale != 0:
         scale_expr = BitVecVal(scale, PTR_SIZE)
 
-    solver = Solver()
-
-    if disp is not None:
-        solver.add(disp_var == BitVecVal(disp, PTR_SIZE))
-
     # Only consider one map to keep constraints small.
     map_index_expr = BitVecVal(0, PTR_SIZE)
 
     solver = Solver()
+
+    if disp is not None:
+        solver.add(disp_var == BitVecVal(disp, PTR_SIZE))
 
     region_exprs = list(
         map(lambda x: RegionExpressionInfo(BitVecVal(x.start, PTR_SIZE), BitVecVal(x.end, PTR_SIZE)), regions))
@@ -306,10 +303,10 @@ def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detec
     if solver.check() == sat:
         model = solver.model()
         disp_result = model[disp_var].as_long()
-        print('SUCCESS\n')
+        print('Result: SUCCESS\n')
         return disp_result
     else:
-        print('FAILED\n')
+        print('Result: FAILED\n')
         return None
 
 # Parse OS arg provided by the user.
@@ -367,8 +364,8 @@ parser.add_argument('--count', type=int, default=1, help='specifies the number o
 
 args = parser.parse_args()
 
-print('Information:')
-print('\tOS:', args.os)
+print('*** Umbra Shadow Memory Layout ***\n')
+print('OS:', args.os, '\n')
 
 regions = parse_os(args.os)
 
@@ -382,5 +379,8 @@ if args.verify:
 else:
     if args.mask is None or args.disp is None:
         sys.exit('Fatal Error: A displacement value needs to be provided as an arguments to check the layout. Run in Verify Mode if you want to synthesize the value')
-    layout = Layout(args.mask, args.disp, args.unit, is_scale_up, scale, args.count)
+    
+    if args.count > 1:
+        print('Warning: Can only verify for one map.')
+    layout = Layout(args.mask, args.disp, args.unit, is_scale_up, scale, 1)
     check(layout, regions, args.shadow_collision)
