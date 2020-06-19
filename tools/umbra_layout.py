@@ -4,7 +4,7 @@ from z3 import *
 PTR_SIZE = 64
 
 def get_formatted_hex(integer):
-    # Returns a formatted hex string. 
+    # Returns a formatted hex string.
     return '0x{0:0{1}X}'.format(integer, 16)
 
 
@@ -14,14 +14,14 @@ class Region:
         self.desc = desc
         # Start of region
         self.start = start
-        # End of region 
+        # End of region
         self.end = end
 
     def __str__(self):
         formatted_start = get_formatted_hex(self.start)
         formatted_end = get_formatted_hex(self.end)
 
-        # Return range as a string. 
+        # Return range as a string.
         return '[' + formatted_start + ', ' + formatted_end + ']'
 
     def __repr__(self):
@@ -63,11 +63,11 @@ class Layout:
 
         # Step 3: Calculate the shadow address
         shdw_addr = masked_addr + self.disp + unit_disp
-        
+
         # Step 4: Handle special case where top of addr is masked out, e.g., 0x800000000.
         if addr != 0 and shdw_addr == self.disp:
-            shdw_addr = shdw_addr + self.mask + 1  
- 
+            shdw_addr = shdw_addr + self.mask + 1
+
         # Step 5: Scale shadow memory.
         if self.is_scale_up:
             return shdw_addr << self.scale
@@ -75,7 +75,7 @@ class Layout:
             return shdw_addr >> self.scale
 
     def translate(self, region, map_index):
-        # Translate the start and end of the passed range for a given map. 
+        # Translate the start and end of the passed range for a given map.
         translated_start = self.__translate_boundary(region.start, map_index)
         translated_end = self.__translate_boundary(region.end, map_index)
 
@@ -100,7 +100,7 @@ class Layout:
         shdw_addr = masked_addr_expr + disp_var + unit_disp_expr
 
         # Express the special case handling with an ITE expression.
-        shdw_addr = simplify(If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var), shdw_addr + mask_expr + 1, shdw_addr))        
+        shdw_addr = simplify(If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var), shdw_addr + mask_expr + 1, shdw_addr))
 
         # Return if scale is N\A.
         if scale is None:
@@ -128,8 +128,8 @@ def get_linux_app_regions():
     regions.append(Region('exec,heap, data', 0x0, 0x10000000000))
     regions.append(Region('pie', 0x550000000000, 0x570000000000))
     regions.append(Region('lib, map, stack, vdso', 0x7F0000000000, 0x800000000000))
-    
-    # FIXME: Should we map shadow memory for vsyscall? Doing so can prevent the possibility of a SAT layout. 
+
+    # FIXME: Should we map shadow memory for vsyscall? Doing so can prevent the possibility of a SAT layout.
     #regions.append(Region('vsyscall', 0xFFFFFFFFFF600000, 0xFFFFFFFFFF601000))
 
     return regions
@@ -171,10 +171,10 @@ def print_regions(layout, regions, consider_shadow_of_shadow):
         for i in range(len(regions)):
             print('\tapp' + str(i) + ':\t', regions[i], ':', regions[i].desc)
             print('\tshd' + str(i) + ':\t', translated_regions[i])
-           
-            if consider_shadow_of_shadow: 
+
+            if consider_shadow_of_shadow:
                 print('\tshd\'' + str(i) + ':\t', translated_again_regions[i])
-            
+
             print('\n')
 
 
@@ -187,7 +187,7 @@ def detect_collisions(merged_regions):
         if (cur_region.start >= cur_region.end):
             print('Invalid range:', get_formatted_hex(cur_region.start), get_formatted_hex(cur_region.end))
             return True
-        
+
         if (i == 0):
             continue
 
@@ -226,7 +226,7 @@ def add_no_collision_constraint(solver, region_expr, region_expr2):
 
 def add_valid_range_constraint(solver, region_expr):
     solver.add(ULT(region_expr.start_expr, region_expr.end_expr))
- 
+
     zero_expr = BitVecVal(0, PTR_SIZE)
     high_mask_expr = BitVecVal(0xFFFF000000000000, PTR_SIZE)
     solver.add(region_expr.start_expr & high_mask_expr == zero_expr)
@@ -271,7 +271,7 @@ def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detec
             shdw_expr_again = shdw_exprs_again[i]
             add_valid_range_constraint(solver, shdw_expr_again)
             add_no_collision_constraint(solver, region_expr, shdw_expr_again)
-            add_no_collision_constraint(solver, shdw_expr, shdw_expr_again)        
+            add_no_collision_constraint(solver, shdw_expr, shdw_expr_again)
 
         for j in range(len(region_exprs)):
             if (j <= i):
@@ -379,7 +379,7 @@ if args.verify:
 else:
     if args.mask is None or args.disp is None:
         sys.exit('Fatal Error: A displacement value needs to be provided as an arguments to check the layout. Run in Verify Mode if you want to synthesize the value')
-    
+
     if args.count > 1:
         print('Warning: Can only verify for one map.')
     layout = Layout(args.mask, args.disp, args.unit, is_scale_up, scale, 1)
