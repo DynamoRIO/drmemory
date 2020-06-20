@@ -452,17 +452,17 @@ def parse_scale(scale):
 
 def print_result(result):
     if result:
-        print('SUCCESS')
+        print('SUCCESS\n')
     else:
-        print('FAILED')
+        print('FAILED\n')
 
 
 # Set up arg parser.
 def set_arg_parser():
     parser = argparse.ArgumentParser(
         description=
-        'Facilitates the set up of shadow memory layouts based on direct mappings.'
-        'Mappings are based on known Application Regions typically set up by the OS.'
+        'Facilitates the set up of shadow memory layouts based on direct mappings without collisions. '
+        'Mappings are based on known application regions typically set up by the OS. '
         '\n\tSHDW(app) = (app & MASK) + DISP')
 
     parser.add_argument('--os',
@@ -487,10 +487,9 @@ def set_arg_parser():
     parser.add_argument(
         '--verify',
         action='store_true',
-        help='verifies whether or not the passed  value results in'
-        'a shadow memory layout without any collisions. If no disp or mask values are passed, they will be'
-        'synthesized with appropriate values automatically. Current implementation does not check for'
-        'multiple maps.')
+        help='verifies whether or not the passed settings result in '
+        'a shadow memory layout without any collisions. If no disp value is passed, it will be '
+        'synthesized with appropriate values automatically.')
     parser.add_argument(
         '--shadow_collision',
         default=False,
