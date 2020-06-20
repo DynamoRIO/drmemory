@@ -1,11 +1,133 @@
+'''
+ **********************************************************
+ * Copyright (c) 2020 Google, Inc.  All rights reserved.
+ * ********************************************************
+'''
+'''
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name of Google, Inc. nor the names of its contributors may be
+   used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ ARE DISCLAIMED. IN NO EVENT SHALL GOOGLE, INC. OR CONTRIBUTORS BE LIABLE
+ FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ DAMAGE.
+'''
+'''
+A script used to find Umbra Shadow Memory Layouts.
+To format script with yapf: 
+'''
+
 import argparse
+from enum import Enum
 from z3 import *
 
 PTR_SIZE = 64
 
+
 def get_formatted_hex(integer):
     # Returns a formatted hex string.
     return '0x{0:0{1}X}'.format(integer, 16)
+
+
+class OS(Enum):
+    LINUX = 'linux'
+    WINDOWS8 = 'windows8'
+    WINDOWS81 = 'windows81'
+
+    def __str__(self):
+        return self.value
+
+    def get_app_regions(os):
+        # Returns pre-defined app regions of the passed Operating System.
+        regions = []
+        if os == OS.LINUX:
+            regions.append(Region('exec,heap, data', 0x0, 0x10000000000))
+            regions.append(Region('pie', 0x550000000000, 0x570000000000))
+            regions.append(Region('lib, map, stack, vdso', 0x7F0000000000,
+                                  0x800000000000))
+
+            # FIXME: Should we map shadow memory for vsyscall? Doing so can prevent the possibility of a SAT layout.
+            #regions.append(Region('vsyscall', 0xFFFFFFFFFF600000, 0xFFFFFFFFFF601000))
+        elif os == OS.WINDOWS8:
+            regions.append(Region('exec,heap, data', 0x0, 0x1000000000))
+            regions.append(Region('lib', 0x7F000000000, 0x80000000000))
+        elif os == OS.WINDOWS81:
+            regions.append(Region('exec,heap, data', 0x0, 0x30000000000))
+            regions.append(Region('lib', 0x7C0000000000, 0x800000000000))
+        else:
+            sys.exit('Fatal Error: Uknown OS.')
+
+        return regions
+
+
+class Scale(Enum):
+    DOWN_8X = 'down_8x'
+    DOWN_4X = 'down_4x'
+    DOWN_2X = 'down_2x'
+    SAME = 'same'
+    UP_2X = 'up_2x'
+    UP_4X = 'up_4x'
+    UP_8X = 'up_8x'
+
+    def __str__(self):
+        return self.value
+
+    def is_scale_up(scale):
+        # Returns whether the scale is up or down and its value.
+        if (scale == Scale.DOWN_8X):
+            return False
+        elif (scale == Scale.DOWN_4X):
+            return False
+        elif (scale == Scale.DOWN_2X):
+            return False
+        elif (scale == Scale.SAME):
+            # We consider SAME as scale up.
+            return True
+        elif (scale == Scale.UP_2X):
+            return True
+        elif (scale == Scale.UP_4X):
+            return True
+        elif (scale == Scale.UP_8X):
+            return True
+        else:
+            sys.exit('Fatal Error: Uknown scale.')
+
+    def get_scale(scale):
+        # Returns whether the scale is up or down and its value.
+        if (scale == Scale.DOWN_8X):
+            return 3
+        elif (scale == Scale.DOWN_4X):
+            return 2
+        elif (scale == Scale.DOWN_2X):
+            return 1
+        elif (scale == Scale.SAME):
+            return 0
+        elif (scale == Scale.UP_2X):
+            return 1
+        elif (scale == Scale.UP_4X):
+            return 2
+        elif (scale == Scale.UP_8X):
+            return 3
+        else:
+            sys.exit('Fatal Error: Unknown Scale.')
 
 
 class Region:
@@ -35,6 +157,7 @@ class RegionExpressionInfo:
         # Expression of the end of the range.
         self.end_expr = end_expr
 
+
 class Layout:
     def __init__(self, mask, disp, unit, is_scale_up, scale, map_count):
         # Mask used for shadow translation.
@@ -62,11 +185,13 @@ class Layout:
             unit_disp = unit_disp << self.scale
 
         # Step 3: Calculate the shadow address
-        shdw_addr = masked_addr + self.disp + unit_disp
+        shdw_addr = masked_addr + self.disp
 
         # Step 4: Handle special case where top of addr is masked out, e.g., 0x800000000.
         if addr != 0 and shdw_addr == self.disp:
             shdw_addr = shdw_addr + self.mask + 1
+
+        shdw_addr = shdw_addr + unit_disp
 
         # Step 5: Scale shadow memory.
         if self.is_scale_up:
@@ -82,7 +207,8 @@ class Layout:
         # Return a shadow region.
         return Region(None, translated_start, translated_end)
 
-    def __get_translate_expr(addr_expr, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr):
+    def __get_translate_expr(addr_expr, disp_var, mask_expr, unit_expr, is_scale_up,
+                             scale_expr, map_index_expr):
         # Gets an expression of a translated address.
 
         # Express address masking.
@@ -90,82 +216,69 @@ class Layout:
 
         # Express unit displacement.
         unit_disp_expr = simplify(unit_expr * BitVecVal(2, PTR_SIZE) * map_index_expr)
-        if scale is not None:
+        if scale_expr is not None:
             if is_scale_up:
-                unit_disp_expr = simplify(LShR(unit_disp_expr, scale))
+                unit_disp_expr = simplify(LShR(unit_disp_expr, scale_expr))
             else:
-                unit_disp_expr = simplify(unit_disp_expr << scale)
+                unit_disp_expr = simplify(unit_disp_expr << scale_expr)
 
         # Express shadow address.
-        shdw_addr = masked_addr_expr + disp_var + unit_disp_expr
+        shdw_addr = simplify(masked_addr_expr + disp_var)
 
         # Express the special case handling with an ITE expression.
-        shdw_addr = simplify(If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var), shdw_addr + mask_expr + 1, shdw_addr))
+        shdw_addr = simplify(
+            If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var),
+               shdw_addr + mask_expr + 1, shdw_addr))
 
-        # Return if scale is N\A.
-        if scale is None:
+        # Add unit displacement:
+        shdw_addr = simplify(shdw_addr + unit_disp_expr)
+
+        # Return if scale is N/A.
+        if scale_expr is None:
             return shdw_addr
 
         # Express shadow memory scaling.
         if is_scale_up:
-            return simplify(shdw_addr << scale)
+            return simplify(shdw_addr << scale_expr)
         else:
-            return simplify(LShR(shdw_addr, scale))
+            return simplify(LShR(shdw_addr, scale_expr))
 
-    def get_translate_expr(region_expr_info, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr):
+    def get_translate_expr(region_expr_info, disp_var, mask_expr, unit_expr, is_scale_up,
+                           scale_expr, map_index_expr):
         # Express translation of start address.
-        start_shdw_expr = Layout.__get_translate_expr(
-            region_expr_info.start_expr, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr)
+        start_shdw_expr = Layout.__get_translate_expr(region_expr_info.start_expr,
+                                                      disp_var, mask_expr, unit_expr,
+                                                      is_scale_up, scale_expr,
+                                                      map_index_expr)
         # Express translation of end address.
-        end_shdw_expr = Layout.__get_translate_expr(
-            region_expr_info.end_expr, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr)
+        end_shdw_expr = Layout.__get_translate_expr(region_expr_info.end_expr, disp_var,
+                                                    mask_expr, unit_expr, is_scale_up,
+                                                    scale_expr, map_index_expr)
 
         return RegionExpressionInfo(start_shdw_expr, end_shdw_expr)
 
-def get_linux_app_regions():
-    # Define app regions on Linux.
-    regions = []
-    regions.append(Region('exec,heap, data', 0x0, 0x10000000000))
-    regions.append(Region('pie', 0x550000000000, 0x570000000000))
-    regions.append(Region('lib, map, stack, vdso', 0x7F0000000000, 0x800000000000))
+    def print_layout_info(self):
+        print('Memory Layout:')
+        print('\tMask:', get_formatted_hex(layout.mask))
+        print('\tDisp:', get_formatted_hex(layout.disp))
+        print('\tUnit Size:', get_formatted_hex(layout.unit))
+        print('\tScale UP:', layout.is_scale_up)
+        print('\tScale:', layout.scale)
+        print('\n')
 
-    # FIXME: Should we map shadow memory for vsyscall? Doing so can prevent the possibility of a SAT layout.
-    #regions.append(Region('vsyscall', 0xFFFFFFFFFF600000, 0xFFFFFFFFFF601000))
-
-    return regions
-
-def get_windows8_app_regions():
-    # Define app regions on Windows 8.
-    regions = []
-    regions.append(Region('exec,heap, data', 0x0, 0x1000000000))
-    regions.append(Region('lib', 0x7F000000000, 0x80000000000))
-
-    return regions
-
-def get_windows81_app_regions():
-    # Define app regions on Windows 8.1
-    regions = []
-    regions.append(Region('exec,heap, data', 0x0, 0x30000000000))
-    regions.append(Region('lib', 0x7C0000000000, 0x800000000000))
-
-    return regions
 
 def get_translated_regions(layout, regions, map_index):
     # Translate every region in the list and return results in another list
     return list(map(lambda x: layout.translate(x, map_index), regions))
 
+
 def print_regions(layout, regions, consider_shadow_of_shadow):
-    print('Memory Layout:\n')
-    print('\tDisp:', get_formatted_hex(layout.disp))
-    print('\tMask:', get_formatted_hex(layout.mask))
-    print('\tUnit Size:', get_formatted_hex(layout.unit))
-    print('\tScale:', layout.scale)
-    print('\tMap Count:', layout.map_count, '\n')
 
     for map_index in range(layout.map_count):
         translated_regions = get_translated_regions(layout, regions, map_index)
         if consider_shadow_of_shadow:
-            translated_again_regions = get_translated_regions(layout, translated_regions, map_index)
+            translated_again_regions = get_translated_regions(layout, translated_regions,
+                                                              map_index)
 
         print('MAP', map_index)
         for i in range(len(regions)):
@@ -178,72 +291,72 @@ def print_regions(layout, regions, consider_shadow_of_shadow):
             print('\n')
 
 
-def detect_collisions(merged_regions):
+def check(layout, regions, detect_shadow):
+    # Checks for any collisions. If detect_shadow is true, the shadow regions of shadows are also checked.
+    # This function does not verify no collisions using constraint solving - see verify() if you want to
+    # look at Z3 usage. Instead this function uses 'classical' iteration.
+    merged_regions = regions
+
+    for map_index in range(layout.map_count):
+        translated_regions = get_translated_regions(layout, regions, map_index)
+        # Only check shadow of shadows if flag is set.
+        if detect_shadow:
+            merged_regions = merged_regions + get_translated_regions(
+                layout, translated_regions, map_index)
+        merged_regions = merged_regions + translated_regions
+
+    # Sort the list based on the starting address of the range to facilitate collision detection.
     merged_regions.sort(key=lambda x: x.start, reverse=False)
 
     for i in range(len(merged_regions)):
         cur_region = merged_regions[i]
-
         if (cur_region.start >= cur_region.end):
-            print('Invalid range:', get_formatted_hex(cur_region.start), get_formatted_hex(cur_region.end))
-            return True
+            print('Invalid range:', get_formatted_hex(cur_region.start),
+                  get_formatted_hex(cur_region.end))
+            return False
 
         if (i == 0):
             continue
 
-        prev_region = merged_regions[i-1]
-
+        prev_region = merged_regions[i - 1]
         if (cur_region.start < prev_region.end):
-            print('Collision:', get_formatted_hex(cur_region.start), get_formatted_hex(prev_region.end))
-            return True
+            print('Collision:', get_formatted_hex(cur_region.start),
+                  get_formatted_hex(prev_region.end))
+            return False
 
-    return False
-
-
-def check(layout, regions, detect_shadow):
-    merged_regions = regions
-    for map_index in range(layout.map_count):
-        translated_regions =  get_translated_regions(layout, regions, map_index)
-        if detect_shadow:
-            merged_regions = merged_regions + get_translated_regions(layout, translated_regions, map_index)
-        merged_regions = merged_regions + translated_regions
-
-    if(detect_collisions(merged_regions)):
-        print('Result: FAILED\n')
-    else:
-        print('Result: SUCCESS\n')
-
-    print_regions(layout, regions, detect_shadow)
+    return True
 
 
 def add_no_collision_constraint(solver, region_expr, region_expr2):
-    solver.add(Not(Or(
-        And(ULT(region_expr.start_expr, region_expr2.end_expr),
-            UGT(region_expr.end_expr, region_expr2.start_expr)),
-        And(UGT(region_expr.end_expr, region_expr2.start_expr), UGT(region_expr2.end_expr, region_expr.start_expr)))
-    ))
+    # Adds a constraint to avoid overlapping regions.
+    solver.add(
+        Not(
+            Or(
+                And(ULT(region_expr.start_expr, region_expr2.end_expr),
+                    UGT(region_expr.end_expr, region_expr2.start_expr)),
+                And(UGT(region_expr.end_expr, region_expr2.start_expr),
+                    UGT(region_expr2.end_expr, region_expr.start_expr)))))
     return None
 
+
 def add_valid_range_constraint(solver, region_expr):
+    # A region's start address must be less than its end address.
     solver.add(ULT(region_expr.start_expr, region_expr.end_expr))
 
+    # Pointers must fits within 48-bits. Therefore, we add a constrant that
+    # ensures that the top 2 bytes of the region's pointer (be it the start or end)
+    # is zero.
     zero_expr = BitVecVal(0, PTR_SIZE)
     high_mask_expr = BitVecVal(0xFFFF000000000000, PTR_SIZE)
     solver.add(region_expr.start_expr & high_mask_expr == zero_expr)
     solver.add(region_expr.end_expr & high_mask_expr == zero_expr)
 
 
-def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detect_shadow):
+def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow):
     disp_var = BitVec('d', PTR_SIZE)
+
     mask_expr = BitVecVal(mask, PTR_SIZE)
     unit_expr = BitVecVal(unit, PTR_SIZE)
-
-    scale_expr = None
-    if scale != 0:
-        scale_expr = BitVecVal(scale, PTR_SIZE)
-
-    # Only consider one map to keep constraints small.
-    map_index_expr = BitVecVal(0, PTR_SIZE)
 
     solver = Solver()
 
@@ -251,46 +364,69 @@ def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detec
         solver.add(disp_var == BitVecVal(disp, PTR_SIZE))
 
     region_exprs = list(
-        map(lambda x: RegionExpressionInfo(BitVecVal(x.start, PTR_SIZE), BitVecVal(x.end, PTR_SIZE)), regions))
-    shdw_exprs = list(
-        map(lambda x: Layout.get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr), region_exprs))
+        map(
+            lambda x: RegionExpressionInfo(BitVecVal(x.start, PTR_SIZE),
+                                           BitVecVal(x.end, PTR_SIZE)), regions))
 
-    if detect_shadow:
-        shdw_exprs_again = list(
-            map(lambda x: Layout.get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up, scale_expr, map_index_expr), shdw_exprs))
+    for map_index in range(map_count):
+        # Only consider one map to keep constraints small.
+        map_index_expr = BitVecVal(map_index, PTR_SIZE)
 
-    for i in range(len(region_exprs)):
-        region_expr = region_exprs[i]
-        shdw_expr = shdw_exprs[i]
+        for scale in scale_list:
+            scale_expr = None
+            if scale != 0:
+                scale_expr = BitVecVal(scale.get_scale(), PTR_SIZE)
+            is_scale_up = scale.is_scale_up()
 
-        add_valid_range_constraint(solver, shdw_expr)
-
-        add_no_collision_constraint(solver, region_expr, shdw_expr)
-
-        if detect_shadow:
-            shdw_expr_again = shdw_exprs_again[i]
-            add_valid_range_constraint(solver, shdw_expr_again)
-            add_no_collision_constraint(solver, region_expr, shdw_expr_again)
-            add_no_collision_constraint(solver, shdw_expr, shdw_expr_again)
-
-        for j in range(len(region_exprs)):
-            if (j <= i):
-                continue
-
-            next_region_expr = region_exprs[j]
-            next_shdw_expr = shdw_exprs[j]
-
-            add_no_collision_constraint(solver, region_expr, next_shdw_expr)
-            add_no_collision_constraint(solver, shdw_expr, next_region_expr)
-            add_no_collision_constraint(solver, shdw_expr, next_shdw_expr)
+            shdw_exprs = list(
+                map(
+                    lambda x: Layout.
+                    get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up,
+                                       scale_expr, map_index_expr), region_exprs))
 
             if detect_shadow:
-                next_shdw_expr_again = shdw_exprs_again[j]
-                add_no_collision_constraint(solver, region_expr, next_shdw_expr_again)
-                add_no_collision_constraint(solver, shdw_expr, next_shdw_expr_again)
-                add_no_collision_constraint(solver, shdw_expr_again, next_region_expr)
-                add_no_collision_constraint(solver, shdw_expr_again, next_shdw_expr)
-                add_no_collision_constraint(solver, shdw_expr_again, next_shdw_expr_again)
+                shdw_exprs_again = list(
+                    map(
+                        lambda x: Layout.
+                        get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up,
+                                           scale_expr, map_index_expr), shdw_exprs))
+
+            for i in range(len(region_exprs)):
+                region_expr = region_exprs[i]
+                shdw_expr = shdw_exprs[i]
+
+                add_valid_range_constraint(solver, shdw_expr)
+                add_no_collision_constraint(solver, region_expr, shdw_expr)
+
+                if detect_shadow:
+                    shdw_expr_again = shdw_exprs_again[i]
+                    add_valid_range_constraint(solver, shdw_expr_again)
+                    add_no_collision_constraint(solver, region_expr, shdw_expr_again)
+                    add_no_collision_constraint(solver, shdw_expr, shdw_expr_again)
+
+                for j in range(len(region_exprs)):
+                    if (j <= i):
+                        continue
+
+                    next_region_expr = region_exprs[j]
+                    next_shdw_expr = shdw_exprs[j]
+
+                    add_no_collision_constraint(solver, region_expr, next_shdw_expr)
+                    add_no_collision_constraint(solver, shdw_expr, next_region_expr)
+                    add_no_collision_constraint(solver, shdw_expr, next_shdw_expr)
+
+                    if detect_shadow:
+                        next_shdw_expr_again = shdw_exprs_again[j]
+                        add_no_collision_constraint(solver, region_expr,
+                                                    next_shdw_expr_again)
+                        add_no_collision_constraint(solver, shdw_expr,
+                                                    next_shdw_expr_again)
+                        add_no_collision_constraint(solver, shdw_expr_again,
+                                                    next_region_expr)
+                        add_no_collision_constraint(solver, shdw_expr_again,
+                                                    next_shdw_expr)
+                        add_no_collision_constraint(solver, shdw_expr_again,
+                                                    next_shdw_expr_again)
 
     if max is not None:
         solver.add(disp_var <= BitVecVal(max, PTR_SIZE))
@@ -302,85 +438,113 @@ def verify(mask, disp,  max, unit, is_scale_up, scale, map_count, regions, detec
 
     if solver.check() == sat:
         model = solver.model()
-        disp_result = model[disp_var].as_long()
-        print('Result: SUCCESS\n')
-        return disp_result
+        return model[disp_var].as_long()
     else:
-        print('Result: FAILED\n')
         return None
 
-# Parse OS arg provided by the user.
-def parse_os(choice):
-    if (choice == 'linux'):
-        return get_linux_app_regions()
-    elif choice == 'windows8':
-        return get_windows8_app_regions()
-    elif choice == 'windows81':
-        return get_windows81_app_regions()
+
+def parse_scale(scale):
+    if (scale == 'all'):
+        return list(Scale)
     else:
-        sys.exit('Fatal Error: Bad OS choice')
+        return [Scale(scale)]
 
-# Parse Scale arg provided by the user.
-def parse_scale(choice):
-    if (choice == 'down_8x'):
-        return False, 3
-    elif (choice == 'down_4x'):
-        return False, 2
-    elif (choice == 'down_2x'):
-        return False, 1
-    elif (choice == 'same'):
-        return True, 0
-    elif (choice == 'up_2x'):
-        return True, 1
-    elif (choice == 'up_4x'):
-        return True, 2
-    elif (choice == 'up_8x'):
-        return True, 3
+
+def print_result(result):
+    if result:
+        print('SUCCESS')
     else:
-        sys.exit('Fatal Error: Bad scale choice.')
+        print('FAILED')
 
-parser = argparse.ArgumentParser(
-    description='Facilitates the set up of shadow memory layouts based on direct mappings.'
-                 'Mappings are based on known Application Regions typically set up by the OS.'
-                 '\n\tSHDW(app) = (app & MASK) + DISP')
-parser.add_argument('--os', choices=['linux', 'windows8', 'windows81'],
-                    default='linux', help='the operating system to consider.')
-parser.add_argument('--mask', type=lambda x: int(x, 0),
-                    help='the mask value applied to the app address.')
-parser.add_argument('--disp', type=lambda x: int(x, 0),
-                    help='the displacement value used for shadow translation.')
-parser.add_argument('--scale', choices=['down_8x', 'down_4x', 'down_2x', 'same', 'up_2x', 'up_4x', 'up_8x'],
-                    default='same', help='scale of shadow memory with respect to app memory.')
-parser.add_argument('--verify', action='store_true', help='verifies whether or not the passed  value results in'
-                    'a shadow memory layout without any collisions. If no disp or mask values are passed, they will be'
-                    'synthesized with appropriate values automatically. Current implementation does not check for'
-                    'multiple maps.')
-parser.add_argument('--shadow_collision', default=False, action='store_true', help='Denotes whether to detect collisions with shadow\'s shadow.')
-parser.add_argument('--max', type=lambda x: int(x, 0),
-                    help='specifies the max limit of a disp when in find mode.')
-parser.add_argument('--unit', type=lambda x: int(x, 0),
-                    default=0x100000000000, help='specifies the size of a unit.')
-parser.add_argument('--count', type=int, default=1, help='specifies the number of maps.')
 
-args = parser.parse_args()
+# Set up arg parser.
+def set_arg_parser():
+    parser = argparse.ArgumentParser(
+        description=
+        'Facilitates the set up of shadow memory layouts based on direct mappings.'
+        'Mappings are based on known Application Regions typically set up by the OS.'
+        '\n\tSHDW(app) = (app & MASK) + DISP')
+
+    parser.add_argument('--os',
+                        type=OS,
+                        choices=list(OS),
+                        default=OS.LINUX,
+                        help='the operating system to consider.')
+    parser.add_argument('--mask',
+                        type=lambda x: int(x, 0),
+                        help='the mask value applied to the app address.')
+    parser.add_argument('--disp',
+                        type=lambda x: int(x, 0),
+                        help='the displacement value used for shadow translation.')
+    parser.add_argument('--scale',
+                        choices=[
+                            'all', Scale.DOWN_8X.value, Scale.DOWN_4X.value,
+                            Scale.DOWN_2X.value, Scale.SAME.value, Scale.UP_2X.value,
+                            Scale.UP_4X.value, Scale.UP_8X.value
+                        ],
+                        default='same',
+                        help='scale of shadow memory with respect to app memory.')
+    parser.add_argument(
+        '--verify',
+        action='store_true',
+        help='verifies whether or not the passed  value results in'
+        'a shadow memory layout without any collisions. If no disp or mask values are passed, they will be'
+        'synthesized with appropriate values automatically. Current implementation does not check for'
+        'multiple maps.')
+    parser.add_argument(
+        '--shadow_collision',
+        default=False,
+        action='store_true',
+        help='Denotes whether to detect collisions with shadow\'s shadow.')
+    parser.add_argument('--max',
+                        type=lambda x: int(x, 0),
+                        help='specifies the max limit of a disp when in find mode.')
+    parser.add_argument('--unit',
+                        type=lambda x: int(x, 0),
+                        default=0x100000000000,
+                        help='specifies the size of a unit.')
+    parser.add_argument('--count',
+                        type=int,
+                        default=1,
+                        help='specifies the number of maps.')
+
+    return parser
+
 
 print('*** Umbra Shadow Memory Layout ***\n')
-print('OS:', args.os, '\n')
 
-regions = parse_os(args.os)
+parser = set_arg_parser()
+args = parser.parse_args()
 
-is_scale_up, scale = parse_scale(args.scale)
+print('OS:', args.os.value, '\n')
+regions = args.os.get_app_regions()
+
+scale_list = parse_scale(args.scale)
 
 if args.verify:
-    disp = verify(args.mask, args.disp, args.max, args.unit, is_scale_up, scale, args.count, regions, args.shadow_collision)
-    if (disp is not None):
-        layout = Layout(args.mask, disp, args.unit, is_scale_up, scale, args.count)
-        print_regions(layout, regions, args.shadow_collision)
+    disp = verify(args.mask, args.disp, args.max, args.unit, scale_list, args.count,
+                  regions, args.shadow_collision)
+
+    # If no disp is returned, then the layout is unsat.
+    result = disp is not None
+    print_result(result)
+
+    if result:
+        for scale in scale_list:
+            layout = Layout(args.mask, disp, args.unit, scale.is_scale_up(),
+                            scale.get_scale(), args.count)
+            layout.print_layout_info()
+            print_regions(layout, regions, args.shadow_collision)
 else:
     if args.mask is None or args.disp is None:
-        sys.exit('Fatal Error: A displacement value needs to be provided as an arguments to check the layout. Run in Verify Mode if you want to synthesize the value')
+        sys.exit(
+            'Fatal Error: A displacement value needs to be provided as an arguments to check the layout. '
+            'Run in Verify Mode if you want to synthesize the value.')
 
-    if args.count > 1:
-        print('Warning: Can only verify for one map.')
-    layout = Layout(args.mask, args.disp, args.unit, is_scale_up, scale, 1)
-    check(layout, regions, args.shadow_collision)
+    for scale in scale_list:
+        layout = Layout(args.mask, args.disp, args.unit, scale.is_scale_up(),
+                        scale.get_scale(), args.count)
+        layout.print_layout_info()
+        result = check(layout, regions, args.shadow_collision)
+        print_result(result)
+        print_regions(layout, regions, args.shadow_collision)
