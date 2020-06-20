@@ -64,7 +64,8 @@ class OS(Enum):
             regions.append(Region('lib, map, stack, vdso', 0x7F0000000000,
                                   0x800000000000))
 
-            # FIXME: Should we map shadow memory for vsyscall? Doing so can prevent the possibility of a SAT layout.
+            # FIXME: Should we map shadow memory for vsyscall?
+            # Doing so can prevent the possibility of a SAT layout.
             #regions.append(Region('vsyscall', 0xFFFFFFFFFF600000, 0xFFFFFFFFFF601000))
         elif os == OS.WINDOWS8:
             regions.append(Region('exec,heap, data', 0x0, 0x1000000000))
@@ -91,7 +92,7 @@ class Scale(Enum):
         return self.value
 
     def is_scale_up(scale):
-        # Returns whether the scale is up or down and its value.
+        # Returns whether the scale is up or down.
         if (scale == Scale.DOWN_8X):
             return False
         elif (scale == Scale.DOWN_4X):
@@ -111,7 +112,7 @@ class Scale(Enum):
             sys.exit('Fatal Error: Uknown scale.')
 
     def get_scale(scale):
-        # Returns whether the scale is up or down and its value.
+        # Returns whether the scale's value.
         if (scale == Scale.DOWN_8X):
             return 3
         elif (scale == Scale.DOWN_4X):
@@ -132,11 +133,11 @@ class Scale(Enum):
 
 class Region:
     def __init__(self, desc, start, end):
-        # Description of region
+        # Description of region.
         self.desc = desc
-        # Start of region
+        # Start of region.
         self.start = start
-        # End of region
+        # End of region.
         self.end = end
 
     def __str__(self):
@@ -230,7 +231,7 @@ class Layout:
             If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var),
                shdw_addr + mask_expr + 1, shdw_addr))
 
-        # Add unit displacement:
+        # Add unit displacement.
         shdw_addr = simplify(shdw_addr + unit_disp_expr)
 
         # Return if scale is N/A.
@@ -268,7 +269,7 @@ class Layout:
 
 
 def get_translated_regions(layout, regions, map_index):
-    # Translate every region in the list and return results in another list
+    # Translate every region in the list and return results in another list.
     return list(map(lambda x: layout.translate(x, map_index), regions))
 
 
@@ -360,6 +361,7 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
 
     solver = Solver()
 
+    # We constrain the disp value if we are verifying (and not synthesizng).
     if disp is not None:
         solver.add(disp_var == BitVecVal(disp, PTR_SIZE))
 
@@ -368,10 +370,11 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
             lambda x: RegionExpressionInfo(BitVecVal(x.start, PTR_SIZE),
                                            BitVecVal(x.end, PTR_SIZE)), regions))
 
+    # Iterate through each map.
     for map_index in range(map_count):
-        # Only consider one map to keep constraints small.
         map_index_expr = BitVecVal(map_index, PTR_SIZE)
 
+        # Iterate through each scale.
         for scale in scale_list:
             scale_expr = None
             if scale != 0:
@@ -384,6 +387,7 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
                     get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up,
                                        scale_expr, map_index_expr), region_exprs))
 
+            # Only consider shadow of shadows if flag is set.
             if detect_shadow:
                 shdw_exprs_again = list(
                     map(
@@ -391,6 +395,7 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
                         get_translate_expr(x, disp_var, mask_expr, unit_expr, is_scale_up,
                                            scale_expr, map_index_expr), shdw_exprs))
 
+            # We now start to add constraints.
             for i in range(len(region_exprs)):
                 region_expr = region_exprs[i]
                 shdw_expr = shdw_exprs[i]
@@ -428,15 +433,18 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
                         add_no_collision_constraint(solver, shdw_expr_again,
                                                     next_shdw_expr_again)
 
+    # The user may specify a max value for the displacement. Add this constraint now.
     if max is not None:
         solver.add(disp_var <= BitVecVal(max, PTR_SIZE))
 
+    # We constrain the disp value to have its lower bytes to zero for easy mapping.
     zero_expr = BitVecVal(0, PTR_SIZE)
     solver.add(UGT(disp_var, zero_expr))
     low_mask_expr = BitVecVal(0xFFFFFFFF, PTR_SIZE)
     solver.add(disp_var & low_mask_expr == zero_expr)
 
     if solver.check() == sat:
+        # If sat, ask the solver to provide as a suitable displacement.
         model = solver.model()
         return model[disp_var].as_long()
     else:
