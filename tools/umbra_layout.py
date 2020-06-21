@@ -74,7 +74,7 @@ class OS(Enum):
             regions.append(Region('exec,heap, data', 0x0, 0x30000000000))
             regions.append(Region('lib', 0x7C0000000000, 0x800000000000))
         else:
-            sys.exit('Fatal Error: Uknown OS.')
+            sys.exit('Fatal Error: Unknown OS.')
 
         return regions
 
@@ -109,7 +109,7 @@ class Scale(Enum):
         elif (scale == Scale.UP_8X):
             return True
         else:
-            sys.exit('Fatal Error: Uknown scale.')
+            sys.exit('Fatal Error: Unknown scale.')
 
     def get_scale(scale):
         # Returns whether the scale's value.
