@@ -82,6 +82,7 @@ shadow_table_get_block_offset(umbra_map_t *map, app_pc app_addr)
 static void
 shadow_table_delete_block(umbra_map_t *map, byte *shadow_start)
 {
+    /* Different allocator usage depending on whether redzones are faulty. */
     if (map->options.make_redzone_faulty) {
         nonheap_free(shadow_start - map->options.redzone_size,
                      map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
@@ -109,7 +110,6 @@ shadow_table_init_redzone(umbra_map_t *map, byte *block)
     }
 
     block += map->options.redzone_size;
-
     if (map->options.redzone_size != 0) {
 
         byte *post_redzone = block + map->shadow_block_size;
@@ -572,11 +572,10 @@ umbra_arch_exit()
 drmf_status_t
 umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
 {
-    /*
-     * Override redzone size. We must make it a page size to control
+    /* Override redzone size. We must make it a page size to control
      * its permissions.
      *
-     * FIXME Potentially support larger redzone sizes to be even more safe.
+     * FIXME i#2283: Potentially support larger redzone sizes to be even more safe.
      * It is perhaps unlikely that a translated address would be used in
      * pointer arithmetic that results in jumping over the 1 paged sized
      * redzone. Nevertheless, we can be even more safe and leave this
@@ -596,17 +595,17 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
         }
     }
 
-    /*
-     * We assume that the shadow block is completely within page sizes.
-     * This allows us to set permissions
-     */
-    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page sizes");
-
     map->app_block_size = APP_BLOCK_SIZE;
     map->shadow_block_size = umbra_map_scale_app_to_shadow(map, APP_BLOCK_SIZE);
     map->shadow_block_alloc_size =
         map->shadow_block_size + 2 * map->options.redzone_size;
     shadow_table_init(map);
+
+    /* We assume that the shadow block is completely within page sizes.
+     * This allows us to set permissions.
+     */
+    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page sizes");
+
     return DRMF_SUCCESS;
 }
 
