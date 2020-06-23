@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -144,7 +144,7 @@ TEST(NtUserTests, CursorTest) {
     } else {
         // Check uninits
         MEMORY_BASIC_INFORMATION mbi;
-        VirtualQuery((VOID*)(point.x + point.y), &mbi, sizeof(mbi));
+        VirtualQuery((VOID*)(uintptr_t)(point.x + point.y), &mbi, sizeof(mbi));
 
         success = SetCursorPos(point.x, point.y);
         if (!success) {

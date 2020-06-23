@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -53,10 +53,10 @@ event_post_syscall(void *drcontext, int sysnum)
 {
     bool success;
     uint64 result;
-    uint errno;
-    if (drsys_cur_syscall_result(drcontext, &success, &result, &errno) == DRMF_SUCCESS) {
-        dr_fprintf(STDERR, "=> 0x"HEX64_FORMAT_STRING" ("SZFMT"), errno=%d%s]\n",
-                   result, (ptr_int_t)result, errno, success ? "" : " (failed)");
+    uint error;
+    if (drsys_cur_syscall_result(drcontext, &success, &result, &error) == DRMF_SUCCESS) {
+        dr_fprintf(STDERR, "=> 0x"HEX64_FORMAT_STRING" ("SZFMT"), error=%d%s]\n",
+                   result, (ptr_int_t)result, error, success ? "" : " (failed)");
     }
 }
 

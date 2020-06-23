@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -60,17 +60,18 @@
  * 0x10' (i#1810): they carve out two regions inside 0x10'-0x300' which
  * we merge with the bottom region:
  *   app1: [0x00000000'00000000, 0x00000300'00000000): exec, heap, data
- *   app2: [0x00007FF0'00000000, 0x00008000'00000000): libs
+ *   app2: [0x00007C00'00000000, 0x00008000'00000000): libs
  * 1B-to-1B mapping:
- *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000400'00000000)
+ *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000700'00000000)
  * and the result:
- *   shdw1 = SHDW(app1): [0x00000400'00000000, 0x00000700'00000000)
- *   shdw2 = SHDW(app2): [0x000013f0'00000000, 0x00001400'00000000)
+ *   shdw1 = SHDW(app1): [0x00000700'00000000, 0x00000a00'00000000)
+ *   shdw2 = SHDW(app2): [0x00001300'00000000, 0x00001700'00000000)
  * and
- *   shdw1'= SHDW(shdw1): [0x00000800'00000000, 0x00000b00'00000000)
- *   shdw2'= SHDW(shdw2): [0x000007f0'00000000, 0x00000800'00000000)
+ *   shdw1'= SHDW(shdw1): [0x00000e00'00000000, 0x00001100'00000000)
+ *   shdw2'= SHDW(shdw2): [0x00000a00'00000000, 0x00000e00'00000000)
  * Here we call [0x00000000'00000000, 0x00001000'00000000) a unit, and each
- * unit has 16 segments with size of 0x100'00000000.
+ * unit has 16 segments with size of 0x100'00000000.  Note that we do allow
+ * multi-segment regions.
  *
  * Linux:
  * app1: [0x00000000'00000000, 0x00000100'00000000): exec, heap, data
@@ -112,31 +113,31 @@
  * An extra layer of protection.
  *
  * For scaling up or down:
- * Windows:
+ * Windows 8.1+:
  * For scale down 2X:
- *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000040'00000000) >> 1
- *   SHDW(app1): [0x00000020'00000000, 0x00000028'00000000)
- *   SHDW(app2): [0x00000098'00000000, 0x000000A0'00000000)
- *   SHDW(shdw1): [0x00000030'00000000, 0x00000034'00000000)
- *   SHDW(shdw2): [0x0000006C'00000000, 0x00000070'00000000)
+ *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000800'00000000) >> 1
+ *   SHDW(app1): [0x00000400'00000000, 0x00000580'00000000)
+ *   SHDW(app2): [0x00000a00'00000000, 0x00000c00'00000000)
+ *   SHDW(shdw1): [0x00000600'00000000, 0x000006c0'00000000)
+ *   SHDW(shdw2): [0x00000900'00000000, 0x00000a00'00000000)
  * For scale down 4X:
- *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000080'00000000) >> 2
- *   SHDW(app1): [0x00000020'00000000, 0x00000024'00000000)
- *   SHDW(app2): [0x0000005C'00000000, 0x00000060'00000000)
- *   SHDW(shdw1): [0x00000028'00000000, 0x00000029'00000000)
- *   SHDW(shdw2): [0x00000037'00000000, 0x00000038'00000000)
+ *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00001c00'00000000) >> 2
+ *   SHDW(app1): [0x00000700'00000000, 0x000007c0'00000000)
+ *   SHDW(app2): [0x00000a00'00000000, 0x00000b00'00000000)
+ *   SHDW(shdw1): [0x000008c0'00000000, 0x000008f0'00000000)
+ *   SHDW(shdw2): [0x00000980'00000000, 0x000009c0'00000000)
  * For scale down 8X:
- *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000100'00000000) >> 3
- *   SHDW(app1): [0x00000020'00000000, 0x00000022'00000000)
- *   SHDW(app2): [0x0000003E'00000000, 0x00000040'00000000)
- *   SHDW(shdw1): [0x00000024'00000000, 0x00000024'40000000)
- *   SHDW(shdw2): [0x00000027'C0000000, 0x00000028'00000000)
+ *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00003800'00000000) >> 3
+ *   SHDW(app1): [0x00000700'00000000, 0x00000760'00000000)
+ *   SHDW(app2): [0x00000880'00000000, 0x00000900'00000000)
+ *   SHDW(shdw1): [0x000007e0'00000000, 0x000007ec'00000000)
+ *   SHDW(shdw2): [0x00000810'00000000, 0x00000820'00000000)
  * For scale up 2X:
- *  SHDW(app) = ((app & 0x000000FF'FFFFFFFF) + 0x00000018'00000000) << 1
- *   SHDW(app1): [0x00000030'00000000, 0x00000050'00000000)
- *   SHDW(app2): [0x00000210'00000000, 0x00000230'00000000)
- *   SHDW(shdw1): [0x00000090'00000000, 0x000000D0'00000000)
- *   SHDW(shdw2): [0x00000050'00000000, 0x00000090'00000000)
+ *  SHDW(app) = ((app & 0x000001FF'FFFFFFFF) + 0x00000580'00000000) << 1
+ *   SHDW(app1): [0x00000b00'00000000, 0x00001100'00000000)
+ *   SHDW(app2): [0x00004300'00000000, 0x00004b00'00000000)
+ *   SHDW(shdw1): [0x00001100'00000000, 0x00002100'00000000)
+ *   SHDW(shdw2): [0x00002100'00000000, 0x00002d00'00000000)
  *
  * Similar for Linux: xref i#1782 about the disp value
  * For scale down 2X:
@@ -334,21 +335,25 @@ static ptr_uint_t map_disp[] = {
 };
 
 #ifdef WINDOWS
-# define WIN81_BASE_DISP 0x40000000000
+# define WIN81_BASE_DISP 0x70000000000
+/* 0x700' does not work for DOWN_2X where reserve overlaps shadow. */
+# define WIN81_BASE_DISP_DOWN2 0x40000000000
+/* 0x700' also does not work for UP_2X. */
+# define WIN81_BASE_DISP_UP2 0xb0000000000
 static ptr_uint_t map_disp_win81[] = {
     (WIN81_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
     (WIN81_BASE_DISP)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
-    (WIN81_BASE_DISP)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
+    (WIN81_BASE_DISP_DOWN2)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
     (WIN81_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
-    (WIN81_BASE_DISP)>>1, /* UMBRA_MAP_SCALE_UP_2X */
+    (WIN81_BASE_DISP_UP2)>>1, /* UMBRA_MAP_SCALE_UP_2X */
 };
 #endif
 
 /* List all the mappings we support, no other app segment is allowed.
  * We check conflicts later when creating shadow memory.
  */
-static app_segment_t app_segments[] = {
 #ifdef LINUX
+static const app_segment_t app_segments_initial[] = {
     /* We split app3 [0x7F0000000000, 0x800000000000) into two parts:
      * [0x7F0000000000, 0x7FFFFF400000) and [0x7FFFFF800000, 0x800000000000).
      * And we skip [0x7FFFFF400000-0x7FFFFF800000)
@@ -372,14 +377,41 @@ static app_segment_t app_segments[] = {
     {(app_pc)0xFFFFFFFFFF400000,  (app_pc)0xFFFFFFFFFF800000, 0},
     /* app3: part 2 */
     {(app_pc)0x00007FFFFF800000,  (app_pc)0x0000800000000000, 0},
-#endif
     /* for all additional segments */
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
 };
-#define MAX_NUM_APP_SEGMENTS sizeof(app_segments)/sizeof(app_segments[0])
+#else
+static const app_segment_t app_segments_initial[] = {
+    /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+};
+# ifdef WINDOWS
+static const app_segment_t app_segments_initial_81[] = {
+    {(app_pc)0x0000000000000000,  (app_pc)0x0000030000000000, 0},
+    /* To ensure we cover large mappings such as from Control Flow Guard without
+     * first creating too-small entries, we have one large upper region covering
+     * multiple segments.  We only support this for Win8.1+.
+     */
+    {(app_pc)0x00007C0000000000,  (app_pc)0x0000800000000000, 0},
+    /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+};
+# endif
+#endif
+#define MAX_NUM_APP_SEGMENTS sizeof(app_segments_initial)/sizeof(app_segments_initial[0])
+static app_segment_t app_segments[MAX_NUM_APP_SEGMENTS];
 
 /***************************************************************************
  * UTILITY ROUTINES
@@ -453,8 +485,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         app_pc base, end;
         uint   map_idx;
-        /* skip my own app-segment*/
-        if (!app_segments[i].app_used || seg == &app_segments[i])
+        if (!app_segments[i].app_used)
             continue;
         /* new app-seg vs other app-seg's shadow and reserve */
         base = seg->app_base;
@@ -469,9 +500,14 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
-                     " conflicts with app seg ["PFX", "PFX")\n",
+                     " conflicts with app seg ["PFX", "PFX") or its "
+                     "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end,
-                     app_segments[i].app_base, app_segments[i].app_end);
+                     app_segments[i].app_base, app_segments[i].app_end,
+                     app_segments[i].shadow_base[map_idx],
+                     app_segments[i].shadow_end[map_idx],
+                     app_segments[i].reserve_base[map_idx],
+                     app_segments[i].reserve_end[map_idx]);
                 return false;
             }
         }
@@ -484,16 +520,22 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
             if (segment_overlap(base, end,
                                 app_segments[i].app_base,
                                 app_segments[i].app_end) ||
-                segment_overlap(base, end,
-                                app_segments[i].shadow_base[map_idx],
-                                app_segments[i].shadow_end[map_idx]) ||
+                (seg != &app_segments[i] &&
+                 segment_overlap(base, end,
+                                 app_segments[i].shadow_base[map_idx],
+                                 app_segments[i].shadow_end[map_idx])) ||
                 segment_overlap(base, end,
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
-                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX")\n",
+                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                     "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end, base, end,
-                     app_segments[i].app_base, app_segments[i].app_end);
+                     app_segments[i].app_base, app_segments[i].app_end,
+                     app_segments[i].shadow_base[map_idx],
+                     app_segments[i].shadow_end[map_idx],
+                     app_segments[i].reserve_base[map_idx],
+                     app_segments[i].reserve_end[map_idx]);
                 return false;
             }
         }
@@ -512,9 +554,12 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].shadow_base[map_idx],
                                 app_segments[i].shadow_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s reserve segment "
-                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX")\n",
+                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                     "shadow ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end, base, end,
-                     app_segments[i].app_base, app_segments[i].app_end);
+                     app_segments[i].app_base, app_segments[i].app_end,
+                     app_segments[i].shadow_base[map_idx],
+                     app_segments[i].shadow_end[map_idx]);
                 return false;
             }
         }
@@ -546,24 +591,20 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
                     return true;
                 }
             } else {
-                /* we do not support a memory range span multiple segments */
-                if ((segment_base(num_seg_bits, base) !=
-                     segment_base(num_seg_bits, base + size)) &&
-                    (segment_base(num_seg_bits, base) +
-                     segment_size(num_seg_bits) != (ptr_uint_t)base + size)) {
-                    LOG(1, "memory ["PFX", "PFX") spanning multiple segments "
-                        "is not supported\n", base, base + size);
-                    return false;
-                }
                 app_segments[i].app_base = (app_pc)segment_base(num_seg_bits, base);
-                app_segments[i].app_end = (app_pc)app_segments[i].app_base +
-                    segment_size(num_seg_bits);
+                /* We do support a memory range spanning multiple segments, since it
+                 * happens in practice with Control Flow Guard (i#2184).
+                 */
+                app_segments[i].app_end =
+                    (app_pc)ALIGN_FORWARD(base + size, segment_size(num_seg_bits));
+                LOG(1, "adding app segment ["PFX", "PFX")\n", app_segments[i].app_base,
+                    app_segments[i].app_end);
                 /* Adding a not pre-defined segment.
                  * We call umbra_add_shadow_segment to check if it is valid.
                  */
                 if (map != NULL && !umbra_add_shadow_segment(map, &app_segments[i])) {
                     app_segments[i].app_end = NULL;
-                    LOG(1, "fail to add shadow segment for ["PFX", "PFX")\n",
+                    LOG(1, "failed to add shadow segment for ["PFX", "PFX")\n",
                         base, base + size);
                     return false;
                 }
@@ -572,6 +613,8 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
             }
         }
     }
+    LOG(1, "no room for new app segment ["PFX", "PFX")\n",
+        base, base + size);
     return false;
 }
 
@@ -585,6 +628,8 @@ umbra_address_space_init()
     while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
         if (info.type != DR_MEMTYPE_FREE &&
             !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
+            LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,
+                info.base_pc, info.base_pc + info.size);
             return false;
         }
         if (POINTER_OVERFLOW_ON_ADD(pc, info.size)) {
@@ -672,11 +717,14 @@ umbra_arch_init()
         return DRMF_ERROR;
     if (os_version.version >= DR_WINDOWS_VERSION_8_1) {
         num_seg_bits = NUM_SEG_BITS_WIN8_1;
+        memcpy(&app_segments, &app_segments_initial_81, sizeof(app_segments));
     } else {
         num_seg_bits = NUM_SEG_BITS_WIN8;
+        memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
     }
 #else
     num_seg_bits = NUM_SEG_BITS;
+    memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
 #endif
     if (!umbra_address_space_init())
         return DRMF_ERROR;
@@ -686,6 +734,7 @@ umbra_arch_init()
 void
 umbra_arch_exit()
 {
+    memset(&app_segments, 0, sizeof(app_segments));
 }
 
 drmf_status_t
@@ -705,6 +754,14 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
            map->app_block_size    >= ALLOC_UNIT_SIZE,
            "block size too small");
     map->mask = segment_mask(num_seg_bits) | seg_index_mask(num_seg_bits);
+#ifdef WINDOWS
+    if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
+        /* The only way we can avoid reserves from wrapping around or overlapping
+         * is to pull one higher-level bit.
+         */
+        map->mask |= 0x0000100000000000;
+    }
+#endif
     map->disp = IF_WINDOWS((os_version.version >= DR_WINDOWS_VERSION_8_1) ?
                            map_disp_win81[map->options.scale] :)
         map_disp[map->options.scale];
@@ -718,8 +775,11 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     /* now we add shadow memory segment */
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         if (app_segments[i].app_used &&
-            !umbra_add_shadow_segment(map, &app_segments[i]))
+            !umbra_add_shadow_segment(map, &app_segments[i])) {
+            LOG(1, "ERROR: shadow segment failed for " PFX "-" PFX "\n",
+                app_segments[i].app_base, app_segments[i].app_end);
             return DRMF_ERROR_DETAILS_UNKNOWN;
+        }
     }
     return DRMF_SUCCESS;
 }
@@ -739,14 +799,19 @@ umbra_map_arch_exit(umbra_map_t *map)
     uint i;
     umbra_iterate_shadow_memory(map, NULL, umbra_map_shadow_free);
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
-        if (app_segments[i].app_used
-            && app_segments[i].map[map->index] == map) {
+        if (app_segments[i].app_used && app_segments[i].map[map->index] == map) {
             size_t size;
             app_segment_t *seg = &app_segments[i];
             size = seg->shadow_end[map->index] - seg->shadow_base[map->index];
             size = size / map->shadow_block_size / BIT_PER_BYTE;
             global_free(seg->shadow_bitmap[map->index], size, HEAPSTAT_SHADOW);
+            seg->shadow_bitmap[map->index] = NULL;
+            seg->shadow_base[map->index] = NULL;
+            seg->shadow_end[map->index] = NULL;
+            seg->reserve_base[map->index] = NULL;
+            seg->reserve_end[map->index] = NULL;
         }
+        /* We never disable the app_used field (except on umbra_arch_exit()). */
     }
 }
 

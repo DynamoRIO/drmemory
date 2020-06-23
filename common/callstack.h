@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -458,7 +458,9 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
-                bool for_log, uint max_frames);
+                bool for_log, uint max_frames,
+                bool (*frame_cb)(app_pc pc, byte *fp, void *user_data),
+                void *user_data);
 
 void
 print_buffer(file_t f, char *buf);

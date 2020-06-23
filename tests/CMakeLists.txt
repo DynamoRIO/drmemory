@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -122,7 +122,7 @@ function(set_props target)
 endfunction(set_props)
 
 function(tobuild name source)
-  set(srcs ${source})
+  set(srcs ${source} ${ARGN})
 
   # support same-file asm code
   if (NOT DEFINED ${name}_disable_asm)
@@ -328,9 +328,11 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
     if (postprocess)
       # test -skip_results + -results (PR 575481)
       set(postcmd "${cmd_base};-results")
-    else (postprocess)
+    elseif (DEFINED ${test}.postcmd)
+      set(postcmd ${${test}.postcmd})
+    else ()
       set(postcmd "")
-    endif (postprocess)
+    endif ()
   endif (TOOL_DR_HEAPSTAT)
   string(REGEX REPLACE " " "@@" postcmd "${postcmd}")
   string(REGEX REPLACE ";" "@" postcmd "${postcmd}")
@@ -343,12 +345,20 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
   else (X64)
     set(TOOL_BIN "bin32")
   endif (X64)
+  if (postprocess)
+    set(resmark "To obtain results, run with: -results")
+  elseif (DEFINED ${test}.resmark)
+    set(resmark ${${test}.resmark})
+  else ()
+    set(resmark "Details:")
+  endif ()
   convert_local_path_to_device_path(dr_device_path ${DynamoRIO_DIR})
   add_test(${test} ${CMAKE_COMMAND}
     -D cmd:STRING=${cmd}
     -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
     -D outpat:STRING=${src_param_pattern}/${resbase}.out
     -D respat:STRING=${src_param_pattern}/${resbase}.res
+    -D resmark:STRING=${resmark}
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
     -D USE_DRSYMS:BOOL=${USE_DRSYMS}
@@ -647,7 +657,7 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   endif ()
   newtest_nobuild(addronly free "" "-light" "" OFF "")
-  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF ${cs2bug_res})
+  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
   if (USE_DRSYMS)
@@ -910,6 +920,22 @@ if (TOOL_DR_MEMORY)
   if (NOT ARM) # XXX i#1726: port to ARM
     newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
   endif ()
+
+  if (DR_ANNOTATIONS_SUPPORTED)
+    set(memlayout.resmark "Memory layout written to:")
+    find_program(JSONLINT jsonlint-php DOC "JSON linter from jsonlint package")
+    if (JSONLINT)
+      set(memlayout.postcmd "${JSONLINT}")
+      message(STATUS "Found ${JSONLINT}: will use to validate json output")
+    endif ()
+    tobuild(memlayout memlayout.cpp)
+    target_link_libraries(memlayout drmemory_annotations)
+    newtest_nobuild_ex(memlayout memlayout "" "" "" OFF "" 0 "")
+    # We want a simple stack layout.
+    append_test_compile_flags(memlayout "-O0")
+    target_include_directories(memlayout PRIVATE ${framework_incdir})
+  endif ()
+
 else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity;100" "" OFF "" 0)
 
@@ -957,10 +983,14 @@ if (WIN32)
   # only at the end of the file to all targets, and there's no /Zi- or /debug:no,
   # is there any better way to disable symbols than removing the pdb?
   append_property_string(TARGET nosyms LINK_FLAGS "/incremental:no")
-  get_target_property(nosyms_pdb nosyms LOCATION${location_suffix})
-  string(REGEX REPLACE "exe$" "pdb" nosyms_pdb ${nosyms_pdb})
+  set(locvar_name nosymsloc)
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${locvar_name}.cmake" CONTENT
+"set(${locvar_name} \"$<TARGET_FILE:nosyms>\")\n\
+string(REGEX REPLACE \"exe\$\" \"pdb\" ${locvar_name} \${${locvar_name}})\n\
+file(REMOVE \${${locvar_name}})\n")
   add_custom_command(TARGET nosyms POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove ${nosyms_pdb} VERBATIM)
+    COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/${locvar_name}.cmake"
+    VERBATIM)
 
 endif (WIN32)
 

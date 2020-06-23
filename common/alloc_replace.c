@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -146,8 +146,8 @@ enum {
     /* i#1532: only check for non-static libc.  This is Windows-only but it's
      * cleaner to avoid all the ifdefs down below.
      */
-    CHUNK_LAYER_NOCHECK =                              0x1000,
-    CHUNK_SKIP_ITER   =                                0x2000,
+    CHUNK_LAYER_NOCHECK = MALLOC_RESERVED_9,
+    CHUNK_SKIP_ITER   =   MALLOC_RESERVED_10,
 
     /* meta-flags */
 #ifdef WINDOWS
@@ -2083,8 +2083,8 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
 /* See i#1581 notes above */
 #define ONDSTACK_REPLACE_REALLOC_COMMON(arena, ptr, size, flags, dc, mc, caller, type) \
     dr_call_on_clean_stack(dc, (void* (*)(void)) replace_realloc_common, arena, ptr,   \
-                           (void *)(ptr_uint_t)(size), (void *)(flags), dc, mc, caller,\
-                           (void *)(ptr_uint_t)(type))
+                           (void *)(ptr_uint_t)(size), (void *)(ptr_uint_t)(flags), \
+                           dc, mc, caller, (void *)(ptr_uint_t)(type))
 
 /* If invoked from an outer drwrap_replace_native() layer, this should be invoked
  * via ONDSTACK_REPLACE_REALLOC_COMMON().

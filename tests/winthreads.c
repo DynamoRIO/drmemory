@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,7 +31,7 @@ run_and_exit_func(void *arg)
 {
     MEMORY_BASIC_INFORMATION mbi;
     char *p = malloc(4);
-    int i = (int) arg;
+    int i = (int)(intptr_t) arg;
     if (i == 0)
         *(p+5) = 3;
     else {
@@ -70,7 +70,7 @@ main()
     /* make some threads that exit to test leaks, etc. */
     for (i = 0; i < NUM_THREADS; i++) {
         thread[i] = (HANDLE) _beginthreadex(NULL, 0, run_and_exit_func,
-                                            (void*)i, 0, &tid);
+                                            (void*)(intptr_t)i, 0, &tid);
     }
     /* i#680: Wait for the first batch of threads to exit, or we may not catch
      * their errors before we exit.

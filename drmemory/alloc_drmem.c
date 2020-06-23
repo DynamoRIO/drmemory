@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,6 +31,7 @@
 #include "heap.h"
 #include "redblack.h"
 #include "leak.h"
+#include "memlayout.h"
 #include "alloc_drmem.h"
 #ifdef UNIX
 # ifdef MACOS
@@ -231,6 +232,8 @@ alloc_drmem_init(void)
               next_defined_ptrsz,
               end_of_defined_region,
               is_register_defined);
+
+    memlayout_init();
 
     if (options.delay_frees > 0) {
         delay_free_lock = dr_mutex_create();
@@ -549,6 +552,7 @@ client_handle_malloc(void *drcontext, malloc_info_t *mal, dr_mcontext_t *mc)
     report_malloc(mal->base, mal->base + mal->request_size,
                   mal->realloc ? "realloc" : "malloc", mc);
     leak_handle_alloc(drcontext, mal->base, mal->request_size);
+    memlayout_handle_alloc(drcontext, mal->base, mal->request_size);
 }
 
 void
@@ -2457,12 +2461,15 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
         app_pc base;
         size_t sz = allocation_size(addr, &base);
         if (sz > 0 && base != NULL) {
-            LOG(1, "WARNING: unknown region "PFX"-"PFX": marking as defined\n",
-                base, base+sz);
+            LOG(1, "WARNING: unknown region " PFX " => " PFX "-" PFX
+                ": marking as defined\n", addr, base, base+sz);
             ASSERT(!dr_memory_is_dr_internal(addr) &&
                    !dr_memory_is_in_client(addr),
                    "App is using tool's memory: please report this!");
-            shadow_set_range(base, base+sz, SHADOW_DEFINED);
+            /* There can be reserved-only regions inside, which can be quite large,
+             * so be sure to skip them (i#2184).
+             */
+            mmap_walk(base, sz, IF_WINDOWS_(NULL) true/*add*/);
             return true;
         }
     }

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,13 +18,9 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
-if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.12" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "2.8.12")
-  # XXX DRi#1481: update to cmake 2.8.12's better handling of interface imports
-  cmake_policy(SET CMP0022 OLD)
-endif ()
+include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
 set_output_dirs(${framework_bindir})
 
@@ -105,14 +101,14 @@ macro(configure_drsyscall_target target)
   copy_target_to_device(${target})
 endmacro(configure_drsyscall_target)
 
-macro(export_drsyscall_target target drmgr)
+macro(export_drsyscall_target target drmgr drsyms)
   # We need to clear the dependents that come from DR to avoid the prefix
   # from affecting them too.
-  set_target_properties(${target} PROPERTIES LINK_INTERFACE_LIBRARIES "")
+  set_target_properties(${target} PROPERTIES INTERFACE_LINK_LIBRARIES "")
   export_target(${target})
   # Now put in our imports (w/o any namespace)
   set_target_properties(${target} PROPERTIES
-    LINK_INTERFACE_LIBRARIES "dynamorio;${drmgr};drcontainers")
+    INTERFACE_LINK_LIBRARIES "dynamorio;${drmgr};${drsyms};drcontainers;drfrontendlib")
   install(TARGETS ${target} EXPORT ${exported_targets_name}
     DESTINATION ${DRMF_INSTALL_BIN})
   # Top-level installs .debug and .pdb files
@@ -129,7 +125,9 @@ use_DynamoRIO_extension(drsyscall drcontainers)
 use_DynamoRIO_extension(drsyscall drsyms)
 set_library_version(drsyscall ${DRMF_VERSION_MAJOR_MINOR})
 configure_drsyscall_target(drsyscall)
-export_drsyscall_target(drsyscall "drmgr")
+export_drsyscall_target(drsyscall "drmgr" "drsyms")
+# Make a build-dir copy for the drmf_proj test.
+configure_file(drsyscall.h "${framework_incdir}/drsyscall.h" @ONLY)
 install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 
 # Since the license is LGPL, SHARED and not STATIC by default.
@@ -144,7 +142,7 @@ use_DynamoRIO_extension(drsyscall_static drcontainers)
 use_DynamoRIO_extension(drsyscall_static drsyms_static)
 configure_drsyscall_target(drsyscall_static)
 add_static_lib_debug_info(drsyscall_static ${DRMF_INSTALL_BIN})
-export_drsyscall_target(drsyscall_static "drmgr_static")
+export_drsyscall_target(drsyscall_static "drmgr_static" "drsyms_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.

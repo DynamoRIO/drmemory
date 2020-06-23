@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -370,9 +370,9 @@ lookup_address(HANDLE proc, DWORD64 addr)
     info->MaxNameLen = MAX_SYM_NAME;
     if (SymFromAddr(proc, addr, &disp, info)) {
         if (show_func)
-            printf("%s+0x%x\n", info->Name, disp);
+            printf("%s+0x%I64x\n", info->Name, disp);
         if (verbose) {
-            printf("Symbol 0x%I64x => %s+0x%x (0x%I64x-0x%I64x)\n", addr, info->Name,
+            printf("Symbol 0x%I64x => %s+0x%I64x (0x%I64x-0x%I64x)\n", addr, info->Name,
                    disp, info->Address, info->Address + info->Size);
         }
     } else {

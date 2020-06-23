@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -49,22 +49,32 @@ cs2bug.cpp:195
 cs2bug.cpp:200
 memory was allocated here:
 cs2bug.cpp:198
+%OPTIONAL # only when wrapping
 : UNINITIALIZED READ
 cs2bug.cpp:116
 cs2bug.cpp:203
+%ENDOPTIONAL
 : INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
 cs2bug.cpp:203
 memory was allocated here:
 cs2bug.cpp:201
 %OPTIONAL # VS2008 Win7
 : UNINITIALIZED READ
+cs2bug.cpp:203
 %ENDOPTIONAL
 : UNADDRESSABLE ACCESS
 cs2bug.cpp:206
+%OPTIONAL
+# MinGW xp64 crashes rather than reporting final mismatch
+: UNADDRESSABLE ACCESS
+cs2bug.cpp:206
+%ENDOPTIONAL
+%OPTIONAL
 : INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
 cs2bug.cpp:206
 memory was allocated here:
 cs2bug.cpp:204
+%ENDOPTIONAL
 %OPTIONAL # Linux
 : INVALID HEAP ARGUMENT to free
 %ENDOPTIONAL
@@ -93,14 +103,11 @@ cs2bug.cpp:225
 cs2bug.cpp:86
 %if UNIX
 # FIXME PR 587093: string code disabled for now on Windows
-%if X32
-: LEAK 4 direct bytes + 19 indirect bytes
-%endif
-%if X64
-: LEAK 8 direct bytes + 31 indirect bytes
-%endif
+# std::string can have different sizes so we're not picky.
+: LEAK
 cs2bug.cpp:172
-%endif
+# Nested %if is only supported with "endif UNIX".
+%endif UNIX
 %OPTIONAL # Linux/VS2005
 %if X32
 : LEAK 88 direct bytes + 168 indirect bytes

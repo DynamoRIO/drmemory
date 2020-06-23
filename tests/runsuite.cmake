@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -44,6 +44,8 @@ set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
 set(arg_travis OFF)
 set(arg_package OFF)
+set(cross_aarchxx_linux_only OFF)
+set(cross_android_only OFF)
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "test_vmk")
@@ -76,6 +78,13 @@ foreach (arg ${CTEST_SCRIPT_ARG})
     set(arg_package ON)
   endif ()
 endforeach (arg)
+
+if ($ENV{DRMEMORY_CROSS_AARCHXX_LINUX_ONLY} MATCHES "yes")
+  set(cross_aarchxx_linux_only ON)
+endif()
+if ($ENV{DRMEMORY_CROSS_ANDROID_ONLY} MATCHES "yes")
+  set(cross_android_only ON)
+endif()
 
 if (arg_test_vmk AND arg_vmk_only)
   message(FATAL_ERROR "you can't specify both test_vmk and vmk_only")
@@ -206,8 +215,9 @@ if (arg_travis AND WIN32)
 endif ()
 
 set(tools "")
-# build drmemory last, so our package is a drmem package
-if (NOT arg_drmemory_only)
+# Build drmemory last, so our package is a drmem package.
+# We do not support drheapstat on ARM.
+if (NOT arg_drmemory_only AND NOT cross_aarchxx_linux_only AND NOT cross_android_only)
   set(tools ${tools} "TOOL_DR_HEAPSTAT:BOOL=ON")
 endif ()
 if (NOT arg_drheapstat_only)
@@ -222,9 +232,8 @@ foreach (tool ${tools})
     set(dbg_tests_only_in_long OFF)
   endif ("${tool}" MATCHES "HEAPSTAT")
 
-  if (NOT arg_vmk_only)
-    # DRi#58: core DR does not yet support 64-bit Mac
-    if ("${tool}" MATCHES "MEMORY" AND NOT APPLE)
+  if (NOT cross_aarchxx_linux_only AND NOT cross_android_only AND NOT arg_vmk_only)
+    if ("${tool}" MATCHES "MEMORY")
       # 64-bit builds cannot be last as that messes up the package build
       # for Ninja (i#1763).
       testbuild_ex("${name}-dbg-64" ON "
@@ -240,22 +249,25 @@ foreach (tool ${tools})
          CMAKE_BUILD_TYPE:STRING=Release
          " ON ON "") # no release tests in short suite
     endif ()
-    testbuild_ex("${name}-dbg-32" OFF "
-      ${base_cache}
-      ${tool}
-      ${DR_entry}
-      CMAKE_BUILD_TYPE:STRING=Debug
-      " ${dbg_tests_only_in_long} ON "")
-    # Skipping drheap rel to speed up AppVeyor.
-    if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
-      testbuild_ex("${name}-rel-32" OFF "
+    # We do not support 32-bit Mac.
+    if (NOT APPLE)
+      testbuild_ex("${name}-dbg-32" OFF "
         ${base_cache}
         ${tool}
         ${DR_entry}
-        CMAKE_BUILD_TYPE:STRING=Release
-        " ON ON "") # no release tests in short suite
+        CMAKE_BUILD_TYPE:STRING=Debug
+        " ${dbg_tests_only_in_long} ON "")
+      # Skipping drheap rel to speed up AppVeyor.
+      if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
+        testbuild_ex("${name}-rel-32" OFF "
+          ${base_cache}
+          ${tool}
+          ${DR_entry}
+          CMAKE_BUILD_TYPE:STRING=Release
+          " ON ON "") # no release tests in short suite
+      endif ()
     endif ()
-  endif (NOT arg_vmk_only)
+  endif ()
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
       testbuild_ex("${name}-vmk-dbg-32" OFF "
@@ -280,7 +292,10 @@ if (UNIX AND ARCH_IS_X86)
   # Optional cross-compilation for ARM/Linux and ARM/Android if the cross
   # compilers are on the PATH.
   # XXX: can we share w/ the DR code this is based on?
-  set(optional_cross_compile ON)
+  set(prev_optional_cross_compile ${optional_cross_compile})
+  if (NOT cross_aarchxx_linux_only)
+    set(optional_cross_compile ON)
+  endif ()
   set(ARCH_IS_X86 OFF)
   set(ENV{CFLAGS} "") # environment vars do not obey the normal scope rules--must reset
   set(ENV{CXXFLAGS} "")
@@ -300,8 +315,12 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-arm32.cmake
     " OFF OFF "")
   set(run_tests ${prev_run_tests}) # restore
+  set(optional_cross_compile ${prev_optional_cross_compile})
 
   # Android cross-compilation and running of tests using "adb shell"
+  if (NOT cross_android_only)
+    set(optional_cross_compile ON)
+  endif ()
   find_program(ADB adb DOC "adb Android utility")
   if (ADB)
     execute_process(COMMAND ${ADB} get-state
@@ -325,6 +344,13 @@ if (UNIX AND ARCH_IS_X86)
     set(android_extra_rel "")
     set(run_tests OFF) # build tests but don't run them
   endif ()
+  # Pass through toolchain file.
+  if (DEFINED ENV{DRMEMORY_ANDROID_TOOLCHAIN})
+    set(android_extra_dbg "${android_extra_dbg}
+                           ANDROID_TOOLCHAIN:PATH=$ENV{DRMEMORY_ANDROID_TOOLCHAIN}")
+    set(android_extra_rel "${android_extra_dbg}
+                           ANDROID_TOOLCHAIN:PATH=$ENV{DRMEMORY_ANDROID_TOOLCHAIN}")
+  endif()
   testbuild_ex("drmemory-android-dbg-32" OFF "
     ${base_cache}
     TOOL_DR_MEMORY:BOOL=ON
@@ -333,7 +359,7 @@ if (UNIX AND ARCH_IS_X86)
     CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
     ${android_extra_dbg}
     " OFF OFF "")
-  if (NOT TEST_LONG)
+  if (cross_android_only OR NOT TEST_LONG)
     set(run_tests OFF) # build tests but don't run them
   endif ()
   testbuild_ex("drmemory-android-rel-32" OFF "
@@ -346,11 +372,11 @@ if (UNIX AND ARCH_IS_X86)
     " OFF OFF "")
   set(run_tests ${prev_run_tests}) # restore
 
-  set(optional_cross_compile OFF)
+  set(optional_cross_compile ${prev_optional_cross_compile})
   set(ARCH_IS_X86 ON)
 endif (UNIX AND ARCH_IS_X86)
 
-if (NOT arg_vmk_only AND NOT arg_already_built)
+if (NOT arg_vmk_only AND NOT arg_already_built AND NOT arg_travis)
   set(build_package ON)
 else ()
   set(build_package OFF)

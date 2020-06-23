@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -19,11 +19,8 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-# We need 2.8.10.1 for crbug.com/159092
-# (For multi-export-set support for DRMF, we also need >= 2.8.10.)
-# (For Visual Studio generators, we also need >= 2.8.2 for output dir name control.)
-# (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
-cmake_minimum_required(VERSION 2.8.10.1)
+# DR requires 3.7 which means we must also.
+cmake_minimum_required(VERSION 3.7)
 
 include(make/policies.cmake NO_POLICY_SCOPE)
 
@@ -233,7 +230,7 @@ endif (APPLE)
 
 # N.B.: when updating this, update the git tag in .travis.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "2.2.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "2.3.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
@@ -354,6 +351,12 @@ if (UNIX)
   # disabling strict aliasing since giving weird warning I'm not sure how to fix:
   #   alloc.c:716: warning: dereferencing type-punned pointer will break strict-aliasing rules
   set(WARN "-Wall -Werror -Wno-strict-aliasing")
+  # Disabling format-truncation due to too many warnings about string construction
+  # where truncating added strings is fine if the final doesn't fit anyway.
+  CHECK_C_COMPILER_FLAG("-Wno-format-truncation" have_format_truncation_warning)
+  if (have_format_truncation_warning)
+    set(WARN "${WARN} -Wno-format-truncation")
+  endif ()
   if (CMAKE_C_COMPILER MATCHES "/build/toolchain")
     # needed for linux/ipmi.h (PR 531644)
     set(EXTRA_FLAGS "-idirafter /build/toolchain/lin32/glibc-2007q3-51/usr/include")
@@ -374,10 +377,12 @@ if (UNIX)
         "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
     endif ()
   endif ()
+  # We use C++11.
+  set(EXTRA_CXXFLAGS "-std=c++11")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
   set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
+    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS} ${EXTRA_CXXFLAGS}")
 else (UNIX)
   # FIXME i#1204: fix warnings and up to /W4
   set(WARN "/W2 /WX")
@@ -535,7 +540,7 @@ if (WIN32)
     set(DDK_SFX "i386")
   else ()
     set(PROGFILES "$ENV{PROGRAMW6432}")
-    set(PROGFILES32 "$ENV{PROGRAMFILES(x86)}")
+    set(PROGFILES32 "$ENV{PROGRAMFILES\(x86\)}")
     if (X64)
       set(ARCH_SFX "x64")
       set(DDK_SFX "amd64")
@@ -619,7 +624,7 @@ if (WIN32)
   set(SYMSRV_GLOB "" CACHE STRING
     "Preferred path for dbghelp.dll with wildcard expansion")
   set(symsrv_paths
-    "{SYMSRV_GLOB}"
+    "${SYMSRV_GLOB}"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
@@ -1077,6 +1082,8 @@ add_asm_target(common/${asm_file} asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
+set(DrMemory_INTERNAL ON) # Do not import exported targets.
+
 if (ANDROID)
   # We cache this for us in sub-projects like framework/samples/
   set(TOP_BINARY_DIR ${PROJECT_BINARY_DIR})
@@ -1212,6 +1219,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/report.c
     drmemory/replace.c
     drmemory/leak.c
+    drmemory/memlayout.c
     drmemory/perturb.c
     common/utils.c
     common/utils_shared.c
@@ -1428,6 +1436,11 @@ endif (USE_DRSYMS)
 if (WIN32)
   # We need to link with ntdll.lib and dbghelp.lib which we get from DR
   if (USER_SPECIFIED_DynamoRIO_DIR)
+    # XXX i#1651: Replace this LOCATION with a generator expression.
+    # This is the only one left.
+    # We may want to drop support for USER_SPECIFIED_DynamoRIO_DIR in any case
+    # which is why no effort was put in to clean this up earlier.
+    cmake_policy(SET CMP0026 OLD)
     get_target_property(libbase drinjectlib LOCATION)
     get_filename_component(libpath ${libbase} PATH)
     set(ntimp_lib "${libpath}/ntdll_imports.lib")
@@ -1681,82 +1694,7 @@ endif (WIN32)
 copy_file_to_device("${defsupp_out}")
 
 ###########################################################################
-# Tests
-
-# We need to add_subdirectory after we know where ntdll_imports.lib is.
-# That means we've messed with global things like include dirs already,
-# for configure_DynamoRIO_client(), but having the extension include
-# dirs in there should be harmless to the tests.
-if (BUILD_TOOL_TESTS)
-  enable_testing()
-  add_subdirectory(tests)
-endif (BUILD_TOOL_TESTS)
-
-###########################################################################
-# Create tool config files for running with "drrun -t"
-
-set(DRRUN_DIR "${PROJECT_BINARY_DIR}/drrun")
-file(MAKE_DIRECTORY "${DRRUN_DIR}")
-
-if (X64)
-  set(BIT_SFX "64")
-else ()
-  set(BIT_SFX "32")
-endif ()
-set(DRRUN_SFX ".drrun${BIT_SFX}")
-if (BUILDING_SUB_PACKAGE)
-  set(DRRUN_INSTALL "tools/")
-else ()
-  set(DRRUN_INSTALL "${DR_install_dir}/tools/")
-endif ()
-
-function (create_drrun_file frontend file_out name) # option list follows name
-  get_target_property(frontend_path ${frontend} LOCATION${location_suffix})
-  get_filename_component(frontend_name ${frontend_path} NAME)
-  if (ANDROID AND TOOL_DR_MEMORY)
-    set(frontend_name ${toolname}) # point at script, not launcher
-  endif ()
-  if (BUILDING_SUB_PACKAGE)
-    set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}/${frontend_name}")
-  else ()
-    set(DRRUN_TOP "FRONTEND_REL=../${BUILD_BIN}/${frontend_name}")
-  endif ()
-  set(DRRUN_FILE "${DRRUN_DIR}/${name}${DRRUN_SFX}")
-  file(WRITE  ${DRRUN_FILE} "# Dr. Memory tool config file\n")
-  file(APPEND ${DRRUN_FILE} "${DRRUN_TOP}\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP=-dr\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_PATH\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_BUNDLE=-dr_ops\n")
-  foreach (op ${ARGN})
-    file(APPEND ${DRRUN_FILE} "TOOL_OP=${op}\n")
-  endforeach ()
-  if (X64)
-    file(APPEND ${DRRUN_FILE}
-      "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues.\n")
-  endif ()
-  install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
-  set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
-
-  # DRi#1509: generate a list of tools for drrun usage messages
-  if (NOT DEBUG_BUILD) # avoid dups
-    install(CODE "file(APPEND \"\${CMAKE_INSTALL_PREFIX}/tools/list${BIT_SFX}\" \"${name}\\n\")")
-  endif ()
-endfunction (create_drrun_file)
-
-create_drrun_file(${toolname} unused "drmemory")
-if (NOT X64)
-  create_drrun_file(${toolname} unused "drmemory_light" "-light")
-endif ()
-if (WIN32)
-  create_drrun_file(${toolname} unused "handle_leaks" "-handle_leaks_only")
-endif ()
-
-###########################################################################
-# Dr. Memory Framework (DRMF)
-
-# We decided against putting the extension inside frameworks/, so
-# framework-shared code goes here.  Things that should be global we
-# put into functions for invocation inside extension subdirs.
+# Dr. Memory Framework (DRMF) setup needed for tests
 
 set(DRMF_BASEDIR "drmf")
 set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
@@ -1787,7 +1725,124 @@ set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
 
 configure_file(framework/public.h
   ${framework_incdir}/drmemory_framework.h)
+# TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+if (X86)
+  configure_file(drmemory/annotations_public.h
+    ${framework_incdir}/drmemory_annotations.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
+    ${framework_incdir}/dr_annotations_asm.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
+    ${framework_incdir}/dr_annotations.h)
+endif ()
 include_directories(${framework_incdir})
+
+if (NOT X86)
+  # TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+  set(DR_ANNOTATIONS_SUPPORTED OFF)
+else ()
+  # Annotation support using DR's infrastructure (non-Valgrind-style).
+  if (UNIX)
+    set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
+  else ()
+    set(annot_cflags "/Od /Ob0 /GL- /wd4715")
+  endif ()
+  if (UNIX)
+    # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
+    # the DR annotation infrastructure.  But, we can't just do a version check
+    # because Apple's clang has a completely separate version number.
+    try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
+      SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
+      ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
+      -DINCLUDE_DIRECTORIES=${framework_incdir}
+      -DCMAKE_C_FLAGS:STRING="${annot_cflags}"
+      OUTPUT_VARIABLE try_output)
+    if (DR_ANNOTATIONS_SUPPORTED)
+      message(STATUS "DR annotations are supported")
+    else ()
+      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0: |${try_output}|")
+    endif ()
+  else ()
+    set(DR_ANNOTATIONS_SUPPORTED ON)
+  endif ()
+endif ()
+
+###########################################################################
+# Tests
+
+# We need to add_subdirectory after we know where ntdll_imports.lib is.
+# That means we've messed with global things like include dirs already,
+# for configure_DynamoRIO_client(), but having the extension include
+# dirs in there should be harmless to the tests.
+if (BUILD_TOOL_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif (BUILD_TOOL_TESTS)
+
+###########################################################################
+# Create tool config files for running with "drrun -t"
+
+set(DRRUN_DIR "${PROJECT_BINARY_DIR}/drrun")
+file(MAKE_DIRECTORY "${DRRUN_DIR}")
+
+if (X64)
+  set(BIT_SFX "64")
+else ()
+  set(BIT_SFX "32")
+endif ()
+set(DRRUN_SFX ".drrun${BIT_SFX}")
+if (BUILDING_SUB_PACKAGE)
+  set(DRRUN_INSTALL "tools/")
+else ()
+  set(DRRUN_INSTALL "${DR_install_dir}/tools/")
+endif ()
+
+function (create_drrun_file frontend file_out name) # option list follows name
+  if (ANDROID AND TOOL_DR_MEMORY)
+    set(frontend_name ${toolname}) # point at script, not launcher
+  endif ()
+  if (BUILDING_SUB_PACKAGE)
+    set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}")
+  else ()
+    set(DRRUN_TOP "FRONTEND_REL=../${BUILD_BIN}")
+  endif ()
+  set(DRRUN_FILE "${DRRUN_DIR}/${name}${DRRUN_SFX}")
+  set(DRRUN_CONTENTS "# Dr. Memory tool config file\n")
+  if (ANDROID AND TOOL_DR_MEMORY)
+    # Point at script, not launcher.
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}${DRRUN_TOP}/${frontend}>\n")
+  else ()
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}${DRRUN_TOP}/$<TARGET_FILE_NAME:${frontend}>\n")
+  endif ()
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP=-dr\n")
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP_DR_PATH\n")
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP_DR_BUNDLE=-dr_ops\n")
+  foreach (op ${ARGN})
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP=${op}\n")
+  endforeach ()
+  file(GENERATE OUTPUT ${DRRUN_FILE} CONTENT "${DRRUN_CONTENTS}")
+  install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
+  set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
+
+  # DRi#1509: generate a list of tools for drrun usage messages
+  if (NOT DEBUG_BUILD) # avoid dups
+    install(CODE "file(APPEND \"\${CMAKE_INSTALL_PREFIX}/tools/list${BIT_SFX}\" \"${name}\\n\")")
+  endif ()
+endfunction (create_drrun_file)
+
+create_drrun_file(${toolname} unused "drmemory")
+if (NOT X64)
+  create_drrun_file(${toolname} unused "drmemory_light" "-light")
+endif ()
+if (WIN32)
+  create_drrun_file(${toolname} unused "handle_leaks" "-handle_leaks_only")
+endif ()
+
+###########################################################################
+# Dr. Memory Framework (DRMF)
+
+# We decided against putting the extension inside frameworks/, so
+# framework-shared code goes here.  Things that should be global we
+# put into functions for invocation inside extension subdirs.
 
 configure_file(framework/drmf.cmake.in
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
@@ -1831,8 +1886,25 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebI
   endif (NOT DEBUG_BUILD)
   # For install we want both debug and release:
   set(exported_targets_append "${exported_targets_append}${toadd}")
-  set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
+  # Hack to avoid "no parent scope" complaint.
+  if (NOT "${ARGV}" MATCHES "drmemory_annotations")
+    set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
+  endif ()
 endmacro(export_target)
+
+if (DR_ANNOTATIONS_SUPPORTED)
+  add_library(drmemory_annotations STATIC drmemory/annotations_public.c)
+  # TODO i#2266: Provide a CMake function like use_DynamoRIO_annotations.
+  # We would both use it here and export it.
+  # For now we make a library, which is actually a little easier than the
+  # user having to compile our source file with special flags.
+  # So the CMake function would just set up the include path and link to the lib.
+  _DR_append_property_string(SOURCE drmemory/annotations_public.c
+    COMPILE_FLAGS "${annot_cflags}")
+  export_target(drmemory_annotations)
+  install(TARGETS drmemory_annotations EXPORT ${exported_targets_name}
+    DESTINATION ${DRMF_INSTALL_BIN})
+endif ()
 
 # Included prior to add_subdirectory() for building version.c which
 # includes utils.h which includes drsyscall.h.
@@ -1868,6 +1940,28 @@ endif (TOOL_DR_MEMORY)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
+
+  # Test using our exported config.
+  if (DEBUG)
+    set(debug_cfg -DCMAKE_BUILD_TYPE=Debug)
+  else ()
+    set(debug_cfg -DCMAKE_BUILD_TYPE=RelWithDebInfo)
+  endif ()
+  set(drmf_bindir "${PROJECT_BINARY_DIR}/framework/samples")
+  file(COPY "${PROJECT_SOURCE_DIR}/framework/samples/strace.c"
+    DESTINATION "${drmf_bindir}")
+  add_test(drmf_proj ${CMAKE_CTEST_COMMAND}
+    --build-and-test "${drmf_bindir}"
+    "${PROJECT_BINARY_DIR}/tests/drmf_proj"
+    --build-generator ${CMAKE_GENERATOR}
+    --build-project DRMF_samples # Needed for VS generators.
+    --build-makeprogram ${CMAKE_MAKE_PROGRAM}
+    --build-options ${debug_cfg} -DDrMemoryFramework_DIR:PATH=${framework_dir}
+    -DDynamoRIO_DIR:PATH=${DynamoRIO_DIR})
+  if (UNIX AND X86 AND NOT X64)
+    set_tests_properties(drmf_proj PROPERTIES ENVIRONMENT
+      "CFLAGS=-m32;CXXFLAGS=-m32")
+  endif ()
 
   if (TOOL_DR_MEMORY)
     # unit tests
@@ -2180,7 +2274,16 @@ else (BUILDING_SUB_PACKAGE)
 endif (BUILDING_SUB_PACKAGE)
 
 # DRMF install rules
-install(FILES ${framework_incdir}/drmemory_framework.h DESTINATION ${DRMF_INSTALL_INC})
+install(FILES
+  ${framework_incdir}/drmemory_framework.h
+  DESTINATION ${DRMF_INSTALL_INC})
+if (DR_ANNOTATIONS_SUPPORTED)
+  install(FILES
+    ${framework_incdir}/drmemory_annotations.h
+    ${framework_incdir}/dr_annotations.h
+    ${framework_incdir}/dr_annotations_asm.h
+    DESTINATION ${DRMF_INSTALL_INC})
+endif ()
 install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   DESTINATION ${DRMF_INSTALL})
@@ -2208,9 +2311,14 @@ install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 # We do this at install time once we have all binaries built, as it's a pain
 # to individually add post-build commands.
 if (WIN32)
-  get_target_property(verinfo_path verinfo LOCATION${location_suffix})
   install(CODE "include(\"${PROJECT_SOURCE_DIR}/make/rccheck.cmake\")")
-  install(CODE "check_version_resources(\"${PROJECT_BINARY_DIR}\" \"${verinfo_path}\")")
+  # We'd need cmake 3.14+ and CMP0087=NEW for a generator expression to work
+  # directly in install(CODE).  We instead have to make a file.
+  set(verinfo_locator "verinfo_locator.cmake")
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${verinfo_locator}" CONTENT
+"set(VERINFO \"$<TARGET_FILE:verinfo>\")\n")
+  install(CODE "include(\"${CMAKE_CURRENT_BINARY_DIR}/${verinfo_locator}\")")
+  install(CODE "check_version_resources(\"${PROJECT_BINARY_DIR}\" \"\${VERINFO}\")")
 endif ()
 
 ###########################################################################
@@ -2366,8 +2474,14 @@ endif (WIN32 AND NOT BUILDING_SUB_PACKAGE)
 # CPACK_TEMPORARY_PACKAGE_FILE_NAME if I hardcode the exentsion: but maybe
 # having the full version in the base dir is a good thing, though I'm not
 # sure about the caps.
+# We omit the -NN suffix for the build number if it is zero.
+if ("${TOOL_BUILD_NUMBER}" STREQUAL "0")
+  set(PACKAGE_SUFFIX "")
+else ()
+  set(PACKAGE_SUFFIX "-${TOOL_BUILD_NUMBER}")
+endif ()
 set(CPACK_PACKAGE_FILE_NAME
-  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}")
+  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}${PACKAGE_SUFFIX}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${toolname_cap}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}-Source")
 

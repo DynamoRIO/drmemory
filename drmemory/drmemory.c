@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -773,30 +773,29 @@ mmap_walk(app_pc start, size_t size,
 {
 #ifdef WINDOWS
     app_pc start_base;
-    app_pc pc = start;
+    app_pc pc;
     MEMORY_BASIC_INFORMATION mbi = {0};
-    app_pc map_base = mbi.AllocationBase;
-    app_pc map_end = (byte *)mbi.AllocationBase + mbi.RegionSize;
+    app_pc map_base, map_end;
     ASSERT(options.shadowing, "shadowing disabled");
     if (mbi_start == NULL) {
         if (dr_virtual_query(start, &mbi, sizeof(mbi)) != sizeof(mbi)) {
             ASSERT(false, "error walking initial memory mappings");
-            return pc; /* FIXME: return error code */
+            return start; /* FIXME: return error code */
         }
     } else
         mbi = *mbi_start;
     if (mbi.State == MEM_FREE)
-        return pc;
+        return start;
     map_base = mbi.AllocationBase;
     start_base = map_base;
-    map_end = (byte *)mbi.AllocationBase + mbi.RegionSize;
+    if (POINTER_OVERFLOW_ON_ADD(map_base, mbi.RegionSize))
+        return NULL;
+    map_end = map_base + mbi.RegionSize;
     LOG(2, "mmap_walk %s "PFX": alloc base is "PFX"\n", add ? "add" : "remove",
          start, start_base);
     if (mbi.State == MEM_RESERVE)
         map_end = map_base;
-    if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
-        return NULL;
-    pc += mbi.RegionSize;
+    pc = map_end;
     while (dr_virtual_query(pc, &mbi, sizeof(mbi)) == sizeof(mbi) &&
            mbi.AllocationBase == start_base /*not map_base: we skip reserved pieces*/ &&
            (size == 0 || pc < start+size)) {
@@ -817,6 +816,7 @@ mmap_walk(app_pc start, size_t size,
         if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
             return NULL;
         pc += mbi.RegionSize;
+        ASSERT(pc == map_end, "pc and map_end should match");
     }
     if (map_end > map_base) {
         shadow_set_range(map_base, map_end, add ? SHADOW_DEFINED : SHADOW_UNADDRESSABLE);
@@ -1034,11 +1034,11 @@ memory_walk(void)
                 LOG(2, "  => heap\n");
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
                 if (info.prot == DR_MEMPROT_NONE) {
-                    /* DR's -emulate_brk mmaps a page that we do not want to mark
+                    /* DR's -emulate_brk mmaps 4MB that we do not want to mark
                      * defined, so skip it:
                      */
                     LOG(2, "  initial heap is empty: skipping -emulate_brk page\n");
-                    info.size += PAGE_SIZE;
+                    info.size += 4*1024*1024;
                 }
             } else if (hashtable_lookup(&known_table, (void*)PAGE_START(pc)) != NULL) {
                 /* we assume there's only one entry in the known_table:
@@ -1193,7 +1193,7 @@ set_thread_initial_structures(void *drcontext)
          *   7d4e7d75 8b80700f0000     mov     eax,[eax+0xf70]
          *   7d4e7d7b 8b80d0140000     mov     eax,[eax+0x14d0]
          */
-        app_pc ref1 = (app_pc) teb->GdiBatchCount;
+        app_pc ref1 = (app_pc)(ptr_uint_t) teb->GdiBatchCount;
         if (ref1 != NULL &&
             PAGE_START(ref1) == PAGE_START(teb) - 2*PAGE_SIZE) {
             /* I used to only allow the +14d0-+14d4 but in other apps I see
@@ -1966,7 +1966,7 @@ dr_init(client_id_t id)
 
     if (options.shadowing) {
         if (umbra_init(client_id) != DRMF_SUCCESS)
-            ASSERT(false, "fail to init Umbra");
+            ASSERT(false, "failed to initialize Umbra");
         shadow_init();
     }
 

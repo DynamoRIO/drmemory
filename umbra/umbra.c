@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -313,6 +313,8 @@ umbra_init(client_id_t client_id)
         return res;
 
     /* register event callbacks */
+    if (!drmgr_init())
+        return DRMF_ERROR;
     dr_register_filter_syscall_event(umbra_event_filter_syscall);
     drmgr_register_pre_syscall_event(umbra_event_pre_syscall);
     drmgr_register_post_syscall_event(umbra_event_post_syscall);
@@ -345,10 +347,24 @@ umbra_exit(void)
             ASSERT(false, "umbra map is not destroyed");
             umbra_destroy_mapping(umbra_maps[i]);
         }
+        umbra_maps[i] = NULL;
     }
+    num_umbra_maps = 0;
     umbra_unlock();
     umbra_arch_exit();
     dr_mutex_destroy(umbra_global_lock);
+
+    dr_unregister_filter_syscall_event(umbra_event_filter_syscall);
+    drmgr_unregister_pre_syscall_event(umbra_event_pre_syscall);
+    drmgr_unregister_post_syscall_event(umbra_event_post_syscall);
+#ifdef WINDOWS
+    drmgr_unregister_module_load_event(umbra_event_module_load);
+    drmgr_unregister_exception_event(umbra_event_exception);
+#else
+    drmgr_unregister_signal_event(umbra_event_signal);
+#endif
+
+    drmgr_exit();
     umbra_initialized = false;
     return DRMF_SUCCESS;
 }
@@ -741,4 +757,36 @@ umbra_get_shared_shadow_block(IN  umbra_map_t *map,
     if (block == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     return umbra_get_shared_shadow_block_arch(map, value, value_size, block);
+}
+
+DR_EXPORT
+drmf_status_t
+umbra_get_granularity(const umbra_map_t *map, OUT int *scale, OUT bool *is_scale_down)
+{
+    if (map == NULL || scale == NULL || is_scale_down == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    *is_scale_down = UMBRA_MAP_SCALE_IS_DOWN(map->options.scale);
+
+    switch (map->options.scale) {
+    case UMBRA_MAP_SCALE_DOWN_8X:
+        *scale = 8;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_4X:
+        *scale = 4;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_2X:
+        *scale = 2;
+        break;
+    case UMBRA_MAP_SCALE_SAME_1X:
+        *scale = 1;
+        break;
+    case UMBRA_MAP_SCALE_UP_2X:
+        *scale = 2;
+        break;
+    default:
+        return DRMF_ERROR;
+    }
+
+    return DRMF_SUCCESS;
 }

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -101,11 +101,24 @@ function(add_drmf_test test_name app_name src_client ext_list client_options pas
   endif ()
 endfunction(add_drmf_test)
 
+# i#2273: We need to locate a sysnum file.  Unfortunately creating one is only
+# supported from a front end so we rely on a Dr. Memory test having created one.
+# These will fail w/ direct-named test launches in a fresh dir but we can live with
+# that for now: a suite run will run "hello" first.
+# TODO: i#2279: Come up with a better method.
+set(symcache_dir "${PROJECT_BINARY_DIR}/logs/symcache")
+
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
 add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
-  drsyscall "" "done\nTEST PASSED")
+  drsyscall "${symcache_dir}" "done\nTEST PASSED")
+if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
+  set_property(TEST drsyscall_test APPEND PROPERTY DEPENDS hello)
+endif ()
 add_drmf_test(strace_test drsyscall_app strace_client.c
-  drsyscall "" "done\n.*TEST PASSED")
+  drsyscall "${symcache_dir}" "done\n.*TEST PASSED")
+if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
+  set_property(TEST strace_test APPEND PROPERTY DEPENDS hello)
+endif ()
 
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
@@ -142,6 +155,12 @@ use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
 
 set(asm_defs "${asm_defs}" -I "${CMAKE_CURRENT_SOURCE_DIR}") # for umbra_test_shared.h
 add_drmf_test_app(umbra_app umbra_app.c)
+if (WIN32)
+  # Try to test i#2184 where Control Flow Guard allocates a 2TB reservation
+  # crossing multiple Umbra segments.  I can only repro that with VS2017, but
+  # we put this in place in anticipation of updating to VS2017.
+  append_property_string(TARGET umbra_app COMPILE_FLAGS "/guard:cf")
+endif ()
 target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_empty      umbra_app umbra_client_empty.c
@@ -167,3 +186,6 @@ use_DynamoRIO_extension(umbra_test_consistency.client drreg)
 use_DynamoRIO_extension(umbra_test_consistency.client drutil)
 target_include_directories(umbra_test_consistency.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test(umbra_test_allscales umbra_app umbra_client_allscales.c
+  umbra "" ".*TEST PASSED")

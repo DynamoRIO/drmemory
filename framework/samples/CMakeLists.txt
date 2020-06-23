@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,13 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.8)
-
-if ("${CMAKE_VERSION}" VERSION_EQUAL "3.0" OR
-    "${CMAKE_VERSION}" VERSION_GREATER "3.0")
-  # XXX i#1663: put in actual changes to support CMake 3.x
-  cmake_policy(SET CMP0026 OLD)
-endif ()
+cmake_minimum_required(VERSION 3.7)
 
 # Collapse VS generator into a single config, to match Makefiles.
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -119,9 +113,9 @@ else ()
   string(REGEX REPLACE "# NON-COMBINED" "" string "${string}")
 endif ()
 string(REGEX REPLACE "# START NON-EXPORTED SECTION.*$" "" string "${string}")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in" "${string}")
-configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt"
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt.in" "${string}")
+configure_file("${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt"
   @ONLY)
 
 if (BUILD_TOOL_TESTS)
@@ -154,8 +148,8 @@ endif (X64)
 
 install(TARGETS strace DESTINATION ${INSTALL_SAMPLES_BIN})
 install(FILES strace.c DESTINATION ${INSTALL_SAMPLES})
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists-public.txt"
-  DESTINATION "${INSTALL_SAMPLES}" RENAME CMakeLists.txt)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CMakeLists.txt"
+  DESTINATION "${INSTALL_SAMPLES}")
 
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION ${INSTALL_SAMPLES_BIN}

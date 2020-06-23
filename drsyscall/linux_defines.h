@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -138,6 +138,16 @@
 # define EXT2_IOC_SETVERSION             FS_IOC_SETVERSION
 #endif
 
+#ifndef ANDROID /* Android headers already have this. */
+/* Including linux/resource.h leads to conflicts with other types so we define
+ * this struct ourselves:
+ */
+struct rlimit64 {
+    __u64 rlim_cur;
+    __u64 rlim_max;
+};
+#endif
+
 #include <linux/fd.h>
 #include <linux/hdreg.h>
 #include <linux/if.h>
@@ -245,6 +255,7 @@ union semun {
 # define IPC_64  0x0100
 #endif
 
+#ifndef ANDROID
 /* ustat is deprecated and the header is not always available. */
 struct ustat {
     __daddr_t f_tfree;
@@ -252,5 +263,6 @@ struct ustat {
     char f_fname[6];
     char f_fpack[6];
 };
+#endif
 
 #endif /* _LINUX_DEFINES_H */
