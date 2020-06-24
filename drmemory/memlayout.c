@@ -35,6 +35,9 @@ static app_pc app_main_addr;
 static bool reached_main; /* Assumed atomic enough to write to it. */
 byte *xsp_at_main;
 
+/* Bump this whenever the format changes. */
+#define MEMLAYOUT_FILE_VERSION 2
+
 /* We claim the 5th malloc client flag */
 enum {
     MALLOC_BEFORE_MAIN  = MALLOC_CLIENT_5,
@@ -152,21 +155,22 @@ memory_layout_rb_iter(rb_node_t *node, void *iter_data)
     layout_data_t *data = (layout_data_t *)iter_data;
     byte *base;
     size_t size;
-    app_pc pc;
-    rb_node_fields(node, &base, &size, (void**)&pc);
+    void *val;
+    thread_id_t id;
+    rb_node_fields(node, &base, &size, &val);
+    id = (thread_id_t)(ptr_uint_t)val;
     if (data->entry_count++ > 0)
         ELOGF(0, data->outf, ",\n");
     if (data->walking_heap) {
         ELOGF(0, data->outf, "    {\n      \"address\": \"" PFX "\",\n", base);
         ELOGF(0, data->outf, "      \"size\": \"%d\",\n", size);
     } else {
-        /* TODO DRi#4146: Add mechanism to get actual PC. */
         ELOGF(0, data->outf,
-              "    {\n      \"thread_pc (CURRENTLY_BROKEN)\": \"" PFX "\",\n", pc);
+              "    {\n      \"thread_id\": \"" PFX "\",\n", id);
         ELOGF(0, data->outf, "      \"address\": \"" PFX "\",\n", base);
         ELOGF(0, data->outf, "      \"size\": \"%d\",\n", size);
     }
-    ELOGF(0, data->outf, "      \"contents\": [\n", size);
+    ELOGF(0, data->outf, "      \"contents\": [\n");
     memory_layout_walk_chunk(data, base, size);
     ELOGF(0, data->outf, "      ]\n");
     ELOGF(0, data->outf, "    }");
@@ -174,11 +178,35 @@ memory_layout_rb_iter(rb_node_t *node, void *iter_data)
 }
 
 static void
-memory_layout_record_stack_region(void *drcontext, layout_data_t *data)
+memlayout_dump_function(layout_data_t *data, app_pc pc)
+{
+    char buf[MAX_SYMBOL_LEN];
+    size_t sofar = 0;
+    print_symbol(pc, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);
+    char *toprint = buf;
+    if (*toprint == ' ')
+        ++toprint;
+    ELOGF(0, data->outf, "          \"function\": \"%s\"\n", toprint);
+}
+
+static bool
+memlayout_dump_frame(app_pc pc, byte *fp, void *user_data)
+{
+    layout_data_t *data = (layout_data_t *)user_data;
+    ELOGF(0, data->outf,
+          "        },\n        {\n          \"program_counter\": \"" PFX "\",\n", pc);
+    ELOGF(0, data->outf, "          \"frame_pointer\": \"" PFX "\",\n", fp);
+    memlayout_dump_function(data, pc);
+    return rb_in_node(data->stack_tree, fp) != NULL;
+}
+
+static void
+memory_layout_record_stack_region(void *drcontext,
+                                  layout_data_t *data, app_pc cur_thread_pc)
 {
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL;
+    mc.flags = DR_MC_CONTROL | DR_MC_INTEGER;
     dr_get_mcontext(drcontext, &mc);
     byte *stack_res_base;
     size_t stack_sz = allocation_size((byte *)mc.xsp, &stack_res_base);
@@ -188,14 +216,35 @@ memory_layout_record_stack_region(void *drcontext, layout_data_t *data)
     else {
         /* TODO i#2266: Record the high-level thread-func xsp point and use here. */
     }
-    /* TODO DRi#4146: Add mechanism to get PC passed to annotation handler.
-     * Right now mc.pc is 0 since we're in a clean call and didn't pass it in.
+    if (dr_get_thread_id(dr_get_current_drcontext()) == dr_get_thread_id(drcontext))
+        mc.pc = cur_thread_pc;
+    rb_insert(data->stack_tree, (byte*)mc.xsp, record_sz,
+              (void*)(ptr_uint_t)dr_get_thread_id(drcontext));
+
+    /* XXX: It's easier to make a temp buffer than to change print_callstack to not
+     * need either a buffer or pcs.
      */
-    rb_insert(data->stack_tree, (byte*)mc.xsp, record_sz, (void*)mc.pc);
+    size_t bufsz = max_callstack_size();
+    char *buf = (char *) global_alloc(bufsz, HEAPSTAT_CALLSTACK);
+    size_t sofar = 0;
+    ELOGF(0, data->outf, "    {\n      \"thread_id\": \"" PFX "\",\n",
+          dr_get_thread_id(drcontext));
+    ELOGF(0, data->outf, "      \"stack_frames\": [\n");
+    ELOGF(0, data->outf,
+          "        {\n          \"program_counter\": \"" PFX "\",\n", mc.pc);
+    ELOGF(0, data->outf,
+          "          \"frame_pointer\": \"" PFX "\",\n", MC_FP_REG(&mc));
+    memlayout_dump_function(data, mc.pc);
+    print_callstack(buf, bufsz, &sofar, &mc, false/*no fps*/, NULL, 0, false,
+                    options.callstack_max_frames, memlayout_dump_frame, data);
+    ELOGF(0, data->outf, "        }\n");
+    ELOGF(0, data->outf, "      ]\n");
+    ELOGF(0, data->outf, "    }\n");
+    global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
 }
 
 void
-memlayout_dump_layout(void)
+memlayout_dump_layout(app_pc pc)
 {
     char fname[MAXIMUM_PATH];
     file_t outf = drx_open_unique_file(logsubdir,
@@ -227,12 +276,14 @@ memlayout_dump_layout(void)
 
     malloc_iterate(memory_layout_malloc_iter, &data);
 
+    ELOGF(0, data.outf, "{\n  \"version\": \"%d\",\n", MEMLAYOUT_FILE_VERSION);
+    ELOGF(0, data.outf, "  \"threads\": [\n");
     for (uint i = 0; i < num_threads; i++) {
-        memory_layout_record_stack_region(drcontexts[i], &data);
+        memory_layout_record_stack_region(drcontexts[i], &data, NULL);
     }
-    memory_layout_record_stack_region(dr_get_current_drcontext(), &data);
+    memory_layout_record_stack_region(dr_get_current_drcontext(), &data, pc);
 
-    ELOGF(0, data.outf, "{\n  \"heap objects\": [\n");
+    ELOGF(0, data.outf, "  ],\n  \"heap objects\": [\n");
     data.walking_heap = true;
     data.entry_count = 0;
     rb_iterate(data.heap_tree, memory_layout_rb_iter, &data);

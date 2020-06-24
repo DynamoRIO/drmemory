@@ -267,7 +267,7 @@ foreach (tool ${tools})
           " ON ON "") # no release tests in short suite
       endif ()
     endif ()
-  endif (NOT arg_vmk_only)
+  endif ()
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
       testbuild_ex("${name}-vmk-dbg-32" OFF "

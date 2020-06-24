@@ -22,7 +22,16 @@
 #include "drmemory_annotations.h"
 #include <iostream>
 
-int main()
+void
+foo(int x)
+{
+    int *y = new int[2];
+    y[1] = x;
+    DRMEMORY_ANNOTATE_DUMP_MEMORY_LAYOUT();
+}
+
+int
+main()
 {
     int i,**j,k,l,*m;
     i = 0;
@@ -42,7 +51,7 @@ int main()
     char *ch = new char[13];
     ch[4] = 'x';
 
-    DRMEMORY_ANNOTATE_DUMP_MEMORY_LAYOUT();
+    foo(l);
 
     std::cerr << "goodbye\n";
 

@@ -79,7 +79,8 @@ handle_do_leak_check(dr_vg_client_request_t *request)
 void handle_dump_memory_layout(void)
 {
 # ifdef TOOL_DR_MEMORY
-    memlayout_dump_layout();
+    app_pc pc = (app_pc) dr_read_saved_reg(dr_get_current_drcontext(), SPILL_SLOT_2);
+    memlayout_dump_layout(pc);
 # endif
 }
 #endif
@@ -98,13 +99,14 @@ annotate_init(void)
 #endif
 
 #ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
-    /* TODO i#2266: We want to pass the PC to the handler. */
-    if (!dr_annotation_register_call("drmemory_dump_memory_layout",
+    const char *dumpmem_name = "drmemory_dump_memory_layout";
+    if (!dr_annotation_register_call(dumpmem_name,
                                      handle_dump_memory_layout, false, 0,
                                      DR_ANNOTATION_CALL_TYPE_FASTCALL)) {
         NOTIFY_ERROR("ERROR: Failed to register annotations"NL);
         dr_abort();
     }
+    dr_annotation_pass_pc(dumpmem_name);
 #endif
 }
 

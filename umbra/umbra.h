@@ -738,6 +738,23 @@ DR_EXPORT
 drmf_status_t
 umbra_clear_redundant_blocks(umbra_map_t *map);
 
+DR_EXPORT
+/*
+ * A convenience routine that returns granularity information of the passed Umbra map.
+ *
+ * Note that the returned scale is the numerical value representation, and not of
+ * type #umbra_map_scale_t.
+ *
+ * @param[in]  map              The mapping object to use.
+ * @param[out] scale            The pointer where to store the returned scale.
+ * @param[out] is_scale_down    The pointer where to store the returned flag
+ *                              indicating whether shadow memory is scaled down
+ *                              or up.
+ */
+drmf_status_t
+umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
+                      bool *is_scale_down);
+
 /*@}*/ /* end doxygen group */
 
 #ifdef __cplusplus

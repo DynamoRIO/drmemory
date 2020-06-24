@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -331,10 +331,9 @@ callstack_init(callstack_options_t *options)
     module_tree = rb_tree_create(NULL);
 
     if (!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags)) {
-        hashtable_config_t hashconfig;
+        hashtable_config_t hashconfig = {sizeof(hashconfig),};
         hashtable_init(&retaddr_table, RETADDR_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!str_dup*/);
-        hashconfig.size = sizeof(hashconfig);
         hashconfig.resizable = true;
         hashconfig.resize_threshold = 60; /* default is 75 */
         hashtable_configure(&retaddr_table, &hashconfig);
@@ -1614,7 +1613,8 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
-                bool for_log, uint max_frames)
+                bool for_log, uint max_frames,
+                bool (*frame_cb)(app_pc pc, byte *fp, void *user_data), void *user_data)
 {
     void *drcontext = dr_get_current_drcontext();
     tls_callstack_t *pt = (tls_callstack_t *)
@@ -1769,6 +1769,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                                      !TEST(FP_SHOW_NON_MODULE_FRAMES, ops.fp_flags),
                                      true, pcs->num_frames))) {
             num++;
+            if (frame_cb != NULL) {
+                if (!(*frame_cb)(appdata.retaddr, appdata.next_fp, user_data))
+                    break;
+            }
             if (last_frame)
                 break;
             if (appdata.retaddr == pt->stack_lowest_retaddr &&
@@ -1969,7 +1973,7 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f,
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "# 0 ");
     print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL, true/*for log*/);
     print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
-                    true/*incl fp*/, NULL, 1, true, max_frames);
+                    true/*incl fp*/, NULL, 1, true, max_frames, NULL, NULL);
     print_buffer(f == INVALID_FILE ? LOGFILE_GET(drcontext) : f, pt->errbuf);
 }
 #endif /* DEBUG */
@@ -2043,7 +2047,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         num_frames_printed = 1;
     }
     print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed, false,
-                    max_frames);
+                    max_frames, NULL, NULL);
     if (pcs->is_packed) {
         packed_frame_t *frames_out;
         sz_out = sizeof(*pcs->frames.packed) * pcs->num_frames;

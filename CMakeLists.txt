@@ -624,7 +624,7 @@ if (WIN32)
   set(SYMSRV_GLOB "" CACHE STRING
     "Preferred path for dbghelp.dll with wildcard expansion")
   set(symsrv_paths
-    "{SYMSRV_GLOB}"
+    "${SYMSRV_GLOB}"
     "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
     # In case if SDK is not installed and we have Visual Studio, symsrv.dll may be found in the
     # same place as dbghelp.dll (see comment for dbghelp.dll) (xref i#1956).
@@ -1754,11 +1754,12 @@ else ()
       SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
       ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
       -DINCLUDE_DIRECTORIES=${framework_incdir}
-      -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
+      -DCMAKE_C_FLAGS:STRING="${annot_cflags}"
+      OUTPUT_VARIABLE try_output)
     if (DR_ANNOTATIONS_SUPPORTED)
       message(STATUS "DR annotations are supported")
     else ()
-      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0: |${try_output}|")
     endif ()
   else ()
     set(DR_ANNOTATIONS_SUPPORTED ON)
@@ -2275,10 +2276,14 @@ endif (BUILDING_SUB_PACKAGE)
 # DRMF install rules
 install(FILES
   ${framework_incdir}/drmemory_framework.h
-  ${framework_incdir}/drmemory_annotations.h
-  ${framework_incdir}/dr_annotations.h
-  ${framework_incdir}/dr_annotations_asm.h
   DESTINATION ${DRMF_INSTALL_INC})
+if (DR_ANNOTATIONS_SUPPORTED)
+  install(FILES
+    ${framework_incdir}/drmemory_annotations.h
+    ${framework_incdir}/dr_annotations.h
+    ${framework_incdir}/dr_annotations_asm.h
+    DESTINATION ${DRMF_INSTALL_INC})
+endif ()
 install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   DESTINATION ${DRMF_INSTALL})
