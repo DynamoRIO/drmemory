@@ -1003,7 +1003,7 @@ umbra_get_shadow_memory_type_arch(umbra_map_t *map,
             *shadow_type |= UMBRA_SHADOW_MEMORY_TYPE_REDZONE;
         return DRMF_SUCCESS;
     }
-    if (*shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED)
+    if (TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, *shadow_type))
         return DRMF_SUCCESS;
     if (umbra_address_is_app_memory(shadow_addr)) {
         *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;

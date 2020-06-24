@@ -180,6 +180,14 @@ use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
 target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_drmf_test(umbra_client_faulty_redzone umbra_app
+  umbra_client_faulty_redzone.c umbra "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_client_faulty_redzone.client drreg)
+use_DynamoRIO_extension(umbra_client_faulty_redzone.client drutil)
+target_include_directories(umbra_client_faulty_redzone.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
+
+
 add_drmf_test(umbra_test_consistency umbra_app
   umbra_client_consistency.c umbra "" ".*TEST PASSED")
 use_DynamoRIO_extension(umbra_test_consistency.client drreg)
