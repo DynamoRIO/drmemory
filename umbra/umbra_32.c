@@ -1051,7 +1051,7 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
 }
 
 drmf_status_t
-umbra_clear_redundant_blocks(umbra_map_t *map)
+umbra_clear_redundant_blocks(umbra_map_t *map, uint *count)
 {
     byte *shadow_data;
     uint i, j;
@@ -1059,9 +1059,13 @@ umbra_clear_redundant_blocks(umbra_map_t *map)
     if (map == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
 
+    if (count != NULL)
+        *count = 0;
+
     /* Umbra needs to have create-on-touch optimization enabled. */
-    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
+    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)){
         return DRMF_ERROR_INVALID_PARAMETER;
+    }
 
     umbra_map_lock(map);
     for (i = 0; i < SHADOW_TABLE_ENTRIES; i++) {
@@ -1070,7 +1074,7 @@ umbra_clear_redundant_blocks(umbra_map_t *map)
         if (shadow_table_is_in_normal_block(map, shadow_data)) {
             /* Check whether the entire block consists of default values. */
             bool is_all_default_val = true;
-            for (j = 0; j < map->shadow_block_size; i++){
+            for (j = 0; j < map->shadow_block_size; j++){
                 if (shadow_data[j] != (byte) map->options.default_value) {
                     is_all_default_val = false;
                     break;
@@ -1085,6 +1089,9 @@ umbra_clear_redundant_blocks(umbra_map_t *map)
                 /* Delete block and set entry to refer to special block. */
                 shadow_table_delete_block(map, shadow_data);
                 shadow_table_set_block(map, i, special_block);
+
+                if (count != NULL)
+                    (*count)++;
             }
         }
     }

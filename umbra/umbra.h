@@ -731,13 +731,16 @@ DR_EXPORT
  * This function is typically invoked when low on memory. It deletes normal blocks
  * and sets mapping entries to the special basic block.
  *
+ * The number of redundant blocks destroyed is returned via \p count. This is an
+ * optional parameter and can be set to NULL if the count is not wanted.
+ *
  * Assumes that threads are suspended so that Umbra may safely modify shadow memory.
  * It is up to the caller to suspend and resume threads.
  *
  * This feature is only available on 32-bit.
  */
 drmf_status_t
-umbra_clear_redundant_blocks(umbra_map_t *map);
+umbra_clear_redundant_blocks(umbra_map_t *map, uint *count);
 
 DR_EXPORT
 /*

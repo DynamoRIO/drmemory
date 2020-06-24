@@ -43,6 +43,11 @@
 
 #include "umbra_test_shared.h"
 
+#ifndef X64
+/* Denotes whether redundant blocks were ever cleared. */
+static bool was_redundant_cleared = false;
+#endif
+
 static umbra_map_t *umbra_map;
 
 static dr_emit_flags_t
@@ -60,7 +65,6 @@ event_exception_instrumentation(void *drcontext, dr_exception_t *excpt);
 static dr_signal_action_t
 event_signal_instrumentation(void *drcontext, dr_siginfo_t *info);
 #endif
-
 
 static void
 exit_event(void);
@@ -94,6 +98,29 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 #endif
     dr_register_exit_event(exit_event);
 }
+
+#ifndef X64
+static void
+clear_redundant_block(void)
+{
+    void **drcontexts = NULL;
+    uint num_threads = 0;
+    uint count = 0;
+
+    /* Prevent repeating the test if already done once. */
+    if (!was_redundant_cleared){
+        was_redundant_cleared = true;
+        dr_suspend_all_other_threads(&drcontexts, &num_threads, NULL);
+        drmf_status_t status = umbra_clear_redundant_blocks(umbra_map, &count);
+        DR_ASSERT_MSG(status == DRMF_SUCCESS, "should succeed");
+        DR_ASSERT_MSG(count == 1, "should have cleared one block");
+        if (drcontexts != NULL) {
+            bool okay = dr_resume_all_other_threads(drcontexts, num_threads);
+            DR_ASSERT_MSG(okay, "failed to resume threads");
+        }
+    }
+}
+#endif
 
 static void
 instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
@@ -129,6 +156,20 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
               opnd_create_reg(
                   reg_resize_to_opsz(scratch, OPSZ_1))),
              instr_get_app_pc(where)));
+
+#ifndef X64
+    /* Clear shadow byte to zero. */
+    instrlist_meta_preinsert(ilist, where, INSTR_XL8
+            (XINST_CREATE_store_1byte
+             (drcontext,
+              OPND_CREATE_MEM8(regaddr, 0),
+              opnd_create_immed_int(0, OPSZ_1)),
+             instr_get_app_pc(where)));
+
+
+    /* Insert clean call to clear redundant block. */
+    dr_insert_clean_call(drcontext, ilist, where, clear_redundant_block, false, 0);
+#endif
 
     if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
         drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
@@ -185,6 +226,10 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 static void
 exit_event(void)
 {
+#ifndef X64
+    DR_ASSERT_MSG(was_redundant_cleared,
+                  "The clearing of redundant blocks was never called.");
+#endif
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
