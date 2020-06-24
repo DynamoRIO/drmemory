@@ -727,8 +727,9 @@ umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
 
 DR_EXPORT
 /**
- * Clears and deletes redundant NULL blocks for \p map. This function is typically
- * invoked when low on memory.
+ * Clears and deletes redundant blocks consisting of only default values for \p map.
+ * This function is typically invoked when low on memory. It deletes normal blocks
+ * and sets mapping entries to the special basic block.
  *
  * Assumes that threads are suspended so that Umbra may safely modify shadow memory.
  * It is up to the caller to suspend and resume threads.
