@@ -51,8 +51,8 @@ static bool was_redundant_cleared = false;
 static umbra_map_t *umbra_map;
 
 static dr_emit_flags_t
-event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                   bool for_trace, bool translating, OUT void **user_data);
+event_app_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for_trace,
+                   bool translating, OUT void **user_data);
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -72,25 +72,25 @@ exit_event(void);
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
-    drreg_options_t ops = {sizeof(ops), 4, true};
+    drreg_options_t ops = { sizeof(ops), 4, true };
     umbra_map_options_t umbra_map_ops;
 
     drmgr_init();
     drreg_init(&ops);
 
     memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
-    umbra_map_ops.scale              = UMBRA_MAP_SCALE_DOWN_4X;
-    umbra_map_ops.flags              = UMBRA_MAP_CREATE_SHADOW_ON_TOUCH |
-                                       UMBRA_MAP_SHADOW_SHARED_READONLY;
-    umbra_map_ops.default_value      = 0;
+    umbra_map_ops.scale = UMBRA_MAP_SCALE_DOWN_4X;
+    umbra_map_ops.flags =
+        UMBRA_MAP_CREATE_SHADOW_ON_TOUCH | UMBRA_MAP_SHADOW_SHARED_READONLY;
+    umbra_map_ops.default_value = 0;
     umbra_map_ops.default_value_size = 1;
 
     if (umbra_init(id) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to create shadow memory mapping");
-    drmgr_register_bb_instrumentation_event(event_app_analysis,
-                                            event_app_instruction, NULL);
+    drmgr_register_bb_instrumentation_event(event_app_analysis, event_app_instruction,
+                                            NULL);
 #ifdef WINDOWS
     drmgr_register_exception_event(event_exception_instrumentation);
 #else
@@ -108,7 +108,7 @@ clear_redundant_block(void)
     uint count = 0;
 
     /* Prevent repeating the test if already done once. */
-    if (!was_redundant_cleared){
+    if (!was_redundant_cleared) {
         was_redundant_cleared = true;
         dr_suspend_all_other_threads(&drcontexts, &num_threads, NULL);
         drmf_status_t status = umbra_clear_redundant_blocks(umbra_map, &count);
@@ -130,10 +130,10 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
     bool ok;
 
     if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr)
-        != DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &scratch)
-        != DRREG_SUCCESS) {
+        drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr) !=
+            DRREG_SUCCESS ||
+        drreg_reserve_register(drcontext, ilist, where, NULL, &scratch) !=
+            DRREG_SUCCESS) {
         DR_ASSERT(false); /* can't recover */
         return;
     }
@@ -144,28 +144,25 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
      * can recover if no shadow memory was installed yet.
      */
     dr_save_reg(drcontext, ilist, where, regaddr, SPILL_SLOT_2);
-    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr,
-                                   &scratch, 1) != DRMF_SUCCESS)
+    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr, &scratch,
+                                   1) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
     /* trigger a fault to the shared readonly shadow page */
-    instrlist_meta_preinsert(ilist, where, INSTR_XL8
-            (XINST_CREATE_store_1byte
-             (drcontext,
-              OPND_CREATE_MEM8(regaddr, 0),
-              opnd_create_reg(
-                  reg_resize_to_opsz(scratch, OPSZ_1))),
-             instr_get_app_pc(where)));
+    instrlist_meta_preinsert(
+        ilist, where,
+        INSTR_XL8(XINST_CREATE_store_1byte(
+                      drcontext, OPND_CREATE_MEM8(regaddr, 0),
+                      opnd_create_reg(reg_resize_to_opsz(scratch, OPSZ_1))),
+                  instr_get_app_pc(where)));
 
 #ifndef X64
     /* Clear shadow byte to zero. */
-    instrlist_meta_preinsert(ilist, where, INSTR_XL8
-            (XINST_CREATE_store_1byte
-             (drcontext,
-              OPND_CREATE_MEM8(regaddr, 0),
-              opnd_create_immed_int(0, OPSZ_1)),
-             instr_get_app_pc(where)));
-
+    instrlist_meta_preinsert(
+        ilist, where,
+        INSTR_XL8(XINST_CREATE_store_1byte(drcontext, OPND_CREATE_MEM8(regaddr, 0),
+                                           opnd_create_immed_int(0, OPSZ_1)),
+                  instr_get_app_pc(where)));
 
     /* Insert clean call to clear redundant block. */
     dr_insert_clean_call(drcontext, ilist, where, clear_redundant_block, false, 0);
@@ -178,8 +175,8 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
 }
 
 static dr_emit_flags_t
-event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                   bool for_trace, bool translating, OUT void **user_data)
+event_app_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for_trace,
+                   bool translating, OUT void **user_data)
 {
     instr_t *inst;
     bool prev_was_mov_const = false;
@@ -191,7 +188,7 @@ event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
             if (prev_was_mov_const && val1 == val2 &&
                 val1 != 0 && /* rule out xor w/ self */
                 opnd_is_reg(instr_get_dst(inst, 0))) {
-                *user_data = (void *) val1;
+                *user_data = (void *)val1;
                 instrlist_meta_postinsert(bb, inst, INSTR_CREATE_label(drcontext));
             } else
                 prev_was_mov_const = true;
@@ -205,7 +202,7 @@ static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
 {
-    ptr_int_t subtest = (ptr_int_t) user_data;
+    ptr_int_t subtest = (ptr_int_t)user_data;
     int i;
 
     if (subtest != UMBRA_TEST_1_C && subtest != UMBRA_TEST_2_C)
@@ -252,8 +249,7 @@ get_faulting_shadow_reg(void *drcontext, dr_mcontext_t *mc)
 }
 
 static bool
-handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
-                            app_pc app_shadow)
+handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc, app_pc app_shadow)
 {
     umbra_shadow_memory_type_t shadow_type;
     app_pc app_target;
@@ -267,8 +263,8 @@ handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
      * replace the reg value used by the faulting instr.
      */
     /* handle faults from writes to special shadow blocks */
-    if (umbra_shadow_memory_is_shared(umbra_map, app_shadow,
-                                      &shadow_type) != DRMF_SUCCESS) {
+    if (umbra_shadow_memory_is_shared(umbra_map, app_shadow, &shadow_type) !=
+        DRMF_SUCCESS) {
         DR_ASSERT(false);
         return true;
     }
@@ -285,8 +281,8 @@ handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
               app_target, app_shadow);
 
     /* replace the shared block, and record the new app shadow */
-    if (umbra_replace_shared_shadow_memory(umbra_map, app_target,
-                                           &app_shadow) != DRMF_SUCCESS) {
+    if (umbra_replace_shared_shadow_memory(umbra_map, app_target, &app_shadow) !=
+        DRMF_SUCCESS) {
         DR_ASSERT(false);
         return true;
     }
@@ -308,7 +304,7 @@ event_exception_instrumentation(void *drcontext, dr_exception_t *excpt)
     if (excpt->record->ExceptionCode != STATUS_ACCESS_VIOLATION)
         return true;
     return handle_special_shadow_fault(drcontext, excpt->raw_mcontext,
-            (byte *)excpt->record->ExceptionInformation[1]);
+                                       (byte *)excpt->record->ExceptionInformation[1]);
 }
 #else
 static dr_signal_action_t
@@ -318,7 +314,8 @@ event_signal_instrumentation(void *drcontext, dr_siginfo_t *info)
         return DR_SIGNAL_DELIVER;
     DR_ASSERT(info->raw_mcontext_valid);
     return handle_special_shadow_fault(drcontext, info->raw_mcontext,
-                                       info->access_address) ?
-        DR_SIGNAL_DELIVER : DR_SIGNAL_SUPPRESS;
+                                       info->access_address)
+        ? DR_SIGNAL_DELIVER
+        : DR_SIGNAL_SUPPRESS;
 }
 #endif
