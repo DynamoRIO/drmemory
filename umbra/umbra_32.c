@@ -141,10 +141,10 @@ shadow_table_create_block(umbra_map_t *map)
         block = nonheap_alloc(map->shadow_block_alloc_size,
                               DR_MEMPROT_READ | DR_MEMPROT_WRITE,
                               HEAPSTAT_SHADOW);
-        } else {
-            block = global_alloc(map->shadow_block_alloc_size,
-                                 HEAPSTAT_SHADOW);
-        }
+    } else {
+        block = global_alloc(map->shadow_block_alloc_size,
+                             HEAPSTAT_SHADOW);
+    }
 
     block = shadow_table_init_redzone(map, block);
     LOG(UMBRA_VERBOSE, "created new shadow block "PFX"\n", block);
