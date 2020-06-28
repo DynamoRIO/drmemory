@@ -127,6 +127,10 @@ static void instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where,
                                  &scratch, 1) != DRMF_SUCCESS) {
     DR_ASSERT(false);
   }
+
+  /* Use a displacement of a page size to access ahead and try to hit a faulty
+   * redzone.
+   */
   instrlist_meta_preinsert(
       ilist, where,
       INSTR_XL8(
