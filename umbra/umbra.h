@@ -256,8 +256,8 @@ typedef struct _umbra_map_options_t {
      * that done for shared block access (if enabled).
      *
      * Overrides redzone data specified in the struct, including redzone_size.
-     * With this option enabled, the fields: redzone_size, redzone_value and
-     * redzone_value_size, are not considered. Redzone size is set to a page size
+     * With this option enabled, the fields: #redzone_size, #redzone_value and
+     * #redzone_value_size, are not considered. Redzone size is set to a page size
      * by default to set appropriate access permissions.
      */
     bool make_redzone_faulty;

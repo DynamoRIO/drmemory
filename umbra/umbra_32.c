@@ -575,7 +575,7 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     /* Override redzone size. We must make it a page size to control
      * its permissions.
      *
-     * FIXME i#2283: Potentially support larger redzone sizes to be even more safe.
+     * XXX i#2283: Potentially support larger redzone sizes to be even more safe.
      * It is perhaps unlikely that a translated address would be used in
      * pointer arithmetic that results in jumping over the 1 paged sized
      * redzone. Nevertheless, we can be even more safe and leave this
