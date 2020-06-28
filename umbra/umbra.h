@@ -50,23 +50,18 @@ extern "C" {
  * that Umbra's actions occur at the right time.
  */
 #ifndef dr_get_tls_field
-#    define dr_get_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
-#    define dr_set_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
-#    define dr_insert_read_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
-#    define dr_insert_write_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
-#    define dr_register_thread_init_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
-#    define dr_unregister_thread_init_event \
-        DO_NOT_USE_thread_event_USE_drmgr_events_instead
-#    define dr_register_thread_exit_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
-#    define dr_unregister_thread_exit_event \
-        DO_NOT_USE_thread_event_USE_drmgr_events_instead
-#    define dr_register_pre_syscall_event DO_NOT_USE_pre_syscall_USE_drmgr_events_instead
-#    define dr_unregister_pre_syscall_event \
-        DO_NOT_USE_pre_syscall_USE_drmgr_events_instead
-#    define dr_register_post_syscall_event \
-        DO_NOT_USE_post_syscall_USE_drmgr_events_instead
-#    define dr_unregister_post_syscall_event \
-        DO_NOT_USE_post_syscall_USE_drmgr_events_instead
+# define dr_get_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
+# define dr_set_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
+# define dr_insert_read_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
+# define dr_insert_write_tls_field DO_NOT_USE_tls_field_USE_drmgr_tls_field_instead
+# define dr_register_thread_init_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
+# define dr_unregister_thread_init_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
+# define dr_register_thread_exit_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
+# define dr_unregister_thread_exit_event DO_NOT_USE_thread_event_USE_drmgr_events_instead
+# define dr_register_pre_syscall_event DO_NOT_USE_pre_syscall_USE_drmgr_events_instead
+# define dr_unregister_pre_syscall_event DO_NOT_USE_pre_syscall_USE_drmgr_events_instead
+# define dr_register_post_syscall_event DO_NOT_USE_post_syscall_USE_drmgr_events_instead
+# define dr_unregister_post_syscall_event DO_NOT_USE_post_syscall_USE_drmgr_events_instead
 #endif /* dr_get_tls_field */
 
 /***************************************************************************
@@ -103,7 +98,7 @@ typedef enum {
 } umbra_map_scale_t;
 
 /** Check if a shadow memory mapping scale is scale up or down. */
-#define UMBRA_MAP_SCALE_IS_UP(scale) ((scale) >= UMBRA_MAP_SCALE_UP_2X)
+#define UMBRA_MAP_SCALE_IS_UP(scale)   ((scale) >= UMBRA_MAP_SCALE_UP_2X)
 #define UMBRA_MAP_SCALE_IS_DOWN(scale) ((scale) <= UMBRA_MAP_SCALE_DOWN_2X)
 
 /** Umbra mapping creation flags for fine-grained control */
@@ -180,7 +175,7 @@ typedef struct _umbra_shadow_memory_info_t {
     /** Size of the application memory block */
     size_t app_size;
     /** Base of the shadow memory block */
-    byte *shadow_base;
+    byte  *shadow_base;
     /** Size of the shadow memory block */
     size_t shadow_size;
     /** Type of the shadow memory block */
@@ -200,12 +195,16 @@ typedef struct _umbra_map_t umbra_map_t;
  * These callbacks are called when the application performs system calls to
  * allocate or delete memory.
  */
-typedef void (*app_memory_create_cb_t)(umbra_map_t *map, app_pc start, size_t size);
-typedef void (*app_memory_pre_delete_cb_t)(umbra_map_t *map, app_pc start, size_t size);
-typedef void (*app_memory_post_delete_cb_t)(umbra_map_t *map, app_pc start, size_t size,
+typedef void (*app_memory_create_cb_t)(umbra_map_t *map,
+                                       app_pc start, size_t size);
+typedef void (*app_memory_pre_delete_cb_t)(umbra_map_t *map,
+                                           app_pc start, size_t size);
+typedef void (*app_memory_post_delete_cb_t)(umbra_map_t *map,
+                                            app_pc start, size_t size,
                                             bool success);
 #ifdef UNIX
-typedef void (*app_memory_mremap_cb_t)(umbra_map_t *map, app_pc old_base, size_t old_size,
+typedef void (*app_memory_mremap_cb_t)(umbra_map_t *map,
+                                       app_pc old_base, size_t old_size,
                                        app_pc new_base, size_t new_size);
 #endif
 
@@ -241,11 +240,11 @@ typedef struct _umbra_map_options_t {
      * \note: The \p redzone_size must be multiple of 256, and 0 means no
      * redzone is used.
      */
-    size_t redzone_size;
+    size_t     redzone_size;
     /** The value set in the redzone. */
     ptr_uint_t redzone_value;
     /** The redzone value size, only 1 is supported now */
-    size_t redzone_value_size;
+    size_t     redzone_value_size;
     /**
      * Set to true to render redzones as faulty, i.e., access (both read and write)
      * to a redzone causes a fault.
@@ -310,14 +309,15 @@ DR_EXPORT
  * @param[out]  map_out  The mapping options.
  */
 drmf_status_t
-umbra_create_mapping(IN umbra_map_options_t *ops, OUT umbra_map_t **map_out);
+umbra_create_mapping(IN  umbra_map_options_t *ops,
+                     OUT umbra_map_t **map_out);
 
 DR_EXPORT
 /**
  * Destroy a shadow memory mapping \p map created by umbra_create_mapping.
  */
 drmf_status_t
-umbra_destroy_mapping(IN umbra_map_t *map);
+umbra_destroy_mapping(IN  umbra_map_t *map);
 
 DR_EXPORT
 /**
@@ -343,9 +343,12 @@ DR_EXPORT
  * on \p map creation.
  */
 drmf_status_t
-umbra_create_shadow_memory(IN umbra_map_t *map, IN umbra_shadow_memory_flags_t flags,
-                           IN app_pc app_addr, IN size_t app_size, IN ptr_uint_t value,
-                           IN size_t value_size);
+umbra_create_shadow_memory(IN  umbra_map_t *map,
+                           IN  umbra_shadow_memory_flags_t flags,
+                           IN  app_pc       app_addr,
+                           IN  size_t       app_size,
+                           IN  ptr_uint_t   value,
+                           IN  size_t       value_size);
 
 DR_EXPORT
 /**
@@ -364,7 +367,9 @@ DR_EXPORT
  * which will be set to the value specified on \p map creation instead.
  */
 drmf_status_t
-umbra_delete_shadow_memory(IN umbra_map_t *map, IN app_pc app_addr, IN size_t app_size);
+umbra_delete_shadow_memory(IN  umbra_map_t *map,
+                           IN  app_pc       app_addr,
+                           IN  size_t       app_size);
 
 DR_EXPORT
 /**
@@ -375,7 +380,7 @@ DR_EXPORT
  * @param[out]  num_regs  Number of scratch register required for translation.
  */
 drmf_status_t
-umbra_num_scratch_regs_for_translation(OUT int *num_regs);
+umbra_num_scratch_regs_for_translation(OUT  int *num_regs);
 
 DR_EXPORT
 /**
@@ -405,9 +410,13 @@ DR_EXPORT
  * and after this method is called, e.g. with \p drreg_reserve_aflags().
  */
 drmf_status_t
-umbra_insert_app_to_shadow(IN void *drcontext, IN umbra_map_t *map, IN instrlist_t *ilist,
-                           IN instr_t *where, IN reg_id_t addr_reg,
-                           IN reg_id_t *scratch_regs, IN int num_scratch_regs);
+umbra_insert_app_to_shadow(IN  void        *drcontext,
+                           IN  umbra_map_t *map,
+                           IN  instrlist_t *ilist,
+                           IN  instr_t     *where,
+                           IN  reg_id_t     addr_reg,
+                           IN  reg_id_t    *scratch_regs,
+                           IN  int          num_scratch_regs);
 
 DR_EXPORT
 /**
@@ -425,8 +434,11 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_read_shadow_memory(IN umbra_map_t *map, IN app_pc app_addr, IN size_t app_size,
-                         INOUT size_t *shadow_size, OUT byte *buffer);
+umbra_read_shadow_memory(IN    umbra_map_t *map,
+                         IN    app_pc  app_addr,
+                         IN    size_t  app_size,
+                         INOUT size_t *shadow_size,
+                         OUT   byte   *buffer);
 
 DR_EXPORT
 /**
@@ -444,8 +456,11 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_write_shadow_memory(IN umbra_map_t *map, IN app_pc app_addr, IN size_t app_size,
-                          INOUT size_t *shadow_size, IN byte *buffer);
+umbra_write_shadow_memory(IN  umbra_map_t *map,
+                          IN  app_pc  app_addr,
+                          IN  size_t  app_size,
+                          INOUT size_t *shadow_size,
+                          IN  byte   *buffer);
 
 DR_EXPORT
 /**
@@ -464,9 +479,12 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_shadow_set_range(IN umbra_map_t *map, IN app_pc app_addr, IN size_t app_size,
-                       OUT size_t *shadow_size, IN ptr_uint_t value,
-                       IN size_t value_size);
+umbra_shadow_set_range(IN   umbra_map_t *map,
+                       IN   app_pc       app_addr,
+                       IN   size_t       app_size,
+                       OUT  size_t      *shadow_size,
+                       IN   ptr_uint_t   value,
+                       IN   size_t       value_size);
 
 DR_EXPORT
 /**
@@ -486,8 +504,11 @@ DR_EXPORT
  * \note: Overlap is allowed.
  */
 drmf_status_t
-umbra_shadow_copy_range(IN umbra_map_t *map, IN app_pc app_src, IN app_pc app_dst,
-                        IN size_t app_size, OUT size_t *shadow_size);
+umbra_shadow_copy_range(IN  umbra_map_t *map,
+                        IN  app_pc  app_src,
+                        IN  app_pc  app_dst,
+                        IN  size_t  app_size,
+                        OUT size_t *shadow_size);
 
 DR_EXPORT
 /**
@@ -508,9 +529,12 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_value_in_shadow_memory(IN umbra_map_t *map, INOUT app_pc *app_addr,
-                             IN size_t app_size, IN ptr_uint_t value,
-                             IN size_t value_size, OUT bool *found);
+umbra_value_in_shadow_memory(IN    umbra_map_t *map,
+                             INOUT app_pc      *app_addr,
+                             IN    size_t       app_size,
+                             IN    ptr_uint_t   value,
+                             IN    size_t       value_size,
+                             OUT   bool        *found);
 
 DR_EXPORT
 /**
@@ -521,7 +545,8 @@ DR_EXPORT
  * @param[out] size  The shadow memory block size.
  */
 drmf_status_t
-umbra_get_shadow_block_size(IN umbra_map_t *map, OUT size_t *size);
+umbra_get_shadow_block_size(IN  umbra_map_t *map,
+                            OUT size_t *size);
 
 DR_EXPORT
 /**
@@ -537,9 +562,11 @@ DR_EXPORT
  * since they are not considered as part of DynamoRIO internal or client memory.
  */
 drmf_status_t
-umbra_iterate_app_memory(IN umbra_map_t *map, IN void *user_data,
-                         IN bool (*iter_func)(umbra_map_t *map, const dr_mem_info_t *info,
-                                              void *user_data));
+umbra_iterate_app_memory(IN  umbra_map_t *map,
+                         IN  void *user_data,
+                         IN  bool (*iter_func)(umbra_map_t *map,
+                                               const dr_mem_info_t *info,
+                                               void  *user_data));
 
 /**
  * Iterate callback function type for umbra_iterate_shadow_memory.
@@ -548,7 +575,8 @@ umbra_iterate_app_memory(IN umbra_map_t *map, IN void *user_data,
  * @param[in]  info       Information about the shadow memory.
  * @param[in]  user_data  User data passed during iteration.
  */
-typedef bool (*shadow_iterate_func_t)(umbra_map_t *map, umbra_shadow_memory_info_t *info,
+typedef bool (*shadow_iterate_func_t)(umbra_map_t *map,
+                                      umbra_shadow_memory_info_t *info,
                                       void *user_data);
 
 DR_EXPORT
@@ -561,8 +589,9 @@ DR_EXPORT
  *                        It can return false to stop the iteration.
  */
 drmf_status_t
-umbra_iterate_shadow_memory(IN umbra_map_t *map, IN void *user_data,
-                            IN shadow_iterate_func_t iter_func);
+umbra_iterate_shadow_memory(IN  umbra_map_t *map,
+                            IN  void  *user_data,
+                            IN  shadow_iterate_func_t iter_func);
 
 DR_EXPORT
 /**
@@ -576,7 +605,8 @@ DR_EXPORT
  * shadow memory to determine the shadow memory type for \p shadow_addr.
  */
 drmf_status_t
-umbra_get_shadow_memory_type(IN umbra_map_t *map, IN byte *shadow_addr,
+umbra_get_shadow_memory_type(IN  umbra_map_t *map,
+                             IN  byte *shadow_addr,
                              OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
@@ -601,7 +631,8 @@ DR_EXPORT
  *
  */
 drmf_status_t
-umbra_shadow_memory_is_shared(IN umbra_map_t *map, IN byte *shadow_addr,
+umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
+                              IN  byte *shadow_addr,
                               OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
@@ -637,7 +668,9 @@ DR_EXPORT
  *
  */
 drmf_status_t
-umbra_get_shadow_memory(IN umbra_map_t *map, IN app_pc app_addr, OUT byte **shadow_addr,
+umbra_get_shadow_memory(IN    umbra_map_t *map,
+                        IN    app_pc app_addr,
+                        OUT   byte **shadow_addr,
                         INOUT umbra_shadow_memory_info_t *shadow_info);
 
 DR_EXPORT
@@ -652,8 +685,9 @@ DR_EXPORT
  * @param[out] shadow_addr  Return the replaced shadow memory address.
  */
 drmf_status_t
-umbra_replace_shared_shadow_memory(IN umbra_map_t *map, IN app_pc app_addr,
-                                   OUT byte **shadow_addr);
+umbra_replace_shared_shadow_memory(IN  umbra_map_t *map,
+                                   IN  app_pc       app_addr,
+                                   OUT byte       **shadow_addr);
 
 DR_EXPORT
 /**
@@ -673,8 +707,10 @@ DR_EXPORT
  * implementation and always returns DRMF_ERROR_FEATURE_NOT_AVAILABLE.
  */
 drmf_status_t
-umbra_create_shared_shadow_block(IN umbra_map_t *map, IN ptr_uint_t value,
-                                 IN size_t value_size, OUT byte **block);
+umbra_create_shared_shadow_block(IN  umbra_map_t *map,
+                                 IN  ptr_uint_t   value,
+                                 IN  size_t       value_size,
+                                 OUT byte       **block);
 
 DR_EXPORT
 /**
@@ -691,8 +727,10 @@ DR_EXPORT
  * implementation and always returns DRMF_ERROR_FEATURE_NOT_AVAILABLE.
  */
 drmf_status_t
-umbra_get_shared_shadow_block(IN umbra_map_t *map, IN ptr_uint_t value,
-                              IN size_t value_size, OUT byte **block);
+umbra_get_shared_shadow_block(IN  umbra_map_t *map,
+                              IN  ptr_uint_t   value,
+                              IN  size_t       value_size,
+                              OUT byte       **block);
 
 /** Convenience routine for initializing umbra_shadow_memory_info. */
 static inline void
@@ -717,7 +755,8 @@ DR_EXPORT
  *                              or up.
  */
 drmf_status_t
-umbra_get_granularity(const umbra_map_t *map, OUT int *scale, bool *is_scale_down);
+umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
+                      bool *is_scale_down);
 
 /*@}*/ /* end doxygen group */
 
