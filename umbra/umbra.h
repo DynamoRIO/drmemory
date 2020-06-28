@@ -727,6 +727,24 @@ umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
 
 DR_EXPORT
 /**
+ * Clears and deletes redundant blocks consisting of only default values for \p map.
+ * This function is typically invoked when low on memory. It deletes normal blocks
+ * and sets mapping entries to the special basic block.
+ *
+ * The number of redundant blocks destroyed is returned via \p count. This is an
+ * optional parameter and can be set to NULL if the count is not wanted.
+ *
+ * Assumes that threads are suspended so that Umbra may safely modify shadow memory.
+ * It is up to the caller to suspend and resume threads.
+ *
+ * This feature is only available on 32-bit and requires that the
+ * create-on-touch optimization (#UMBRA_MAP_CREATE_SHADOW_ON_TOUCH) is enabled.
+ */
+drmf_status_t
+umbra_clear_redundant_blocks(umbra_map_t *map, uint *count);
+
+DR_EXPORT
+/*
  * A convenience routine that returns granularity information of the passed Umbra map.
  *
  * Note that the returned scale is the numerical value representation, and not of
