@@ -737,7 +737,8 @@ DR_EXPORT
  * Assumes that threads are suspended so that Umbra may safely modify shadow memory.
  * It is up to the caller to suspend and resume threads.
  *
- * This feature is only available on 32-bit.
+ * This feature is only available on 32-bit and requires that the
+ * create-on-touch optimization (# UMBRA_MAP_CREATE_SHADOW_ON_TOUCH) is enabled.
  */
 drmf_status_t
 umbra_clear_redundant_blocks(umbra_map_t *map, uint *count);

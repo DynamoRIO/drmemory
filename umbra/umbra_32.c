@@ -1063,7 +1063,7 @@ umbra_clear_redundant_blocks(umbra_map_t *map, uint *count)
         *count = 0;
 
     /* Umbra needs to have create-on-touch optimization enabled. */
-    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)){
+    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)) {
         return DRMF_ERROR_INVALID_PARAMETER;
     }
 
@@ -1071,29 +1071,30 @@ umbra_clear_redundant_blocks(umbra_map_t *map, uint *count)
     for (i = 0; i < SHADOW_TABLE_ENTRIES; i++) {
         shadow_data = shadow_table_get_block(map, i);
         /* Redundant blocks must be "normal". */
-        if (shadow_table_is_in_normal_block(map, shadow_data)) {
-            /* Check whether the entire block consists of default values. */
-            bool is_all_default_val = true;
-            for (j = 0; j < map->shadow_block_size; j++){
-                if (shadow_data[j] != (byte) map->options.default_value) {
-                    is_all_default_val = false;
-                    break;
-                }
-            }
-            /* Delete block only if it consists of default values. */
-            if (is_all_default_val) {
-                byte *special_block = shadow_table_lookup_special_block(map,
-                        map->options.default_value, map->options.default_value_size);
-                ASSERT(special_block[0] == (byte) map->options.default_value,
-                       "default vals not in synch");
-                /* Delete block and set entry to refer to special block. */
-                shadow_table_delete_block(map, shadow_data);
-                shadow_table_set_block(map, i, special_block);
-
-                if (count != NULL)
-                    (*count)++;
+        if (!shadow_table_is_in_normal_block(map, shadow_data))
+            continue;
+        /* Check whether the entire block consists of default values. */
+        bool is_all_default_val = true;
+        for (j = 0; j < map->shadow_block_size; j++) {
+            if (shadow_data[j] != (byte)map->options.default_value) {
+                is_all_default_val = false;
+                break;
             }
         }
+
+        /* Delete block only if it consists of default values. */
+        if (!is_all_default_val)
+            continue;
+        byte *special_block = shadow_table_lookup_special_block(
+            map, map->options.default_value, map->options.default_value_size);
+        ASSERT(special_block[0] == (byte)map->options.default_value,
+               "default vals not in synch");
+        /* Delete block and set entry to refer to special block. */
+        shadow_table_delete_block(map, shadow_data);
+        shadow_table_set_block(map, i, special_block);
+
+        if (count != NULL)
+            (*count)++;
     }
     umbra_map_unlock(map);
 
