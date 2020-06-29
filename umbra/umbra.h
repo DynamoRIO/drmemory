@@ -245,6 +245,22 @@ typedef struct _umbra_map_options_t {
     ptr_uint_t redzone_value;
     /** The redzone value size, only 1 is supported now */
     size_t     redzone_value_size;
+    /**
+     * Set to true to render redzones as faulty, i.e., access (both read and write)
+     * to a redzone causes a fault.
+     *
+     * If a cross block access occurs, a fault is triggered. This is an
+     * optimisation, because rather than requiring the user to perform explicit
+     * checks on redzone access, a fault will indicate the case. The user may
+     * then take further action by defining a fault handler, similar to
+     * that done for shared block access (if enabled).
+     *
+     * Overrides redzone data specified in the struct, including redzone_size.
+     * With this option enabled, the fields: #redzone_size, #redzone_value and
+     * #redzone_value_size, are not considered. Redzone size is set to a page size
+     * by default to set appropriate access permissions.
+     */
+    bool make_redzone_faulty;
 #endif
 
     /** Application memory creation callback. */
