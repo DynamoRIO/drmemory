@@ -35,6 +35,7 @@ A script used to find Umbra Shadow Memory Layouts.
 To format script with yapf: yapf -i --style='{COLUMN_LIMIT: 90}' umbra_layout.py
 '''
 
+import sys
 import argparse
 from enum import Enum
 from z3 import *
