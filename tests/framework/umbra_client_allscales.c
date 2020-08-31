@@ -75,9 +75,13 @@ test_umbra_mapping(client_id_t id, umbra_map_scale_t scale, const char *label,
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_64X, "down 64x", 63, true);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_32X, "down 32x", 32, true);
     test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_8X, "down 8x", 8, true);
     test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_4X, "down 4x", 4, true);
     test_umbra_mapping(id, UMBRA_MAP_SCALE_DOWN_2X, "down 2x", 2, true);
     test_umbra_mapping(id, UMBRA_MAP_SCALE_SAME_1X, "one-to-one", 1, false);
     test_umbra_mapping(id, UMBRA_MAP_SCALE_UP_2X, "up 2x", 2, false);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_UP_4X, "up 4x", 4, false);
+    test_umbra_mapping(id, UMBRA_MAP_SCALE_UP_8X, "up 8x", 8, false);
 }

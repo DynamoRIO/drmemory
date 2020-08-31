@@ -329,7 +329,6 @@ static ptr_uint_t map_disp[] = {
     (0x03000000000)>>1,  /* UMBRA_MAP_SCALE_UP_2X */
     0x00002E0000000000,  /* UMBRA_MAP_SCALE_UP_4X */
     0x0000004000000000,  /* UMBRA_MAP_SCALE_UP_8X */
-    /* FIXME i#2283: Add disps for other scales. */
 #else /* UNIX */
     0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_64X */
     0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_32X */
@@ -766,11 +765,6 @@ drmf_status_t
 umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
 {
     uint i;
-    if (map->options.scale > UMBRA_MAP_SCALE_UP_2X){
-        /* XXX i#2283: Add support for more scaled-up granularities. */
-        ASSERT(false, "scale not yet implemented for 64-bit");
-        return DRMF_ERROR_NOT_IMPLEMENTED;
-    }
     if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
         map->app_block_size    = ALLOC_UNIT_SIZE;
         map->shadow_block_size =
@@ -1214,9 +1208,6 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                        OPND_CREATE_ABSMEM(&map->disp,
                                                           OPSZ_PTR)));
     if (map->options.scale >= UMBRA_MAP_SCALE_UP_2X) {
-        /* XXX i#2283: To assert remove when we support more granularities. */
-        ASSERT(map->options.scale == UMBRA_MAP_SCALE_UP_2X, "invalid scale");
-
         PRE(ilist, where, INSTR_CREATE_shl(drcontext,
                                            opnd_create_reg(reg_addr),
                                            OPND_CREATE_INT8(map->shift)));
