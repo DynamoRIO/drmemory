@@ -81,6 +81,8 @@ class OS(Enum):
 
 
 class Scale(Enum):
+    DOWN_64X = 'down_64x'
+    DOWN_32X = 'down_32x'
     DOWN_8X = 'down_8x'
     DOWN_4X = 'down_4x'
     DOWN_2X = 'down_2x'
@@ -94,7 +96,11 @@ class Scale(Enum):
 
     def is_scale_up(scale):
         # Returns whether the scale is up or down.
-        if (scale == Scale.DOWN_8X):
+        if (scale == Scale.DOWN_64X):
+            return False
+        elif (scale == Scale.DOWN_32X):
+            return False
+        elif (scale == Scale.DOWN_8X):
             return False
         elif (scale == Scale.DOWN_4X):
             return False
@@ -114,7 +120,11 @@ class Scale(Enum):
 
     def get_scale(scale):
         # Returns whether the scale's value.
-        if (scale == Scale.DOWN_8X):
+        if (scale == Scale.DOWN_64X):
+            return 6
+        elif (scale == Scale.DOWN_32X):
+            return 5
+        elif (scale == Scale.DOWN_8X):
             return 3
         elif (scale == Scale.DOWN_4X):
             return 2
@@ -487,7 +497,7 @@ def set_arg_parser():
                         help='the displacement value used for shadow translation.')
     parser.add_argument('--scale',
                         choices=[
-                            'all', Scale.DOWN_8X.value, Scale.DOWN_4X.value,
+                            'all', Scale.DOWN_64X.value, Scale.DOWN_32X.value, Scale.DOWN_8X.value, Scale.DOWN_4X.value,
                             Scale.DOWN_2X.value, Scale.SAME.value, Scale.UP_2X.value,
                             Scale.UP_4X.value, Scale.UP_8X.value
                         ],
