@@ -347,11 +347,14 @@ static ptr_uint_t map_disp[] = {
 /* 0x700' also does not work for UP_2X. */
 # define WIN81_BASE_DISP_UP2 0xb0000000000
 static ptr_uint_t map_disp_win81[] = {
+    (WIN81_BASE_DISP)<<6, /* UMBRA_MAP_SCALE_DOWN_64X */
+    (WIN81_BASE_DISP)<<5, /* UMBRA_MAP_SCALE_DOWN_32X */
     (WIN81_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
     (WIN81_BASE_DISP)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
     (WIN81_BASE_DISP_DOWN2)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
     (WIN81_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
     (WIN81_BASE_DISP_UP2)>>1, /* UMBRA_MAP_SCALE_UP_2X */
+    /* FIXME i#2283: Add disps for other scales. */
 };
 #endif
 
@@ -431,6 +434,12 @@ umbra_xl8_app_to_shadow(const umbra_map_t *map, app_pc pc)
     if (pc != 0 && addr == map->disp)
         addr += (map->mask + 1);
     switch (map->options.scale) {
+    case UMBRA_MAP_SCALE_DOWN_64X:
+        addr >>= 6;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_32X:
+        addr >>= 5;
+        break;
     case UMBRA_MAP_SCALE_DOWN_8X:
         addr >>= 3;
         break;
@@ -444,6 +453,12 @@ umbra_xl8_app_to_shadow(const umbra_map_t *map, app_pc pc)
         break;
     case UMBRA_MAP_SCALE_UP_2X:
         addr <<= 1;
+        break;
+    case UMBRA_MAP_SCALE_UP_4X:
+        addr <<= 2;
+        break;
+    case UMBRA_MAP_SCALE_UP_8X:
+        addr <<= 3;
         break;
     default:
         ASSERT(false, "invalid scale");
