@@ -327,7 +327,9 @@ static ptr_uint_t map_disp[] = {
     (WIN8_BASE_DISP)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
     (WIN8_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
     (0x03000000000)>>1,  /* UMBRA_MAP_SCALE_UP_2X */
-        /* FIXME i#2283: Add disps for other scales. */
+    0x00002E0000000000,  /* UMBRA_MAP_SCALE_UP_4X */
+    0x0000004000000000,  /* UMBRA_MAP_SCALE_UP_8X */
+    /* FIXME i#2283: Add disps for other scales. */
 #else /* UNIX */
     0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_64X */
     0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_32X */
@@ -336,7 +338,8 @@ static ptr_uint_t map_disp[] = {
     0x0000220000000000,  /* UMBRA_MAP_SCALE_DOWN_2X */
     0x0000120000000000,  /* UMBRA_MAP_SCALE_SAME_1X */
     PIE_DEF_SEG_2X_DISP, /* UMBRA_MAP_SCALE_UP_2X */
-        /* FIXME i#2283: Add disps for other scales. */
+    0x000007E000000000, /* UMBRA_MAP_SCALE_UP_4X */
+    0x000008E000000000, /* UMBRA_MAP_SCALE_UP_8X */
 #endif
 };
 
@@ -354,7 +357,8 @@ static ptr_uint_t map_disp_win81[] = {
     (WIN81_BASE_DISP_DOWN2)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
     (WIN81_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
     (WIN81_BASE_DISP_UP2)>>1, /* UMBRA_MAP_SCALE_UP_2X */
-    /* FIXME i#2283: Add disps for other scales. */
+    0x000001C000000000, /* UMBRA_MAP_SCALE_UP_4X */
+    0x00000C6000000000, /* UMBRA_MAP_SCALE_UP_8X */
 };
 #endif
 
