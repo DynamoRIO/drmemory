@@ -749,7 +749,7 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     uint i;
     if (map->options.scale > UMBRA_MAP_SCALE_UP_2X){
         /* XXX i#2283: Add support for more scaled-up granularities. */
-        ASSERT(false, "scale not yet implemented for 64-bit")
+        ASSERT(false, "scale not yet implemented for 64-bit");
         return DRMF_ERROR_NOT_IMPLEMENTED;
     }
     if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
