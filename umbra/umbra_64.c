@@ -320,17 +320,23 @@ static ptr_uint_t map_disp[] = {
 #ifdef WINDOWS
 # define WIN8_BASE_DISP  0x02000000000
     /* These are for up through Win8. */
-    (WIN8_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
+        (WIN8_BASE_DISP)<<6, /* UMBRA_MAP_SCALE_DOWN_64X */
+        (WIN8_BASE_DISP)<<5, /* UMBRA_MAP_SCALE_DOWN_32X */
+        (WIN8_BASE_DISP)<<3, /* UMBRA_MAP_SCALE_DOWN_8X */
     (WIN8_BASE_DISP)<<2, /* UMBRA_MAP_SCALE_DOWN_4X */
     (WIN8_BASE_DISP)<<1, /* UMBRA_MAP_SCALE_DOWN_2X */
     (WIN8_BASE_DISP),    /* UMBRA_MAP_SCALE_SAME_1X */
     (0x03000000000)>>1,  /* UMBRA_MAP_SCALE_UP_2X */
+        /* FIXME i#2283: Add disps for other scales. */
 #else /* UNIX */
-    0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_8X */
+    0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_64X */
+    0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_32X */
+        0x0000900000000000,  /* UMBRA_MAP_SCALE_DOWN_8X */
     0x0000440000000000,  /* UMBRA_MAP_SCALE_DOWN_4X */
     0x0000220000000000,  /* UMBRA_MAP_SCALE_DOWN_2X */
     0x0000120000000000,  /* UMBRA_MAP_SCALE_SAME_1X */
     PIE_DEF_SEG_2X_DISP, /* UMBRA_MAP_SCALE_UP_2X */
+        /* FIXME i#2283: Add disps for other scales. */
 #endif
 };
 
@@ -741,6 +747,11 @@ drmf_status_t
 umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
 {
     uint i;
+    if (map->options.scale > UMBRA_MAP_SCALE_UP_2X){
+        /* XXX i#2283: Add support for more scaled-up granularities. */
+        ASSERT(false, "scale not yet implemented for 64-bit")
+        return DRMF_ERROR_NOT_IMPLEMENTED;
+    }
     if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
         map->app_block_size    = ALLOC_UNIT_SIZE;
         map->shadow_block_size =
@@ -1183,7 +1194,10 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                        opnd_create_reg(reg_addr),
                                        OPND_CREATE_ABSMEM(&map->disp,
                                                           OPSZ_PTR)));
-    if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
+    if (map->options.scale >= UMBRA_MAP_SCALE_UP_2X) {
+        /* XXX i#2283: To assert remove when we support more granularities. */
+        ASSERT(map->options.scale == UMBRA_MAP_SCALE_UP_2X, "invalid scale");
+
         PRE(ilist, where, INSTR_CREATE_shl(drcontext,
                                            opnd_create_reg(reg_addr),
                                            OPND_CREATE_INT8(map->shift)));

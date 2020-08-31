@@ -148,10 +148,18 @@ umbra_map_create(umbra_map_t **map_out, umbra_map_options_t *ops, uint idx)
         return DRMF_ERROR_NOT_IMPLEMENTED;
     }
     switch (ops->scale) {
+        case UMBRA_MAP_SCALE_DOWN_64X:
+                map->shift = 6;
+                break;
+        case UMBRA_MAP_SCALE_DOWN_32X:
+                map->shift = 5;
+                break;
     case UMBRA_MAP_SCALE_DOWN_8X:
+    case UMBRA_MAP_SCALE_UP_8X:
         map->shift = 3;
         break;
     case UMBRA_MAP_SCALE_DOWN_4X:
+    case UMBRA_MAP_SCALE_UP_4X:
         map->shift = 2;
         break;
     case UMBRA_MAP_SCALE_DOWN_2X:
@@ -769,20 +777,26 @@ umbra_get_granularity(const umbra_map_t *map, OUT int *scale, OUT bool *is_scale
     *is_scale_down = UMBRA_MAP_SCALE_IS_DOWN(map->options.scale);
 
     switch (map->options.scale) {
+        case UMBRA_MAP_SCALE_DOWN_64X:
+                *scale = 64;
+                break;
+    case UMBRA_MAP_SCALE_DOWN_32X:
+                *scale = 32;
+                break;
     case UMBRA_MAP_SCALE_DOWN_8X:
-        *scale = 8;
-        break;
+        case UMBRA_MAP_SCALE_UP_8X:
+                *scale = 8;
+                break;
     case UMBRA_MAP_SCALE_DOWN_4X:
+    case UMBRA_MAP_SCALE_UP_4X:
         *scale = 4;
         break;
     case UMBRA_MAP_SCALE_DOWN_2X:
+    case UMBRA_MAP_SCALE_UP_2X:
         *scale = 2;
         break;
     case UMBRA_MAP_SCALE_SAME_1X:
         *scale = 1;
-        break;
-    case UMBRA_MAP_SCALE_UP_2X:
-        *scale = 2;
         break;
     default:
         return DRMF_ERROR;
