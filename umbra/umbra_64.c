@@ -425,6 +425,11 @@ static const app_segment_t app_segments_initial_81[] = {
 #define MAX_NUM_APP_SEGMENTS sizeof(app_segments_initial)/sizeof(app_segments_initial[0])
 static app_segment_t app_segments[MAX_NUM_APP_SEGMENTS];
 
+/* For large scales, we do not add reserve (shadow of shadow) regions due
+ * to limited space.
+ */
+#define SUPPORT_RESERVE_FOR_SCALE(scale) ((scale) <= UMBRA_MAP_SCALE_UP_2X)
+
 /***************************************************************************
  * UTILITY ROUTINES
  */
@@ -497,10 +502,15 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
     size = size / map->shadow_block_size / BIT_PER_BYTE;
     seg->shadow_bitmap[seg_map_idx] = global_alloc(size, HEAPSTAT_SHADOW);
     memset(seg->shadow_bitmap[seg_map_idx], 0, size);
-    seg->reserve_base[seg_map_idx] =
-        umbra_xl8_app_to_shadow(map, seg->shadow_base[seg_map_idx]);
-    seg->reserve_end[seg_map_idx] =
-        umbra_xl8_app_to_shadow(map, seg->shadow_end[seg_map_idx]);
+    if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
+        seg->reserve_base[seg_map_idx] =
+            umbra_xl8_app_to_shadow(map, seg->shadow_base[seg_map_idx]);
+        seg->reserve_end[seg_map_idx] =
+            umbra_xl8_app_to_shadow(map, seg->shadow_end[seg_map_idx]);
+    }else{
+        seg->reserve_base[map->index] = NULL;
+        seg->reserve_end[map->index] = NULL;
+    }
     seg->map[seg_map_idx] = map;
     /* check conflicts:
      * we only check conflicts in the same umbra map and assume no conflict
@@ -520,18 +530,29 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
             if (segment_overlap(base, end,
                                 app_segments[i].shadow_base[map_idx],
                                 app_segments[i].shadow_end[map_idx]) ||
-                segment_overlap(base, end,
-                                app_segments[i].reserve_base[map_idx],
-                                app_segments[i].reserve_end[map_idx])) {
-                ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
-                     " conflicts with app seg ["PFX", "PFX") or its "
-                     "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
-                     seg->app_base, seg->app_end,
-                     app_segments[i].app_base, app_segments[i].app_end,
-                     app_segments[i].shadow_base[map_idx],
-                     app_segments[i].shadow_end[map_idx],
-                     app_segments[i].reserve_base[map_idx],
-                     app_segments[i].reserve_end[map_idx]);
+                (SUPPORT_RESERVE_FOR_SCALE(map->options.scale) &&
+                 segment_overlap(base, end,
+                                 app_segments[i].reserve_base[map_idx],
+                                 app_segments[i].reserve_end[map_idx]))) {
+                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+                    ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                         "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                         "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
+                         seg->app_base, seg->app_end, base, end,
+                         app_segments[i].app_base, app_segments[i].app_end,
+                         app_segments[i].shadow_base[map_idx],
+                         app_segments[i].shadow_end[map_idx],
+                         app_segments[i].reserve_base[map_idx],
+                         app_segments[i].reserve_end[map_idx]);
+                }else{
+                    ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                         "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                         "shadow ["PFX", "PFX")\n",
+                         seg->app_base, seg->app_end, base, end,
+                         app_segments[i].app_base, app_segments[i].app_end,
+                         app_segments[i].shadow_base[map_idx],
+                         app_segments[i].shadow_end[map_idx]);
+                }
                 return false;
             }
         }
@@ -548,50 +569,71 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                  segment_overlap(base, end,
                                  app_segments[i].shadow_base[map_idx],
                                  app_segments[i].shadow_end[map_idx])) ||
-                segment_overlap(base, end,
+                (SUPPORT_RESERVE_FOR_SCALE(map->options.scale) && segment_overlap(base, end,
                                 app_segments[i].reserve_base[map_idx],
-                                app_segments[i].reserve_end[map_idx])) {
-                ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
-                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
-                     "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
-                     seg->app_base, seg->app_end, base, end,
-                     app_segments[i].app_base, app_segments[i].app_end,
-                     app_segments[i].shadow_base[map_idx],
-                     app_segments[i].shadow_end[map_idx],
-                     app_segments[i].reserve_base[map_idx],
-                     app_segments[i].reserve_end[map_idx]);
+                                app_segments[i].reserve_end[map_idx]))) {
+                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+                    ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                         "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                         "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
+                         seg->app_base, seg->app_end, base, end,
+                         app_segments[i].app_base, app_segments[i].app_end,
+                         app_segments[i].shadow_base[map_idx],
+                         app_segments[i].shadow_end[map_idx],
+                         app_segments[i].reserve_base[map_idx],
+                         app_segments[i].reserve_end[map_idx]);
+                }else{
+                    ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                         "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                         "shadow ["PFX", "PFX")\n",
+                         seg->app_base, seg->app_end, base, end,
+                         app_segments[i].app_base, app_segments[i].app_end,
+                         app_segments[i].shadow_base[map_idx],
+                         app_segments[i].shadow_end[map_idx]);
+                }
+
                 return false;
             }
         }
-        /* new app-seg's reserve vs other app-seg's app and shadow
-         * it is ok to overlap with other's reserve.
-         */
-        base = seg->reserve_base[seg_map_idx];
-        end  = seg->reserve_end[seg_map_idx];
-        for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
-            if (app_segments[i].map[map_idx] == NULL)
-                continue;
-            if (segment_overlap(base, end,
-                                app_segments[i].app_base,
-                                app_segments[i].app_end) ||
-                segment_overlap(base, end,
-                                app_segments[i].shadow_base[map_idx],
-                                app_segments[i].shadow_end[map_idx])) {
-                ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s reserve segment "
-                     "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
-                     "shadow ["PFX", "PFX")\n",
-                     seg->app_base, seg->app_end, base, end,
-                     app_segments[i].app_base, app_segments[i].app_end,
-                     app_segments[i].shadow_base[map_idx],
-                     app_segments[i].shadow_end[map_idx]);
-                return false;
+
+        if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+            /* new app-seg's reserve vs other app-seg's app and shadow
+             * it is ok to overlap with other's reserve.
+             */
+            base = seg->reserve_base[seg_map_idx];
+            end  = seg->reserve_end[seg_map_idx];
+            for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
+                if (app_segments[i].map[map_idx] == NULL)
+                    continue;
+                if (segment_overlap(base, end,
+                                    app_segments[i].app_base,
+                                    app_segments[i].app_end) ||
+                    segment_overlap(base, end,
+                                    app_segments[i].shadow_base[map_idx],
+                                    app_segments[i].shadow_end[map_idx])) {
+                    ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s reserve segment "
+                         "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                         "shadow ["PFX", "PFX")\n",
+                         seg->app_base, seg->app_end, base, end,
+                         app_segments[i].app_base, app_segments[i].app_end,
+                         app_segments[i].shadow_base[map_idx],
+                         app_segments[i].shadow_end[map_idx]);
+                    return false;
+                }
             }
         }
     }
-    LOG(1, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
-        "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
-        seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
-        seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
+
+    if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+        LOG(1, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
+            "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
+            seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
+            seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
+    }else{
+        LOG(1, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX")\n",
+            seg->app_base, seg->app_end,
+            seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx]);
+    }
     return true;
 }
 
@@ -1280,7 +1322,8 @@ umbra_get_shadow_memory_type_arch(umbra_map_t *map,
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         if ((shadow_addr >= app_segments[i].app_base &&
              shadow_addr <  app_segments[i].app_end) ||
-            (shadow_addr >= app_segments[i].reserve_base[map->index] &&
+            (SUPPORT_RESERVE_FOR_SCALE(map->options.scale) &&
+             shadow_addr >= app_segments[i].reserve_base[map->index] &&
              shadow_addr <= app_segments[i].reserve_end[map->index])) {
             break;
         } else if (shadow_addr >= app_segments[i].shadow_base[map->index] &&
