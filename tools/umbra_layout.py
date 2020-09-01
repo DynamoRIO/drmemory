@@ -359,7 +359,7 @@ def add_valid_range_constraint(solver, region_expr):
     # ensures that the top 2 bytes of the region's pointer (be it the start or end)
     # is zero.
     zero_expr = BitVecVal(0, PTR_SIZE)
-    high_mask_expr = BitVecVal(0xFFFF000000000000, PTR_SIZE)
+    high_mask_expr = BitVecVal(0xFFFF800000000000, PTR_SIZE)
     solver.add(region_expr.start_expr & high_mask_expr == zero_expr)
     solver.add(region_expr.end_expr & high_mask_expr == zero_expr)
 
