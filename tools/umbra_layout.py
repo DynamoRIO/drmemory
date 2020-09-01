@@ -441,8 +441,6 @@ def verify(mask, disp, max, unit, scale_list, map_count, regions, detect_shadow)
                                                     next_region_expr)
                         add_no_collision_constraint(solver, shdw_expr_again,
                                                     next_shdw_expr)
-                        add_no_collision_constraint(solver, shdw_expr_again,
-                                                    next_shdw_expr_again)
 
     # The user may specify a max value for the displacement. Add this constraint now.
     if max is not None:
