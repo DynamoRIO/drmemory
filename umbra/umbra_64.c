@@ -433,6 +433,28 @@ static app_segment_t app_segments[MAX_NUM_APP_SEGMENTS];
 /***************************************************************************
  * UTILITY ROUTINES
  */
+static size_t
+get_shadow_bitmap_size(umbra_map_t *map, app_segment_t *seg){
+    size_t size = 0;
+    uint seg_map_idx = map->index;
+
+    ASSERT(seg->shadow_end[seg_map_idx] > seg->shadow_base[seg_map_idx],
+            "wrong shadow segment range");
+    size = seg->shadow_end[seg_map_idx] - seg->shadow_base[seg_map_idx];
+    size = size / map->shadow_block_size / BIT_PER_BYTE;
+
+    /* Handle the case where we just need one bit (therefore one byte)
+     * and as a result size is zero.
+     */
+    if (size == 0)
+        size++;
+
+    ASSERT(size != 0,
+                "size cannot be zero");
+    return size;
+}
+
+
 static byte *
 umbra_xl8_app_to_shadow(const umbra_map_t *map, app_pc pc)
 {
@@ -498,8 +520,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         umbra_xl8_app_to_shadow(map, seg->app_end);
     ASSERT(seg->shadow_end[seg_map_idx] > seg->shadow_base[seg_map_idx],
            "wrong shadow segment range");
-    size = seg->shadow_end[seg_map_idx] - seg->shadow_base[seg_map_idx];
-    size = size / map->shadow_block_size / BIT_PER_BYTE;
+    size = get_shadow_bitmap_size(map, seg);
     seg->shadow_bitmap[seg_map_idx] = global_alloc(size, HEAPSTAT_SHADOW);
     memset(seg->shadow_bitmap[seg_map_idx], 0, size);
     if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
@@ -868,8 +889,7 @@ umbra_map_arch_exit(umbra_map_t *map)
         if (app_segments[i].app_used && app_segments[i].map[map->index] == map) {
             size_t size;
             app_segment_t *seg = &app_segments[i];
-            size = seg->shadow_end[map->index] - seg->shadow_base[map->index];
-            size = size / map->shadow_block_size / BIT_PER_BYTE;
+            size = get_shadow_bitmap_size(map, seg);
             global_free(seg->shadow_bitmap[map->index], size, HEAPSTAT_SHADOW);
             seg->shadow_bitmap[map->index] = NULL;
             seg->shadow_base[map->index] = NULL;
