@@ -434,12 +434,12 @@ static app_segment_t app_segments[MAX_NUM_APP_SEGMENTS];
  * UTILITY ROUTINES
  */
 static size_t
-get_shadow_bitmap_size(umbra_map_t *map, app_segment_t *seg){
+get_shadow_bitmap_size(umbra_map_t *map, app_segment_t *seg) {
     size_t size = 0;
     uint seg_map_idx = map->index;
 
     ASSERT(seg->shadow_end[seg_map_idx] > seg->shadow_base[seg_map_idx],
-            "wrong shadow segment range");
+           "wrong shadow segment range");
     size = seg->shadow_end[seg_map_idx] - seg->shadow_base[seg_map_idx];
     size = size / map->shadow_block_size / BIT_PER_BYTE;
 
@@ -449,8 +449,7 @@ get_shadow_bitmap_size(umbra_map_t *map, app_segment_t *seg){
     if (size == 0)
         size++;
 
-    ASSERT(size != 0,
-                "size cannot be zero");
+    ASSERT(size != 0, "size cannot be zero");
     return size;
 }
 
@@ -528,7 +527,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
             umbra_xl8_app_to_shadow(map, seg->shadow_base[seg_map_idx]);
         seg->reserve_end[seg_map_idx] =
             umbra_xl8_app_to_shadow(map, seg->shadow_end[seg_map_idx]);
-    }else{
+    } else {
         seg->reserve_base[map->index] = NULL;
         seg->reserve_end[map->index] = NULL;
     }
@@ -555,7 +554,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                  segment_overlap(base, end,
                                  app_segments[i].reserve_base[map_idx],
                                  app_segments[i].reserve_end[map_idx]))) {
-                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
                     ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
                          "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
                          "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
@@ -565,7 +564,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                          app_segments[i].shadow_end[map_idx],
                          app_segments[i].reserve_base[map_idx],
                          app_segments[i].reserve_end[map_idx]);
-                }else{
+                } else {
                     ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
                          "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
                          "shadow ["PFX", "PFX")\n",
@@ -593,7 +592,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                 (SUPPORT_RESERVE_FOR_SCALE(map->options.scale) && segment_overlap(base, end,
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx]))) {
-                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+                if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
                     ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
                          "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
                          "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
@@ -603,7 +602,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                          app_segments[i].shadow_end[map_idx],
                          app_segments[i].reserve_base[map_idx],
                          app_segments[i].reserve_end[map_idx]);
-                }else{
+                } else {
                     ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
                          "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
                          "shadow ["PFX", "PFX")\n",
@@ -617,7 +616,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
             }
         }
 
-        if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+        if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
             /* new app-seg's reserve vs other app-seg's app and shadow
              * it is ok to overlap with other's reserve.
              */
@@ -645,12 +644,12 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         }
     }
 
-    if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)){
+    if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
         LOG(1, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
             "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
             seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
             seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
-    }else{
+    } else {
         LOG(1, "new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX")\n",
             seg->app_base, seg->app_end,
             seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx]);

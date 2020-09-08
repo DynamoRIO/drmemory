@@ -89,11 +89,11 @@ enum {
  * For example, application memory address \p app_addr will be aligned to
  * 8 if using UMBRA_MAP_SCALE_DOWN_8X mapping scheme.
  *
- * \warning For large scaled-ups (i.e., UMBRA_MAP_SCALE_UP_4X and above),
- * UMBRA does not reserve regions for shadow's shadow memory.
+ * \warning For large scale-ups (i.e., UMBRA_MAP_SCALE_UP_4X and above),
+ * Umbra does not reserve regions for shadow's shadow memory.
  * Although Umbra does not support the mapping of meta-data to shadow memory,
  * such reserve regions are placed nonetheless to detect the use of invalid addresses
- * via faults. Unfortunately, large scales of shadow memory results in no space for
+ * via faults. Unfortunately, large scales of shadow memory result in no space for
  * such reserved regions. Therefore, when using large scales, it is possible for the
  * tool using UMBRA to corrupt the state of app memory or shadow memory if a wild
  * (invalid) app address is translated. Note this only applies for 64-bit Umbra.
