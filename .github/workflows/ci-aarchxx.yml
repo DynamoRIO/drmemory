@@ -50,7 +50,7 @@ jobs:
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
-      run: ./suite/runsuite_wrapper.pl travis
+      run: ./tests/runsuite_wrapper.pl travis
       env:
         DRMEMORY_CROSS_AARCHXX_LINUX_ONLY: yes
 
@@ -83,4 +83,4 @@ jobs:
       env:
         DRMEMORY_CROSS_ANDROID_ONLY: yes
         DRMEMORY_ANDROID_TOOLCHAIN: /tmp/android-gcc-arm-ndk-10e
-      run: ./suite/runsuite_wrapper.pl travis
+      run: ./tests/runsuite_wrapper.pl travis

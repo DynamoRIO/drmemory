@@ -46,7 +46,7 @@ jobs:
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
-      run: ./suite/runsuite_wrapper.pl travis
+      run: ./tests/runsuite_wrapper.pl travis
       env:
         # Change xcode version for current session:
         # https://www.unix.com/man-page/osx/1/xcode-select/
