@@ -1393,10 +1393,21 @@ _tmain(int argc, TCHAR *targv[])
         if (!create_dir_if_necessary(symdir, "-logdir"))
             goto error; /* actually won't get here */
     }
+#if 1
+    char trypath[MAXIMUM_PATH];
+    _snprintf(trypath, BUFFER_SIZE_ELEMENTS(trypath), "%s%ctryfile", symdir, DIRSEP);
+    NULL_TERMINATE_BUFFER(trypath);
+    FILE *tryf = _tfopen(trypath, _T("w"));
+    if (tryf == NULL)
+        warn("Failed to create file %s", trypath);
+    if (!file_is_writable(symdir))
+        warnl("invalid -symcache_dir: cannot write %s", symdir);
+#else
     if (!file_is_writable(symdir)) {
         fatal("invalid -symcache_dir: cannot find/write %s", symdir);
         goto error; /* actually won't get here */
     }
+#endif
     info("symcache_dir is \"%s\"", symdir);
     /* also parsed by the client */
     BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
