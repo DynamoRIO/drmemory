@@ -1393,7 +1393,7 @@ _tmain(int argc, TCHAR *targv[])
         if (!create_dir_if_necessary(symdir, "-logdir"))
             goto error; /* actually won't get here */
     }
-#if 1
+#if 1//NOCHECK
     char trypath[MAXIMUM_PATH];
     _snprintf(trypath, BUFFER_SIZE_ELEMENTS(trypath), "%s%ctryfile", symdir, DIRSEP);
     NULL_TERMINATE_BUFFER(trypath);
@@ -1401,7 +1401,7 @@ _tmain(int argc, TCHAR *targv[])
     if (tryf == NULL)
         warn("Failed to create file %s", trypath);
     if (!file_is_writable(symdir))
-        warnl("invalid -symcache_dir: cannot write %s", symdir);
+        warn("invalid -symcache_dir: cannot write %s", symdir);
 #else
     if (!file_is_writable(symdir)) {
         fatal("invalid -symcache_dir: cannot find/write %s", symdir);
