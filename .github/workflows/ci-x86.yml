@@ -47,7 +47,7 @@ jobs:
     # TODO i#4549: When necessary support is available, remove/replace the
     # workaround here and from every job in other Github Actions CI workflows.
     - name: Fetch Sources
-    - run: git fetch --no-tags --depth=1 origin master
+      run: git fetch --no-tags --depth=1 origin master
 
     # Install multilib for non-cross-compiling Linux build:
     - name: Create Build Environment

@@ -41,7 +41,8 @@ jobs:
       with:
         submodules: true
 
-    - run: git fetch --no-tags --depth=1 origin master
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
 
     - name: Create Build Environment
       run: brew install nasm

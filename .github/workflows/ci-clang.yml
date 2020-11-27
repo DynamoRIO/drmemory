@@ -33,7 +33,7 @@ defaults:
 
 jobs:
   # 32-bit and 64-bit Linux build with clang, no tests.
-  clang-format:
+  clang:
     runs-on: ubuntu-16.04
 
     steps:
@@ -41,7 +41,8 @@ jobs:
       with:
         submodules: true
 
-    - run: git fetch --no-tags --depth=1 origin master
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
 
     # Install multilib for non-cross-compiling Linux build:
     - name: Create Build Environment
