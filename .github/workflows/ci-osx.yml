@@ -38,6 +38,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
 
     - run: git fetch --no-tags --depth=1 origin master
 
