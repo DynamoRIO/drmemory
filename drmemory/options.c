@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -80,6 +80,8 @@ get_windows_version(void)
 }
 # endif /* WINDOWS */
 #endif /* CLIENT_LIBNAME */
+
+volatile bool go_native;
 
 /***************************************************************************
  * OPTIONS

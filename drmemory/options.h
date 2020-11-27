@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -58,6 +58,8 @@ extern drmemory_options_t options;
 extern option_specified_t option_specified;
 
 extern bool stack_swap_threshold_fixed;
+
+extern volatile bool go_native;
 
 void
 options_init(const char *opstr);

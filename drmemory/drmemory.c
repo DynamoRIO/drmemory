@@ -112,8 +112,6 @@ client_id_t client_id;
 int cls_idx_drmem = -1;
 int tls_idx_drmem = -1;
 
-volatile bool go_native;
-
 static void
 event_context_init(void *drcontext, bool new_depth);
 
