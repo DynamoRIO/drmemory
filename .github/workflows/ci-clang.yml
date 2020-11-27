@@ -1,0 +1,56 @@
+# **********************************************************
+# Copyright (c) 2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for clang Continuous Integration testing.
+
+name: ci-clang
+on:
+  push:
+
+  # Manual trigger using the Actions page. May remove when integration complete.
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # 32-bit and 64-bit Linux build with clang, no tests.
+  clang:
+    runs-on: ubuntu-16.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    # Install multilib for non-cross-compiling Linux build:
+    - name: Create Build Environment
+      run: sudo apt-get -y install doxygen jsonlint g++-multilib
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        CC: clang-9
+        CXX: clang++-9
