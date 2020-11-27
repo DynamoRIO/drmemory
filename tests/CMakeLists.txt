@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -507,6 +507,10 @@ newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops
   "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
+if (UNIX)
+  newtest(mmap mmap.c)
+  target_link_libraries(mmap drmemory_annotations)
+endif ()
 newtest(patterns patterns.c)
 newtest_ex(state state.c "" "" "" OFF "" "ANY")
 

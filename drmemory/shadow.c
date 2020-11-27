@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -811,7 +811,7 @@ shadow_check_range(app_pc start, size_t size, uint expect,
         } else if (SHADOW_IS_SHARED_ONLY(info.shadow_type)) {
             incr = info.app_base + info.app_size - pc;
         } else {
-            val = bitmapx2_dword((bitmap_t)info.shadow_base, pc-info.app_base);
+            val = shadow_get_byte(&info, pc);
             val = dqword_to_val(val);
             if (val == UINT_MAX) {
                 /* mixed: have to drop to per-byte */
