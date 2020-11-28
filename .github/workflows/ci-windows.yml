@@ -20,7 +20,7 @@
 
 # Github Actions workflow for Mac OSX Continuous Integration testing.
 
-name: ci-osx
+name: ci-windows
 on:
   push:
 
@@ -55,8 +55,8 @@ jobs:
     - name: Run Suite
       working-directory: ${{ github.workspace }}
       run: |
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo %PATH%
         echo %CD%
         dir
         perl tests/runsuite_wrapper.pl travis use_ninja
-      environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
