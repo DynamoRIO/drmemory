@@ -65,4 +65,4 @@ jobs:
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
-        c:\msys64\usr\bin\perl tests/runsuite_wrapper.pl travis use_ninja
+        perl tests/runsuite_wrapper.pl travis use_ninja
