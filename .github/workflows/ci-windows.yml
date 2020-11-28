@@ -44,17 +44,20 @@ jobs:
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
 
-    - name: Create Build Environment
+    - name: Download Packages
       shell: powershell
-      # TODO i#2323: Download doxygen, ninja, and wix if nec.
       run: |
-        doxygen --version
-        ninja --version
-        dir "c:\Program Files (x86)\WiX Toolset"*
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\\doxygen.zip")
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
       run: |
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        doxygen --version
+        ninja --version
+        dir "c:\Program Files (x86)\WiX Toolset"*
         call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo %PATH%
         echo %CD%
