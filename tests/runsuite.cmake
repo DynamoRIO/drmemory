@@ -156,7 +156,7 @@ foreach (cfile ${cfiles})
       NOT "${cfile}" MATCHES "third_party/" AND
       NOT "${cfile}" MATCHES "\\.png$" AND
       NOT "${cfile}" MATCHES "~$" AND
-      NOT "${cfile}" MATCHES "runsuite\\.cmake$")
+      NOT "${cfile}" MATCHES "runsuite")
     file(READ "${cfile}" string)
 
     # Check for NL instead of \n in NOTIFY*
