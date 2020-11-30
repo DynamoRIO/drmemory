@@ -240,7 +240,7 @@ endif (DEBUG_BUILD)
 if (WIN32)
   # we need the nudge notification msgs
   # we want core dumps on asserts, etc.
-  set(default_dr_ops -dumpcore_mask 0x87fd -stderr_mask 15 -msgbox_mask 0)
+  set(default_dr_ops -dumpcore_mask 0x87fd -stderr_mask 15 -msgbox_mask 0 -log_to_stderr -loglevel 2) #NOCHECK from -log_to_stderr on
 else (WIN32)
   # stderr_mask 15 is the default for debug build, and we don't want to go
   # over option buffer limit on esxi
@@ -1157,4 +1157,7 @@ if (APPLE)
     memalign.nodelay memalign.pattern
     PROPERTIES LABELS OSX)
 endif ()
-set_tests_properties(hello free PROPERTIES LABELS SANITY) #NOCHECK
+get_target_path_for_execution(hello_exe hello) #NOCHECK
+add_test(just_hello ${hello_exe}) #NOCHECK
+add_test(just_frontend ${cmd_shell} -help) #NOCHECK
+set_tests_properties(just_hello just_frontend hello PROPERTIES LABELS SANITY) #NOCHECK

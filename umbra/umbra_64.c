@@ -568,10 +568,6 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
         seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
         seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
-    NOTIFY("new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
-           "reserve ["PFX", "PFX")" NL, seg->app_base, seg->app_end,
-           seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
-           seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);//NOCHECK
     return true;
 }
 
