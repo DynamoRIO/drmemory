@@ -158,7 +158,7 @@ OPTION_CLIENT_BOOL(client, visual_studio, false,
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
                      "Base directory for result file subdirectories and symbol cache",
                      "Destination base directory for result files and the symbol cache (unless -symcache_dir is specified).  A subdirectory inside this base directory is created for each process that is run, along with a single shared symbol cache directory.  If you specify a separate base directory for every run, you will lose the benefits of symbol caching, unless you also specify a separate shared cache directory with the -symcache_dir option.")
-OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
+OPTION_CLIENT(client, verbose, uint, 2/*NOCHECK 1*/, 0, 32,
               "Verbosity level in log files",
               "Verbosity level in log files: 0=none, 1=warnings, 2+=diagnostic.  Primarily for debugging of "TOOLNAME" itself.")
 OPTION_CLIENT_BOOL(client, quiet, false,

@@ -1157,3 +1157,4 @@ if (APPLE)
     memalign.nodelay memalign.pattern
     PROPERTIES LABELS OSX)
 endif ()
+set_tests_properties(hello free PROPERTIES LABELS SANITY) #NOCHECK

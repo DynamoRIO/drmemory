@@ -1498,7 +1498,11 @@ create_global_logfile(void)
         dr_abort();
     }
 
+#if 0//NOCHECK
     f_global = open_logfile("global", true/*pid suffix*/, -1);
+#else
+    f_global = STDERR;
+#endif
 #ifdef UNIX
     /* make it easier for wrapper script to find this logfile */
     dr_fprintf(f_global, "process=%d, parent=%d\n",
