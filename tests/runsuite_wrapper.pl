@@ -141,7 +141,6 @@ if ($child) {
         print "Finished running ${cmd}\n";
         exit 0;
     }
-    exit 0;
 }
 
 if ($^O eq 'MSWin32') {
