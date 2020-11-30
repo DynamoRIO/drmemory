@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2020 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -30,29 +30,22 @@
  * DAMAGE.
  */
 
-/* tests umbra's umbra_insert_app_to_shadow() method */
+/* Tests umbra's faulty redzone option. */
 
-#include <string.h>
 #include <signal.h>
+#include <string.h>
 
 #include "dr_api.h"
 #include "drmgr.h"
-#include "umbra.h"
 #include "drreg.h"
 #include "drutil.h"
+#include "umbra.h"
 
-#include "umbra_test_shared.h"
-
-#ifndef X64
-/* Denotes whether redundant blocks were ever cleared. */
-static bool was_redundant_cleared = false;
-#endif
+#define TEST(mask, var) (((mask) & (var)) != 0)
 
 static umbra_map_t *umbra_map;
-
-static dr_emit_flags_t
-event_app_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for_trace,
-                   bool translating, OUT void **user_data);
+/* Denotes whether redzone faults were ever handled during the run. */
+static bool redzone_fault = false;
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -84,13 +77,13 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
         UMBRA_MAP_CREATE_SHADOW_ON_TOUCH | UMBRA_MAP_SHADOW_SHARED_READONLY;
     umbra_map_ops.default_value = 0;
     umbra_map_ops.default_value_size = 1;
-
+    /* Enable redzones and make them faulty. */
+    umbra_map_ops.make_redzone_faulty = true;
     if (umbra_init(id) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to create shadow memory mapping");
-    drmgr_register_bb_instrumentation_event(event_app_analysis, event_app_instruction,
-                                            NULL);
+    drmgr_register_bb_instrumentation_event(NULL, event_app_instruction, NULL);
 #ifdef WINDOWS
     drmgr_register_exception_event(event_exception_instrumentation);
 #else
@@ -99,29 +92,6 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     dr_register_exit_event(exit_event);
 }
 
-#ifndef X64
-static void
-clear_redundant_block(void)
-{
-    void **drcontexts = NULL;
-    uint num_threads = 0;
-    uint count = 0;
-
-    /* Prevent repeating the test if already done once. */
-    if (!was_redundant_cleared) {
-        was_redundant_cleared = true;
-        dr_suspend_all_other_threads(&drcontexts, &num_threads, NULL);
-        drmf_status_t status = umbra_clear_redundant_blocks(umbra_map, &count);
-        DR_ASSERT_MSG(status == DRMF_SUCCESS, "should succeed");
-        DR_ASSERT_MSG(count == 1, "should have cleared one block");
-        if (drcontexts != NULL) {
-            bool okay = dr_resume_all_other_threads(drcontexts, num_threads);
-            DR_ASSERT_MSG(okay, "failed to resume threads");
-        }
-    }
-}
-#endif
-
 static void
 instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
 {
@@ -129,14 +99,23 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
     reg_id_t scratch;
     bool ok;
 
+#ifdef X86
+    drvector_t allowed;
+    drreg_init_and_fill_vector(&allowed, false);
+    drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
+#endif
+
     if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
+        drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
+                               &scratch) != DRREG_SUCCESS ||
         drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr) !=
-            DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &scratch) !=
             DRREG_SUCCESS) {
-        DR_ASSERT(false); /* can't recover */
+        DR_ASSERT(false); /* Can't recover. */
         return;
     }
+#ifdef X86
+    drvector_delete(&allowed);
+#endif
 
     ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, regaddr, scratch);
     DR_ASSERT(ok);
@@ -144,29 +123,22 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
      * can recover if no shadow memory was installed yet.
      */
     dr_save_reg(drcontext, ilist, where, regaddr, SPILL_SLOT_2);
-    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr, &scratch,
-                                   1) != DRMF_SUCCESS)
-        DR_ASSERT(false);
 
-    /* trigger a fault to the shared readonly shadow page */
+    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr, &scratch,
+                                   1) != DRMF_SUCCESS) {
+        DR_ASSERT(false);
+    }
+
+    /* Use a displacement of a page size to access ahead and try to hit a faulty
+     * redzone.
+     */
     instrlist_meta_preinsert(
         ilist, where,
         INSTR_XL8(XINST_CREATE_store_1byte(
-                      drcontext, OPND_CREATE_MEM8(regaddr, 0),
+                      drcontext,
+                      OPND_CREATE_MEM8(regaddr, dr_page_size() /* enter redzone */),
                       opnd_create_reg(reg_resize_to_opsz(scratch, OPSZ_1))),
                   instr_get_app_pc(where)));
-
-#ifndef X64
-    /* Clear shadow byte to zero. */
-    instrlist_meta_preinsert(
-        ilist, where,
-        INSTR_XL8(XINST_CREATE_store_1byte(drcontext, OPND_CREATE_MEM8(regaddr, 0),
-                                           opnd_create_immed_int(0, OPSZ_1)),
-                  instr_get_app_pc(where)));
-
-    /* Insert clean call to clear redundant block. */
-    dr_insert_clean_call(drcontext, ilist, where, clear_redundant_block, false, 0);
-#endif
 
     if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
         drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
@@ -175,39 +147,10 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
 }
 
 static dr_emit_flags_t
-event_app_analysis(void *drcontext, void *tag, instrlist_t *bb, bool for_trace,
-                   bool translating, OUT void **user_data)
-{
-    instr_t *inst;
-    bool prev_was_mov_const = false;
-    ptr_int_t val1, val2;
-    *user_data = NULL;
-    /* Look for duplicate mov immediates telling us which subtest we're in */
-    for (inst = instrlist_first_app(bb); inst != NULL; inst = instr_get_next_app(inst)) {
-        if (instr_is_mov_constant(inst, prev_was_mov_const ? &val2 : &val1)) {
-            if (prev_was_mov_const && val1 == val2 &&
-                val1 != 0 && /* rule out xor w/ self */
-                opnd_is_reg(instr_get_dst(inst, 0))) {
-                *user_data = (void *)val1;
-                instrlist_meta_postinsert(bb, inst, INSTR_CREATE_label(drcontext));
-            } else
-                prev_was_mov_const = true;
-        } else
-            prev_was_mov_const = false;
-    }
-    return DR_EMIT_DEFAULT;
-}
-
-static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
 {
-    ptr_int_t subtest = (ptr_int_t)user_data;
     int i;
-
-    if (subtest != UMBRA_TEST_1_C && subtest != UMBRA_TEST_2_C)
-        return DR_EMIT_DEFAULT;
-
     for (i = 0; i < instr_num_srcs(where); i++) {
         if (opnd_is_memory_reference(instr_get_src(where, i)))
             instrument_mem(drcontext, ilist, where, instr_get_src(where, i));
@@ -223,29 +166,14 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 static void
 exit_event(void)
 {
-#ifndef X64
-    DR_ASSERT_MSG(was_redundant_cleared,
-                  "The clearing of redundant blocks was never called.");
-#endif
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
+    DR_ASSERT_MSG(redzone_fault, "No redzone faults have been handled");
+
     umbra_exit();
-    drmgr_exit();
     drreg_exit();
-}
-
-static reg_id_t
-get_faulting_shadow_reg(void *drcontext, dr_mcontext_t *mc)
-{
-    instr_t inst;
-    reg_id_t reg;
-
-    instr_init(drcontext, &inst);
-    decode(drcontext, mc->pc, &inst);
-    reg = opnd_get_base(instr_get_dst(&inst, 0));
-    instr_free(drcontext, &inst);
-    return reg;
+    drmgr_exit();
 }
 
 static bool
@@ -253,47 +181,66 @@ handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc, app_pc app_s
 {
     umbra_shadow_memory_type_t shadow_type;
     app_pc app_target;
+    instr_t inst;
     reg_id_t reg;
+    bool is_page_disp;
 
-    dr_printf("Handling a fault...\n");
+    instr_init(drcontext, &inst);
+    decode(drcontext, raw_mc->pc, &inst);
+    is_page_disp = opnd_get_disp(instr_get_dst(&inst, 0)) == dr_page_size();
+    reg = opnd_get_base(instr_get_dst(&inst, 0));
+    instr_free(drcontext, &inst);
 
-    /* If a fault occured, it is probably because we computed the
-     * address of shadow memory which was initialized to a shared
-     * readonly shadow block. We allocate a shadow page there and
-     * replace the reg value used by the faulting instr.
-     */
-    /* handle faults from writes to special shadow blocks */
-    if (umbra_shadow_memory_is_shared(umbra_map, app_shadow, &shadow_type) !=
-        DRMF_SUCCESS) {
-        DR_ASSERT(false);
-        return true;
-    }
-    if (shadow_type != UMBRA_SHADOW_MEMORY_TYPE_SHARED)
-        return true;
-
-    /* Grab the original app target out of the spill slot so we
-     * don't have to compute the app target ourselves (this is
-     * difficult).
-     */
-    app_target = (app_pc)dr_read_saved_reg(drcontext, SPILL_SLOT_2);
-    dr_printf("Original app memory:         %p\n"
-              "Got fault at shadow memory:  %p\n",
-              app_target, app_shadow);
-
-    /* replace the shared block, and record the new app shadow */
-    if (umbra_replace_shared_shadow_memory(umbra_map, app_target, &app_shadow) !=
+    if (umbra_get_shadow_memory_type(umbra_map, app_shadow, &shadow_type) !=
         DRMF_SUCCESS) {
         DR_ASSERT(false);
         return true;
     }
 
-    /* Replace the faulting register value to reflect the new shadow
-     * memory.
-     */
-    reg = get_faulting_shadow_reg(drcontext, raw_mc);
+    if (!TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, shadow_type) &&
+        !TEST(UMBRA_SHADOW_MEMORY_TYPE_REDZONE, shadow_type) && !is_page_disp) {
+        return true;
+    } else if (!TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, shadow_type) &&
+               !TEST(UMBRA_SHADOW_MEMORY_TYPE_REDZONE, shadow_type) && is_page_disp) {
+        /* Something weird has happened. Unlikely that a fault with a page size
+         * displacement is triggered not due to special or redzone regions.
+         */
+        DR_ASSERT(false);
+        return true;
+    } else if ((!TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, shadow_type) ||
+                TEST(UMBRA_SHADOW_MEMORY_TYPE_REDZONE, shadow_type)) &&
+               !is_page_disp) {
+        /* Something weird has happened. Unlikely that a fault
+         * is triggered due to special or redzone regions where no page size
+         * displacement is present.
+         */
+        DR_ASSERT(false);
+        return true;
+    }
+
+    if (TEST(UMBRA_SHADOW_MEMORY_TYPE_REDZONE, shadow_type)) {
+        redzone_fault = true;
+        /* Fetch the base and cancel out the displacement so that we do
+         * not hit the redzone again.
+         */
+        app_pc base_addr = (app_pc)(reg_t)reg_get_value(reg, raw_mc);
+        app_shadow = base_addr - dr_page_size();
+    } else {
+        /* This fault does not concern redzone handling. Instead, we need to create
+         * shadow memory on demand.
+         */
+        DR_ASSERT(shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED);
+
+        app_target = (app_pc)dr_read_saved_reg(drcontext, SPILL_SLOT_2);
+        if (umbra_replace_shared_shadow_memory(umbra_map, app_target, &app_shadow) !=
+            DRMF_SUCCESS) {
+            DR_ASSERT(false);
+            return true;
+        }
+    }
+
     reg_set_value(reg, raw_mc, (reg_t)app_shadow);
 
-    dr_printf("Installed new shadow memory: %p\n", app_shadow);
     return false;
 }
 

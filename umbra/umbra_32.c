@@ -82,20 +82,49 @@ shadow_table_get_block_offset(umbra_map_t *map, app_pc app_addr)
 static void
 shadow_table_delete_block(umbra_map_t *map, byte *shadow_start)
 {
-    global_free(shadow_start - map->options.redzone_size,
-                map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    /* Different allocator usage depending on whether redzones are faulty. */
+    if (map->options.make_redzone_faulty) {
+        nonheap_free(shadow_start - map->options.redzone_size,
+                     map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    } else {
+        global_free(shadow_start - map->options.redzone_size,
+                    map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+    }
 }
 
 static byte *
 shadow_table_init_redzone(umbra_map_t *map, byte *block)
 {
-    if (map->options.redzone_size != 0)
-        memset(block, map->options.redzone_value, map->options.redzone_size);
+    IF_DEBUG(bool ok;)
+    if (map->options.redzone_size != 0) {
+        if (map->options.make_redzone_faulty) {
+            ASSERT(ALIGNED(block, PAGE_SIZE), "pre-redzone not page aligned");
+
+            /* Set redzone permission to be faulty on reads and writes. */
+            IF_DEBUG(ok = )
+            dr_memory_protect(block, map->options.redzone_size, DR_MEMPROT_NONE);
+            ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
+        } else {
+            memset(block, map->options.redzone_value, map->options.redzone_size);
+        }
+    }
+
     block += map->options.redzone_size;
     if (map->options.redzone_size != 0) {
-        memset(block + map->shadow_block_size,
-               map->options.redzone_value,
-               map->options.redzone_size);
+
+        byte *post_redzone = block + map->shadow_block_size;
+
+        if (map->options.make_redzone_faulty) {
+            ASSERT(ALIGNED(post_redzone, PAGE_SIZE), "post-redzone not page aligned");
+
+            /* Again, set redzone permission. */
+            IF_DEBUG(ok = )
+            dr_memory_protect(post_redzone, map->options.redzone_size, DR_MEMPROT_NONE);
+            ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
+        } else {
+            memset(post_redzone, map->options.redzone_value,
+                   map->options.redzone_size);
+        }
     }
     return block;
 }
@@ -104,7 +133,19 @@ static byte *
 shadow_table_create_block(umbra_map_t *map)
 {
     byte *block;
-    block = global_alloc(map->shadow_block_alloc_size, HEAPSTAT_SHADOW);
+
+    if (map->options.make_redzone_faulty) {
+        /* We need to ensure page alignment for redzones, so that we may then
+         * assign them no access.
+         */
+        block = nonheap_alloc(map->shadow_block_alloc_size,
+                              DR_MEMPROT_READ | DR_MEMPROT_WRITE,
+                              HEAPSTAT_SHADOW);
+    } else {
+        block = global_alloc(map->shadow_block_alloc_size,
+                             HEAPSTAT_SHADOW);
+    }
+
     block = shadow_table_init_redzone(map, block);
     LOG(UMBRA_VERBOSE, "created new shadow block "PFX"\n", block);
     return block;
@@ -531,6 +572,19 @@ umbra_arch_exit()
 drmf_status_t
 umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
 {
+    /* Override redzone size. We must make it a page size to control
+     * its permissions.
+     *
+     * XXX i#2283: Potentially support larger redzone sizes to be even more safe.
+     * It is perhaps unlikely that a translated address would be used in
+     * pointer arithmetic that results in jumping over the 1 paged sized
+     * redzone. Nevertheless, we can be even more safe and leave this
+     * decision up to the user, and not blindly setting the redzone size
+     * to a page size.
+     */
+    if (ops->make_redzone_faulty)
+        map->options.redzone_size = PAGE_SIZE;
+
     if (ops->redzone_size != 0) {
         if (ops->redzone_value_size != 1 || ops->redzone_value > UCHAR_MAX) {
             ASSERT(false, "NYI: we only support byte-size value now");
@@ -546,6 +600,12 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     map->shadow_block_alloc_size =
         map->shadow_block_size + 2 * map->options.redzone_size;
     shadow_table_init(map);
+
+    /* We assume that the shadow block is completely within page sizes.
+     * This allows us to set permissions.
+     */
+    ASSERT(map->shadow_block_size % PAGE_SIZE == 0, "Not within unit of page sizes");
+
     return DRMF_SUCCESS;
 }
 
@@ -943,7 +1003,7 @@ umbra_get_shadow_memory_type_arch(umbra_map_t *map,
             *shadow_type |= UMBRA_SHADOW_MEMORY_TYPE_REDZONE;
         return DRMF_SUCCESS;
     }
-    if (*shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED)
+    if (TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, *shadow_type))
         return DRMF_SUCCESS;
     if (umbra_address_is_app_memory(shadow_addr)) {
         *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;
@@ -1048,4 +1108,55 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
                    dr_mcontext_t *mc)
 {
     return false;
+}
+
+drmf_status_t
+umbra_clear_redundant_blocks(umbra_map_t *map, uint *count)
+{
+    byte *shadow_data;
+    uint i, j;
+
+    if (map == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    if (count != NULL)
+        *count = 0;
+
+    /* Umbra needs to have create-on-touch optimization enabled. */
+    if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags)) {
+        return DRMF_ERROR_INVALID_PARAMETER;
+    }
+
+    umbra_map_lock(map);
+    for (i = 0; i < SHADOW_TABLE_ENTRIES; i++) {
+        shadow_data = shadow_table_get_block(map, i);
+        /* Redundant blocks must be "normal". */
+        if (!shadow_table_is_in_normal_block(map, shadow_data))
+            continue;
+        /* Check whether the entire block consists of default values. */
+        bool is_all_default_val = true;
+        for (j = 0; j < map->shadow_block_size; j++) {
+            if (shadow_data[j] != (byte)map->options.default_value) {
+                is_all_default_val = false;
+                break;
+            }
+        }
+
+        /* Delete block only if it consists of default values. */
+        if (!is_all_default_val)
+            continue;
+        byte *special_block = shadow_table_lookup_special_block(
+            map, map->options.default_value, map->options.default_value_size);
+        ASSERT(special_block[0] == (byte)map->options.default_value,
+               "default vals not in synch");
+        /* Delete block and set entry to refer to special block. */
+        shadow_table_delete_block(map, shadow_data);
+        shadow_table_set_block(map, i, special_block);
+
+        if (count != NULL)
+            (*count)++;
+    }
+    umbra_map_unlock(map);
+
+    return DRMF_SUCCESS;
 }

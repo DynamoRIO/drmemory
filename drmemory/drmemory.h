@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -101,8 +101,6 @@ dump_statistics(void);
 
 extern uint num_nudges;
 #endif /* STATISTICS */
-
-volatile bool go_native;
 
 bool
 obtain_configfile_path(char *buf OUT, size_t bufsz, const char *fname);
