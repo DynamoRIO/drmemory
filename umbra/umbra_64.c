@@ -569,7 +569,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
         seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);
     NOTIFY("new segment: app ["PFX", "PFX"), shadow ["PFX", "PFX"), "
-           "reserve ["PFX", "PFX")\n", seg->app_base, seg->app_end,
+           "reserve ["PFX", "PFX")" NL, seg->app_base, seg->app_end,
            seg->shadow_base[seg_map_idx], seg->shadow_end[seg_map_idx],
            seg->reserve_base[seg_map_idx], seg->reserve_end[seg_map_idx]);//NOCHECK
     return true;
@@ -630,7 +630,7 @@ umbra_address_space_init()
     app_pc pc = NULL;
     /* now we assume all the memory are application memory and need */
     while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
-        NOTIFY("%s: %p-%p\n", __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
+        NOTIFY("%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
         if (info.type != DR_MEMTYPE_FREE &&
             !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
             LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,
