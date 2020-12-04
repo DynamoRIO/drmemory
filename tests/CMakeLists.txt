@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
@@ -112,8 +112,8 @@ function(set_props target)
   if (X86)
     set(defs ${defs} X86)
   endif ()
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
-    ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS
+    "${defs};${DEFINES_NO_D};${DR_DEFINES_NO_D}")
   # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
   # that we add to all tests
   if (nounused_avail)
