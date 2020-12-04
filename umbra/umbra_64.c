@@ -618,12 +618,161 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     return false;
 }
 
+#if 1//NOCHECK
+static void
+set_memtype_from_mbi(MEMORY_BASIC_INFORMATION *mbi, OUT dr_mem_info_t *info)
+{
+    if (mbi->State == MEM_FREE) {
+        info->type = DR_MEMTYPE_FREE;
+        info->prot = 0;//osprot_to_memprot(mbi->Protect);
+    } else if (mbi->State == MEM_RESERVE) {
+        /* We don't distinguish reserved-{image,mapped,private) (i#1177) */
+        info->type = DR_MEMTYPE_RESERVED;
+        info->prot = DR_MEMPROT_NONE; /* mbi->Protect is undefined */
+    } else {
+        info->prot = 1;//osprot_to_memprot(mbi->Protect);
+        if (mbi->Type == MEM_IMAGE)
+            info->type = DR_MEMTYPE_IMAGE;
+        else
+            info->type = DR_MEMTYPE_DATA;
+    }
+}
+
+static bool
+my_query(const byte *pc, OUT dr_mem_info_t *info)
+{
+#define MAX_QUERY_VM_BLOCKS (512 * 1024)
+    MEMORY_BASIC_INFORMATION mbi;
+    byte *pb = (byte *)pc;
+    byte *alloc_base;
+    int num_blocks = 0;
+    ASSERT(info != NULL, "info null");
+    LOG(1, "%s: %p\n", __FUNCTION__, pc);
+    if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi)) {
+        LOG(1, "%s: %p => vquery failed\n", __FUNCTION__, pc);
+        info->type = DR_MEMTYPE_ERROR;
+        return false;
+    }
+    if (mbi.State == MEM_FREE /* free memory doesn't have AllocationBase */) {
+        info->base_pc = mbi.BaseAddress;
+        info->size = mbi.RegionSize;
+        set_memtype_from_mbi(&mbi, info);
+        LOG(1, "%s: %p => free %p-%p\n", __FUNCTION__, pc,
+            info->base_pc, info->base_pc + info->size);
+        return true;
+    } else {
+        /* BaseAddress is just PAGE_START(pc) and so is not the base_pc we
+         * want: we have to loop for that information (i#345)
+         */
+        byte *forward_query_start;
+        alloc_base = (byte *)mbi.AllocationBase;
+        forward_query_start = alloc_base;
+
+        /* i#1462: the forward loop can be very expensive for large regions (we've
+         * seen 10,000+ subregions), so we first try to walk backward and find
+         * a different region to start from instead of the alloc base.
+         * Experimentally this is worthwhile for even just >PAGE_SIZE differences
+         * and not just OS_ALLOC_GRANULARITY or larger.
+         * We subtract exponentially larger amounts, up to 2^13 to cover large
+         * reservations.
+         */
+#    define MAX_BACK_QUERY_HEURISTIC 14
+        if ((size_t)(pc - alloc_base) > PAGE_SIZE) {
+            uint exponential = 1;
+            /* The sub can't underflow b/c of the if() above */
+            pb = (byte *)ALIGN_BACKWARD(pc - PAGE_SIZE, PAGE_SIZE);
+            do {
+                LOG(1, "%s: %p => backward query %p\n", __FUNCTION__, pc, pb);
+                /* sanity checks */
+                if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+                    mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base ||
+                    mbi.RegionSize == 0)
+                    break;
+                if ((byte *)mbi.BaseAddress + mbi.RegionSize <= pc) {
+                    forward_query_start = (byte *)mbi.BaseAddress + mbi.RegionSize;
+                    break;
+                }
+                if (POINTER_UNDERFLOW_ON_SUB(pb, PAGE_SIZE * exponential))
+                    break;
+                pb -= PAGE_SIZE * exponential;
+                num_blocks++;
+                exponential *= 2;
+            } while (pb > alloc_base && num_blocks < MAX_BACK_QUERY_HEURISTIC);
+        }
+
+        /* XXX perf: if mbi.AllocationBase == mbi.BaseAddress avoid extra syscall */
+        pb = forward_query_start;
+        num_blocks = 0;
+        do {
+            LOG(1, "%s: %p => forward query %p\n", __FUNCTION__, pc, pb);
+            if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi))
+                break;
+            if (mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base)
+                break;
+            ASSERT(mbi.RegionSize > 0, "size > 0"); /* if > 0, we will NOT infinite loop */
+            if ((byte *)mbi.BaseAddress + mbi.RegionSize > pc) {
+                /* We found the region containing the asked-for address,
+                 * and this time mbi.BaseAddress is the real lowest base of
+                 * that all-same-prot region
+                 */
+                ASSERT(pc >= (byte *)mbi.BaseAddress, "pc low");
+                info->base_pc = mbi.BaseAddress;
+                info->size = mbi.RegionSize;
+                set_memtype_from_mbi(&mbi, info);
+                LOG(1, "%s: %p => success %p-%p\n", __FUNCTION__, pc,
+                    info->base_pc, info->base_pc + info->size);
+                return true;
+            }
+            if (POINTER_OVERFLOW_ON_ADD(pb, mbi.RegionSize))
+                break;
+            pb += mbi.RegionSize;
+            /* WARNING: if app is changing memory at same time as we're examining
+             * it, we could have problems: but, if region becomes free, we'll break,
+             * and so long as RegionSize > 0, we should make progress and hit
+             * end of address space in worst case -- so we shouldn't need this
+             * num_blocks max, but we'll keep it for now.
+             */
+            num_blocks++;
+            DODEBUG({
+                if (num_blocks > 10) {
+                    /* Try to identify any further perf problems (xref i#1462) */
+                    LOG(1, "i#1462: >10 queries!");
+                }
+            });
+        } while (num_blocks < MAX_QUERY_VM_BLOCKS);
+        //        ASSERT_CURIOSITY(num_blocks < MAX_QUERY_VM_BLOCKS);
+    }
+    LOG(1, "%s: %p => fail blocks=%d\n", __FUNCTION__, pc, num_blocks);
+    info->type = DR_MEMTYPE_ERROR;
+    return false;
+}
+#endif
+
 /* scan the address space to check if it is valid */
 static bool
 umbra_address_space_init()
 {
     dr_mem_info_t info;
     app_pc pc = NULL;
+#if 1//NOCHECK
+    /* now we assume all the memory are application memory and need */
+    while (pc < (app_pc)POINTER_MAX && my_query(pc, &info)) {
+        LOG(1, "%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
+        if (info.type != DR_MEMTYPE_FREE &&
+            !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
+            LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,
+                info.base_pc, info.base_pc + info.size);
+            return false;
+        }
+        if (POINTER_OVERFLOW_ON_ADD(pc, info.size)) {
+            LOG(UMBRA_VERBOSE, "bailing on loop: "PFX" + "PFX" => "PFX"\n",
+                pc, info.size, pc + info.size);
+            break;
+        }
+        pc = info.base_pc + info.size;
+    }
+    pc = NULL;
+#endif
     /* now we assume all the memory are application memory and need */
     while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
         NOTIFY("%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
