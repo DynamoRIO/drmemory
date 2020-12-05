@@ -26,7 +26,7 @@
 #
 # Invoke like this: "ctest -S package.cmake,dr=<path-to-DynamoRIO>\;build=<build#>"
 
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 # set from an including package script
 if (NOT DEFINED arg_sub_package)

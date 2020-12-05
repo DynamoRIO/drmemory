@@ -60,7 +60,7 @@ macro(configure_drsymcache_target target drmgr drsyms)
   use_DynamoRIO_extension(${target} drcontainers)
   use_DynamoRIO_extension(${target} ${drmgr})
   use_DynamoRIO_extension(${target} ${drsyms})
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endmacro(configure_drsymcache_target)
 
 macro(export_drsymcache_target target drmgr drsyms)

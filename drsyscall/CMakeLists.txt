@@ -93,7 +93,7 @@ macro(configure_drsyscall_target target)
   # create a final static library, for DR_EXT_DRSYSCALL_STATIC: and that's
   # a pain to export w/ the proper link rules.  But we at least use the
   # same flags and avoid compiling the same file differently.
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
   target_link_libraries(${target} drfrontendlib ${ntimp_lib})
   if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
     add_dependencies(${target} ntdll_imports)

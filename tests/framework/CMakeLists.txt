@@ -20,7 +20,7 @@
 
 # XXX i#1652: make this a separate project and use --build-and-test
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
@@ -59,7 +59,7 @@ endfunction(add_drmf_test_app)
 function(add_drmf_test test_name app_name src_client ext_list client_options pass_regex)
   set(client_name ${test_name}.client)
   add_library(${client_name} SHARED ${src_client})
-  set_property(TARGET ${client_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
+  _DR_append_property_list(TARGET ${client_name} COMPILE_DEFINITIONS "${arch_defs}")
   # We rely on i#955's "rpath file" to locate the extension on Windows
   set(DynamoRIO_RPATH ON)
   configure_DynamoRIO_client(${client_name})

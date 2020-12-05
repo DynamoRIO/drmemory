@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
@@ -112,14 +112,24 @@ function(set_props target)
   if (X86)
     set(defs ${defs} X86)
   endif ()
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
-    ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS
+    "${defs};${DEFINES_NO_D};${DR_DEFINES_NO_D}")
   # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
   # that we add to all tests
   if (nounused_avail)
     append_compile_flags(${target} "-Wno-unused-but-set-variable")
   endif (nounused_avail)
 endfunction(set_props)
+
+function(append_link_flags target newflags)
+  get_target_property(cur_ldflags ${target} LINK_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_ldflags)
+    set(cur_ldflags "")
+  endif (NOT cur_ldflags)
+  set_target_properties(${target} PROPERTIES
+    LINK_FLAGS "${cur_ldflags} ${newflags}")
+endfunction(append_link_flags)
 
 function(tobuild name source)
   set(srcs ${source} ${ARGN})
@@ -136,6 +146,12 @@ function(tobuild name source)
 
   add_executable(${name} ${srcs})
   set_props(${name})
+  if (UNIX)
+    # Older CMake would add this for us, but no longer.  We want global syms
+    # in .dynsym for all our executables, so our tests can use dr_get_proc_address()
+    # to find them.
+    append_link_flags(${name} "-rdynamic")
+  endif ()
 
   if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -144,16 +160,6 @@ function(tobuild name source)
   endif ()
   copy_target_to_device(${name})
 endfunction(tobuild)
-
-function(append_link_flags target newflags)
-  get_target_property(cur_ldflags ${target} LINK_FLAGS)
-  # cmake should add an APPEND option
-  if (NOT cur_ldflags)
-    set(cur_ldflags "")
-  endif (NOT cur_ldflags)
-  set_target_properties(${target} PROPERTIES
-    LINK_FLAGS "${cur_ldflags} ${newflags}")
-endfunction(append_link_flags)
 
 function(tobuild_lib name source cust_flags cust_link)
   add_library(${name} SHARED ${source})
