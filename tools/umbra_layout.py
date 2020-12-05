@@ -64,10 +64,8 @@ class OS(Enum):
             regions.append(Region('pie', 0x550000000000, 0x570000000000))
             regions.append(Region('lib, map, stack, vdso', 0x7F0000000000,
                                   0x800000000000))
-
-            # FIXME: Should we map shadow memory for vsyscall?
-            # Doing so can prevent the possibility of a SAT layout.
-            #regions.append(Region('vsyscall', 0xFFFFFFFFFF600000, 0xFFFFFFFFFF601000))
+            regions.append(Region('vsyscall', 0xFFFFFFFFFF600000,
+                                  0xFFFFFFFFFF601000))
         elif os == OS.WINDOWS8:
             regions.append(Region('exec,heap, data', 0x0, 0x1000000000))
             regions.append(Region('lib', 0x7F000000000, 0x80000000000))
@@ -95,7 +93,7 @@ class Scale(Enum):
         return self.value
 
     def is_scale_up(scale):
-        # Returns whether the scale is up or down.
+        # Returns the scale is up or down.
         if (scale == Scale.DOWN_64X):
             return False
         elif (scale == Scale.DOWN_32X):
@@ -189,7 +187,7 @@ class Layout:
         # Step 1: mask the app addr.
         masked_addr = (addr & self.mask)
 
-        # Step 2: Derive the unit displacement.
+        # Step 2: Derive the unit displacement (needed for multiple maps).
         unit_disp = self.unit * 2 * map_index
         if self.is_scale_up:
             unit_disp = unit_disp >> self.scale
@@ -197,15 +195,9 @@ class Layout:
             unit_disp = unit_disp << self.scale
 
         # Step 3: Calculate the shadow address
-        shdw_addr = masked_addr + self.disp
+        shdw_addr = masked_addr + self.disp + unit_disp
 
-        # Step 4: Handle special case where top of addr is masked out, e.g., 0x800000000.
-        if addr != 0 and shdw_addr == self.disp:
-            shdw_addr = shdw_addr + self.mask + 1
-
-        shdw_addr = shdw_addr + unit_disp
-
-        # Step 5: Scale shadow memory.
+        # Step 4: Scale shadow memory.
         if self.is_scale_up:
             return shdw_addr << self.scale
         else:
@@ -223,10 +215,10 @@ class Layout:
                              scale_expr, map_index_expr):
         # Gets an expression of a translated address.
 
-        # Express address masking.
+        # Step 1: Express address masking.
         masked_addr_expr = simplify(addr_expr & mask_expr)
 
-        # Express unit displacement.
+        # Step 2: Express unit displacement.
         unit_disp_expr = simplify(unit_expr * BitVecVal(2, PTR_SIZE) * map_index_expr)
         if scale_expr is not None:
             if is_scale_up:
@@ -234,22 +226,17 @@ class Layout:
             else:
                 unit_disp_expr = simplify(unit_disp_expr << scale_expr)
 
-        # Express shadow address.
+        # Step 3: Express shadow address.
         shdw_addr = simplify(masked_addr_expr + disp_var)
-
-        # Express the special case handling with an ITE expression.
-        shdw_addr = simplify(
-            If(And(addr_expr != BitVecVal(0, PTR_SIZE), shdw_addr == disp_var),
-               shdw_addr + mask_expr + 1, shdw_addr))
 
         # Add unit displacement.
         shdw_addr = simplify(shdw_addr + unit_disp_expr)
 
+        # Step 4: Express shadow memory scaling.
         # Return if scale is N/A.
         if scale_expr is None:
             return shdw_addr
 
-        # Express shadow memory scaling.
         if is_scale_up:
             return simplify(shdw_addr << scale_expr)
         else:
@@ -288,6 +275,8 @@ def print_regions(layout, regions, consider_shadow_of_shadow):
 
     for map_index in range(layout.map_count):
         translated_regions = get_translated_regions(layout, regions, map_index)
+
+        # Only translate shadows if asked.
         if consider_shadow_of_shadow:
             translated_again_regions = get_translated_regions(layout, translated_regions,
                                                               map_index)
@@ -322,15 +311,19 @@ def check(layout, regions, detect_shadow):
 
     for i in range(len(merged_regions)):
         cur_region = merged_regions[i]
+        # Cannot have start address of a region larger or equal to the region's end address.
         if (cur_region.start >= cur_region.end):
             print('Invalid range:', get_formatted_hex(cur_region.start),
                   get_formatted_hex(cur_region.end))
             return False
 
+        # Skip first iteration.
         if (i == 0):
             continue
 
+        # Recall, list is sorted. We therefore only need to check the prev region for collision.
         prev_region = merged_regions[i - 1]
+        # Check overlap.
         if (cur_region.start < prev_region.end):
             print('Collision:', get_formatted_hex(cur_region.start),
                   get_formatted_hex(prev_region.end))
@@ -514,7 +507,7 @@ def set_arg_parser():
         help='Denotes whether to detect collisions with shadow\'s shadow.')
     parser.add_argument('--max',
                         type=lambda x: int(x, 0),
-                        help='specifies the max limit of a disp when in find mode.')
+                        help='specifies the max limit of a disp when synthesizing.')
     parser.add_argument('--unit',
                         type=lambda x: int(x, 0),
                         default=0x100000000000,
