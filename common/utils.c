@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -78,7 +78,9 @@ static thread_id_t primary_thread = INVALID_THREAD_ID;
  * UTILITIES
  */
 
-#ifndef MACOS /* Mac has builtin -- though should verify in all builds */
+/* Mac has builtin -- though should verify in all builds. */
+/* AArchXX has memset from DR memfuncs. */
+#if !defined(MACOS) && !defined(AARCHXX)
 /* FIXME: VC8 uses intrinsic memset yet has it call out, so /nodefaultlib
  * gets a link error missing _memset.  This does not help, nor does /Oi:
  *   #pragma intrinsic ( memset)

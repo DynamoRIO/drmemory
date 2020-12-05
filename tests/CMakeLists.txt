@@ -121,6 +121,16 @@ function(set_props target)
   endif (nounused_avail)
 endfunction(set_props)
 
+function(append_link_flags target newflags)
+  get_target_property(cur_ldflags ${target} LINK_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_ldflags)
+    set(cur_ldflags "")
+  endif (NOT cur_ldflags)
+  set_target_properties(${target} PROPERTIES
+    LINK_FLAGS "${cur_ldflags} ${newflags}")
+endfunction(append_link_flags)
+
 function(tobuild name source)
   set(srcs ${source} ${ARGN})
 
@@ -136,6 +146,12 @@ function(tobuild name source)
 
   add_executable(${name} ${srcs})
   set_props(${name})
+  if (UNIX)
+    # Older CMake would add this for us, but no longer.  We want global syms
+    # in .dynsym for all our executables, so our tests can use dr_get_proc_address()
+    # to find them.
+    append_link_flags(${name} "-rdynamic")
+  endif ()
 
   if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -144,16 +160,6 @@ function(tobuild name source)
   endif ()
   copy_target_to_device(${name})
 endfunction(tobuild)
-
-function(append_link_flags target newflags)
-  get_target_property(cur_ldflags ${target} LINK_FLAGS)
-  # cmake should add an APPEND option
-  if (NOT cur_ldflags)
-    set(cur_ldflags "")
-  endif (NOT cur_ldflags)
-  set_target_properties(${target} PROPERTIES
-    LINK_FLAGS "${cur_ldflags} ${newflags}")
-endfunction(append_link_flags)
 
 function(tobuild_lib name source cust_flags cust_link)
   add_library(${name} SHARED ${source})
