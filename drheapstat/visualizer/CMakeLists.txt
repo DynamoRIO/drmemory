@@ -24,7 +24,7 @@
 # Configures dhvis build
 #
 
-cmake_minimum_required(VERSION 2.8.10)
+cmake_minimum_required(VERSION 3.7)
 
 if ("${CMAKE_VERSION}" VERSION_EQUAL "2.8.11" OR
     "${CMAKE_VERSION}" VERSION_GREATER "2.8.11")

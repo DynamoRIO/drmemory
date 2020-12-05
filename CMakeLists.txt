@@ -1307,7 +1307,7 @@ endmacro()
 
 add_library(${client_target} SHARED ${srcs})
 set_library_version(${client_target} ${TOOL_VERSION_NUMBER})
-set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS
+_DR_append_property_list(TARGET ${client_target} COMPILE_DEFINITIONS
   # If we end up wanting this for other DEFINES uses above we'll have to set
   # client_target earlier.  For now we only need for the C code.
   "${DEFINES_NO_D};CLIENT_LIBNAME=${client_target};RC_IS_TOOLLIB")
@@ -1325,7 +1325,7 @@ if (WIN32)
   # our addr2line for Windows
   add_executable(winsyms tools/winsyms.c make/resources.rc)
   target_link_libraries(winsyms dbghelp)
-  set_property(TARGET winsyms PROPERTY COMPILE_DEFINITIONS
+  _DR_append_property_list(TARGET winsyms COMPILE_DEFINITIONS
     # We need full defines to get version values for resources
     "${DEFINES_NO_D};RC_IS_WINSYMS")
   # configure_DynamoRIO_client clears global flags so add as additional
@@ -1338,12 +1338,12 @@ if (WIN32)
   # Helper tool to ensure we have version info in our binaries:
   add_executable(verinfo tools/verinfo.c make/resources.rc)
   target_link_libraries(verinfo version)
-  set_property(TARGET verinfo PROPERTY COMPILE_DEFINITIONS
+  _DR_append_property_list(TARGET verinfo COMPILE_DEFINITIONS
     "${DEFINES_NO_D};RC_IS_VERINFO")
 
   # i#1009c#4: auto-register Dr. Memory as a Visual Studio External Tool
   add_executable(vs_external_tool tools/vs_external_tool.c make/resources.rc)
-  set_property(TARGET vs_external_tool PROPERTY COMPILE_DEFINITIONS
+  _DR_append_property_list(TARGET vs_external_tool COMPILE_DEFINITIONS
     "${DEFINES_NO_D};RC_IS_VS_EXTERNAL_TOOL")
 endif (WIN32)
 
@@ -1420,12 +1420,13 @@ if (USE_DRSYMS)
     drsyscall_static)
   if (WIN32)
     set_target_properties(${toolname} PROPERTIES
-      VERSION ${TOOL_VERSION_NUMBER}
+      VERSION ${TOOL_VERSION_NUMBER})
+    _DR_append_property_list(TARGET ${toolname}
       COMPILE_DEFINITIONS "${DEFINES_NO_D};RC_IS_FRONTEND")
   else (WIN32)
     DynamoRIO_add_rel_rpaths(${toolname} drinjectlib)
     DynamoRIO_add_rel_rpaths(${toolname} drconfiglib)
-    set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+    _DR_append_property_list(TARGET ${toolname} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
   endif (WIN32)
   if (STATIC_DRSYMS)
     use_DynamoRIO_extension(${client_target} drsyms_static)
@@ -1526,8 +1527,8 @@ set(DynamoRIO_RPATH ${old_rpath})
 # drfrontendlib depends on drinjectlib, DR-i#1409 should be the solution
 target_link_libraries(symquery drinjectlib drfrontendlib)
 if (WIN32)
-  set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER}
-    COMPILE_DEFINITIONS
+  set_target_properties(symquery PROPERTIES VERSION ${TOOL_VERSION_NUMBER})
+  _DR_append_property_list(TARGET symquery COMPILE_DEFINITIONS
     # We need full defines to get version values for resources
     "${DEFINES_NO_D};RC_IS_SYMQUERY")
 else (WIN32)
@@ -1970,7 +1971,7 @@ if (BUILD_TOOL_TESTS)
   if (TOOL_DR_MEMORY)
     # unit tests
     add_executable(unit_tests ${srcs})
-    set_property(TARGET unit_tests PROPERTY COMPILE_DEFINITIONS
+    _DR_append_property_list(TARGET unit_tests COMPILE_DEFINITIONS
       "${DEFINES_NO_D};BUILD_UNIT_TESTS;RC_IS_UNITTESTS")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # ensure race-free parallel builds

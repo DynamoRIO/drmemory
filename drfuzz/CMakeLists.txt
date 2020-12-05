@@ -63,7 +63,7 @@ macro(configure_drfuzz_target target drwrap drmgr)
     # Avoid tolower from the strcasestr in utils_shared.c, which we don't call
     append_property_string(TARGET ${target} COMPILE_FLAGS "-fPIC -DNOLINK_STRCASESTR")
   endif (UNIX)
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endmacro(configure_drfuzz_target)
 
 macro(export_drfuzz_target target drwrap drmgr)
@@ -116,7 +116,7 @@ use_DynamoRIO_extension(drfuzz_mutator drmgr_static)
 use_DynamoRIO_extension(drfuzz_mutator drcontainers)
 # Not bothering to remove RC_IS_DRFUZZ: resources.rc has this one first:
 set(DEFINES_NO_D ${DEFINES_NO_D} RC_IS_DRFUZZ_MUTATOR)
-set_property(TARGET drfuzz_mutator PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+_DR_append_property_list(TARGET drfuzz_mutator COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 # We treat as a regular lib for use as a dynamically loaded plugin
 # XXX: better to use export_drfuzz_target()?
 install(TARGETS drfuzz_mutator DESTINATION ${DRMF_INSTALL_BIN})
