@@ -1498,7 +1498,7 @@ create_global_logfile(void)
         dr_abort();
     }
 
-#if 0//NOCHECK
+#if 1//NOCHECK
     f_global = open_logfile("global", true/*pid suffix*/, -1);
 #else
     f_global = STDERR;

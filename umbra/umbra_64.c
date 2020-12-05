@@ -618,7 +618,7 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     return false;
 }
 
-#if 1//NOCHECK
+#if 0//NOCHECK
 static void
 set_memtype_from_mbi(MEMORY_BASIC_INFORMATION *mbi, OUT dr_mem_info_t *info)
 {
@@ -754,7 +754,7 @@ umbra_address_space_init()
 {
     dr_mem_info_t info;
     app_pc pc = NULL;
-#if 1//NOCHECK
+#if 0//NOCHECK
     /* now we assume all the memory are application memory and need */
     while (pc < (app_pc)POINTER_MAX && my_query(pc, &info)) {
         LOG(1, "%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
@@ -773,9 +773,17 @@ umbra_address_space_init()
     }
     pc = NULL;
 #endif
-    /* now we assume all the memory are application memory and need */
-    while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
-        NOTIFY("%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
+    while (pc < (app_pc)POINTER_MAX) {
+        NOTIFY("%s: querying %p\n", __FUNCTION__, pc);//NCHECK
+        if (!dr_query_memory_ex(pc, &info)) {
+            /* Try again in case of a race. */
+            NOTIFY("%s: querying AGAIN %p\n", __FUNCTION__, pc);//NCHECK
+            if (!dr_query_memory_ex(pc, &info)) {
+                LOG(1, "ERROR: %s failed for %p\n", __FUNCTION__, pc);
+                NOTIFY("ERROR: %s failed for %p\n", __FUNCTION__, pc);//NCHECK
+                return false;
+            }
+        }
         if (info.type != DR_MEMTYPE_FREE &&
             !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
             LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,
