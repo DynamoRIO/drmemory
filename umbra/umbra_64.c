@@ -647,21 +647,21 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
     byte *alloc_base;
     int num_blocks = 0;
     ASSERT(info != NULL, "info null");
-    NOTIFY("%s: %p" NL , __FUNCTION__, pc)
+    NOTIFY("%s: %p" NL , __FUNCTION__, pc);
     if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi)) {
-        NOTIFY("%s: %p => vquery failed" NL , __FUNCTION__, pc)
+        NOTIFY("%s: %p => vquery failed" NL , __FUNCTION__, pc);
         info->type = DR_MEMTYPE_ERROR;
         return false;
     }
-    NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+    NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
            __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
            mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
     if (mbi.State == MEM_FREE /* free memory doesn't have AllocationBase */) {
         info->base_pc = mbi.BaseAddress;
         info->size = mbi.RegionSize;
         set_memtype_from_mbi(&mbi, info);
-        NOTIFY("%s: %p => free %p-%p" NOTIFY, __FUNCTION__, pc,
-            info->base_pc, info->base_pc + info->size);
+        NOTIFY("%s: %p => free %p-%p" NL, __FUNCTION__, pc,
+               info->base_pc, info->base_pc + info->size);
         return true;
     } else {
         /* BaseAddress is just PAGE_START(pc) and so is not the base_pc we
@@ -685,14 +685,14 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
             /* The sub can't underflow b/c of the if() above */
             pb = (byte *)ALIGN_BACKWARD(pc - PAGE_SIZE, PAGE_SIZE);
             do {
-                NOTIFY("%s: %p => backward query %p" NL , __FUNCTION__, pc, pb)
+                NOTIFY("%s: %p => backward query %p" NL , __FUNCTION__, pc, pb);
                 /* sanity checks */
                 if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi) ||
                     mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base ||
                     mbi.RegionSize == 0) {
                     break;
                 }
-                NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+                NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
                        __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
                        mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
                 if ((byte *)mbi.BaseAddress + mbi.RegionSize <= pc) {
@@ -711,10 +711,10 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
         pb = forward_query_start;
         num_blocks = 0;
         do {
-            NOTIFY("%s: %p => forward query %p" NL , __FUNCTION__, pc, pb)
+            NOTIFY("%s: %p => forward query %p" NL , __FUNCTION__, pc, pb);
             if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi))
                 break;
-            NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+            NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
                    __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
                    mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
             if (mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base)
@@ -752,7 +752,7 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
         } while (num_blocks < MAX_QUERY_VM_BLOCKS);
         //        ASSERT_CURIOSITY(num_blocks < MAX_QUERY_VM_BLOCKS);
     }
-    NOTIFY("%s: %p => fail blocks=%d" NL , __FUNCTION__, pc, num_blocks)
+    NOTIFY("%s: %p => fail blocks=%d" NL , __FUNCTION__, pc, num_blocks);
     info->type = DR_MEMTYPE_ERROR;
     return false;
 }
@@ -772,7 +772,9 @@ umbra_address_space_init()
             NOTIFY("%s: querying AGAIN %p" NL, __FUNCTION__, pc);//NCHECK
             if (!my_query(pc, &info)) {
                 NOTIFY("ERROR: %s failed for %p" NL, __FUNCTION__, pc);//NCHECK
-                return false;
+                if (pc < (app_pc)0x100000000)
+                    return false;
+                return true;
             }
         }
         NOTIFY("%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
@@ -799,7 +801,9 @@ umbra_address_space_init()
             if (!dr_query_memory_ex(pc, &info)) {
                 LOG(1, "ERROR: %s failed for %p\n", __FUNCTION__, pc);
                 NOTIFY("ERROR: %s failed for %p" NL, __FUNCTION__, pc);//NCHECK
-                return false;
+                if (pc < (app_pc)0x100000000)
+                    return false;
+                return true;
             }
         }
         if (info.type != DR_MEMTYPE_FREE &&
