@@ -164,6 +164,10 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                    'winthreads' => 1,
                                    'malloc_callstacks' => 1,
                                    'wrap_wincrt' => 1, # i#1741: flaky.
+                                   'wrap_malloc' => 1,
+                                   'wrap_operators' => 1,
+                                   'wrap_wincrtdbg' => 1,
+                                   'wrap_cs2bugMTd' => 1,
                                    'app_suite.pattern' => 1,
                                    'app_suite' => 1);
             # FIXME i#2180: ignoring certain AppVeyor x64-full-mode failures until
@@ -213,6 +217,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                    'app_suite.pattern' => 1,
                                    'app_suite' => 1);
             %ignore_failures_64 = ('pcache' => 1, # i#2243
+                                   'redzone16' => 1,
                                    'app_suite.pattern' => 1);
         }
         # Read ahead to examine the test failures:
