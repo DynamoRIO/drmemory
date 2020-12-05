@@ -50,7 +50,7 @@
 # DAMAGE.
 
 # We need 2.8.2 for ctest_update() to update git submodules
-cmake_minimum_required (VERSION 2.8.2)
+cmake_minimum_required(VERSION 3.7)
 
 # Instructions to set up a machine to run nightly regression tests:
 #

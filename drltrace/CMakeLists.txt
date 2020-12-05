@@ -53,10 +53,10 @@ add_library(drltracelib SHARED ${srcs})
 set_library_version(drltracelib ${DRMF_VERSION_MAJOR_MINOR})
 
 if (WIN32)
-  set_property(TARGET drltracelib PROPERTY COMPILE_DEFINITIONS
+  _DR_append_property_list(TARGET drltracelib COMPILE_DEFINITIONS
     "${DEFINES_NO_D};RC_IS_DRLTRACELIB")
 else ()
-  set_property(TARGET drltracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET drltracelib COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endif ()
 
 set(DynamoRIO_RPATH ON)
@@ -126,10 +126,10 @@ target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib drsyscall_s
 set_library_version(drltrace ${DRMF_VERSION})
 
 if (WIN32)
-  set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS
-               ${DEFINES_NO_D} RC_IS_DRLTRACE)
+  _DR_append_property_list(TARGET drltrace COMPILE_DEFINITIONS
+    "${DEFINES_NO_D};RC_IS_DRLTRACE")
 else ()
-  set_property(TARGET drltrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+   _DR_append_property_list(TARGET drltrace COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endif ()
 
 # XXX: see DR's i#2429 and comment above.

@@ -18,7 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 include(${PROJECT_SOURCE_DIR}/make/policies.cmake NO_POLICY_SCOPE)
 
@@ -45,10 +45,10 @@ add_library(drstracelib SHARED ${srcs})
 set_library_version(drstracelib ${DRMF_VERSION_MAJOR_MINOR})
 
 if (WIN32)
-  set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS
+  _DR_append_property_list(TARGET drstracelib COMPILE_DEFINITIONS
     "${DEFINES_NO_D};RC_IS_DRSTRACELIB")
 else ()
-  set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET drstracelib COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endif ()
 
 set_target_properties(drstracelib PROPERTIES
@@ -143,12 +143,12 @@ configure_DynamoRIO_standalone(drstrace)
 target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
 set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
-  set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS
-    ${DEFINES_NO_D} RC_IS_DRSTRACE SYMBOL_DLL_NAME="$<TARGET_FILE_NAME:symfetch>")
+  _DR_append_property_list(TARGET drstrace COMPILE_DEFINITIONS
+    "${DEFINES_NO_D};RC_IS_DRSTRACE;SYMBOL_DLL_NAME=\"$<TARGET_FILE_NAME:symfetch>\"")
   # DRi#1409/DRi#1503/i#1805: Avoid dup symbol _isdigit with VS2017.
   append_property_string(TARGET drstrace LINK_FLAGS "/force:multiple")
 else ()
-  set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET drstrace COMPILE_DEFINITIONS "${DEFINES_NO_D}")
 endif ()
 
 install(TARGETS drstrace DESTINATION "${INSTALL_BIN}"

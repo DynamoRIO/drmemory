@@ -60,7 +60,7 @@ macro(configure_umbra_target target)
   # create a final static library, for DR_EXT_UMBRA_STATIC: and that's
   # a pain to export w/ the proper link rules.  But we at least use the
   # same flags and avoid compiling the same file differently.
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
   target_link_libraries(${target} ${ntimp_lib})
 endmacro(configure_umbra_target)
 
