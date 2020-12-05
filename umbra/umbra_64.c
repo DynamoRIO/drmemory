@@ -618,7 +618,7 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     return false;
 }
 
-#if 0//NOCHECK
+#if 1//NOCHECK
 static void
 set_memtype_from_mbi(MEMORY_BASIC_INFORMATION *mbi, OUT dr_mem_info_t *info)
 {
@@ -647,17 +647,20 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
     byte *alloc_base;
     int num_blocks = 0;
     ASSERT(info != NULL, "info null");
-    LOG(1, "%s: %p\n", __FUNCTION__, pc);
+    NOTIFY("%s: %p" NL , __FUNCTION__, pc)
     if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi)) {
-        LOG(1, "%s: %p => vquery failed\n", __FUNCTION__, pc);
+        NOTIFY("%s: %p => vquery failed" NL , __FUNCTION__, pc)
         info->type = DR_MEMTYPE_ERROR;
         return false;
     }
+    NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+           __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+           mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
     if (mbi.State == MEM_FREE /* free memory doesn't have AllocationBase */) {
         info->base_pc = mbi.BaseAddress;
         info->size = mbi.RegionSize;
         set_memtype_from_mbi(&mbi, info);
-        LOG(1, "%s: %p => free %p-%p\n", __FUNCTION__, pc,
+        NOTIFY("%s: %p => free %p-%p" NOTIFY, __FUNCTION__, pc,
             info->base_pc, info->base_pc + info->size);
         return true;
     } else {
@@ -682,12 +685,16 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
             /* The sub can't underflow b/c of the if() above */
             pb = (byte *)ALIGN_BACKWARD(pc - PAGE_SIZE, PAGE_SIZE);
             do {
-                LOG(1, "%s: %p => backward query %p\n", __FUNCTION__, pc, pb);
+                NOTIFY("%s: %p => backward query %p" NL , __FUNCTION__, pc, pb)
                 /* sanity checks */
                 if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi) ||
                     mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base ||
-                    mbi.RegionSize == 0)
+                    mbi.RegionSize == 0) {
                     break;
+                }
+                NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+                       __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+                       mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
                 if ((byte *)mbi.BaseAddress + mbi.RegionSize <= pc) {
                     forward_query_start = (byte *)mbi.BaseAddress + mbi.RegionSize;
                     break;
@@ -704,9 +711,12 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
         pb = forward_query_start;
         num_blocks = 0;
         do {
-            LOG(1, "%s: %p => forward query %p\n", __FUNCTION__, pc, pb);
+            NOTIFY("%s: %p => forward query %p" NL , __FUNCTION__, pc, pb)
             if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi))
                 break;
+            NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%d; state=%d; prot=%x" NL,
+                   __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+                   mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
             if (mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base)
                 break;
             ASSERT(mbi.RegionSize > 0, "size > 0"); /* if > 0, we will NOT infinite loop */
@@ -742,7 +752,7 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
         } while (num_blocks < MAX_QUERY_VM_BLOCKS);
         //        ASSERT_CURIOSITY(num_blocks < MAX_QUERY_VM_BLOCKS);
     }
-    LOG(1, "%s: %p => fail blocks=%d\n", __FUNCTION__, pc, num_blocks);
+    NOTIFY("%s: %p => fail blocks=%d" NL , __FUNCTION__, pc, num_blocks)
     info->type = DR_MEMTYPE_ERROR;
     return false;
 }
@@ -754,10 +764,18 @@ umbra_address_space_init()
 {
     dr_mem_info_t info;
     app_pc pc = NULL;
-#if 0//NOCHECK
+#if 1//NOCHECK
     /* now we assume all the memory are application memory and need */
-    while (pc < (app_pc)POINTER_MAX && my_query(pc, &info)) {
-        LOG(1, "%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
+    while (pc < (app_pc)POINTER_MAX) {
+        if (!my_query(pc, &info)) {
+            /* Try again in case of a race. */
+            NOTIFY("%s: querying AGAIN %p" NL, __FUNCTION__, pc);//NCHECK
+            if (!my_query(pc, &info)) {
+                NOTIFY("ERROR: %s failed for %p" NL, __FUNCTION__, pc);//NCHECK
+                return false;
+            }
+        }
+        NOTIFY("%s: %p-%p" NL, __FUNCTION__, info.base_pc, info.base_pc + info.size);//NOCHECK
         if (info.type != DR_MEMTYPE_FREE &&
             !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
             LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,
