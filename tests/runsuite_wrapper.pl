@@ -190,6 +190,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'cs2bugMTdZI' => 1,
                 'cs2bugMD' => 1,
                 'cs2bugMDd' => 1,
+                'redzone16' => 1,
                 'gdi' => 1,
                 'syscalls_win' => 1,
                 'handle_only' => 1,
@@ -217,7 +218,6 @@ for (my $i = 0; $i < $#lines; ++$i) {
                                    'app_suite.pattern' => 1,
                                    'app_suite' => 1);
             %ignore_failures_64 = ('pcache' => 1, # i#2243
-                                   'redzone16' => 1,
                                    'app_suite.pattern' => 1);
         }
         # Read ahead to examine the test failures:
