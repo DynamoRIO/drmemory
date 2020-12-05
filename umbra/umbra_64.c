@@ -774,13 +774,13 @@ umbra_address_space_init()
     pc = NULL;
 #endif
     while (pc < (app_pc)POINTER_MAX) {
-        NOTIFY("%s: querying %p\n", __FUNCTION__, pc);//NCHECK
+        NOTIFY("%s: querying %p" NL, __FUNCTION__, pc);//NCHECK
         if (!dr_query_memory_ex(pc, &info)) {
             /* Try again in case of a race. */
-            NOTIFY("%s: querying AGAIN %p\n", __FUNCTION__, pc);//NCHECK
+            NOTIFY("%s: querying AGAIN %p" NL, __FUNCTION__, pc);//NCHECK
             if (!dr_query_memory_ex(pc, &info)) {
                 LOG(1, "ERROR: %s failed for %p\n", __FUNCTION__, pc);
-                NOTIFY("ERROR: %s failed for %p\n", __FUNCTION__, pc);//NCHECK
+                NOTIFY("ERROR: %s failed for %p" NL, __FUNCTION__, pc);//NCHECK
                 return false;
             }
         }
