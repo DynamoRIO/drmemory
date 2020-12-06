@@ -60,18 +60,18 @@ class OS(Enum):
         # Returns pre-defined app regions of the passed Operating System.
         regions = []
         if os == OS.LINUX:
-            regions.append(Region('exec,heap, data', 0x0, 0x10000000000))
-            regions.append(Region('pie', 0x550000000000, 0x570000000000))
+            regions.append(Region('exec,heap, data', 0x0, (0x10000000000 - 1)))
+            regions.append(Region('pie', 0x550000000000, (0x560000000000 - 1)))
             regions.append(Region('lib, map, stack, vdso', 0x7F0000000000,
-                                  0x800000000000))
+                                  (0x800000000000 - 1)))
             regions.append(Region('vsyscall', 0xFFFFFFFFFF600000,
-                                  0xFFFFFFFFFF601000))
+                                  (0xFFFFFFFFFF601000 - 1)))
         elif os == OS.WINDOWS8:
-            regions.append(Region('exec,heap, data', 0x0, 0x1000000000))
-            regions.append(Region('lib', 0x7F000000000, 0x80000000000))
+            regions.append(Region('exec,heap, data', 0x0, (0x1000000000 - 1)))
+            regions.append(Region('lib', 0x7F000000000, (0x80000000000 - 1)))
         elif os == OS.WINDOWS81:
-            regions.append(Region('exec,heap, data', 0x0, 0x30000000000))
-            regions.append(Region('lib', 0x7C0000000000, 0x800000000000))
+            regions.append(Region('exec,heap, data', 0x0, (0x30000000000 - 1)))
+            regions.append(Region('lib', 0x7C0000000000, (0x800000000000 - 1)))
         else:
             sys.exit('Fatal Error: Unknown OS.')
 
@@ -317,6 +317,15 @@ def check(layout, regions, detect_shadow):
                   get_formatted_hex(cur_region.end))
             return False
 
+        # Check that only 48-bits of a pointer are used.
+        if (cur_region.start & 0xFFFF000000000000 != 0 or cur_region.end & 0xFFFF000000000000 != 0):
+            print('Invalid use of more than 47-bits in pointer:',
+                  get_formatted_hex(cur_region.start),
+                  get_formatted_hex(cur_region.end))
+            return False
+
+
+
         # Skip first iteration.
         if (i == 0):
             continue
@@ -348,11 +357,11 @@ def add_valid_range_constraint(solver, region_expr):
     # A region's start address must be less than its end address.
     solver.add(ULT(region_expr.start_expr, region_expr.end_expr))
 
-    # Pointers must fits within 48-bits. Therefore, we add a constrant that
+    # Pointers must fit within 48-bits. Therefore, we add a constrant that
     # ensures that the top 2 bytes of the region's pointer (be it the start or end)
     # is zero.
     zero_expr = BitVecVal(0, PTR_SIZE)
-    high_mask_expr = BitVecVal(0xFFFF800000000000, PTR_SIZE)
+    high_mask_expr = BitVecVal(0xFFFF000000000000, PTR_SIZE)
     solver.add(region_expr.start_expr & high_mask_expr == zero_expr)
     solver.add(region_expr.end_expr & high_mask_expr == zero_expr)
 
@@ -530,6 +539,10 @@ regions = args.os.get_app_regions()
 
 scale_list = parse_scale(args.scale)
 
+if args.mask is None:
+    sys.exit(
+        'Fatal Error: No mask specified.')
+
 if args.verify:
     disp = verify(args.mask, args.disp, args.max, args.unit, scale_list, args.count,
                   regions, args.shadow_collision)
@@ -545,7 +558,7 @@ if args.verify:
             layout.print_layout_info()
             print_regions(layout, regions, args.shadow_collision)
 else:
-    if args.mask is None or args.disp is None:
+    if args.disp is None:
         sys.exit(
             'Fatal Error: A displacement value needs to be provided as an arguments to check the layout. '
             'Run in Verify Mode if you want to synthesize the value.')
