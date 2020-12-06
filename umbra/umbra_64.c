@@ -654,7 +654,7 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
         return false;
     }
     NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
-           __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+           mbi.AllocationBase, mbi.BaseAddress,
            mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
     if (mbi.State == MEM_FREE /* free memory doesn't have AllocationBase */) {
         info->base_pc = mbi.BaseAddress;
@@ -693,7 +693,7 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
                     break;
                 }
                 NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
-                       __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+                       mbi.AllocationBase, mbi.BaseAddress,
                        mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
                 if ((byte *)mbi.BaseAddress + mbi.RegionSize <= pc) {
                     forward_query_start = (byte *)mbi.BaseAddress + mbi.RegionSize;
@@ -715,10 +715,14 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
             if (dr_virtual_query(pb, &mbi, sizeof(mbi)) != sizeof(mbi))
                 break;
             NOTIFY("\tAllocBase=%p; Base=%p; size=%x; type=%x; state=%x; prot=%x" NL,
-                   __FUNCTION__, pc, mbi.AllocationBase, mbi.BaseAddress,
+                   mbi.AllocationBase, mbi.BaseAddress,
                    mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
-            if (mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base)
+            if (mbi.State == MEM_FREE)
                 break;
+            if (mbi.AllocationBase != alloc_base) {
+                /* Don't break though: DrMi#2328 hit inconsistent bases. */
+                NOTIFY("%s: alloc bases are messed up" NL, __FUNCTION__);
+            }
             ASSERT(mbi.RegionSize > 0, "size > 0"); /* if > 0, we will NOT infinite loop */
             if ((byte *)mbi.BaseAddress + mbi.RegionSize > pc) {
                 /* We found the region containing the asked-for address,
