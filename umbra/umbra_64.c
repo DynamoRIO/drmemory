@@ -719,12 +719,16 @@ my_query(const byte *pc, OUT dr_mem_info_t *info)
                    mbi.RegionSize, mbi.Type, mbi.State, mbi.Protect);
             if (mbi.State == MEM_FREE)
                 break;
-            if (mbi.AllocationBase != alloc_base) {
-                /* Don't break though: DrMi#2328 hit inconsistent bases. */
-                NOTIFY("%s: alloc bases are messed up" NL, __FUNCTION__);
-            }
             ASSERT(mbi.RegionSize > 0, "size > 0"); /* if > 0, we will NOT infinite loop */
             if ((byte *)mbi.BaseAddress + mbi.RegionSize > pc) {
+                if (mbi.AllocationBase != alloc_base) {
+                    /* We have a problem.  We don't check for a mismatch in alloc base
+                     * before we reach the target b/c we've seen cases with
+                     * non-increasing bases: DrMi#2328.
+                     */
+                    NOTIFY("%s: alloc bases are messed up" NL, __FUNCTION__);
+                    break;
+                }
                 /* We found the region containing the asked-for address,
                  * and this time mbi.BaseAddress is the real lowest base of
                  * that all-same-prot region
