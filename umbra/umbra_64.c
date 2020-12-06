@@ -618,7 +618,7 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     return false;
 }
 
-#if 1//NOCHECK
+#if 0//NOCHECK
 static void
 set_memtype_from_mbi(MEMORY_BASIC_INFORMATION *mbi, OUT dr_mem_info_t *info)
 {
@@ -772,7 +772,7 @@ umbra_address_space_init()
 {
     dr_mem_info_t info;
     app_pc pc = NULL;
-#if 1//NOCHECK
+#if 0//NOCHECK
     /* now we assume all the memory are application memory and need */
     while (pc < (app_pc)POINTER_MAX) {
         if (!my_query(pc, &info)) {
@@ -802,13 +802,11 @@ umbra_address_space_init()
     pc = NULL;
 #endif
     while (pc < (app_pc)POINTER_MAX) {
-        NOTIFY("%s: querying %p" NL, __FUNCTION__, pc);//NCHECK
         if (!dr_query_memory_ex(pc, &info)) {
             /* Try again in case of a race. */
-            NOTIFY("%s: querying AGAIN %p" NL, __FUNCTION__, pc);//NCHECK
             if (!dr_query_memory_ex(pc, &info)) {
                 LOG(1, "ERROR: %s failed for %p\n", __FUNCTION__, pc);
-                NOTIFY("ERROR: %s failed for %p" NL, __FUNCTION__, pc);//NCHECK
+                /* Raise a clearer error to avoid future cases like i#2328. */
                 if (pc < (app_pc)0x100000000)
                     return false;
                 return true;

@@ -124,7 +124,7 @@ if (APPLE)
   # XXX i#58: get all the tests working.
   set(extra_ctest_args INCLUDE_LABEL OSX)
 endif ()
-set(extra_ctest_args INCLUDE_LABEL SANITY) #NOCHECK
+#set(extra_ctest_args INCLUDE_LABEL SANITY) #NOCHECK
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
 if (arg_travis)

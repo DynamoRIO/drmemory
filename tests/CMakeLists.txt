@@ -1163,7 +1163,7 @@ if (APPLE)
     memalign.nodelay memalign.pattern
     PROPERTIES LABELS OSX)
 endif ()
-get_target_path_for_execution(hello_exe hello) #NOCHECK
-add_test(just_hello ${hello_exe}) #NOCHECK
-add_test(just_frontend ${cmd_shell} -help) #NOCHECK
-set_tests_properties(just_hello just_frontend hello PROPERTIES LABELS SANITY) #NOCHECK
+#get_target_path_for_execution(hello_exe hello) #NOCHECK
+#add_test(just_hello ${hello_exe}) #NOCHECK
+#add_test(just_frontend ${cmd_shell} -help) #NOCHECK
+#set_tests_properties(just_hello just_frontend hello PROPERTIES LABELS SANITY) #NOCHECK
