@@ -489,6 +489,8 @@ string(REGEX REPLACE " *\n" "\n" cmd_tomatch "${cmd_tomatch}")
 string(REPLACE "]" ">" cmd_tomatch "${cmd_tomatch}")
 string(REPLACE "[" "<" cmd_tomatch "${cmd_tomatch}")
 
+set(stderr_failure_msg "")
+
 foreach (line ${lines})
   set(remove_line ON)
   # we include the newline in the match
@@ -522,8 +524,10 @@ foreach (line ${lines})
       if (NOT "${real_out}" STREQUAL "")
         set(msg "${msg}, found \"${real_out}\" instead")
       endif ()
-      set(msg "${msg}\nstderr:\n${cmd_err}")
-      message(FATAL_ERROR "${msg}")
+      # We do not FATAL_ERROR here in order to print out the results file,
+      # to aid in diagnosing CI tests.
+      set(stderr_failure_msg "${msg}\nstderr:\n${cmd_err}")
+      break()
     endif ()
   endif ()
   if (remove_line)
@@ -550,6 +554,23 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
     endif ()
   endwhile ()
   string(REGEX MATCHALL "${resmark}([^\n]+)[\n]" resfiles "${cmd_err}")
+
+  if (NOT stderr_failure_msg STREQUAL "")
+    # Delayed reporting of stderr mismatch failure.
+    if (DEFINED ENV{CI})
+      # Make remote debugging under Continuous Integration easier.
+      message("#######################################################\n")
+      message("Test failed.  Here are the contents of the results files:\n")
+      foreach (resfile ${resfiles})
+        string(REGEX REPLACE "${resmark} *" "" resfile "${resfile}")
+        string(REGEX REPLACE "[\n]" "" resfile "${resfile}")
+        file(READ "${resfile}" contents)
+        message("###################################\n${resfile}:\n\n${contents}\n")
+        message("###################################\n")
+      endforeach ()
+    endif ()
+    message(FATAL_ERROR "${stderr_failure_msg}")
+  endif ()
 
   set(maxlen 0)
   foreach (resfile ${resfiles})
@@ -665,8 +686,13 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
           if (NOT "${real_out}" STREQUAL "")
             set(msg "${msg}, found \"${real_out}\" instead")
           endif ()
-          # TODO: Have a "CI" or "Travis" arg and print out the results file
-          # in that case, to ease remote debugging.
+          if (DEFINED ENV{CI})
+            # Make remote debugging under Continuous Integration easier.
+            message("#######################################################\n")
+            message("Test failed.  Here is the content of the results file:\n")
+            message("###################################\n${contents}\n")
+            message("###################################\n")
+          endif ()
           message(FATAL_ERROR "${msg}")
         endif ()
       else ()
@@ -731,3 +757,7 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
   endif ("${cmd}" MATCHES "suppress" AND NOT "${cmd}" MATCHES "-suppress")
 
 endif (resmatch AND NOT TOOL_DR_HEAPSTAT)
+
+if (NOT stderr_failure_msg STREQUAL "")
+  message(FATAL_ERROR "${stderr_failure_msg}")
+endif ()
