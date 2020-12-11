@@ -23,6 +23,10 @@
 cs2bug.cpp:87
 : UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
 cs2bug.cpp:95
+%OPTIONAL # Server2016 has another w/ slightly diff addr
+: UNADDRESSABLE ACCESS beyond heap bounds: reading 4 byte(s)
+cs2bug.cpp:95
+%ENDOPTIONAL
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:97
 memory was allocated here:
