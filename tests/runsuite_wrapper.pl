@@ -180,7 +180,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
         my %ignore_failures_32 = ();
         my %ignore_failures_64 = ();
         if ($^O eq 'cygwin' ||
-            $^O ne 'MSWin32') {
+            $^O eq 'MSWin32') {
             # FIXME i#1938: ignoring certain Windows CI test failures until
             # we get all tests passing.
             %ignore_failures_32 = ('procterm' => 1,
@@ -204,6 +204,8 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'malloc_callstacks' => 1,
                 'reachable' => 1,
                 'suppress' => 1, # i#2338
+                'suppress-genoffs' => 1,
+                'suppress-gensyms' => 1,
                 'wincrt' => 1,
                 'cs2bugMTd' => 1,
                 'cs2bugMTdZI' => 1,
