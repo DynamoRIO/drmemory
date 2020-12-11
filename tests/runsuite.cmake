@@ -264,7 +264,7 @@ foreach (tool ${tools})
     endif ()
     # We do not support 32-bit Mac.
     if (NOT APPLE)
-      if (NOT arg_nontest_only)
+      if (dbg_tests_only_in_long OR NOT arg_nontest_only)
         testbuild_ex("${name}-dbg-32" OFF "
           ${base_cache}
           ${tool}

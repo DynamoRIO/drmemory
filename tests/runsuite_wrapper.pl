@@ -148,6 +148,7 @@ if ($^O eq 'MSWin32') {
     $res = do {
         local $/; <$handle>
     };
+    $res = "$res\n";
 }
 my @lines = split('\n', $res);
 my $should_print = 0;
