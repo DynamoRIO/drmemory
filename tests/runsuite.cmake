@@ -36,6 +36,8 @@ else ()
   set(arg_drmemory_only OFF)   # only run Dr. Memory tests
 endif ()
 set(arg_drheapstat_only OFF) # only run Dr. Heapstat tests
+set(arg_debug_only OFF) # only build debug builds
+set(arg_nontest_only OFF) # only build configs with no tests
 set(DR_path "")       # path to DynamoRIO cmake dir; if this arg is not set or
                       # doesn't exist, will build DynamoRIO from local copy
 set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
@@ -237,35 +239,43 @@ foreach (tool ${tools})
     if ("${tool}" MATCHES "MEMORY")
       # 64-bit builds cannot be last as that messes up the package build
       # for Ninja (i#1763).
-      testbuild_ex("${name}-dbg-64" ON "
-         ${base_cache}
-         ${tool}
-         ${DR_entry}
-         CMAKE_BUILD_TYPE:STRING=Debug
-         " OFF ON "")
-      testbuild_ex("${name}-rel-64" ON "
-         ${base_cache}
-         ${tool}
-         ${DR_entry}
-         CMAKE_BUILD_TYPE:STRING=Release
-         " ON ON "") # no release tests in short suite
+      if (NOT arg_nontest_only)
+        testbuild_ex("${name}-dbg-64" ON "
+           ${base_cache}
+           ${tool}
+           ${DR_entry}
+           CMAKE_BUILD_TYPE:STRING=Debug
+           " OFF ON "")
+      endif ()
+      if (NOT arg_debug_only)
+        testbuild_ex("${name}-rel-64" ON "
+           ${base_cache}
+           ${tool}
+           ${DR_entry}
+           CMAKE_BUILD_TYPE:STRING=Release
+           " ON ON "") # no release tests in short suite
+      endif ()
     endif ()
     # We do not support 32-bit Mac.
     if (NOT APPLE)
-      testbuild_ex("${name}-dbg-32" OFF "
-        ${base_cache}
-        ${tool}
-        ${DR_entry}
-        CMAKE_BUILD_TYPE:STRING=Debug
-        " ${dbg_tests_only_in_long} ON "")
-      # Skipping drheap rel to speed up AppVeyor.
-      if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
-        testbuild_ex("${name}-rel-32" OFF "
+      if (NOT arg_nontest_only)
+        testbuild_ex("${name}-dbg-32" OFF "
           ${base_cache}
           ${tool}
           ${DR_entry}
-          CMAKE_BUILD_TYPE:STRING=Release
-          " ON ON "") # no release tests in short suite
+          CMAKE_BUILD_TYPE:STRING=Debug
+          " ${dbg_tests_only_in_long} ON "")
+      endif ()
+      if (NOT arg_debug_only)
+        # Skipping drheap rel to speed up AppVeyor.
+        if ("${tool}" MATCHES "DR_MEMORY" OR NOT arg_travis)
+          testbuild_ex("${name}-rel-32" OFF "
+            ${base_cache}
+            ${tool}
+            ${DR_entry}
+            CMAKE_BUILD_TYPE:STRING=Release
+            " ON ON "") # no release tests in short suite
+        endif ()
       endif ()
     endif ()
   endif ()
