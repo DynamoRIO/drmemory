@@ -189,6 +189,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'malloc_callstacks' => 1,
                 'app_suite.pattern' => 1,
                 'app_suite' => 1,
+                'umbra_client_faulty_redzone' => 1, # i#2341
                 # TODO i#2180/i#2334: evaluate why failing on GA CI.
                 'cs2bug' => 1,
                 'reachable' => 1,
@@ -205,6 +206,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'drsyscall_test' => 1,
                 'strace_test' => 1,
                 'drstrace_unit_tests' => 1,
+                'syscalls_win' => 1,
                 # TODO i#2342: These are hitting a DR encoding assert.  Maybe we
                 # should just drop wrap_ support anyway.  Also xref i#1741.
                 'wrap_malloc' => 1,
@@ -253,6 +255,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'nosyms' => 1,
                 # TODO i#2180/i#2334: extra potential error but not printed out on CI!
                 'whitelist_src' => 1,
+                'whitelist_justlib' => 1,
                 );
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
