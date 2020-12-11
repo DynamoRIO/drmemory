@@ -1108,3 +1108,11 @@ INVALID HEAP ARGUMENT
 name=default i#2339 VS2017 CRT mismatch C
 ...
 *!std::basic_streambuf<>::~basic_streambuf<>
+
+##################################################
+# i#2340: Leak in VS2017 CRT
+
+LEAK
+name=default i#2340 VS2017 CRT leak
+...
+*!_register_onexit_function
