@@ -47,6 +47,12 @@ jobs:
       with:
         submodules: true
 
+    # Cancel any prior runs for a PR (but do not cancel master branch runs).
+    - uses: n1hility/cancel-previous-runs@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+      if: ${{ github.event_name == 'pull_request' }}
+
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
 
