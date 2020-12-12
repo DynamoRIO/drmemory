@@ -152,11 +152,10 @@ if ($^O eq 'MSWin32') {
 my @lines = split('\n', $res);
 my $should_print = 0;
 my $exit_code = 0;
-for (my $i = 0; $i < $#lines; ++$i) {
+for (my $i = 0; $i <= $#lines; ++$i) {
     my $line = $lines[$i];
     my $fail = 0;
     my $name = '';
-    print "LINE::$line\n"; #TEMP DIAGNOSTIC
     $should_print = 1 if ($line =~ /^RESULTS/);
     if ($line =~ /^([-\w]+):.*\*\*/) {
         $name = $1;
