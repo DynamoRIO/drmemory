@@ -1,0 +1,120 @@
+# **********************************************************
+# Copyright (c) 2017-2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# AppVeyor CI configuration:
+
+notifications:
+  - provider: Email
+    to:
+      - drmemory-devs@googlegroups.com
+    on_build_success: false
+    on_build_failure: true
+    # Unfortunately there's no way to disable emails on pull requests,
+    # like Travis does, so we try to cut down on the noise by only
+    # sending out failures.
+    on_build_status_changed: false
+
+# We don't do a shallow clone of just the source archive as we want to get
+# the diff for source file checks.
+# We do limit to the last few commits to speed things up:
+clone_depth: 10
+
+# Don't run on pushes to feature branches: pull requests cover those.
+branches:
+  only:
+    - master
+
+platform: x64
+
+image: Visual Studio 2013
+
+build:
+  verbosity: detailed
+
+# We stick with just one config (we've dropped VS2010 support) to speed
+# up the build (xref DRi#2406).
+configuration:
+  - 2013
+
+install:
+  ##################################################
+  # Install ninja so we have readable output.
+  - mkdir c:\projects\install
+  - cd c:\projects\install
+  - appveyor DownloadFile https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip
+  - 7z x ninja-win.zip -oc:\projects\install\ninja > nul
+  - set PATH=c:\projects\install\ninja;%PATH%
+
+  ##################################################
+  # Install packages for docs.
+  # DRi#4000: choco fails to download doxygen.portable so we install ourselves:
+  - appveyor DownloadFile http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip
+  - 7z x doxygen-1.8.19.windows.x64.bin.zip -oc:\projects\install\doxygen > nul
+  - set PATH=c:\projects\install\doxygen;%PATH%
+
+  # AppVeyor has WiX installed but it is not on the PATH.
+  # We first print out all versions to make it easier to update this if
+  # the version changes.
+  - dir "c:\Program Files (x86)\WiX Toolset"*
+  - set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+
+  ##################################################
+  # XXX i#2145: point at Qt5 for testing drheapstat visualizer.
+
+before_build:
+  - if "%configuration%"=="2013" call "c:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.bat" x86
+  - cd c:\projects\drmemory
+
+build_script:
+  # Unlike Travis, AppVeyor doesn't do a submodule update for us.
+  - git submodule update --init --recursive
+  - mkdir build
+  - cd build
+  - echo %PATH%
+  # The perl in c:\perl can't open a pipe so we use cygwin perl.
+  - c:\cygwin\bin\perl ../tests/runsuite_wrapper.pl travis use_ninja %EXTRA_ARGS%
+
+# Automated deployment of builds to GitHub Releases.
+# We rely on a Travis cron job to push a tag to the repo which then
+# triggers this deployment.
+# We switch to package.cmake for these builds in runsuite_wrapper.pl by looking
+# for $APPVEYOR_REPO_TAG=="true".
+artifacts:
+  - path: 'build\DrMemory*.zip'
+    name: DrMem.zip
+    type: zip
+  - path: 'build\DrMemory*.msi'
+    name: DrMem.msi
+    type: msi
+deploy:
+  provider: GitHub
+  auth_token:
+    secure: R1N347WZ23p/t8XtU1VK/7zYUzXkKQ8f2HA7PzE6zYVISv2hDJuc3F552bIQZPNE
+  artifact: DrMem.zip,DrMem.msi
+  draft: false
+  prerelease: false
+  # We want to use the same release as Travis.
+  force_update: true
+  # Using the default "release:" name (the tag) to match Travis.
+  # This description replaces the one provided by Travis.
+  description: 'Auto-generated periodic build.'
+  on:
+    branch: master
+    appveyor_repo_tag: true

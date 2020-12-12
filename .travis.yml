@@ -1,0 +1,178 @@
+# **********************************************************
+# Copyright (c) 2016-2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Travis CI configuration:
+
+notifications:
+  email:
+    # This overrides the default of sending to the committer and author.
+    recipients:
+      - drmemory-devs@googlegroups.com
+    on_success: change
+    on_failure: always
+
+# Don't run Travis on pushes to feature branches: pull requests cover those.
+branches:
+  only:
+  - master
+
+# We use Xenial to match DR.
+sudo: required
+dist: xenial
+osx_image: xcode11.3
+
+language:
+  - c
+  - cpp
+
+# We use a jobs include approach rather than an os, compiler, env matrix
+# with exludes so we can use conditional builds (plus it's clearer this way).
+# For packages, "type = cron" is for the real cron builds, and the env var
+# TRAVIS_EVENT_TYPE is set for manually-triggered package builds (that
+# same env var is set by Travis for "type = cron" but the env var is not
+# set during job matrix setup: only once a job starts).
+jobs:
+  include:
+    #######################################################################
+    # Regular test jobs
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: linux
+      compiler: gcc
+      env: DRMEMORY_INSTALL_MULTILIB=yes
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: osx
+      compiler: clang
+      env: DRMEMORY_INSTALL_MULTILIB=yes
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: linux
+      compiler: clang
+      # We need clang 9.0 for asm goto support (DRi#1799) for annotations.
+      env: CC=clang-9 CXX=clang++-9 DRMEMORY_INSTALL_MULTILIB=yes
+      addons:
+        apt:
+          sources:
+          - ubuntu-toolchain-r-test
+          - sourceline: 'deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial-9 main'
+            key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+          - clang-9
+    # AArchXX cross-compile with gcc, no tests:
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: linux
+      compiler: gcc
+      env: DRMEMORY_CROSS_AARCHXX_LINUX_ONLY=yes
+    # Android ARM cross-compile with gcc, no tests:
+    - if: type != cron AND env(TRAVIS_EVENT_TYPE) != cron
+      os: linux
+      compiler: gcc
+      env: DRMEMORY_CROSS_ANDROID_ONLY=yes DRMEMORY_ANDROID_TOOLCHAIN='/tmp/android-gcc-arm-ndk-10e'
+    #######################################################################
+    # Package jobs
+    - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
+      os: linux
+      compiler: gcc
+      env: DEPLOY=yes DEPLOY_DOCS=yes DRMEMORY_INSTALL_MULTILIB=yes
+    - if: type = cron OR env(TRAVIS_EVENT_TYPE) = cron
+      os: osx
+      compiler: clang
+      env: DEPLOY=yes
+
+# For C/C++ there is no default install, so we set "install", not "before_install".
+install:
+  - uname -a
+  # XXX: Remove the "brew update" step once Travis fixes their Mac VM's
+  # on 11/15/17.  Xref https://github.com/travis-ci/travis-ci/issues/8552.
+  - if [[ "`uname`" == "Darwin" ]]; then brew update; brew install nasm; fi
+  - if [[ "`uname`" == "Linux" ]]; then sudo apt-get -y install doxygen jsonlint; fi
+  # Install multilib for non-cross-compiling Linux builds:
+  - >
+      if [[ "`uname`" == "Linux" && "$DRMEMORY_INSTALL_MULTILIB" == yes ]]; then
+      sudo apt-get -y install g++-multilib; fi
+  # Install cross-compilers for cross-compiling Linux build:
+  - >
+      if [[ "`uname`" == "Linux" && "$DRMEMORY_CROSS_AARCHXX_LINUX_ONLY" == yes ]]; then
+      sudo apt-get -y install g++-arm-linux-gnueabihf; fi
+  # Fetch and install Android NDK for Andoid cross-compile build only.
+  - >
+      if [[ "`uname`" == "Linux" && "$DRMEMORY_CROSS_ANDROID_ONLY" == yes ]]; then
+          cd /tmp
+          wget https://dl.google.com/android/repository/android-ndk-r10e-linux-x86_64.zip
+          unzip -q android-ndk-r10e-linux-x86_64.zip
+          android-ndk-r10e/build/tools/make-standalone-toolchain.sh --arch=arm \
+              --toolchain=arm-linux-androideabi-4.9 \
+              --platform=android-21 \
+              --install-dir=/tmp/android-gcc-arm-ndk-10e
+          # Manually force using ld.bfd, setting CMAKE_LINKER does not work.
+          ln -sf ld.bfd /tmp/android-gcc-arm-ndk-10e/arm-linux-androideabi/bin/ld
+          ln -sf arm-linux-androideabi-ld.bfd /tmp/android-gcc-arm-ndk-10e/bin/arm-linux-androideabi-ld
+          cd -
+      fi
+
+script:
+  - tests/runsuite_wrapper.pl travis
+
+# We switch to package.cmake for these builds in runsuite_wrapper.pl by looking
+# for $TRAVIS_EVENT_TYPE=="cron".
+# The before_deploy commands are run before each deployer, so they are also
+# run for DEPLOY_DOCS.  We'll just have a git tag failure since it exists.
+before_deploy:
+  - git config --local user.name "Travis Auto-Tag"
+  - git config --local user.email "drmemory-devs@googlegroups.com"
+  # XXX: for now we duplicate this version number here with CMakeLists.txt.
+  # We should find a way to share (xref DRi#1565).
+  # We support setting VERSION_NUMBER for manual builds to override all
+  # parts of the version.  If a build is included (leading dash and number
+  # at the end), it will be parsed and passed to package.cmake.  We only
+  # use a non-zero build number when making multiple manual builds in one day.
+  - >
+      if test -z "${VERSION_NUMBER}"; then
+          export GIT_TAG="cronbuild-2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+      else
+          export GIT_TAG="release_${VERSION_NUMBER}"
+      fi
+  # We handle races among our 4 package jobs by ignoring failure here.
+  # XXX: That could mask a real failure: we could try to distinguish the
+  # type of error.
+  - (git tag $GIT_TAG -a -m "Travis auto-generated tag for build $TRAVIS_BUILD_NUMBER." || true)
+deploy:
+  - provider: releases
+    api_key:
+      secure: HDMWsqw+DqxPg1lhy9pk23EyHI5PdTBo3/SA//h41tIKi2+uEtvoETidRXa/ePkEymVRGyzF7F5RVNFeKu4gM3taxa7JUbOc1OgC8o7oRVfYXZd1qALdDf03EyYAtw3iTeLKlOBSR1cnRZcoOZ6Ja9E6OZC9qjAPrXywNzZkkv4=
+    file_glob: true
+    file: "DrMemory*.tar.gz"
+    skip_cleanup: true
+    # The name must just be the tag in order to match Appveyor.
+    name: $GIT_TAG
+    # This body is clobbered by Appveyor.
+    body: "Auto-generated periodic build."
+    on:
+      repo: DynamoRIO/drmemory
+      branch: master
+      condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY = yes
+  - provider: pages
+    repo: DynamoRIO/drmemory_docs
+    target_branch: master
+    local_dir: html
+    github_token:
+      secure: mZb4iOba+W4h2Vv2gpu07a1Mszh5Lk5L1CPAWBhbvVp0YVbVRr68eEYBTCKnIoIOdxPCAzZEiSumLFgjnd/neJE/RsDNo/7+7PAmiBzLNFNxGanMlMF9TleMo8l+ZiqaAi6SjrMKR/UApogESZiLsXFvuCiUBUBDNSk6lMn+lS4=
+    skip_cleanup: true
+    on:
+      branch: master
+      condition: $TRAVIS_EVENT_TYPE = cron && $DEPLOY_DOCS = yes
