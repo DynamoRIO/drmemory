@@ -148,9 +148,7 @@ if ($^O eq 'MSWin32') {
     $res = do {
         local $/; <$handle>
     };
-    $res = "$res\n\n";
 }
-print "res is: |$res|\n"; #TEMP DIAGNOSTIC
 my @lines = split('\n', $res);
 my $should_print = 0;
 my $exit_code = 0;
@@ -158,6 +156,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
     my $line = $lines[$i];
     my $fail = 0;
     my $name = '';
+    print "LINE::$line\n"; #TEMP DIAGNOSTIC
     $should_print = 1 if ($line =~ /^RESULTS/);
     if ($line =~ /^([-\w]+):.*\*\*/) {
         $name = $1;
@@ -238,6 +237,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'cs2bugMTdZI' => 1,
                 'cs2bugMD' => 1,
                 'cs2bugMDd' => 1,
+                'operatorsMDd' => 1,
                 'gdi' => 1,
                 'syscalls_win' => 1,
                 'handle_only' => 1,
@@ -256,8 +256,10 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 # TODO i#2180/i#2334: extra uninit but not printed out on CI!
                 'nosyms' => 1,
                 # TODO i#2180/i#2334: extra potential error but not printed out on CI!
-                'whitelist_src' => 1,
+                'whitelist_app' => 1,
                 'whitelist_justlib' => 1,
+                'whitelist_src' => 1,
+                'whitelist_srclib' => 1,
                 );
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
