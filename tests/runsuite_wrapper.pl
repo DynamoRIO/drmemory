@@ -275,7 +275,7 @@ for (my $i = 0; $i <= $#lines; ++$i) {
         # Read ahead to examine the test failures:
         $fail = 0;
         my $num_ignore = 0;
-        for (my $j = $i+1; $j < $#lines; ++$j) {
+        for (my $j = $i+1; $j <= $#lines; ++$j) {
             my $test;
             if ($lines[$j] =~ /^\t(\S+)\s/) {
                 $test = $1;
