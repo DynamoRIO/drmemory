@@ -190,7 +190,9 @@ if (NOT X64)
     ${CMAKE_CURRENT_SOURCE_DIR})
   # TODO i#2341: Figure out why this test hangs on the CI (and still thinks
   # it passed).  For now we avoid a 600s hang:
-  set_tests_properties(umbra_client_faulty_redzone PROPERTIES TIMEOUT 60)
+  if (NOT ANDROID) # TODO i#1860: enable tests for Android
+    set_tests_properties(umbra_client_faulty_redzone PROPERTIES TIMEOUT 60)
+  endif ()
 endif()
 
 add_drmf_test(umbra_test_consistency umbra_app
