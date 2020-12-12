@@ -207,6 +207,7 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'strace_test' => 1,
                 'drstrace_unit_tests' => 1,
                 'syscalls_win' => 1,
+                'fuzz_threads' => 1,
                 # TODO i#2342: These are hitting a DR encoding assert.  Maybe we
                 # should just drop wrap_ support anyway.  Also xref i#1741.
                 'wrap_malloc' => 1,
