@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -102,7 +102,7 @@ supp*!unaddr_test2
 UNADDRESSABLE ACCESS
 name=unaddr_test3 instruction
 # test trailing spaces here
-instruction=mov    (%eax) -> %e?x
+instruction=mov    (%?ax) -> %e?x
 suppress.exe!unaddr_test3
 suppress.exe!test
 suppress.exe!main

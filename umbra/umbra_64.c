@@ -624,8 +624,17 @@ umbra_address_space_init()
 {
     dr_mem_info_t info;
     app_pc pc = NULL;
-    /* now we assume all the memory are application memory and need */
-    while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
+    while (pc < (app_pc)POINTER_MAX) {
+        if (!dr_query_memory_ex(pc, &info)) {
+            /* Try again in case of a race. */
+            if (!dr_query_memory_ex(pc, &info)) {
+                LOG(1, "ERROR: %s failed for %p\n", __FUNCTION__, pc);
+                /* Raise a clearer error to avoid future cases like i#2328. */
+                if (pc < (app_pc)0x100000000)
+                    return false;
+                return true;
+            }
+        }
         if (info.type != DR_MEMTYPE_FREE &&
             !umbra_add_app_segment(info.base_pc, info.size, NULL)) {
             LOG(1, "ERROR: %s failed for " PFX "-" PFX "\n", __FUNCTION__,

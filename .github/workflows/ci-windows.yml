@@ -1,0 +1,144 @@
+# **********************************************************
+# Copyright (c) 2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for Windows Continuous Integration testing.
+
+name: ci-windows
+on:
+  # Run on pushes to master and on pull request changes, including from a
+  # forked repo with no "push" trigger, while avoiding duplicate triggers.
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+  # Manual trigger using the Actions page. May remove when integration complete.
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: cmd
+
+jobs:
+  # 32-bit VS2017 and tests:
+  vs2017-32:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Download Packages
+      shell: powershell
+      run: |
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo ------ Setting up paths ------
+        7z x c:\projects\install\ninja.zip -oc:\projects\install\ninja > nul
+        set PATH=c:\projects\install\ninja;%PATH%
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        dir "c:\Program Files (x86)\WiX Toolset"*
+        set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        echo ------ Running suite ------
+        echo PATH is "%PATH%"
+        echo Running in directory "%CD%"
+        perl tests/runsuite_wrapper.pl travis use_ninja 32_only drmemory_only debug_only
+
+  # 64-bit VS2017 and tests:
+  vs2017-64:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Download Packages
+      shell: powershell
+      run: |
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo ------ Setting up paths ------
+        7z x c:\projects\install\ninja.zip -oc:\projects\install\ninja > nul
+        set PATH=c:\projects\install\ninja;%PATH%
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        dir "c:\Program Files (x86)\WiX Toolset"*
+        set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        echo ------ Running suite ------
+        echo PATH is "%PATH%"
+        echo Running in directory "%CD%"
+        perl tests/runsuite_wrapper.pl travis use_ninja 64_only debug_only
+
+  # drheapstat and release builds:
+  vs2017-builds:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Download Packages
+      shell: powershell
+      run: |
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo ------ Setting up paths ------
+        7z x c:\projects\install\ninja.zip -oc:\projects\install\ninja > nul
+        set PATH=c:\projects\install\ninja;%PATH%
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        dir "c:\Program Files (x86)\WiX Toolset"*
+        set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        echo ------ Running suite ------
+        echo PATH is "%PATH%"
+        echo Running in directory "%CD%"
+        perl tests/runsuite_wrapper.pl travis use_ninja nontest_only

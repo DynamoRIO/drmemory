@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -157,7 +157,7 @@ suppress.c
 suppress!main
 suppress.c
 
-Error #13: UNINITIALIZED READ: reading 4 byte(s)
+Error #13: UNINITIALIZED READ: reading
 %if WINDOWS
 system call NtQueryVirtualMemory parameter value #1
 # omitting since case varies: kernel32.dll!VirtualQuery

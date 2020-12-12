@@ -1088,3 +1088,31 @@ name=default i#2237 __strncnt
 UNINITIALIZED READ
 name=default i#2333 RtlCaptureContext
 ntdll.dll!RtlCaptureContext
+
+##################################################
+# i#2339: Invalid heap arguments in VS2017
+# This needs more analysis but we are suppressing for
+# now as this is not in user app code.
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch A
+...
+*!std::_Fac_tidy_reg_t::~_Fac_tidy_reg_t
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch B
+...
+*!std::ios_base::_Ios_base_dtor
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch C
+...
+*!std::basic_streambuf<>::~basic_streambuf<>
+
+##################################################
+# i#2340: Leak in VS2017 CRT
+
+LEAK
+name=default i#2340 VS2017 CRT leak
+...
+*!_register_onexit_function

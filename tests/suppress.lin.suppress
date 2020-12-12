@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -103,7 +103,7 @@ suppress!main
 # also tests wildcard
 UNADDRESSABLE ACCESS
 name=unaddr_test3 instruction
-instruction=mov    (%*ax) -> %eax
+instruction=mov    (%?ax) -> %eax
 suppress!unaddr_*3
 supp*!test
 
