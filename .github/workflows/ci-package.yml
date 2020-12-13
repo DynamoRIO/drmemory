@@ -88,6 +88,7 @@ jobs:
       env:
         CI_TARGET: package
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        DEPLOY_DOCS: yes
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
