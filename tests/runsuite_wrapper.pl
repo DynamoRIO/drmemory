@@ -96,7 +96,7 @@ if ($child) {
 } elsif ($ENV{'CI_TARGET'} eq 'package') {
     # A package build.
     my $build = "0";
-    if ($ENV{'BUILD_NUMBER'} =~ /(\d+)/) {
+    if ($ENV{'VERSION_NUMBER'} =~ /-(\d+)$/) {
         $build = $1;
     }
     if ($args eq '') {
