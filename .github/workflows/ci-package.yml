@@ -96,6 +96,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: $(echo DrMemory*.tar.gz)
+        asset_path: DrMemory*.tar.gz
         asset_name: drmemory.tar.gz
         asset_content_type: application/x-gzip
