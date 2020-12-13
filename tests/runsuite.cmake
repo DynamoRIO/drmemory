@@ -141,8 +141,7 @@ if (arg_travis)
     set(run_tests OFF)
     message("Detected a Travis clang suite: disabling running of tests")
   endif ()
-  if ("$ENV{TRAVIS_EVENT_TYPE}" STREQUAL "cron" OR
-      "$ENV{APPVEYOR_REPO_TAG}" STREQUAL "true")
+  if ("$ENV{CI_TARGET}" STREQUAL "package")
     # We don't want flaky tests to derail package deployment.  We've already run
     # the tests for this same commit via regular master-push triggers: these
     # package builds are coming from a cron trigger (Travis) or a tag addition

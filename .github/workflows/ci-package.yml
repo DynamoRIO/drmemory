@@ -32,6 +32,10 @@ on:
         description: 'Package version number'
         required: true
         default: '0.0.0'
+      build:
+        description: 'Package build number'
+        required: true
+        default: '0'
 
 defaults:
   run:
@@ -55,12 +59,6 @@ jobs:
     - name: Create Build Environment
       run: sudo apt-get -y install doxygen jsonlint g++-multilib
 
-    - name: Build Package
-      working-directory: ${{ github.workspace }}
-      run: ./tests/runsuite_wrapper.pl travis
-      env:
-        TRAVIS_EVENT_TYPE: cron
-
     - name: Get Version
       id: version
       # XXX: for now we duplicate this version number here with CMakeLists.txt.
@@ -71,11 +69,25 @@ jobs:
       # use a non-zero build number when making multiple manual builds in one day.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export GIT_TAG="cronbuild-2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export GIT_TAG="cronbuild-2.3.${VERSON_NUMBER}"
         else
-          export GIT_TAG="release_${{ github.event.inputs.version }}"
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
+            export GIT_TAG="release_${VERSON_NUMBER}"
+          else
+            export GIT_TAG="release_${VERSON_NUMBER}-${{ github.event.inputs.build }}"
+          fi
         fi
-        echo "::set-output name=version::${GIT_TAG}"
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+        echo "::set-output name=version_string::${GIT_TAG}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
 
     - name: Create Release
       id: create_release
@@ -83,8 +95,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ steps.version.outputs.version }}
-        release_name: ${{ steps.version.outputs.version }}
+        tag_name: ${{ steps.version.outputs.version_string }}
+        release_name: ${{ steps.version.outputs.version_string }}
         body: |
           Auto-generated periodic build.
         draft: false
@@ -96,6 +108,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: DrMemory*.tar.gz
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
         asset_name: drmemory.tar.gz
         asset_content_type: application/x-gzip
