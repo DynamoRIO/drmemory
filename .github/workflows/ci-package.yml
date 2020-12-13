@@ -97,14 +97,13 @@ jobs:
         path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
 
     - name: Deploy Docs
-      uses: JamesIves/github-pages-deploy-action@3.7.1
+      uses: crazy-max/ghaction-github-pages@v2
       with:
-        ACCESS_TOKEN: ${{ secrets.DOCS_TOKEN }}
-        FOLDER: html
-        REPOSITORY_NAME: DynamoRIO/drmemory_docs
-        BRANCH: master
-        # Automatically remove deleted files from the deploy branch.
-        CLEAN: true
+        build_dir: html
+        repo: DynamoRIO/drmemory_docs
+        target_branch: master
+      env:
+        GH_PAT: ${{ secrets.DOCS_TOKEN }}
 
   ###########################################################################
   # Mac tarball with x86-64 build:
