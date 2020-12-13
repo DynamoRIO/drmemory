@@ -99,7 +99,7 @@ jobs:
     - name: Deploy Docs
       uses: JamesIves/github-pages-deploy-action@3.7.1
       with:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ACCESS_TOKEN: ${{ secrets.DOCS_TOKEN }}
         FOLDER: html
         REPOSITORY_NAME: DynamoRIO/drmemory_docs
         BRANCH: master
