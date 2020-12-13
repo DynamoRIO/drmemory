@@ -49,7 +49,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        ref: 'master'
         submodules: true
 
     - name: Fetch Sources
