@@ -1,0 +1,101 @@
+# **********************************************************
+# Copyright (c) 2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for release packages.
+
+name: ci-package
+on:
+  # Our weekly cronbuild: 9pm on Fridays.
+  schedule:
+    - cron: '0 21 * * FRI'
+  # Manual trigger using the Actions page.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version number'
+        required: true
+        default: '0.0.0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Linux tarball with 64-bit and 32-bit builds:
+  x86:
+    runs-on: ubuntu-16.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: 'master'
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    # Install multilib for non-cross-compiling Linux build:
+    - name: Create Build Environment
+      run: sudo apt-get -y install doxygen jsonlint g++-multilib
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        TRAVIS_EVENT_TYPE: cron
+
+    - name: Get Version
+      id: version
+      # XXX: for now we duplicate this version number here with CMakeLists.txt.
+      # We should find a way to share (xref DRi#1565).
+      # We support setting the version for manual builds to override all
+      # parts of the version.  If a build is included (leading dash and number
+      # at the end), it will be parsed and passed to package.cmake.  We only
+      # use a non-zero build number when making multiple manual builds in one day.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export GIT_TAG="cronbuild-2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+        else
+          export GIT_TAG="release_${{ github.event.inputs.version }}"
+        fi
+        echo "::set-output name=version::${GIT_TAG}"
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        release_name: ${{ steps.version.outputs.version }}
+        body: |
+          Auto-generated periodic build.
+        draft: false
+        prerelease: false
+
+    - name: Upload Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: $(echo DrMemory*.tar.gz)
+        asset_name: drmemory.tar.gz
+        asset_content_type: application/x-gzip
