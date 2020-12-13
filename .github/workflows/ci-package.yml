@@ -95,6 +95,16 @@ jobs:
         name: linux-tarball
         path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
 
+    - name: Deploy Docs
+      uses: JamesIves/github-pages-deploy-action@3.7.1
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        FOLDER: html
+        REPOSITORY_NAME: DynamoRIO/drmemory_docs
+        BRANCH: master
+        # Automatically remove deleted files from the deploy branch.
+        CLEAN: true
+
   ###########################################################################
   # Mac tarball with x86-64 build:
   osx:
