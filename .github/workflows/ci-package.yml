@@ -23,6 +23,7 @@
 name: ci-package
 on:
   # Our weekly cronbuild: 9pm on Fridays.
+  # Presumably this is only triggered by this .yml file on the master branch.
   schedule:
     - cron: '0 21 * * FRI'
   # Manual trigger using the Actions page.
@@ -31,7 +32,8 @@ on:
       version:
         description: 'Package version number'
         required: true
-        default: '0.0.0'
+        # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+        default: '2.3.99999'
       build:
         description: 'Package build number'
         required: true
@@ -42,6 +44,7 @@ defaults:
     shell: bash
 
 jobs:
+  ###########################################################################
   # Linux tarball with 64-bit and 32-bit builds:
   x86:
     runs-on: ubuntu-16.04
@@ -60,25 +63,26 @@ jobs:
 
     - name: Get Version
       id: version
-      # XXX: for now we duplicate this version number here with CMakeLists.txt.
+      # XXX: For now we duplicate this version number here with CMakeLists.txt.
       # We should find a way to share (xref DRi#1565).
-      # We support setting the version for manual builds to override all
-      # parts of the version.  If a build is included (leading dash and number
-      # at the end), it will be parsed and passed to package.cmake.  We only
-      # use a non-zero build number when making multiple manual builds in one day.
+      # We support setting the version and build for manual builds.
+      # We only use a non-zero build # when making multiple manual builds in one day.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
           export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export GIT_TAG="cronbuild-2.3.${VERSON_NUMBER}"
+          export BUILD_NUMBER=0
+          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
         else
           export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export BUILD_NUMBER=${{ github.event.inputs.build }}
           if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
-            export GIT_TAG="release_${VERSON_NUMBER}"
+            export GIT_TAG="release_${VERSION_NUMBER}"
           else
-            export GIT_TAG="release_${VERSON_NUMBER}-${{ github.event.inputs.build }}"
+            export GIT_TAG="release_${VERSION_NUMBER}-${BUILD_NUMBER}"
           fi
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
+        echo "::set-output name=build_number::${BUILD_NUMBER}"
         echo "::set-output name=version_string::${GIT_TAG}"
 
     - name: Build Package
@@ -87,6 +91,7 @@ jobs:
       env:
         CI_TARGET: package
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
 
     - name: Create Release
       id: create_release
@@ -109,5 +114,172 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         # This action doesn't seem to support a glob so we need the exact name.
         asset_path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
-        asset_name: drmemory.tar.gz
+        asset_name: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
         asset_content_type: application/x-gzip
+
+  ###########################################################################
+  # Mac tarball with x86-64 build:
+  osx-x86-64:
+    runs-on: macos-10.15
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Create Build Environment
+      run: brew install nasm
+
+    - name: Get Version
+      id: version
+      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export BUILD_NUMBER=0
+          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export BUILD_NUMBER=${{ github.event.inputs.build }}
+          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
+            export GIT_TAG="release_${VERSION_NUMBER}"
+          else
+            export GIT_TAG="release_${VERSION_NUMBER}-${BUILD_NUMBER}"
+          fi
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+        echo "::set-output name=build_number::${BUILD_NUMBER}"
+        echo "::set-output name=version_string::${GIT_TAG}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+        # See ci-osx.yml comments: we need to set the xcode version.
+        DEVELOPER_DIR: /Applications/Xcode_11.3.1.app/Contents/Developer
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version_string }}
+        release_name: ${{ steps.version.outputs.version_string }}
+        body: |
+          Auto-generated periodic build.
+        draft: false
+        prerelease: false
+
+    - name: Upload Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
+        asset_name: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
+        asset_content_type: application/x-gzip
+
+  ###########################################################################
+  # Windows .zip and .msi with 32-bit and 64-bit x86 builds:
+  windows:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Download Packages
+      shell: powershell
+      run: |
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("http://doxygen.nl/files/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
+
+    - name: Get Version
+      id: version
+      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export BUILD_NUMBER=0
+          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export BUILD_NUMBER=${{ github.event.inputs.build }}
+          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
+            export GIT_TAG="release_${VERSION_NUMBER}"
+          else
+            export GIT_TAG="release_${VERSION_NUMBER}-${BUILD_NUMBER}"
+          fi
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+        echo "::set-output name=build_number::${BUILD_NUMBER}"
+        echo "::set-output name=version_string::${GIT_TAG}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo ------ Setting up paths ------
+        7z x c:\projects\install\ninja.zip -oc:\projects\install\ninja > nul
+        set PATH=c:\projects\install\ninja;%PATH%
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        dir "c:\Program Files (x86)\WiX Toolset"*
+        set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        echo ------ Running suite ------
+        echo PATH is "%PATH%"
+        echo Running in directory "%CD%"
+        perl tests/runsuite_wrapper.pl travis use_ninja
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version_string }}
+        release_name: ${{ steps.version.outputs.version_string }}
+        body: |
+          Auto-generated periodic build.
+        draft: false
+        prerelease: false
+
+    - name: Upload Zip
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
+        asset_name: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
+        asset_content_type: application/zip
+
+    - name: Upload Msi
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
+        asset_name: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
+        asset_content_type: application/octet-stream
