@@ -103,6 +103,7 @@ jobs:
         repo: DynamoRIO/drmemory_docs
         target_branch: master
       env:
+        # We need a personal access token for write access to another repo.
         GH_PAT: ${{ secrets.DOCS_TOKEN }}
 
   ###########################################################################
