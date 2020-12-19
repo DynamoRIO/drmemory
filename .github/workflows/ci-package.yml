@@ -22,10 +22,10 @@
 
 name: ci-package
 on:
-  # Our weekly cronbuild: 8:30pm EST on Fridays.
+  # Our weekly cronbuild: 9pm EST on Fridays.
   # Presumably this is only triggered by this .yml file on the master branch.
   schedule:
-    - cron: '30 1 * * SAT'
+    - cron: '0 2 * * SAT'
   # Manual trigger using the Actions page.
   workflow_dispatch:
     inputs:
@@ -69,17 +69,16 @@ jobs:
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
           export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
-          export GIT_TAG="cronbuild-${VERSION_NUMBER}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -129,17 +128,16 @@ jobs:
           export PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
           export PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
           export VERSION_NUMBER="2.3.${PATCHLEVEL}"
-          export GIT_TAG="cronbuild-${VERSION_NUMBER}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -182,17 +180,16 @@ jobs:
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
           export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
-          export GIT_TAG="cronbuild-${VERSION_NUMBER}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -245,21 +242,20 @@ jobs:
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
           export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
-          export GIT_TAG="cronbuild-${VERSION_NUMBER}"
           export OSX_PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export OSX_PATCHLEVEL=$(((OSX_PATCHLEVEL %200) + 56))
+          export OSX_PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
           export OSX_VERSION_NUMBER="2.3.${OSX_PATCHLEVEL}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
         echo "::set-output name=osx_version_number::${OSX_VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Create Release
       id: create_release
