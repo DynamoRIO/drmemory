@@ -22,18 +22,17 @@
 
 name: ci-package
 on:
-  # Our weekly cronbuild: 9pm on Fridays.
+  # Our weekly cronbuild: 9pm EST on Fridays.
   # Presumably this is only triggered by this .yml file on the master branch.
   schedule:
-    - cron: '0 21 * * FRI'
+    - cron: '0 2 * * SAT'
   # Manual trigger using the Actions page.
   workflow_dispatch:
     inputs:
       version:
-        description: 'Package version number'
-        required: true
-        # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
-        default: '2.3.99999'
+        description: 'Package version number (blank for cronbuild)'
+        required: false
+        default: ''
       build:
         description: 'Package build number'
         required: true
@@ -69,18 +68,17 @@ jobs:
       # We only use a non-zero build # when making multiple manual builds in one day.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -127,18 +125,19 @@ jobs:
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+          export PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
+          export VERSION_NUMBER="2.3.${PATCHLEVEL}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -180,18 +179,17 @@ jobs:
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Build Package
       working-directory: ${{ github.workspace }}
@@ -243,18 +241,21 @@ jobs:
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export GIT_TAG="cronbuild-2.3.${VERSION_NUMBER}"
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export OSX_PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export OSX_PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
+          export OSX_VERSION_NUMBER="2.3.${OSX_PATCHLEVEL}"
+          export PREFIX="cronbuild-"
         else
-          if [ "${{ github.event.inputs.build }}" -eq 0 ]; then
             export VERSION_NUMBER=${{ github.event.inputs.version }}
-          else
-            export VERSION_NUMBER=${{ github.event.inputs.version }}-${{ github.event.inputs.build }}
-          fi
-          export GIT_TAG="release_${VERSION_NUMBER}"
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
-        echo "::set-output name=version_string::${GIT_TAG}"
+        echo "::set-output name=osx_version_number::${OSX_VERSION_NUMBER}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Create Release
       id: create_release
@@ -295,8 +296,8 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         # This action doesn't seem to support a glob so we need the exact name.
-        asset_path: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
-        asset_name: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
+        asset_path: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
+        asset_name: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
         asset_content_type: application/x-gzip
 
     - name: Download Zip
