@@ -225,10 +225,11 @@ if (APPLE)
   # clang linker disallows any but major # being >= 256 (1024 for x64) so we do
   # mod 200 (we assume we'll never confuse versions 200 apart) and add 56 (to
   # distinguish from real releases).
+  # If we change this we need to also update .github/workflows/ci-package.yml.
   math(EXPR VERSION_NUMBER_PATCHLEVEL "(${VERSION_NUMBER_PATCHLEVEL} % 200) + 56")
 endif (APPLE)
 
-# N.B.: when updating this, update the git tag in .travis.yml.
+# N.B.: When updating this, update all instances in .github/workflows/ci-package.yml.
 # We should find a way to share (xref DRi#1565).
 set(VERSION_NUMBER_DEFAULT "2.3.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
