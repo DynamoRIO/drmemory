@@ -22,18 +22,17 @@
 
 name: ci-package
 on:
-  # Our weekly cronbuild: 9pm on Fridays.
+  # Our weekly cronbuild: 8:30pm EST on Fridays.
   # Presumably this is only triggered by this .yml file on the master branch.
   schedule:
-    - cron: '0 21 * * FRI'
+    - cron: '30 1 * * SAT'
   # Manual trigger using the Actions page.
   workflow_dispatch:
     inputs:
       version:
-        description: 'Package version number'
-        required: true
-        # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
-        default: '2.3.99999'
+        description: 'Package version number (blank for cronbuild)'
+        required: false
+        default: ''
       build:
         description: 'Package build number'
         required: true
