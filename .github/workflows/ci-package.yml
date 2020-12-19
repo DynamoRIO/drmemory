@@ -233,6 +233,11 @@ jobs:
     runs-on: ubuntu-16.04
 
     steps:
+      # We need a checkout to run git log for the version.
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
     - name: Get Version
       id: version
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
@@ -250,10 +255,9 @@ jobs:
         if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
           export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
-        export TAG_NAME="${PREFIX}${VERSION_NUMBER}"
         echo "::set-output name=version_number::${VERSION_NUMBER}"
         echo "::set-output name=osx_version_number::${OSX_VERSION_NUMBER}"
-        echo "::set-output name=version_string::${TAG_NAME}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
 
     - name: Create Release
       id: create_release
