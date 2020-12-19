@@ -23,7 +23,6 @@
 name: ci-package
 on:
   # Our weekly cronbuild: 9pm EST on Fridays.
-  # Presumably this is only triggered by this .yml file on the master branch.
   schedule:
     - cron: '0 2 * * SAT'
   # Manual trigger using the Actions page.
