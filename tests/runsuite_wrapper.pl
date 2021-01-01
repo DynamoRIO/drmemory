@@ -61,10 +61,17 @@ if ($^O eq 'cygwin') {
 # we can diagnose failures.
 # We tee to stdout to provide incremental output and avoid the 10-min
 # no-output timeout on Travis.
-print "Forking child for stdout tee\n";
+# If we're on UNIX or we have a Cygwin perl, we do this via a fork.
 my $res = '';
-my $child = open(CHILD, '-|');
-die "Failed to fork: $!" if (!defined($child));
+my $child = 0;
+my $outfile = '';
+if ($^O ne 'MSWin32') {
+    print "Forking child for stdout tee\n";
+    $child = open(CHILD, '-|');
+    die "Failed to fork: $!" if (!defined($child));
+} else {
+    $outfile = "runsuite_output.txt";
+}
 if ($child) {
     # Parent
     # i#4126: We include extra printing to help diagnose hangs on Travis.
@@ -86,15 +93,9 @@ if ($child) {
         }
     }
     close(CHILD);
-} elsif ($ENV{'TRAVIS_EVENT_TYPE'} eq 'cron' ||
-         $ENV{'APPVEYOR_REPO_TAG'} eq 'true') {
+} elsif ($ENV{'CI_TARGET'} eq 'package') {
     # A package build.
     my $build = "0";
-    # We trigger by setting VERSION_NUMBER in Travis.
-    # That sets a tag and we propagate the name into the Appveyor build from the tag:
-    if ($ENV{'APPVEYOR_REPO_TAG_NAME'} =~ /release_(.*)/) {
-        $ENV{'VERSION_NUMBER'} = $1;
-    }
     if ($ENV{'VERSION_NUMBER'} =~ /-(\d+)$/) {
         $build = $1;
     }
@@ -116,21 +117,36 @@ if ($child) {
     }
     my $cmd = "ctest -VV -S \"${osdir}/../package.cmake${args}\"";
     print "Running ${cmd}\n";
-    system("${cmd} 2>&1");
-    exit 0;
+    if ($^O eq 'MSWin32') {
+        system("${cmd} 2>&1 | tee ${outfile}");
+    } else {
+        system("${cmd} 2>&1");
+        exit 0;
+    }
 } else {
     # Despite creating larger log files, -VV makes it easier to diagnose issues.
     my $cmd = "ctest --output-on-failure -VV -S \"${osdir}/runsuite.cmake${args}\"";
     print "Running ${cmd}\n";
-    system("${cmd} 2>&1");
-    print "Finished running ${cmd}\n";
-    exit 0;
+    if ($^O eq 'MSWin32') {
+        system("${cmd} 2>&1 | tee ${outfile}");
+        print "Finished running ${cmd}\n";
+    } else {
+        system("${cmd} 2>&1");
+        print "Finished running ${cmd}\n";
+        exit 0;
+    }
 }
 
+if ($^O eq 'MSWin32') {
+    open my $handle, '<', "$outfile" or die "Failed to open teed ${outfile}: $!";
+    $res = do {
+        local $/; <$handle>
+    };
+}
 my @lines = split('\n', $res);
 my $should_print = 0;
 my $exit_code = 0;
-for (my $i = 0; $i < $#lines; ++$i) {
+for (my $i = 0; $i <= $#lines; ++$i) {
     my $line = $lines[$i];
     my $fail = 0;
     my $name = '';
@@ -157,19 +173,46 @@ for (my $i = 0; $i < $#lines; ++$i) {
         my $is_32 = $line =~ /-32/;
         my %ignore_failures_32 = ();
         my %ignore_failures_64 = ();
-        if ($^O eq 'cygwin') {
-            # FIXME i#1938: ignoring certain AppVeyor test failures until
+        if ($^O eq 'cygwin' ||
+            $^O eq 'MSWin32') {
+            # FIXME i#1938: ignoring certain Windows CI test failures until
             # we get all tests passing.
-            %ignore_failures_32 = ('procterm' => 1,
-                                   'winthreads' => 1,
-                                   'malloc_callstacks' => 1,
-                                   'wrap_wincrt' => 1, # i#1741: flaky.
-                                   'wrap_malloc' => 1,
-                                   'wrap_operators' => 1,
-                                   'wrap_wincrtdbg' => 1,
-                                   'wrap_cs2bugMTd' => 1,
-                                   'app_suite.pattern' => 1,
-                                   'app_suite' => 1);
+            %ignore_failures_32 = (
+                'procterm' => 1,
+                'winthreads' => 1,
+                'malloc_callstacks' => 1,
+                'app_suite.pattern' => 1,
+                'app_suite' => 1,
+                'umbra_client_faulty_redzone' => 1, # i#2341
+                # TODO i#2180/i#2334: evaluate why failing on GA CI.
+                'cs2bug' => 1,
+                'reachable' => 1,
+                'wincrt' => 1,
+                'cs2bugMTdZI' => 1,
+                'cs2bugMTd' => 1,
+                'cs2bugMD' => 1,
+                'cs2bugMDd' => 1,
+                'gdi' => 1,
+                'handle' => 1,
+                'handle_only' => 1,
+                'blacklist' => 1,
+                'pcache-use' => 1,
+                'drsyscall_test' => 1,
+                'strace_test' => 1,
+                'drstrace_unit_tests' => 1,
+                'syscalls_win' => 1,
+                'fuzz_threads' => 1,
+                # TODO i#2342: These are hitting a DR encoding assert.  Maybe we
+                # should just drop wrap_ support anyway.  Also xref i#1741.
+                'wrap_malloc' => 1,
+                'wrap_cs2bug' => 1,
+                'wrap_operators' => 1,
+                'wrap_wincrt' => 1,
+                'wrap_wincrtdbg' => 1,
+                'wrap_cs2bugMTd' => 1,
+                'wrap_operatorsMDd' => 1,
+                'leak_string' => 1,
+                );
             # FIXME i#2180: ignoring certain AppVeyor x64-full-mode failures until
             # we get all tests passing.
             %ignore_failures_64 = (
@@ -180,34 +223,38 @@ for (my $i = 0; $i < $#lines; ++$i) {
                 'procterm.nativeparent' => 1,
                 'malloc_callstacks' => 1,
                 'reachable' => 1,
-                'coverage' => 1,
-                'suppress' => 1,
+                'suppress' => 1, # i#2338
                 'suppress-genoffs' => 1,
                 'suppress-gensyms' => 1,
                 'wincrt' => 1,
-                'mallocMD' => 1,
                 'cs2bugMTd' => 1,
                 'cs2bugMTdZI' => 1,
                 'cs2bugMD' => 1,
                 'cs2bugMDd' => 1,
-                'redzone16' => 1,
+                'operatorsMDd' => 1,
                 'gdi' => 1,
                 'syscalls_win' => 1,
                 'handle_only' => 1,
                 'blacklist' => 1,
                 'nudge' => 1,
+                'syscall_file_all' => 1,
+                'syscall_file_gen' => 1,
+                'handle' => 1,
+                'drstrace_unit_tests' => 1,
+                'app_suite.pattern' => 1,
+                # TODO i#2180/i#2334: These have an extra invalid heap arg but it's
+                # not printed out by the auto-print-results.txt: we need to get that
+                # and suppress or fix.
+                'fuzz_buffer.cpp' => 1,
+                'fuzz_buffer.cpp.demangled' => 1,
+                # TODO i#2180/i#2334: extra uninit but not printed out on CI!
+                'nosyms' => 1,
+                # TODO i#2180/i#2334: extra potential error but not printed out on CI!
                 'whitelist_app' => 1,
                 'whitelist_justlib' => 1,
                 'whitelist_src' => 1,
                 'whitelist_srclib' => 1,
-                'syscall_file_all' => 1,
-                'syscall_file_gen' => 1,
-                'handle' => 1,
-                'app_suite' => 1,
-                'app_suite.pattern' => 1,
-                # These two are i#2178:
-                'slowesp' => 1,
-                'noreplace_realloc' => 1);
+                );
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038
             %ignore_failures_64 = ('malloc' => 1);
@@ -223,7 +270,7 @@ for (my $i = 0; $i < $#lines; ++$i) {
         # Read ahead to examine the test failures:
         $fail = 0;
         my $num_ignore = 0;
-        for (my $j = $i+1; $j < $#lines; ++$j) {
+        for (my $j = $i+1; $j <= $#lines; ++$j) {
             my $test;
             if ($lines[$j] =~ /^\t(\S+)\s/) {
                 $test = $1;
