@@ -63,6 +63,7 @@ class OS(Enum):
             regions.append(Region('exec,heap, data', 0x0, (0x10000000000 - 1)))
             regions.append(Region('pie', 0x550000000000, (0x560000000000 - 1)))
             # Split region into two parts to avoid collision with vsyscall.
+            # XXX i#1798: This split should be enforced by Umbra's code.
             regions.append(Region('lib, map, stack, vdso (part 1)', 0x7F0000000000,
                                   (0x7FFFFF400000 - 1)))
             regions.append(Region('lib, map, stack, vdso (part 2)', 0x7FFFFF800000,
