@@ -421,7 +421,9 @@ umbra_xl8_app_to_shadow(const umbra_map_t *map, app_pc pc)
 {
     ptr_uint_t addr;
     addr = ((ptr_uint_t)pc & map->mask) + map->disp;
-    /* special handling on case like 0x800'00000000 & 0xff'ffffffff */
+    /* TODO i#2330: This is not the right place to handle this special case. We will
+     * need to remove this step, especially since it is not done by our inlined code.
+     */
     if (pc != 0 && addr == map->disp)
         addr += (map->mask + 1);
     switch (map->options.scale) {
