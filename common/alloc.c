@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -3453,6 +3453,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              * numbers and find the specific sets used.
              */
             if (info->start == get_libc_base(NULL)) {
+                ASSERT(set_libc != NULL, "we require finding routines in libc");
                 if (set_dyn_libc == &set_dyn_libc_placeholder) {
                     /* Take over as the set_libc for modules we saw earlier */
                     LOG(2, "alloc set "PFX" taking over placeholder "PFX" as libc set\n",
