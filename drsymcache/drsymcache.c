@@ -124,6 +124,7 @@ typedef struct _mod_cache_t {
 } mod_cache_t;
 
 typedef struct _offset_entry_t {
+    /* In the file we currently store this as a 4-byte int. */
     size_t offs;
     struct _offset_entry_t *next;
 } offset_entry_t;
@@ -336,9 +337,11 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 #else
     BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING",%u",
                    modcache->module_file_size, modcache->timestamp);
+# ifdef LINUX
     /* For easy sscanf we print as separate bytes. */
     for (i = 0; i < MD5_RAW_BYTES; i++)
         BUFFERED_WRITE(f, buf, bsz, sofar, len, ",%02x", modcache->md5[i]);
+# endif
 # ifdef MACOS
     BUFFERED_WRITE(f, buf, bsz, sofar, len, ",%u,%u,",
                    modcache->current_version, modcache->compatibility_version);
