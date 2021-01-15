@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -29,6 +29,7 @@
 #include "drmemory_framework.h"
 #include "../framework/drmf.h"
 #include "utils.h"
+#include "crypto.h"
 #include <string.h>
 
 /* General comments:
@@ -55,7 +56,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 15
+#define SYMCACHE_VERSION 16
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -105,8 +106,14 @@ typedef struct _mod_cache_t {
     uint timestamp;
     size_t module_internal_size;
 #else
-    /* XXX: may want more consistency checks as timestamp is not always set */
     uint timestamp;
+# ifdef LINUX
+    /* Since ELF has no standard version/checksum fields we compute our own,
+     * as we have seen collisions with just using the file size.
+     */
+#  define ELF_MD5_REGION_LEN 1024
+    byte md5[MD5_RAW_BYTES];
+# endif
 # ifdef MACOS
     uint current_version;
     uint compatibility_version;
@@ -117,6 +124,7 @@ typedef struct _mod_cache_t {
 } mod_cache_t;
 
 typedef struct _offset_entry_t {
+    /* In the file we currently store this as a 4-byte int. */
     size_t offs;
     struct _offset_entry_t *next;
 } offset_entry_t;
@@ -329,6 +337,11 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 #else
     BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING",%u",
                    modcache->module_file_size, modcache->timestamp);
+# ifdef LINUX
+    /* For easy sscanf we print as separate bytes. */
+    for (i = 0; i < MD5_RAW_BYTES; i++)
+        BUFFERED_WRITE(f, buf, bsz, sofar, len, ",%02x", modcache->md5[i]);
+# endif
 # ifdef MACOS
     BUFFERED_WRITE(f, buf, bsz, sofar, len, ",%u,%u,",
                    modcache->current_version, modcache->compatibility_version);
@@ -396,7 +409,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
     bool res = false;
     const char *line, *next_line;
     char symbol[MAX_SYMLEN];
-    size_t offs;
+    uint offs;
     uint64 map_size;
     size_t actual_size;
     bool ok;
@@ -427,11 +440,12 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
     /* i#1057: We use dr_sscanf() because sscanf() from ntdll will call strlen()
      * and read off the end of the mapped file if it doesn't hit a null.
      */
-    if (dr_sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d",
-                  (uint *)&offs) != 1 ||
+    uint ver;
+    if (dr_sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d", &ver) != 1 ||
         /* neither forward nor backward compatible */
-        offs != SYMCACHE_VERSION) {
-        WARN("WARNING: symbol cache file has wrong version\n");
+        ver != SYMCACHE_VERSION) {
+        WARN("Wrong version %d (expect %d) in symbol cache file for %s\n", ver,
+             SYMCACHE_VERSION, modname);
         goto symcache_read_symfile_done;
     }
     line = strchr((char *) map, '\n');
@@ -481,8 +495,35 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
             WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
             goto symcache_read_symfile_done;
         }
+        line = strchr(line, ',') + 1;
+        if (line != NULL)
+            line = strchr(line, ',') + 1;
+        if (line != NULL)
+            line = strchr(line, ',');
+        if (line == NULL) {
+            WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
+            goto symcache_read_symfile_done;
+        }
+        byte md5[MD5_RAW_BYTES];
+        for (int i = 0; i < MD5_RAW_BYTES; i++) {
+            uint val;
+            if (dr_sscanf(line, ",%x", &val) != 1 || val > UCHAR_MAX) {
+                WARN("WARNING: %s symbol cache file has bad md5 at byte %d: %.*s\n",
+                     modname, i, 10, line);
+                goto symcache_read_symfile_done;
+            }
+            md5[i] = (byte)val;
+            if (i < MD5_RAW_BYTES - 1) {
+                line = strchr(line + 1, ',');
+                if (line == NULL) {
+                    WARN("WARNING: %s symbol cache file has bad md5 sequence\n", modname);
+                    goto symcache_read_symfile_done;
+                }
+            }
+        }
         if (module_file_size != modcache->module_file_size ||
-            timestamp != modcache->timestamp) {
+            timestamp != modcache->timestamp ||
+            memcmp(md5, modcache->md5, sizeof(md5)) != 0) {
             LOG(1, "module version mismatch: %s symbol cache file is stale\n", modname);
             goto symcache_read_symfile_done;
         }
@@ -556,7 +597,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname,
             symbol[symlen] = '\0';
         }
         if (comma != NULL && symlen < MAX_SYMLEN && symbol[0] != '\0' &&
-            dr_sscanf(comma, ",0x%x", (uint *)&offs) == 1) {
+            dr_sscanf(comma, ",0x%x", &offs) == 1) {
 #ifdef WINDOWS
             /* Guard against corrupted files that cause DrMem to crash (i#1465) */
             if (offs >= modcache->module_internal_size) {
@@ -776,6 +817,9 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     modcache->module_internal_size = mod->module_internal_size;
 #else
     modcache->timestamp = mod->timestamp;
+# ifdef LINUX
+    get_md5_for_region(mod->start, ELF_MD5_REGION_LEN, modcache->md5);
+# endif
 # ifdef MACOS
     modcache->current_version = mod->current_version;
     modcache->compatibility_version = mod->compatibility_version;
