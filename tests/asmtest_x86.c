@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -464,6 +464,8 @@ GLOBAL_LABEL(FUNCNAME:)
         END_PROLOG
         mov      eax, 0
         movdqu   XMMWORD [8 + REG_XSP + REG_XAX], xmm0
+        push     PTRSZ [REG_XSP]
+        pop      REG_XAX
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
