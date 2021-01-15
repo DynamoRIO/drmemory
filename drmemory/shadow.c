@@ -119,14 +119,6 @@ bitmapx2_ushort(bitmap_t bm, uint i)
 }
 #endif
 
-/* returns the uint corresponding to offset i */
-static inline uint
-bitmapx2_dword(bitmap_t bm, uint i)
-{
-    ASSERT(BITMAPx2_SHIFT(i) == 0, "bitmapx2_dword: index not aligned");
-    return bm[BITMAPx2_IDX(i)];
-}
-
 /***************************************************************************
  * BYTE-TO-BYTE SHADOWING SUPPORT
  */
