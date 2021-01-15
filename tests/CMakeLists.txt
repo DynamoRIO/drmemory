@@ -507,7 +507,7 @@ newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops
   "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
-if (UNIX)
+if (LINUX)
   newtest(mmap mmap.c)
   target_link_libraries(mmap drmemory_annotations)
 endif ()
