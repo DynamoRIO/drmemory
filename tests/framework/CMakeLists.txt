@@ -167,9 +167,11 @@ target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_drmf_test(umbra_test_empty umbra_app umbra_client_empty.c
   umbra "" "" ".*TEST PASSED")
 
-# Test i#1712 with a region overlapping 0x7e00'-0x7f00'.
-add_drmf_test(umbra_test_overlap umbra_app umbra_client_empty.c
-  umbra "-vm_base;0x7efff0000000;-no_vm_base_near_app" "" ".*TEST PASSED")
+if (X64)
+  # Test i#1712 with a region overlapping 0x7e00'-0x7f00'.
+  add_drmf_test(umbra_test_overlap umbra_app umbra_client_empty.c
+    umbra "-vm_base;0x7efff0000000;-no_vm_base_near_app" "" ".*TEST PASSED")
+endif ()
 
 add_drmf_test(umbra_test_shadow_mem umbra_app umbra_client_shadow_mem.c
   umbra "" "" ".*TEST PASSED")
