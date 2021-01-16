@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -630,7 +630,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             mi->check_definedness = true;
         } else {
             mi->src[1].app = instr_get_src(inst, 1);
-            if (!memop_ok_for_fastpath(mi->src[1].app, true))
+            if (!memop_ok_for_fastpath(mi->src[1].app, false/*no 8-byte*//*XXX i#111*/))
                 return false;
             mi->load2x = true;
         }
