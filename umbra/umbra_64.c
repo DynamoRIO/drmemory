@@ -242,6 +242,7 @@
  * and there are 16 (0x1000'00000000/0x100'00000000) segments per unit.
  */
 # define NUM_SEG_BITS     40
+# define VSYSCALL_BASE 0xFFFFFFFFFF600000
 #else
 /* For SHDW(app) = (app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000),
  * the segment size is: 0x10'00000000, i.e., 36 bits.
@@ -367,9 +368,11 @@ static const app_segment_t app_segments_initial[] = {
      * If app allocates memory from that region, umbra_add_app_segment
      * will fail because umbra_add_shadow_segment fails to add corresponding
      * shadow memory segment.
-     * FIXME i#1782, i#1798: we can proactively track memory allocation and
+     * TODO i#1798: we can proactively track memory allocation and
      * use more expensive instrumentation when necessary to get rid of the
      * assumption and segment split.
+     * TODO i#2363: The kernel can place vdso in the 0x7ff'f4-0x7ff'f8 gap!
+     * If vsyscall is present we currently have no solution.
      */
     /* app3: part 1 */
     {(app_pc)0x00007F0000000000,  (app_pc)0x00007FFFFF400000, 0},
@@ -378,6 +381,18 @@ static const app_segment_t app_segments_initial[] = {
     /* app3: part 2 */
     {(app_pc)0x00007FFFFF800000,  (app_pc)0x0000800000000000, 0},
     /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+};
+static const app_segment_t app_segments_initial_no_vsyscall[] = {
+    /* We do not need any gaps or splitting without vsyscall. */
+    /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
@@ -595,60 +610,32 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     app_pc seg_end =
         (app_pc)ALIGN_FORWARD(base + size, segment_size(num_seg_bits));
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
-        if (app_segments[i].app_used) {
+        if (app_segments[i].app_end != NULL) {
+            /* Entirely inside an existing segment? */
             if (base >= app_segments[i].app_base &&
-                base + size <= app_segments[i].app_end)
+                base + size <= app_segments[i].app_end) {
+                app_segments[i].app_used = true;
                 return true;
-        } else {
-            if (app_segments[i].app_end != NULL) {
-                /* Entirely inside a pre-defined app segment? */
-                if (base >= app_segments[i].app_base &&
-                    base + size <= app_segments[i].app_end) {
-                    app_segments[i].app_used = true;
-                    return true;
-                }
-                /* Overlaps a pre-defined app segment on the left? */
-                if (base + size > app_segments[i].app_base &&
-                    base + size < app_segments[i].app_end) {
-                    LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
-                        " to incorporate [%p-%p)\n",
-                        app_segments[i].app_base, app_segments[i].app_end,
-                        seg_base, app_segments[i].app_end, base, base+size);
-                    for (int j = 0; j < MAX_NUM_APP_SEGMENTS; j++) {
-                        if (app_segments[j].app_used &&
-                            app_segments[j].app_base == seg_base &&
-                            app_segments[j].app_end == app_segments[i].app_base) {
-                            LOG(1, "invalidating now-merged app segment [%p, %p)\n",
-                                app_segments[j].app_base, app_segments[j].app_end);
-                            app_segments[j].app_used = false;
-                            app_segments[j].app_base = NULL;
-                            app_segments[j].app_end = NULL;
-                        }
+            }
+            /* Overlaps an existing segment on the left? */
+            if (base + size > app_segments[i].app_base &&
+                base + size < app_segments[i].app_end) {
+                LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
+                    " to incorporate [%p-%p)\n",
+                    app_segments[i].app_base, app_segments[i].app_end,
+                    seg_base, app_segments[i].app_end, base, base+size);
+                for (int j = 0; j < MAX_NUM_APP_SEGMENTS; j++) {
+                    if (app_segments[j].app_used &&
+                        app_segments[j].app_base == seg_base &&
+                        app_segments[j].app_end == app_segments[i].app_base) {
+                        LOG(1, "invalidating now-merged app segment [%p, %p)\n",
+                            app_segments[j].app_base, app_segments[j].app_end);
+                        app_segments[j].app_used = false;
+                        app_segments[j].app_base = NULL;
+                        app_segments[j].app_end = NULL;
                     }
-                    app_segments[i].app_base = seg_base;
-                    app_segments[i].app_used = true;
-                    return true;
                 }
-                /* Overlaps a pre-defined app segment on the right? */
-                if (base > app_segments[i].app_base &&
-                    base < app_segments[i].app_end) {
-                    LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
-                        " to incorporate [%p-%p)\n",
-                        app_segments[i].app_base, app_segments[i].app_end,
-                        app_segments[i].app_base, seg_end, base, base+size);
-                    /* No invalidation check, since we're walking left to right. */
-                    app_segments[i].app_end = seg_end;
-                    app_segments[i].app_used = true;
-                    return true;
-                }
-            } else {
                 app_segments[i].app_base = seg_base;
-                app_segments[i].app_end = seg_end;
-                LOG(1, "adding app segment ["PFX", "PFX")\n", app_segments[i].app_base,
-                    app_segments[i].app_end);
-                /* Adding a not pre-defined segment.
-                 * We call umbra_add_shadow_segment to check if it is valid.
-                 */
                 if (map != NULL && !umbra_add_shadow_segment(map, &app_segments[i])) {
                     app_segments[i].app_end = NULL;
                     LOG(1, "failed to add shadow segment for ["PFX", "PFX")\n",
@@ -658,6 +645,39 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
                 app_segments[i].app_used = true;
                 return true;
             }
+            /* Overlaps an existing segment on the right? */
+            if (base > app_segments[i].app_base &&
+                base < app_segments[i].app_end) {
+                LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
+                    " to incorporate [%p-%p)\n",
+                    app_segments[i].app_base, app_segments[i].app_end,
+                    app_segments[i].app_base, seg_end, base, base+size);
+                /* No invalidation check, since we're walking left to right. */
+                app_segments[i].app_end = seg_end;
+                app_segments[i].app_used = true;
+                if (map != NULL && !umbra_add_shadow_segment(map, &app_segments[i])) {
+                    app_segments[i].app_end = NULL;
+                    LOG(1, "failed to add shadow segment for ["PFX", "PFX")\n",
+                        base, base + size);
+                    return false;
+                }
+                return true;
+            }
+        } else {
+            ASSERT(app_segments[i].app_end == NULL, "inconsistent umbra data");
+            ASSERT(!app_segments[i].app_used, "inconsistent umbra data");
+            app_segments[i].app_base = seg_base;
+            app_segments[i].app_end = seg_end;
+            LOG(1, "adding app segment ["PFX", "PFX")\n", app_segments[i].app_base,
+                app_segments[i].app_end);
+            if (map != NULL && !umbra_add_shadow_segment(map, &app_segments[i])) {
+                app_segments[i].app_end = NULL;
+                LOG(1, "failed to add shadow segment for ["PFX", "PFX")\n",
+                    base, base + size);
+                return false;
+            }
+            app_segments[i].app_used = true;
+            return true;
         }
     }
     LOG(1, "no room for new app segment ["PFX", "PFX")\n",
@@ -780,7 +800,17 @@ umbra_arch_init()
     }
 #else
     num_seg_bits = NUM_SEG_BITS;
+# ifdef LINUX
+    if (dr_query_memory((app_pc)VSYSCALL_BASE, NULL, NULL, NULL)) {
+        LOG(1, "vsyscall present: excluding 0x7ff'f4-0x7ff-f8 gap.\n");
+        memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
+    } else {
+        LOG(1, "vsyscall not present: no 0x7ff'f4-0x7ff-f8 gap.\n");
+        memcpy(&app_segments, &app_segments_initial_no_vsyscall, sizeof(app_segments));
+    }
+# else
     memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
+# endif
 #endif
     if (!umbra_address_space_init())
         return DRMF_ERROR;
