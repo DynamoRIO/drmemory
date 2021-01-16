@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -118,7 +118,8 @@
 #define ARENA_INITIAL_COMMIT  CHUNK_MIN_MMAP
 #define ARENA_INITIAL_SIZE  4*1024*1024
 
-#define REQUEST_DIFF_MAX USHRT_MAX
+#define REQUEST_DIFF_MAX UINT_MAX
+#define PREV_SIZE_MAX UINT_MAX
 
 /* we only support allocation sizes under 4GB */
 typedef uint heapsz_t;
@@ -189,10 +190,10 @@ typedef struct _chunk_header_t {
          */
         struct {
             /* Difference between alloc_size and requested size.  We currently always
-             * split re-used large free chunks, so 64K as the max diff works out.
+             * split re-used large free chunks, but for mmaps this can be > 64K.
              */
-            ushort request_diff;
-            /* The size of the previous free chunk / CHUNK_ALIGNMENT (i.e., >>3).  Only
+            uint request_diff;
+            /* The size of the previous free chunk / CHUNK_MIN_SIZE (i.e., >>3).  Only
              * valid if CHUNK_PREV_FREE is set in flags.  We get away with only a 512KB
              * max because larger elements, which are always mmaps, are not put on the
              * free list or coalesced.  We assert on the various constants all lining up
@@ -201,10 +202,9 @@ typedef struct _chunk_header_t {
              * prior to the redzone.
              *
              * If CHUNK_MMAP is set in flags, this holds the padding at the start
-             * of the mmap base put in place for alignment of the returned alloc,
-             * / CHUNK_ALIGNMENT (i.e., >> 3).
+             * of the mmap base put in place for alignment of the returned alloc.
              */
-            ushort prev_size_shr;
+            uint prev_size_shr;
 #ifdef X64
             /* Compiler will add anyway: just making explicit.  we need the header
              * size to be aligned to 8 so we can't pack.  for alloc_ops.external_headers
@@ -1718,7 +1718,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, size_t alignmen
                                    _IF_WINDOWS(arena_page_prot(arena->flags)));
         size_t dist_to_map;
         ASSERT(map_size >= aligned_size, "overflow should have been caught");
-        LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
+        LOG(2, "\tlarge alloc %zu => mmap %zu @"PFX"\n", request_size, map_size, map);
         if (map == NULL) {
             client_handle_alloc_failure(request_size, caller, mc);
             goto replace_alloc_common_done;
@@ -1735,7 +1735,10 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, size_t alignmen
             head = header_from_ptr(res);
         }
         dist_to_map = (byte *)head - map;
-        if (dist_to_map > USHRT_MAX) {
+        if (dist_to_map > PREV_SIZE_MAX) {
+            LOG(1, "\tdist_to_map %zu=%zu+%d+%d-%d-%d is too large\n", dist_to_map,
+                sizeof(mmap_header_t), alloc_ops.redzone_size,
+                header_beyond_redzone, redzone_beyond_header, header_size);
             os_large_free(map, map_size);
             client_handle_alloc_failure(request_size, caller, mc);
             goto replace_alloc_common_done;
@@ -5274,8 +5277,6 @@ alloc_replace_init(void)
     ASSERT(ARENA_INITIAL_SIZE >= CHUNK_MIN_MMAP, "arena must hold at least 1 chunk");
 
     ASSERT(ALIGNED(alloc_ops.redzone_size, CHUNK_ALIGNMENT), "redzone alignment off");
-
-    ASSERT(USHRT_MAX*CHUNK_ALIGNMENT >= CHUNK_MIN_MMAP, "prev_size_shr field too small");
 
     if (!alloc_ops.shared_redzones) {
         header_beyond_redzone = header_size;

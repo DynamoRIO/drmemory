@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -69,6 +69,21 @@ handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
 }
 
 static ptr_uint_t
+handle_make_unaddressable(void *start, size_t len)
+{
+# ifdef TOOL_DR_MEMORY
+    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, (byte*)start + len);
+
+    /* No-op if we're not tracking addressability. */
+    if (!options.shadowing)
+        return 1;
+
+    shadow_set_range(start, (byte*)start+len, SHADOW_UNADDRESSABLE);
+# endif
+    return 1;
+}
+
+static ptr_uint_t
 handle_do_leak_check(dr_vg_client_request_t *request)
 {
     LOG(2, "%s\n", __FUNCTION__);
@@ -107,6 +122,14 @@ annotate_init(void)
         dr_abort();
     }
     dr_annotation_pass_pc(dumpmem_name);
+
+    const char *make_unaddr_name = "drmemory_make_unaddressable";
+    if (!dr_annotation_register_call(make_unaddr_name,
+                                     handle_make_unaddressable, false, 2,
+                                     DR_ANNOTATION_CALL_TYPE_FASTCALL)) {
+        NOTIFY_ERROR("ERROR: Failed to register annotations"NL);
+        dr_abort();
+    }
 #endif
 }
 
