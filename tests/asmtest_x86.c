@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -464,6 +464,28 @@ GLOBAL_LABEL(FUNCNAME:)
         END_PROLOG
         mov      eax, 0
         movdqu   XMMWORD [8 + REG_XSP + REG_XAX], xmm0
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME asm_test_load2x
+/* Tests i#2118 reachability. */
+/* void asm_test_reach(); */
+        DECLARE_FUNC_SEH(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        END_PROLOG
+        mov      REG_XDI, REG_XSP
+        add      REG_XSI, 10*ARG_SZ
+        mov      REG_XSI, REG_XSP
+        add      REG_XSI, 12*ARG_SZ
+#ifdef X64
+        cmpsq
+        scasq
+#else
+        cmpsd
+        scasd
+#endif
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
