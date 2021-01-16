@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -492,6 +492,15 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
         /* new app-seg vs other app-seg's shadow and reserve */
         base = seg->app_base;
         end  = seg->app_end;
+        if (seg != &app_segments[i] &&
+            segment_overlap(base, end, app_segments[i].app_base,
+                            app_segments[i].app_end)) {
+            ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
+                 " conflicts with app seg ["PFX", "PFX")\n",
+                 seg->app_base, seg->app_end,
+                 app_segments[i].app_base, app_segments[i].app_end);
+            return false;
+        }
         for (map_idx = 0; map_idx < MAX_NUM_MAPS; map_idx++) {
             if (app_segments[i].map[map_idx] == NULL)
                 continue;
@@ -502,7 +511,7 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
                                 app_segments[i].reserve_base[map_idx],
                                 app_segments[i].reserve_end[map_idx])) {
                 ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
-                     " conflicts with app seg ["PFX", "PFX") or its "
+                     " conflicts with app seg ["PFX", "PFX")'s "
                      "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
                      seg->app_base, seg->app_end,
                      app_segments[i].app_base, app_segments[i].app_end,
@@ -579,6 +588,12 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
     uint i;
 
     LOG(UMBRA_VERBOSE, "add new app segment for ["PFX", "PFX")\n", base, base + size);
+    app_pc seg_base = (app_pc)segment_base(num_seg_bits, base);
+    /* We do support a memory range spanning multiple segments, since it
+     * happens in practice with Control Flow Guard (i#2184).
+     */
+    app_pc seg_end =
+        (app_pc)ALIGN_FORWARD(base + size, segment_size(num_seg_bits));
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         if (app_segments[i].app_used) {
             if (base >= app_segments[i].app_base &&
@@ -586,19 +601,49 @@ umbra_add_app_segment(app_pc base, size_t size, umbra_map_t *map)
                 return true;
         } else {
             if (app_segments[i].app_end != NULL) {
-                /* a pre-defined app segment */
+                /* Entirely inside a pre-defined app segment? */
                 if (base >= app_segments[i].app_base &&
                     base + size <= app_segments[i].app_end) {
                     app_segments[i].app_used = true;
                     return true;
                 }
+                /* Overlaps a pre-defined app segment on the left? */
+                if (base + size > app_segments[i].app_base &&
+                    base + size < app_segments[i].app_end) {
+                    LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
+                        " to incorporate [%p-%p)\n",
+                        app_segments[i].app_base, app_segments[i].app_end,
+                        seg_base, app_segments[i].app_end, base, base+size);
+                    for (int j = 0; j < MAX_NUM_APP_SEGMENTS; j++) {
+                        if (app_segments[j].app_used &&
+                            app_segments[j].app_base == seg_base &&
+                            app_segments[j].app_end == app_segments[i].app_base) {
+                            LOG(1, "invalidating now-merged app segment [%p, %p)\n",
+                                app_segments[j].app_base, app_segments[j].app_end);
+                            app_segments[j].app_used = false;
+                            app_segments[j].app_base = NULL;
+                            app_segments[j].app_end = NULL;
+                        }
+                    }
+                    app_segments[i].app_base = seg_base;
+                    app_segments[i].app_used = true;
+                    return true;
+                }
+                /* Overlaps a pre-defined app segment on the right? */
+                if (base > app_segments[i].app_base &&
+                    base < app_segments[i].app_end) {
+                    LOG(1, "adjusting pre-defined app segment [%p, %p) to [%p, %p)"
+                        " to incorporate [%p-%p)\n",
+                        app_segments[i].app_base, app_segments[i].app_end,
+                        app_segments[i].app_base, seg_end, base, base+size);
+                    /* No invalidation check, since we're walking left to right. */
+                    app_segments[i].app_end = seg_end;
+                    app_segments[i].app_used = true;
+                    return true;
+                }
             } else {
-                app_segments[i].app_base = (app_pc)segment_base(num_seg_bits, base);
-                /* We do support a memory range spanning multiple segments, since it
-                 * happens in practice with Control Flow Guard (i#2184).
-                 */
-                app_segments[i].app_end =
-                    (app_pc)ALIGN_FORWARD(base + size, segment_size(num_seg_bits));
+                app_segments[i].app_base = seg_base;
+                app_segments[i].app_end = seg_end;
                 LOG(1, "adding app segment ["PFX", "PFX")\n", app_segments[i].app_base,
                     app_segments[i].app_end);
                 /* Adding a not pre-defined segment.
