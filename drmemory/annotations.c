@@ -72,13 +72,13 @@ static ptr_uint_t
 handle_make_unaddressable(void *start, size_t len)
 {
 # ifdef TOOL_DR_MEMORY
-    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + len);
+    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, (byte*)start + len);
 
     /* No-op if we're not tracking addressability. */
     if (!options.shadowing)
         return 1;
 
-    shadow_set_range(start, start+len, SHADOW_UNADDRESSABLE);
+    shadow_set_range(start, (byte*)start+len, SHADOW_UNADDRESSABLE);
 # endif
     return 1;
 }
