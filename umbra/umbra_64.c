@@ -800,6 +800,7 @@ umbra_arch_init()
     }
 #else
     num_seg_bits = NUM_SEG_BITS;
+# ifdef LINUX
     if (dr_query_memory((app_pc)VSYSCALL_BASE, NULL, NULL, NULL)) {
         LOG(1, "vsyscall present: excluding 0x7ff'f4-0x7ff-f8 gap.\n");
         memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
@@ -807,6 +808,9 @@ umbra_arch_init()
         LOG(1, "vsyscall not present: no 0x7ff'f4-0x7ff-f8 gap.\n");
         memcpy(&app_segments, &app_segments_initial_no_vsyscall, sizeof(app_segments));
     }
+# else
+    memcpy(&app_segments, &app_segments_initial, sizeof(app_segments));
+# endif
 #endif
     if (!umbra_address_space_init())
         return DRMF_ERROR;
