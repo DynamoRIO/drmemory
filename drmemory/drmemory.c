@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -78,20 +78,14 @@
 # include "handlecheck.h"
 #endif /* WINDOWS */
 
-#ifdef USE_DRSYMS
-# include "drsyms.h" /* for pre-loading pdbs on Vista */
-# include "drsymcache.h"
-#endif
+#include "drsyms.h" /* for pre-loading pdbs on Vista */
+#include "drsymcache.h"
 
 char logsubdir[MAXIMUM_PATH];
-#ifndef USE_DRSYMS
-file_t f_fork = INVALID_FILE;
-#else
 file_t f_results = INVALID_FILE;
 file_t f_missing_symbols;
 file_t f_suppress;
 file_t f_potential;
-#endif
 static uint num_threads;
 
 #if defined(__DATE__) && defined(__TIME__)
@@ -133,9 +127,7 @@ drmem_options_init(const char *opstr)
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;
     op_ignore_asserts = options.ignore_asserts;
-#ifdef USE_DRSYMS
     op_use_symcache = options.use_symcache;
-#endif
     op_prefix_style = options.prefix_style;
 }
 
@@ -268,12 +260,10 @@ dump_statistics(void)
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
     callstack_dump_statistics(f_global);
-#ifdef USE_DRSYMS
     dr_fprintf(f_global, "symbol lookups: %6u cached %6u, searches: %6u cached %6u\n",
                symbol_lookups, symbol_lookup_cache_hits,
                symbol_searches, symbol_search_cache_hits);
     dr_fprintf(f_global, "symbol address lookups: %6u\n", symbol_address_lookups);
-#endif
     dr_fprintf(f_global, "stack swaps: %8u, triggers: %8u\n",
                stack_swaps, stack_swap_triggers);
     dr_fprintf(f_global, "push addr tot: %8u heap: %6u mmap: %6u\n",
@@ -463,10 +453,8 @@ event_exit(void)
 
     if (!options.perturb_only)
         report_exit();
-#ifdef USE_DRSYMS
     if (options.use_symcache)
         drsymcache_exit();
-#endif
     utils_exit();
 
     if (options.coverage) {
@@ -496,18 +484,10 @@ event_exit(void)
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.
      */
-#ifndef USE_DRSYMS
-    /* Note that if we exit before a child starts up, the child will
-     * write to f_fork after we write LOG END.
-     */
-    dr_fprintf(f_fork, "LOG END\n");
-    close_file(f_fork);
-#else
     close_file(f_results);
     close_file(f_missing_symbols);
     close_file(f_suppress);
     close_file(f_potential);
-#endif
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
 
@@ -618,11 +598,9 @@ event_thread_init(void *drcontext)
         dr_mcontext_t mc;
 #ifdef WINDOWS
         app_pc start_addr;
-# ifdef USE_DRSYMS
         char buf[128];
         size_t sofar = 0;
         ssize_t len;
-# endif
 #endif
         IF_DEBUG(bool ok;)
         mc.size = sizeof(mc);
@@ -632,21 +610,17 @@ event_thread_init(void *drcontext)
         ASSERT(ok, "unable to get mcontext for new thread");
 #ifdef WINDOWS
         start_addr = (app_pc) IF_X64_ELSE(mc.rcx, mc.eax);
-# ifdef USE_DRSYMS
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                  "Thread #%d @", local_count);
         print_timestamp_elapsed(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
-#  ifdef STATISTICS
+# ifdef STATISTICS
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len, " #bbs=%d", num_bbs);
-#  endif
+# endif
         BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                  " start="PFX" ", start_addr);
         print_symbol(start_addr, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar,
                      true, PRINT_SYMBOL_OFFSETS);
         LOG(1, "%s\n", buf);
-# else
-        LOG(1, "New thread #%d: start addr "PFX"\n", local_count, start_addr);
-# endif
 #else
         LOG(1, "New thread #%d\n", local_count);
 #endif
@@ -1510,7 +1484,6 @@ create_global_logfile(void)
         NOTIFY("log dir is %s"NL, logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
-#ifdef USE_DRSYMS
     if (!options.perturb_only) {
         f_results = open_logfile(RESULTS_FNAME, false, -1);
         f_missing_symbols = open_logfile("missing_symbols.txt", false, -1);
@@ -1527,22 +1500,15 @@ create_global_logfile(void)
                 usage_error("Cannot write to \"%s\", aborting\n", fname);
             else {
                 dr_fprintf(outf, "%s%c" RESULTS_FNAME, logsubdir, DIRSEP);
-# undef dr_close_file
+#undef dr_close_file
                 dr_close_file(outf);
-# define dr_close_file DO_NOT_USE_dr_close_file
+#define dr_close_file DO_NOT_USE_dr_close_file
             }
         }
         f_suppress = open_logfile("suppress.txt", false, -1);
         f_potential = open_logfile(RESULTS_POTENTIAL_FNAME, false, -1);
         print_version(f_potential, true);
     }
-#else
-    /* PR 453867: we need to tell postprocess.pl when to fork a new copy.
-     * Risky to write to parent logdir, since could be in middle
-     * of a leak callstack, so we use a separate file.
-     */
-    f_fork = open_logfile("fork.log", false, -1);
-#endif
 }
 
 #ifdef UNIX
@@ -1550,20 +1516,8 @@ static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
-# ifndef USE_DRSYMS
-    file_t f_parent_fork = f_fork;
-# endif
     close_file(f_global);
     create_global_logfile();
-
-# ifndef USE_DRSYMS
-    /* PR 453867: tell postprocess.pl to fork a new copy.
-     * Even if multiple threads fork simultaneously, these writes are atomic.
-     */
-    ELOGF(0, f_parent_fork, "FORK child=%d logdir=%s\n",
-          dr_get_process_id(), logsubdir);
-    close_file(f_parent_fork);
-# endif
 
     /* note that we mark all thread logs as close-on-fork so DR will iterate
      * over them and close them all
@@ -1604,12 +1558,10 @@ static void
 nudge_leak_scan(void *drcontext)
 {
     /* PR 474554: use nudge/signal for mid-run summary/output */
-#ifdef USE_DRSYMS
     static int nudge_count;
     int local_count = atomic_add32_return_sum(&nudge_count, 1);
     ELOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
     ELOGF(0, f_potential, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
-#endif
 #ifdef STATISTICS
     dump_statistics();
 #endif
@@ -1630,10 +1582,8 @@ nudge_leak_scan(void *drcontext)
         report_leak_stats_revert();
     }
     ELOGF(0, f_global, "NUDGE\n");
-#ifdef USE_DRSYMS
     ELOGF(0, f_results, NL"==========================================================================="NL);
     ELOGF(0, f_potential, NL"==========================================================================="NL);
-#endif
 }
 
 static void
@@ -1715,8 +1665,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 # endif
 #endif
-#ifdef USE_DRSYMS
-# ifdef WINDOWS
+#ifdef WINDOWS
     if (options.preload_symbols) {
         /* i#723: We can't load symbols for modules with dbghelp during shutdown
          * on Vista, so we pre-load everything.  This wastes memory and is
@@ -1729,8 +1678,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
         syminfo.file = NULL;
         drsym_lookup_address(info->full_path, 0, &syminfo, DRSYM_DEFAULT_FLAGS);
     }
-# endif /* WINDOWS */
-#endif /* USE_DRSYMS */
+#endif /* WINDOWS */
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
     if (INSTRUMENT_MEMREFS())
@@ -1741,12 +1689,10 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
         perturb_module_load(drcontext, info, loaded);
     slowpath_module_load(drcontext, info, loaded);
     leak_module_load(drcontext, info, loaded);
-#ifdef USE_DRSYMS
     /* Free resources.  Many modules will never need symbol queries again b/c
      * they won't show up in any callstack later.  Xref i#982.
      */
     drsym_free_resources(info->full_path);
-#endif
 #ifdef STATISTICS
     print_timestamp_elapsed_to_file(f_global, "post-module-load ");
 #endif
@@ -1765,10 +1711,8 @@ event_module_unload(void *drcontext, const module_data_t *info)
     if (INSTRUMENT_MEMREFS())
         replace_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
-#ifdef USE_DRSYMS
     /* Free resources.  Xref i#982. */
     drsym_free_resources(info->full_path);
-#endif
 }
 
 static void
@@ -1879,7 +1823,7 @@ dr_init(client_id_t id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
-#if defined(WIN32) && defined(USE_DRSYMS)
+#ifdef WIN32
     dr_enable_console_printing();
 #endif
     if (options.summary) {
@@ -1954,10 +1898,8 @@ dr_init(client_id_t id)
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Memory version %s\n", VERSION_STRING);
 
-#ifdef USE_DRSYMS
     if (options.use_symcache)
         drsymcache_init(client_id, options.symcache_dir, options.symcache_minsize);
-#endif
 
     if (!options.perturb_only)
         report_init();

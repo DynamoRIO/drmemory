@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -168,16 +168,6 @@ extern "C" {
 # define IF_VMX86(x)
 #endif
 
-#ifdef USE_DRSYMS
-# define IF_DRSYMS(x) x
-# define IF_NOT_DRSYMS(x)
-# define IF_DRSYMS_ELSE(x, y) x
-#else
-# define IF_DRSYMS(x)
-# define IF_NOT_DRSYMS(x) x
-# define IF_DRSYMS_ELSE(x, y) y
-#endif
-
 #ifdef TOOL_DR_MEMORY
 # define IF_DRMEM(x) x
 # define IF_DRHEAP(x)
@@ -315,12 +305,10 @@ extern bool op_ignore_asserts;
 extern uint op_prefix_style;
 extern file_t f_global;
 extern int reported_disk_error;
-#ifdef USE_DRSYMS
-# ifdef TOOL_DR_MEMORY
+#ifdef TOOL_DR_MEMORY
 extern file_t f_results;
-# endif
-extern bool op_use_symcache;
 #endif
+extern bool op_use_symcache;
 
 /* Workarounds for i#261 where DR can't write to cmd console.
  *
@@ -341,7 +329,7 @@ extern bool op_use_symcache;
  * bundle into one buffer anyway: but that exceeds dr_messagebox's
  * buffer size).
  */
-#if defined(WIN32) && defined(USE_DRSYMS)
+#ifdef WIN32
 # define IN_CMD (dr_using_console())
 # define USE_MSGBOX (op_print_stderr && IN_CMD)
 #else
@@ -383,9 +371,8 @@ print_prefix_to_console(void);
     }                                         \
 } while (0)
 #define NOTIFY_ERROR(...) do { \
-    IF_NOT_DRSYMS(ELOG(0, "FATAL ERROR: ")); \
     NOTIFY(__VA_ARGS__); \
-    IF_DRSYMS(IF_DRMEM(ELOGF(0, f_results, __VA_ARGS__))); \
+    IF_DRMEM(ELOGF(0, f_results, __VA_ARGS__)); \
     IF_WINDOWS({if (USE_MSGBOX) dr_messagebox(__VA_ARGS__);})   \
 } while (0)
 #define NOTIFY_COND(cond, f, ...) do { \
@@ -788,14 +775,13 @@ safe_read(void *base, size_t size, void *out_buf);
 bool
 safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONAL OUT*/);
 
-#ifdef USE_DRSYMS
-# ifdef STATISTICS
+#ifdef STATISTICS
 extern uint symbol_lookups;
 extern uint symbol_searches;
 extern uint symbol_lookup_cache_hits;
 extern uint symbol_search_cache_hits;
 extern uint symbol_address_lookups;
-# endif
+#endif
 bool
 lookup_has_fast_search(const module_data_t *mod);
 
@@ -816,14 +802,13 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
 
 bool
 module_has_debug_info(const module_data_t *mod);
-#endif
 
 #ifdef DEBUG
 void
 print_mcontext(file_t f, dr_mcontext_t *mc);
 #endif
 
-#if defined(WINDOWS) && defined (USE_DRSYMS)
+#ifdef WINDOWS
 # ifdef DEBUG
 /* check that peb isolation is consistently applied (xref i#324) */
 bool
@@ -832,7 +817,7 @@ using_private_peb(void);
 
 HANDLE
 get_private_heap_handle(void);
-#endif /* WINDOWS && USE_DRSYMS */
+#endif /* WINDOWS */
 
 void
 hashtable_delete_with_stats(hashtable_t *table, const char *name);

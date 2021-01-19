@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -78,14 +78,10 @@ extern char logsubdir[MAXIMUM_PATH];
 #define POTENTIAL_PREFIX_CAP    "Potential"
 #define POTENTIAL_PREFIX_ALLCAP "POTENTIAL"
 
-#ifdef USE_DRSYMS
 extern file_t f_results;
 extern file_t f_suppress;
 extern file_t f_missing_symbols;
 extern file_t f_potential;
-#else
-extern file_t f_fork;
-#endif
 
 #ifdef WINDOWS
 extern app_pc ntdll_base;

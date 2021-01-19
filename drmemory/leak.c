@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -196,10 +196,8 @@ leak_init(bool have_defined_info,
     }
     mod = dr_lookup_module_by_name("ntdll.dll");
     if (mod != NULL) {
-# ifdef USE_DRSYMS
         rtl_fail_info = lookup_internal_symbol(mod, "RtlpHeapFailureInfo");
         LOG(1, "RtlpHeapFailureInfo is "PFX"\n", rtl_fail_info);
-# endif
         if (op_check_encoded_pointers) {
             rtl_encode_ptr = (app_pc)
                 dr_get_proc_address(mod->handle, "RtlEncodePointer");
@@ -241,7 +239,7 @@ leak_exit(void)
 void
 leak_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
     if (op_check_encoded_pointers) {
         /* i#1276: VS2012 Concurrency::details::Security::EncodePointer does
          * its own xor, but it has the same signature so we use the same
@@ -260,7 +258,7 @@ leak_module_load(void *drcontext, const module_data_t *info, bool loaded)
 void
 leak_module_unload(void *drcontext, const module_data_t *info)
 {
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
     if (crt_encode_ptr != NULL) {
         drwrap_unwrap(crt_encode_ptr, leak_wrap_pre_encode_ptr,
                       leak_wrap_post_encode_ptr);
@@ -1096,7 +1094,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                  (info.type == DR_MEMTYPE_IMAGE
                   /* Windows-only b/c it's a pain to identify non-image maps on Linux */
                   IF_WINDOWS(|| mbi.Type == MEM_MAPPED))) ||
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
                 /* skip private heap: here we assume it's a single segment */
                 (pc == (byte *) get_private_heap_handle()) ||
 #endif

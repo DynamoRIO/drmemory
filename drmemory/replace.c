@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -36,9 +36,7 @@
 #include "heap.h"
 #include "drmemory.h"
 #include "shadow.h"
-#ifdef USE_DRSYMS
-# include "drsymcache.h"
-#endif
+#include "drsymcache.h"
 #include <limits.h>  /* UCHAR_MAX */
 #ifdef UNIX
 # include <unistd.h> /* size_t */
@@ -46,9 +44,7 @@
 #ifdef WINDOWS
 # include <rpc.h> /* RPC_STATUS */
 #endif
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-#endif
+#include "drsyms.h"
 
 #undef strcasecmp /* undo def from utils.h */
 
@@ -138,7 +134,6 @@ static size_t replace_routine_size;
 static int index_memcpy;
 static int index_memmove;
 
-#ifdef USE_DRSYMS
 /* for passing data to sym enum callback */
 typedef struct _sym_enum_data_t {
     bool add;
@@ -150,7 +145,6 @@ typedef struct _sym_enum_data_t {
 /* for considering wildcard symbols */
 #define REPLACE_NAME_TABLE_HASH_BITS 6
 static hashtable_t replace_name_table;
-#endif
 
 static int
 replace_tolower_ascii(int c);
@@ -926,7 +920,6 @@ replace_init(void)
             i++;
         }
 
-#ifdef USE_DRSYMS
         hashtable_init(&replace_name_table, REPLACE_NAME_TABLE_HASH_BITS, HASH_STRING,
                        false/*!strdup*/);
         for (i=0; i<REPLACE_NUM; i++) {
@@ -937,18 +930,15 @@ replace_init(void)
             hashtable_add(&replace_name_table, (void *) replace_routine_name[i],
                           (void *)(ptr_int_t)(i+1)/*since 0 is "not found"*/);
         }
-#endif
     }
 }
 
 void
 replace_exit(void)
 {
-#ifdef USE_DRSYMS
     if (options.replace_libc) {
         hashtable_delete(&replace_name_table);
     }
-#endif
 }
 
 static void
@@ -977,10 +967,8 @@ replace_routine(bool add, const module_data_t *mod,
         if (index == index_memcpy)
             replace_addr = replace_routine_addr[index_memmove];
 #endif
-#ifdef USE_DRSYMS
         if (options.use_symcache)
             drsymcache_add(mod, replace_routine_name[index], addr - mod->start);
-#endif
         /* Replacement strategy: we assume these routines will always be entered in
          * a new bb (we're not going to request elision or indcall2direct from DR).
          * We want to interpret our own routines, so we replace the whole bb with
@@ -1140,7 +1128,6 @@ replace_all_indirect(bool add, const module_data_t *mod,
 #endif
 }
 
-#ifdef USE_DRSYMS
 /* It's faster to search for multiple symbols at once via regex
  * and strcmp to identify precise targets (i#315).
  */
@@ -1232,7 +1219,6 @@ find_syms_regex(sym_enum_data_t *edata, const char *regex)
                             enumerate_syms_cb, (void *)edata))
         LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
 }
-#endif /* USE_DRSYMS */
 
 #ifdef WINDOWS
 /* i#511: Save UuidCreate's outparam so we can mark it as defined in the post
@@ -1288,10 +1274,8 @@ replace_in_module(const module_data_t *mod, bool add)
     int i;
     app_pc libc = get_libc_base(NULL);
     void *drcontext = dr_get_current_drcontext();
-#ifdef USE_DRSYMS
     sym_enum_data_t edata = {add, {0,}, {0}, mod};
     bool missing_entry = false;
-#endif
 #ifdef DEBUG
     const char *print_name = (dr_module_preferred_name(mod) == NULL) ?
         "<NULL>" : dr_module_preferred_name(mod);
@@ -1393,7 +1377,6 @@ replace_in_module(const module_data_t *mod, bool add)
         }
     }
 
-#ifdef USE_DRSYMS
     /* step 2, find and replace symbols in symcache
      * i#617: some modules have multiple addresses for one symbol:
      * e.g., unit_tests.exe: strlen, strchr, and strrchr,
@@ -1452,10 +1435,10 @@ replace_in_module(const module_data_t *mod, bool add)
             /* N.B.: if you change these regexes, bump SYMCACHE_VERSION! */
             find_syms_regex(&edata, "[msw]?????");
             find_syms_regex(&edata, "[msw]??????");
-# ifdef UNIX
+#ifdef UNIX
             find_syms_regex(&edata, "strchrnul");
             find_syms_regex(&edata, "rawmemchr");
-# endif
+#endif
         } else {
             /* better to do just one walk */
             LOG(2, "looking up all symbols for %s\n", print_name);
@@ -1464,7 +1447,6 @@ replace_in_module(const module_data_t *mod, bool add)
                 LOG(2, "WARNING: failed to look up symbols to replace\n");
         }
     }
-#endif
 }
 
 void
