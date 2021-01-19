@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -184,8 +184,7 @@ alloc_drmem_init(void)
     alloc_ops.disable_crtdbg = options.disable_crtdbg && INSTRUMENT_MEMREFS();
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
-    alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
-                                              options.use_symcache_postcall, false);
+    alloc_ops.cache_postcall = options.use_symcache && options.use_symcache_postcall;
     /* We can't disable operator interception if !options.check_delete_mismatch
      * b/c of msvc debug delete reading headers.  For -replace_malloc we can,
      * but we still want to replace operators to ensure we get our redzones

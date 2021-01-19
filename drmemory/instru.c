@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1005,7 +1005,6 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 
     memlayout_handle_new_block(drcontext, tag);
 
-#ifdef USE_DRSYMS
     /* symbol of each bb is very useful for debugging */
     DOLOG(3, {
         char buf[128];
@@ -1019,7 +1018,6 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
             LOG(1, "%s\n", buf);
         }
     });
-#endif
 #ifdef TOOL_DR_MEMORY
     DOLOG(4, {
         if (options.shadowing) {

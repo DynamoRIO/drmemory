@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -28,10 +28,8 @@
 #include "drmgr.h"
 #include "callstack.h"
 #include "utils.h"
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-# include "drsymcache.h"
-#endif
+#include "drsyms.h"
+#include "drsymcache.h"
 #ifdef WINDOWS
 # include "windefs.h"
 # include "../wininc/ndk_extypes.h" /* for SYSTEM_INFORMATION_CLASS */
@@ -52,22 +50,20 @@ bool op_ignore_asserts;
 uint op_prefix_style;
 file_t f_global = INVALID_FILE;
 int reported_disk_error;
-#ifdef USE_DRSYMS
 bool op_use_symcache;
-# ifdef STATISTICS
+#ifdef STATISTICS
 uint symbol_lookups;
 uint symbol_searches;
 uint symbol_lookup_cache_hits;
 uint symbol_search_cache_hits;
 uint symbol_address_lookups;
-# endif
 #endif
 
 #ifdef WINDOWS
 static dr_os_version_info_t os_version = {sizeof(os_version),};
 #endif
 
-#if defined(WINDOWS) && defined (USE_DRSYMS)
+#ifdef WINDOWS
 /* for ensuring library isolation */
 static PEB *priv_peb;
 #endif
@@ -163,7 +159,6 @@ safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONA
     return true;
 }
 
-#ifdef USE_DRSYMS
 bool
 lookup_has_fast_search(const module_data_t *mod)
 {
@@ -183,7 +178,7 @@ search_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
     return false; /* stop iterating: we want first match */
 }
 
-# ifdef WINDOWS
+#ifdef WINDOWS
 /* XXX i#1465: we ensure SymFromName (answer passed in data) matches
  * SymSearch (this callback) and make it visible, until we've figured out
  * the underlying bug(s) behind symbol cache corruption.
@@ -202,7 +197,7 @@ verify_lookup_cb(drsym_info_t *info, drsym_error_t status, void *data)
     }
     return false; /* stop iterating: we want first match */
 }
-# endif
+#endif
 
 typedef struct _search_regex_t {
     const char *regex;
@@ -242,7 +237,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     /* We have to specify the module via "modname!symname".
      * We must use the same modname as in full_path.
      */
-# define MAX_SYM_WITH_MOD_LEN 256
+#define MAX_SYM_WITH_MOD_LEN 256
     char sym_with_mod[MAX_SYM_WITH_MOD_LEN];
     size_t modoffs;
     IF_DEBUG(int len;)
@@ -310,7 +305,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         /* A SymSearch full search is slower than SymFromName */
         symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs,
                                      DRSYM_DEMANGLE);
-# ifdef WINDOWS
+#ifdef WINDOWS
         /* i#1465: our theory to explain bogus symbols is that dbghelp is
          * giving them to us, so we live w/ the cost of a sanity check here
          * until we fix that bug.  Only a few queries come here: only one per
@@ -323,13 +318,13 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
                                         verify_lookup_cb, sizeof(drsym_info_t), &modoffs);
             ASSERT(search_res == DRSYM_SUCCESS, "Search failed but FromName worked");
         }
-# endif
+#endif
     } else {
         /* drsym_search_symbols() is faster than either drsym_lookup_symbol() or
          * drsym_enumerate_symbols() (i#313)
          */
         modoffs = 0;
-# ifdef WINDOWS
+#ifdef WINDOWS
         /* i#1050: use drsym_search_symbols_ex to handle cases
          * where two functions share the same address.
          */
@@ -340,7 +335,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
                                          sizeof(drsym_info_t),
                                          callback == NULL ? &modoffs : data);
         if (symres == DRSYM_ERROR_NOT_IMPLEMENTED) {
-# endif
+#endif
             /* ELF or PECOFF where regex search is NYI
              * XXX: better for caller to do single walk though: should we
              * return failure and have caller call back with "" and its own
@@ -356,9 +351,9 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
                                                 sizeof(drsym_info_t),
                                                 (void *) sr, DRSYM_DEMANGLE);
             global_free(sr, sizeof(*sr), HEAPSTAT_MISC);
-# ifdef WINDOWS
+#ifdef WINDOWS
         }
-# endif
+#endif
     }
     LOG(2, "sym lookup of %s in %s => %d "PFX"\n", sym_with_mod, mod->full_path,
         symres, modoffs);
@@ -411,7 +406,6 @@ module_has_debug_info(const module_data_t *mod)
      */
     return (drsym_module_has_symbols(mod->full_path) == DRSYM_SUCCESS);
 }
-#endif /* USE_DRSYMS */
 
 #ifdef DEBUG
 void
@@ -502,7 +496,7 @@ print_prefix_to_console(void)
     PRINT_CONSOLE("%s", buf);
 }
 
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
 bool
 print_to_cmd(char *buf)
 {
@@ -814,8 +808,7 @@ get_app_PEB(void)
     return (PEB *) dr_get_app_PEB();
 }
 
-#ifdef USE_DRSYMS
-# ifdef DEBUG
+#ifdef DEBUG
 /* check that peb isolation is consistently applied (xref i#324) */
 bool
 using_private_peb(void)
@@ -823,14 +816,13 @@ using_private_peb(void)
     TEB *teb = get_TEB();
     return (teb != NULL && teb->ProcessEnvironmentBlock == priv_peb);
 }
-# endif
+#endif
 
 HANDLE
 get_private_heap_handle(void)
 {
     return (HANDLE) priv_peb->ProcessHeap;
 }
-#endif /* DEBUG */
 
 HANDLE
 get_process_heap_handle(void)
@@ -1382,13 +1374,11 @@ utils_init(void)
         init_os_version();
 #endif
 
-#ifdef USE_DRSYMS
     if (drsym_init(IF_WINDOWS_ELSE(NULL, 0)) != DRSYM_SUCCESS) {
         LOG(1, "WARNING: unable to initialize symbol translation\n");
     }
-#endif
 
-#if defined(WINDOWS) && defined (USE_DRSYMS)
+#ifdef WINDOWS
     /* store private peb and check later that it's the same (xref i#324) */
     ASSERT(get_TEB() != NULL, "can't get TEB");
     priv_peb = get_TEB()->ProcessEnvironmentBlock;
@@ -1400,11 +1390,9 @@ utils_init(void)
 void
 utils_exit(void)
 {
-#ifdef USE_DRSYMS
     if (drsym_exit() != DRSYM_SUCCESS) {
         LOG(1, "WARNING: error cleaning up symbol library\n");
     }
-#endif
     drmgr_unregister_tls_field(tls_idx_util);
 }
 

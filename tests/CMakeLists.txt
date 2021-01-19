@@ -207,11 +207,7 @@ if (NOT UNIX)
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
   # But for cygwin to find operators we need /MD (until we have online
   # syms)
-  if (USE_DRSYMS)
-    set(LIBC_FLAG "/MT")
-  else (USE_DRSYMS)
-    set(LIBC_FLAG "/MD")
-  endif (USE_DRSYMS)
+  set(LIBC_FLAG "/MT")
   string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
   string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
@@ -293,11 +289,7 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
   # we include absaddr and mod+offs for easier debugging of problems
-  if (USE_DRSYMS)
-    set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
-  else (USE_DRSYMS)
-    set(drmem_ops -callstack_style 0x27 ${drmem_ops})
-  endif (USE_DRSYMS)
+  set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
@@ -367,7 +359,6 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
     -D resmark:STRING=${resmark}
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
-    -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D X64:BOOL=${X64}
     -D ARM:BOOL=${ARM}
     -D ANDROID:BOOL=${ANDROID}
@@ -670,11 +661,9 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
-  if (USE_DRSYMS)
-    if (NOT X64) # FIXME i#111: failing on Travis
-      newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
-    endif ()
-  endif (USE_DRSYMS)
+  if (NOT X64) # FIXME i#111: failing on Travis
+    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+  endif ()
   if (NOT ARM) # XXX i#1726: port to ARM
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   endif ()
@@ -758,37 +747,21 @@ if (TOOL_DR_MEMORY)
     set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
   # test multiple supp files (i#574)
-  if (USE_DRSYMS)
-    newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
-      "" OFF "")
-  else (USE_DRSYMS)
-    newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF "")
-  endif (USE_DRSYMS)
+  newtest_nobuild(suppress suppress ""
+    "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
+    "" OFF "")
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  if (USE_DRSYMS)
-    newtest_nobuild(suppress-genoffs suppress ""
-      "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-    newtest_nobuild(suppress-gensyms suppress ""
-      "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-  else (USE_DRSYMS)
-    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
-    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")
-  endif (USE_DRSYMS)
+  newtest_nobuild(suppress-genoffs suppress ""
+    "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  newtest_nobuild(suppress-gensyms suppress ""
+    "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
 
   set(nudge_test_args "")
-
-  # FIXME i#446: no support yet for post-process w/ drsyms
-  if (UNIX AND NOT USE_DRSYMS)
-    # test -skip_results + -results (PR 575481)
-    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
-  endif ()
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
@@ -817,42 +790,40 @@ if (TOOL_DR_MEMORY)
     #  add_dependencies(rtl_memory_zones ntdll_imports)
     #endif ()
 
-    if (USE_DRSYMS) # cygwin build can't see static malloc routines
-      tobuild(wincrtdbg wincrt.cpp)
-      append_test_compile_flags(wincrtdbg "/MTd")
-      newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
-          "wincrtdbg")
-      endif ()
+    tobuild(wincrtdbg wincrt.cpp)
+    append_test_compile_flags(wincrtdbg "/MTd")
+    newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
+        "wincrtdbg")
+    endif ()
 
-      newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
-      newtest_custbuild(mallocMD malloc.c "/MD" malloc)
+    newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
+    newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
-      # C++ tests with other libc configs
-      newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
-      newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
-          "cs2bugMTd")
-      endif ()
+    # C++ tests with other libc configs
+    newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
+    newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
+        "cs2bugMTd")
+    endif ()
 
-      # Test i#607 part D
-      tobuild(operatorsMDd operators.cpp)
-      append_test_compile_flags(operatorsMDd "/MDd")
-      newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
-        # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
-        "ANY" "")
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
-          "-no_replace_malloc" "" OFF operators 0 "")
-      endif ()
-    endif (USE_DRSYMS)
+    # Test i#607 part D
+    tobuild(operatorsMDd operators.cpp)
+    append_test_compile_flags(operatorsMDd "/MDd")
+    newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
+      # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
+      "ANY" "")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
+        "-no_replace_malloc" "" OFF operators 0 "")
+    endif ()
 
     if (GCC)
       # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)

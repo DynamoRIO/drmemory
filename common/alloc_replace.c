@@ -3182,9 +3182,7 @@ heap_to_arena(HANDLE heap)
     uint magic;
     if (heap == process_heap)
         return cur_arena;
-#ifdef USE_DRSYMS
     ASSERT(heap != get_private_heap_handle(), "app using private heap");
-#endif
     if (arena != NULL &&
         safe_read(&arena->magic, sizeof(magic), &magic) &&
         magic == HEADER_MAGIC &&

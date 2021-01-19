@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -188,20 +188,12 @@ static bool
 auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
     cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-#ifndef USE_DRSYMS
-    char path[MAXIMUM_PATH];
-#endif
     cpt->sysaux_params = sysauxlib_save_params(drcontext);
 #ifdef UNIX
     if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, NULL)) {
         if (options.perturb)
             perturb_pre_fork();
     }
-# ifndef USE_DRSYMS
-    else if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
-                               path, BUFFER_SIZE_BYTES(path)))
-        ELOGF(0, f_fork, "EXEC path=%s\n", path);
-# endif
 #endif
     return true;
 }
@@ -209,23 +201,7 @@ auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 static void
 auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-#if defined(UNIX) && !defined(USE_DRSYMS)
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    char path[MAXIMUM_PATH];
-    process_id_t child;
-    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
-    if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, &child)) {
-       /* PR 453867: tell postprocess.pl to watch for child logdir and
-         * then fork a new copy.
-         */
-        if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
-                              path, BUFFER_SIZE_BYTES(path))) {
-            ELOGF(0, f_fork, "FORKEXEC child=%d path=%s\n", child, path);
-        } else {
-            ELOGF(0, f_fork, "FORK child=%d\n", child);
-        }
-    }
-#endif
+    /* Nothing. */
 }
 
 static bool

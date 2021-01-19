@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -28,7 +28,6 @@
 # * nudge = command to run perl script that takes -nudge for nudge
 # * toolbindir = location of DynamoRIO tools dir
 # * VMKERNEL = whether running on vmkernel
-# * USE_DRSYMS = whether running a DRSYMS build
 # * X64 = whether running a 64-bit build
 # * ARM = whether running an ARM build
 # * ANDROID = whether running an Android build
@@ -294,21 +293,6 @@ if ("${cmd}" MATCHES "run_app_in_bg")
     message(FATAL_ERROR "*** kill failed (${kill_result}): ${kill_err}***\n")
   endif (kill_result)
 
-  # wait for end-of-run summary from postprocess
-  if (UNIX AND NOT TOOL_DR_HEAPSTAT AND NOT USE_DRSYMS)
-    set(lookfor "for details\\)\n.*Details: ")
-    file(READ "${out}" output)
-    set(iters 0)
-    while (NOT "${output}" MATCHES "${one_nudge}.*${one_nudge}.*${one_nudge}")
-      execute_process(COMMAND ${SLEEP_SHORT})
-      file(READ "${out}" output)
-      math(EXPR iters "${iters} + 1")
-      if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
-        message(FATAL_ERROR "Timed out waiting for final summary output")
-      endif ()
-    endwhile()
-  endif()
-
   file(READ "${out}" cmd_err)
 
 else ()
@@ -360,51 +344,29 @@ foreach (str ${patterns})
   # evaluate conditionals
   # cmake's regex matcher is maximal unfortunately: for now we disallow %
   # inside conditional
-  if (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN") # cygwin
-    # if %CYGWIN is NOT present then counts as Windows
+  if (WIN32)
     string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     # Support "endif UNIX" to handle nested inside cs2bug.res.
     # XXX: Should change every endif to have a qualifier.
     string(REGEX REPLACE "(^|\n)%if UNIX.+\n%endif UNIX\n" "\\1" ${str} "${${str}}")
+    string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+    # distinguish pre-win8 from win8
+    if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
+      string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" ""
+        ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1"
+        ${str} "${${str}}")
+    else ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
+      string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" ""
+        ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" "\\1"
+        ${str} "${${str}}")
+    endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
+  elseif (UNIX)
     string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-    string(REGEX REPLACE "(^|\n)%if !CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-    # distinguish pre-vista from post-vista
-    if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1"
-        ${str} "${${str}}")
-    else ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN_PREVISTA[^%]+\n%endif\n" "\\1"
-        ${str} "${${str}}")
-    endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.0")
-  else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
-    if (WIN32)
-      string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-      # Support "endif UNIX" to handle nested inside cs2bug.res.
-      # XXX: Should change every endif to have a qualifier.
-      string(REGEX REPLACE "(^|\n)%if UNIX.+\n%endif UNIX\n" "\\1" ${str} "${${str}}")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-      # distinguish pre-win8 from win8
-      if ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" ""
-          ${str} "${${str}}")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1"
-          ${str} "${${str}}")
-      else ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" ""
-          ${str} "${${str}}")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_8_PLUS[^%]+\n%endif\n" "\\1"
-          ${str} "${${str}}")
-      endif ("${CMAKE_SYSTEM_VERSION}" VERSION_LESS "6.2")
-    elseif (UNIX)
-      string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-    endif (WIN32)
-  endif (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
-  if (USE_DRSYMS)
-    string(REGEX REPLACE "(^|\n)%if NOSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-  else (USE_DRSYMS)
-    string(REGEX REPLACE "(^|\n)%if DRSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-  endif (USE_DRSYMS)
+    string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  endif (WIN32)
+  string(REGEX REPLACE "(^|\n)%if NOSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
   if (X64)
     string(REGEX REPLACE "(^|\n)%if X32[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     string(REGEX REPLACE "register x" "register r" ${str} "${${str}}")
@@ -738,7 +700,6 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
       -D resmark:STRING=${resmark}
       -D nudge:STRING=${nudge}
       -D VMKERNEL:BOOL=${VMKERNEL}
-      -D USE_DRSYMS:BOOL=${USE_DRSYMS}
       -D toolbindir:STRING=${toolbindir}
       -D DRMEMORY_CTEST_SRC_DIR:STRING=${DRMEMORY_CTEST_SRC_DIR}
       -D DRMEMORY_CTEST_DR_DIR:STRING=${DRMEMORY_CTEST_DR_DIR}

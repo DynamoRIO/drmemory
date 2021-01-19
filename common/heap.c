@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -546,12 +546,10 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     }
     for (i = 0; i < num_heaps; i++) {
         LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
-# ifdef USE_DRSYMS
         if (heaps[i] == (byte *) get_private_heap_handle()) {
             LOG(2, "skipping private heap "PFX"\n", heaps[i]);
             continue;
         }
-# endif
         if (cb_heap != NULL)
             cb_heap(heaps[i]);
         if (cb_region == NULL && cb_chunk == NULL)
@@ -967,9 +965,7 @@ bool
 heap_region_set_heap(app_pc pc, HANDLE heap)
 {
     rb_node_t *node = NULL;
-# ifdef USE_DRSYMS
     ASSERT(heap != get_private_heap_handle(), "app using priv heap");
-# endif
     dr_rwlock_write_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {

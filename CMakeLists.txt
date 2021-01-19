@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -142,7 +142,6 @@ if (TOOL_DR_HEAPSTAT)
 
   # Dr. Heapstat uses drsyms only to avoid false neg on leaks (i#762, i#292).
   # XXX: use drsyms for leak reports (i#926) and usage (i#282).
-  set(DRSYMS_DEFAULT ON)
 else (TOOL_DR_HEAPSTAT)
   # Dr. Memory
   set(TOOL_DR_MEMORY ON)
@@ -151,7 +150,6 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap DrMemory)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
-  set(DRSYMS_DEFAULT ON)
 
 endif (TOOL_DR_HEAPSTAT)
 
@@ -260,52 +258,6 @@ set(DEFINES ${DEFINES}
   -DVERSION_NUMBER=${TOOL_VERSION_NUMBER}
   -DVERSION_STRING="${TOOL_VERSION_NUMBER}"
   -DVERSION_COMMAS=${TOOL_VERSION_COMMAS})
-
-# i#44/PR 243532: online symbol access
-option(USE_DRSYMS "use drsyms DR Extension online symbols instead of post-processing"
-  ${DRSYMS_DEFAULT})
-if (USE_DRSYMS)
-  set(DEFINES ${DEFINES} -DUSE_DRSYMS)
-endif (USE_DRSYMS)
-
-if (WIN32)
-  # With the new drinjectlib-based front end we do not use perl or perl2exe
-  # at all on Windows (xref i#265/PR 486139)
-  if (OFF) # disabling
-    # For portability we convert our perl scripts to executables,
-    # if the 'pp' tool is available.
-    # For most portable results, use a native windows perl (e.g.,
-    # strawberry perl) rather than cygwin perl.
-    set(PERL_PATH  "" CACHE PATH "directory where perl binaries are located")
-    if (PERL_PATH AND EXISTS "${PERL_PATH}/perl.exe")
-      set(PERL_EXECUTABLE "${PERL_PATH}/perl.exe")
-    else ()
-      # we only look for perl if user doesn't specify (on windows it's common
-      # to have several perls installed)
-      include(FindPerl)
-      if (PERL_FOUND)
-        get_filename_component(PERL_PATH "${PERL_EXECUTABLE}" PATH)
-      endif (PERL_FOUND)
-    endif ()
-
-    if (EXISTS "${PERL_PATH}/pp")
-      set(PERL_PP "${PERL_PATH}/pp" CACHE FILEPATH
-        "Path to perl PAR module's perl-to-executable tool 'pp'")
-    else ()
-      find_file(PERL_PP pp HINTS "${PERL_PATH}"
-        DOC "Path to perl PAR module's perl-to-executable tool 'pp'")
-    endif ()
-    if (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
-      message(STATUS "Did not find pp: will not convert perl scripts to executables")
-      set(PERL_TO_EXE OFF)
-    else (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
-      message(STATUS "Found pp: ${PERL_PP}")
-      set(PERL_TO_EXE ON)
-    endif (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
-  else (OFF)
-    set(PERL_TO_EXE OFF)
-  endif (OFF)
-endif (WIN32)
 
 if (CMAKE_C_SIZEOF_DATA_PTR EQUAL 8 OR CMAKE_CXX_SIZEOF_DATA_PTR EQUAL 8)
   set(X64 ON)
@@ -695,25 +647,15 @@ endif()
 # XXX: should clean all this up and normalize across platforms now
 # that we have drsyms on Linux and once we're sure we don't need to
 # support the old layout.
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+if (WIN32 AND TOOL_DR_MEMORY)
   set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}.")
   set(BUILD_BIN_PREFIX ".")
-elseif (PERL_TO_EXE)
-  # We are only releasing Dr. Memory so no toolnames: would need to create
-  # shortcut or .bat file to run from right dir
-  if (X64)
-    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}bin64")
-    set(BUILD_BIN_PREFIX "bin64")
-  else (X64)
-    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}bin")
-    set(BUILD_BIN_PREFIX "bin")
-  endif (X64)
-else (PERL_TO_EXE)
+else ()
   # Unified layout: match Windows since we're moving toward C-based frontends
   # that won't have auxiliary scripts we want to hide.
   set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}.")
   set(BUILD_BIN_PREFIX ".")
-endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+endif ()
 # For NSIS we have everything in top-level bin/
 # Once we have x64 we'll need to address: fix CPack?
 if (X64)
@@ -778,20 +720,6 @@ else (UNIX)
   set(CPP_NO_LINENUM /EP)
   set(CPP_INC /I)
 endif (UNIX)
-
-# I would share this name w/ drmemory.pl but it's a pain to configure_file
-# or generate the perl script as we also have to compile it for pp.
-set(options_for_perl "${PROJECT_BINARY_DIR}/${BUILD_BIN}/options-perl.pl")
-add_custom_target(options_perl ALL DEPENDS "${options_for_perl}")
-add_custom_command(
-  OUTPUT "${options_for_perl}"
-  DEPENDS "${PROJECT_SOURCE_DIR}/common/options-perl.c"
-  "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
-  COMMAND ${CMAKE_CPP_FOR_OPS}
-  ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-perl.c"
-  ${CPP_INC}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES}
-  ${CPP_IGNORE_EMPTY} > "${options_for_perl}"
-  VERBATIM)
 
 # options_for_docs is built in docs/CMakeLists.txt since custom commands
 # are directory-local
@@ -1261,39 +1189,31 @@ if (WIN32)
   set(srcs ${srcs} make/resources.rc)
 endif ()
 
-if (NOT USE_DRSYMS)
-  set(scripts ${scripts} postprocess.pl)
-endif (NOT USE_DRSYMS)
-
-if (USE_DRSYMS)
-  # front-end needs to be named ${toolname}.exe and thus has ${toolsname}.pdb, so
-  # we rename client lib (plus cmake best w/o same-name targets)
-  set(client_target "${toolname}lib")
-  if (TOOL_DR_MEMORY)
-    set(frontend_srcs drmemory/frontend.c drmemory/options.c)
-  else (TOOL_DR_MEMORY)
-    set(frontend_srcs drheapstat/drheapstat_frontend.c)
-  endif (TOOL_DR_MEMORY)
-  if (WIN32)
-    set(frontend_srcs ${frontend_srcs} make/resources.rc)
-  endif ()
-  add_executable(${toolname} ${frontend_srcs})
-  if (ANDROID AND TOOL_DR_MEMORY)
-    # There's no DT_RPATH support so we have a script set the load path.
-    # To avoid confusion we rename the exe.
-    set(frontend_name "launcher")
-    set_target_properties(${toolname} PROPERTIES OUTPUT_NAME "${frontend_name}")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/launcher_android.sh"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}" @ONLY)
-    copy_file_to_device("${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}")
-  endif ()
-  if (WIN32)
-    target_link_libraries(${toolname} dbghelp)
-  endif (WIN32)
-  copy_target_to_device(${toolname})
-else (USE_DRSYMS)
-  set(client_target ${toolname})
-endif (USE_DRSYMS)
+# front-end needs to be named ${toolname}.exe and thus has ${toolsname}.pdb, so
+# we rename client lib (plus cmake best w/o same-name targets)
+set(client_target "${toolname}lib")
+if (TOOL_DR_MEMORY)
+  set(frontend_srcs drmemory/frontend.c drmemory/options.c)
+else (TOOL_DR_MEMORY)
+  set(frontend_srcs drheapstat/drheapstat_frontend.c)
+endif (TOOL_DR_MEMORY)
+if (WIN32)
+  set(frontend_srcs ${frontend_srcs} make/resources.rc)
+endif ()
+add_executable(${toolname} ${frontend_srcs})
+if (ANDROID AND TOOL_DR_MEMORY)
+  # There's no DT_RPATH support so we have a script set the load path.
+  # To avoid confusion we rename the exe.
+  set(frontend_name "launcher")
+  set_target_properties(${toolname} PROPERTIES OUTPUT_NAME "${frontend_name}")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/launcher_android.sh"
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}" @ONLY)
+  copy_file_to_device("${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}")
+endif ()
+if (WIN32)
+  target_link_libraries(${toolname} dbghelp)
+endif (WIN32)
+copy_target_to_device(${toolname})
 
 macro(set_library_version target number)
   # We only set the version/soversion on Windows to avoid many
@@ -1408,37 +1328,37 @@ if (WIN32)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} ${new_flags}")
 endif (WIN32)
-if (USE_DRSYMS)
-  if (DEFINED DynamoRIO_RPATH)
-    set(old_rpath ${DynamoRIO_RPATH})
-  else ()
-    set(old_rpath OFF)
-  endif ()
-  set(DynamoRIO_RPATH ON)
-  configure_DynamoRIO_standalone(${toolname})
-  set(DynamoRIO_RPATH ${old_rpath})
-  target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib
-    drsyscall_static)
-  if (WIN32)
-    set_target_properties(${toolname} PROPERTIES
-      VERSION ${TOOL_VERSION_NUMBER})
-    _DR_append_property_list(TARGET ${toolname}
-      COMPILE_DEFINITIONS "${DEFINES_NO_D};RC_IS_FRONTEND")
-  else (WIN32)
-    DynamoRIO_add_rel_rpaths(${toolname} drinjectlib)
-    DynamoRIO_add_rel_rpaths(${toolname} drconfiglib)
-    _DR_append_property_list(TARGET ${toolname} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
-  endif (WIN32)
-  if (STATIC_DRSYMS)
-    use_DynamoRIO_extension(${client_target} drsyms_static)
-  else ()
-    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
-    # libc use.  If we end up needing late kernel32 use for early
-    # injection we may want to go back to dynamic drsyms (and delayed
-    # dr_enable_console_printing()).
-    use_DynamoRIO_extension(${client_target} drsyms)
-  endif ()
-endif (USE_DRSYMS)
+
+if (DEFINED DynamoRIO_RPATH)
+  set(old_rpath ${DynamoRIO_RPATH})
+else ()
+  set(old_rpath OFF)
+endif ()
+set(DynamoRIO_RPATH ON)
+configure_DynamoRIO_standalone(${toolname})
+set(DynamoRIO_RPATH ${old_rpath})
+target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib
+  drsyscall_static)
+if (WIN32)
+  set_target_properties(${toolname} PROPERTIES
+    VERSION ${TOOL_VERSION_NUMBER})
+  _DR_append_property_list(TARGET ${toolname}
+    COMPILE_DEFINITIONS "${DEFINES_NO_D};RC_IS_FRONTEND")
+else (WIN32)
+  DynamoRIO_add_rel_rpaths(${toolname} drinjectlib)
+  DynamoRIO_add_rel_rpaths(${toolname} drconfiglib)
+  _DR_append_property_list(TARGET ${toolname} COMPILE_DEFINITIONS "${DEFINES_NO_D}")
+endif (WIN32)
+if (STATIC_DRSYMS)
+  use_DynamoRIO_extension(${client_target} drsyms_static)
+else ()
+  # N.B.: static drsyms gives us kernel32 imports from elftoolchain
+  # libc use.  If we end up needing late kernel32 use for early
+  # injection we may want to go back to dynamic drsyms (and delayed
+  # dr_enable_console_printing()).
+  use_DynamoRIO_extension(${client_target} drsyms)
+endif ()
+
 if (WIN32)
   # We need to link with ntdll.lib and dbghelp.lib which we get from DR
   if (USER_SPECIFIED_DynamoRIO_DIR)
@@ -1536,49 +1456,12 @@ else (WIN32)
   DynamoRIO_add_rel_rpaths(symquery drinjectlib)
 endif (WIN32)
 
-# should go into a configure.h if we get enough of these
-set(script_aux "")
-if (PERL_TO_EXE)
-  foreach (pl ${scripts})
-    get_filename_component(base ${pl} NAME_WE)
-    if ("${pl}" MATCHES "${toolname}.pl")
-      set(EXE_DEST "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}")
-      set(script_main ${EXE_DEST}/${base}.exe)
-    else ()
-      set(EXE_DEST "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
-      set(script_aux ${script_aux} ${EXE_DEST}/${base}.exe)
-    endif ()
-    add_custom_target(${base}_exe ALL DEPENDS ${EXE_DEST}/${base}.exe)
-    add_custom_command(
-      OUTPUT ${EXE_DEST}/${base}.exe
-      DEPENDS ${PROJECT_SOURCE_DIR}/${tooldir}/${pl}
-      COMMAND ${PERL_EXECUTABLE}
-      # If do glob() w/ spaces in path, need Text::ParseWords, but pp
-      # doesn't find it as a dependence automatically.
-      # FIXME: use --gui?
-      ARGS ${PERL_PP} -M Text::ParseWords -o ${EXE_DEST}/${base}.exe
-        ${PROJECT_SOURCE_DIR}/${tooldir}/${pl} ${options_for_perl}
-      VERBATIM)
-  endforeach (pl)
-endif (PERL_TO_EXE)
-
 # support running out of build dir
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
 file(WRITE "${PROJECT_BINARY_DIR}/logs/README" "Directory for logs") # for adb push
 copy_file_to_device("${PROJECT_BINARY_DIR}/logs")
-if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl" @ONLY)
-  if (NOT USE_DRSYMS)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
-    set(script_aux "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl")
-  endif ()
-  set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl"
-    "${options_for_perl}")
-endif ()
 if (WIN32)
   # copy for winsyms and symquery
   configure_file("${DBGHELP_DLL}"
@@ -1594,19 +1477,17 @@ if (WIN32)
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
     configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
-    if (USE_DRSYMS)
-      configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
-      if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
-        # symquery needs drsyms.dll in same dir
-        configure_file("${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
-          "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
-      endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
-      # symquery needs dynamorio.dll in same dir
-      # frontend now imports from DR (i#885)
-      configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
-    endif (USE_DRSYMS)
+    configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
+    if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
+      # symquery needs drsyms.dll in same dir
+      configure_file("${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
+    endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
+    # symquery needs dynamorio.dll in same dir
+    # frontend now imports from DR (i#885)
+    configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
   else (USER_SPECIFIED_DynamoRIO_DIR)
     # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
     # the target is in a subdir?
@@ -1622,38 +1503,34 @@ if (WIN32)
       COMMAND ${CMAKE_COMMAND}
       ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${drinjectlib_copy}" VERBATIM)
-    if (USE_DRSYMS)
-      set(drconfigexe_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe")
-      add_custom_target(drconfigexe_copy_tgt ALL DEPENDS "${drconfigexe_copy}")
-      add_custom_command(OUTPUT "${drconfigexe_copy}" DEPENDS drconfig
+    set(drconfigexe_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe")
+    add_custom_target(drconfigexe_copy_tgt ALL DEPENDS "${drconfigexe_copy}")
+    add_custom_command(OUTPUT "${drconfigexe_copy}" DEPENDS drconfig
+      COMMAND ${CMAKE_COMMAND}
+      ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
+      "${drconfigexe_copy}" VERBATIM)
+    if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
+      # symquery needs drsyms.dll in same dir
+      set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
+      add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
+      add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
         COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
-        "${drconfigexe_copy}" VERBATIM)
-      if (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
-        # symquery needs drsyms.dll in same dir
-        set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
-        add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
-        add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
-          COMMAND ${CMAKE_COMMAND}
-          ARGS -E copy "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
-        "${drsymsdll_copy}" VERBATIM)
-      endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
-      # symquery needs dynamorio.dll in same dir
-      # frontend now imports from DR (i#885)
-      set(drdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll")
-      add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
-      add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
-        COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
-        "${drdll_copy}" VERBATIM)
-    endif (USE_DRSYMS)
+        ARGS -E copy "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
+      "${drsymsdll_copy}" VERBATIM)
+    endif (NOT STATIC_DRSYMS AND TOOL_DR_MEMORY)
+    # symquery needs dynamorio.dll in same dir
+    # frontend now imports from DR (i#885)
+    set(drdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll")
+    add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
+    add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
+      COMMAND ${CMAKE_COMMAND}
+      ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
+      "${drdll_copy}" VERBATIM)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
-  if (USE_DRSYMS)
-    # above copy is for winsyms and symquery, this is for drmemorylib
-    configure_file("${DBGHELP_DLL}"
-      "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
-    # We don't need to copy symsrv.dll because only the frontend uses it.
-  endif (USE_DRSYMS)
+  # above copy is for winsyms and symquery, this is for drmemorylib
+  configure_file("${DBGHELP_DLL}"
+    "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
+  # We don't need to copy symsrv.dll because only the frontend uses it.
 else (WIN32)
   if (USER_SPECIFIED_DynamoRIO_DIR)
     # already built so we can copy at config time
@@ -1673,11 +1550,9 @@ else (WIN32)
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/valgrind2drmemory.pl" COPYONLY)
   endif (TOOL_DR_MEMORY)
 endif (WIN32)
+set(script_aux "")
 if (TOOL_DR_HEAPSTAT)
   # we need a copy of Dr. Memory's postprocess for leaks (PR 536878)
-  if (PERL_TO_EXE)
-    message(FATAL_ERROR "perl2exe for Dr. Heapstat not supported")
-  endif (PERL_TO_EXE)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/drmemory/postprocess.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postleaks.pl" COPYONLY)
   set(script_aux ${script_aux} "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postleaks.pl")
@@ -1922,11 +1797,9 @@ add_subdirectory(drsyscall)
 # find_package() + use_DynamoRIO_extension(drsyscall)
 target_link_libraries(${client_target} drsyscall_int)
 
-if (USE_DRSYMS)
-  add_subdirectory(drsymcache)
-  include_directories(drsymcache)
-  target_link_libraries(${client_target} drsymcache_int)
-endif (USE_DRSYMS)
+add_subdirectory(drsymcache)
+include_directories(drsymcache)
+target_link_libraries(${client_target} drsymcache_int)
 
 # Add Umbra
 add_subdirectory(umbra)
@@ -2059,24 +1932,20 @@ if (WIN32)
   install(FILES
     ${PROJECT_BINARY_DIR}/${BUILD_BIN}/symsrv.yes
     DESTINATION "${INSTALL_BIN}")
-  if (USE_DRSYMS)
-    install(FILES
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll
-      DESTINATION "${INSTALL_LIB}"
-      PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-      WORLD_READ WORLD_EXECUTE)
-  endif (USE_DRSYMS)
-  if (USE_DRSYMS)
-    install(FILES
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll
-      # frontend now imports from DR (i#885)
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe
-      DESTINATION "${INSTALL_BIN}"
-      PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-      WORLD_READ WORLD_EXECUTE)
-  endif (USE_DRSYMS)
+  install(FILES
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll
+    DESTINATION "${INSTALL_LIB}"
+    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
+  install(FILES
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll
+    # frontend now imports from DR (i#885)
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe
+    DESTINATION "${INSTALL_BIN}"
+    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE)
   # We want carriage returns for nice viewing in Notepad, etc.:
   file(READ ${CMAKE_CURRENT_SOURCE_DIR}/README readme_content)
   string(REPLACE "\n" "\r\n" readme_content ${readme_content})
@@ -2092,17 +1961,9 @@ endif (WIN32)
 install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
   DESTINATION "${INSTALL_PREFIX}.")
-if (USE_DRSYMS)
-  install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
-    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE)
-else (USE_DRSYMS)
-  install(FILES
-    ${script_main}
-    DESTINATION "${INSTALL_BIN}"
-    PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE)
-endif (USE_DRSYMS)
+install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  WORLD_READ WORLD_EXECUTE)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install(FILES
@@ -2243,11 +2104,11 @@ else (BUILDING_SUB_PACKAGE)
     endif (NOT APPLE)
     # drconfiglib and drinjectlib are now static libs so no need to install
   else (UNIX)
-    if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+    if (TOOL_DR_HEAPSTAT)
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinject.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinject.exe\" COPYONLY)")
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun.exe\" COPYONLY)")
-    endif (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+    endif ()
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfiglib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfiglib.dll\" COPYONLY)")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinjectlib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinjectlib.dll\" COPYONLY)")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
@@ -2418,11 +2279,6 @@ else (UNIX)
   endif ()
   set(CPACK_SOURCE_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "Windows")
-  if (USE_DRSYMS)
-    set(CPACK_SYSTEM_NAME "Windows")
-  else (USE_DRSYMS)
-    set(CPACK_SYSTEM_NAME "Cygwin")
-  endif (USE_DRSYMS)
 endif (UNIX)
 
 set(CPACK_PACKAGE_NAME "${toolname_cap_spc}")
@@ -2496,12 +2352,12 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY "${toolname_cap_spc}")
 set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "${toolname_cap_spc}")
 set(CPACK_PACKAGE_RELOCATABLE "true")
 set(CPACK_NSIS_MODIFY_PATH ON)
-if (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+if (WIN32 AND TOOL_DR_MEMORY)
   # CMake hardcodes bin/ for desktop links (CMake bug #7828) so
   # we rearranged our dirs since we really need one.
   set(CPACK_PACKAGE_EXECUTABLES "${toolname}" "${toolname_cap_spc} (drag your app here)")
   set(CPACK_CREATE_DESKTOP_LINKS "${toolname}")
-endif (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+endif ()
 set(CPACK_NSIS_MENU_LINKS
   # We automatically get an entry for ${toolname}.exe since it's in the
   # CPACK_PACKAGE_EXECUTABLES list, even though we don't want one.
