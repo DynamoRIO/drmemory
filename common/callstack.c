@@ -637,8 +637,8 @@ dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t a
                app_pc pc)
 {
     byte *xsp = (byte *) MC_SP_REG(mc);
-    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX":\n", pc, MC_SP_REG(mc),
-        MC_FP_REG(mc));
+    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX" low="PFX":\n", pc, MC_SP_REG(mc),
+        MC_FP_REG(mc), pt->stack_lowest_frame);
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
         while (xsp < (byte *)MC_SP_REG(mc) + amount && xsp < pt->stack_lowest_frame) {
             void *val = *(void **)xsp;
@@ -1440,6 +1440,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
         /* Scan one page worth and look for potential fp,retaddr pair */
         STATS_INC(find_next_fp_scans);
         /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) */
+        LOG(4, "find_next_fp: scanning %p-%p\n", tos, stop);
         for (sp = tos; sp < stop; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
@@ -1586,6 +1587,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
                 match = false;
             }
         }
+        LOG(4, "find_next_fp: returning NULL b/c didn't find fp,ra pair\n");
     } else
         LOG(4, "find_next_fp: returning NULL b/c couldn't read stack page\n");
     return NULL;

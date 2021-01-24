@@ -296,7 +296,7 @@ OPTION_CLIENT_BOOL(client, callstack_conservative, false,
 /* by default scan forward a fraction of a page: good compromise bet perf (scanning
  * can be the bottleneck) and good callstacks
  */
-OPTION_CLIENT(client, callstack_max_scan, uint, 2048, 0, 16384,
+OPTION_CLIENT(client, callstack_max_scan, uint, 4096, 0, 16384,
               "How far to scan to locate the first or next stack frame",
               "How far to scan to locate the first stack frame when starting in a frameless function, or to locate the next stack frame when crossing loader or glue stub thunks or a signal or exception frame.  Increasing this can produce better callstacks but may incur noticeable overhead for applications that make many allocation calls.")
 OPTION_CLIENT_STRING(client, callstack_bad_fp_list, IF_WINDOWS_ELSE("", "libstdc++*"),
