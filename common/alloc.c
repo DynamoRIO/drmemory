@@ -264,17 +264,19 @@ static void *alloc_routine_lock; /* protects alloc_routine_table */
 
 /* Itanium ABI manglings */
 /* operator new(unsigned int) */
-#define MANGLED_NAME_NEW                    "_Znwj"
+#define MANGLED_NAME_NEW                    IF_X64_ELSE("_Znwm","_Znwj")
 /* operator new[](unsigned int) */
-#define MANGLED_NAME_NEW_ARRAY              "_Znaj"
+#define MANGLED_NAME_NEW_ARRAY              IF_X64_ELSE("_Znam","_Znaj")
 /* operator new(unsigned int, std::nothrow_t const&) */
-#define MANGLED_NAME_NEW_NOTHROW            "_ZnwjRKSt9nothrow_t"
+#define MANGLED_NAME_NEW_NOTHROW \
+    IF_X64_ELSE("_ZnwmRKSt9nothrow_t","_ZnwjRKSt9nothrow_t")
 /* operator new[](unsigned int, std::nothrow_t const&) */
-#define MANGLED_NAME_NEW_ARRAY_NOTHROW      "_ZnajRKSt9nothrow_t"
+#define MANGLED_NAME_NEW_ARRAY_NOTHROW \
+    IF_X64_ELSE("_ZnamRKSt9nothrow_t","_ZnajRKSt9nothrow_t")
 /* operator new(std::size_t, void* __p) */
-#define MANGLED_NAME_NEW_PLACEMENT          "_ZnwjPv"
+#define MANGLED_NAME_NEW_PLACEMENT          IF_X64_ELSE("_ZnwmPv","_ZnwjPv")
 /* operator new[](std::size_t, void* __p) */
-#define MANGLED_NAME_NEW_ARRAY_PLACEMENT    "_ZnajPv"
+#define MANGLED_NAME_NEW_ARRAY_PLACEMENT    IF_X64_ELSE("_ZnamPv","_ZnajPv")
 /* operator delete(void*) */
 #define MANGLED_NAME_DELETE                 "_ZdlPv"
 /* operator delete[](void*) */
@@ -448,7 +450,7 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     /* These are the names we store in the symcache to distinguish from regular
      * operators for i#882.
      * This means we are storing something different from the actual symbol names.
-     * We assume that these 4 (== OPERATOR_ENTRIE) entries immediately
+     * We assume that these 4 (== OPERATOR_ENTRIES) entries immediately
      * follow the 4 above!
      */
     { "operator new nothrow",      HEAP_ROUTINE_NEW_NOTHROW },
