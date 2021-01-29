@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -26,7 +26,7 @@
 #
 # Invoke like this: "ctest -S package.cmake,dr=<path-to-DynamoRIO>\;build=<build#>"
 
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required(VERSION 3.7)
 
 # set from an including package script
 if (NOT DEFINED arg_sub_package)
@@ -152,8 +152,6 @@ endif (arg_version)
 # perhaps the two scripts should be further merged.
 if ("${arg_cacheappend}" MATCHES "VMKERNEL:BOOL=ON")
   set(name_sfx "vmk-")
-elseif ("${arg_cacheappend}" MATCHES "USE_DRSYMS:BOOL=OFF")
-  set(name_sfx "cygwin-")
 else ()
   set(name_sfx "")
 endif ()

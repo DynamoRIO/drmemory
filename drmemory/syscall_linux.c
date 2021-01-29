@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -246,23 +246,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
 static void
 handle_pre_execve(void *drcontext)
 {
-#ifndef USE_DRSYMS
-    /* PR 453867: tell postprocess.pl to watch for new logdir and
-     * fork a new copy.
-     * FIXME: what if syscall fails?  Punting on that for now.
-     * Note that if it fails and then a later one succeeds, postprocess.pl
-     * will replace the first with the last.
-     */
-    char logdir[MAXIMUM_PATH]; /* one reason we're not inside os_post_syscall() */
-    size_t bytes_read = 0;
-    /* Not using safe_read() since we want a partial read if hits page boundary */
-    dr_safe_read((void *) dr_syscall_get_param(drcontext, 0),
-                 BUFFER_SIZE_BYTES(logdir), logdir, &bytes_read);
-    if (bytes_read < BUFFER_SIZE_BYTES(logdir))
-        logdir[bytes_read] = '\0';
-    NULL_TERMINATE_BUFFER(logdir);
-    ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
-#endif
+    /* Nothing. */
 }
 
 /* for tasks unrelated to shadowing that are common to all tools */
@@ -305,17 +289,6 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
             report_child_thread(drcontext, child);
             break;
         }
-        /* else, fall through */
-    }
-    case SYS_fork: {
-#ifndef USE_DRSYMS
-        /* PR 453867: tell postprocess.pl to not exit until it sees a message
-         * from the child starting up.
-         */
-        process_id_t child = dr_syscall_get_result(drcontext);
-        if (child != 0)
-            ELOGF(0, f_fork, "FORK child=%d\n", child);
-#endif
         break;
     }
     }

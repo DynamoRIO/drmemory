@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2020-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -22,3 +22,5 @@
 #include "dr_annotations.h"
 
 DR_DEFINE_ANNOTATION(void, drmemory_dump_memory_layout, (void),)
+
+DR_DEFINE_ANNOTATION(void, drmemory_make_unaddressable, (void *start, size_t len),)

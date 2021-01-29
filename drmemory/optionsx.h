@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -117,26 +117,7 @@ OPTION_FRONT_BOOL(script, v, false,
                   "Display verbose information in the "TOOLNAME" front end",
                   "Display verbose information in the "TOOLNAME" front end")
 
-/* FIXME i#614, i#446: add support for aggregate and post-process w/ USE_DRSYMS */
-#if defined(UNIX) && defined(TOOL_DR_MEMORY) && !defined(USE_DRSYMS)
-OPTION_FRONT_BOOL(front, skip_results, false,
-                  "No results during run: use -results afterward",
-                  "Do not produce results while running the application.  This can reduce resource usage if the symbol files for the application are large.  To obtain the results, after the application run is finished, use the -results option in a separate step.")
-OPTION_FRONT_STRING(post, results, "",
-                    "Produce results from specified -skip_results log dir",
-                    "Use this option as the second step in a -skip_results run.  Pass the name of the log directory created by the -skip_results application run.  The results.txt will then be filled in.")
-OPTION_FRONT_STRING(post, results_app, "",
-                    "Use with -results: specify app from -skip_results run",
-                    "Use this option when invoking -results on a different machine from where the application was run with -skip_results.  When -results is invoked without this option also specified, the path to the application that was used to run it with -skip_results is assumed.")
-OPTION_FRONT_STRING(post, aggregate, "",
-                    "Produce aggregate error report on log dirs",
-                    "Pass a list of log directories to produce an aggregate error report.  Useful for applications that consist of a group of separate processes.")
-# ifdef VMX86_SERVER
-OPTION_FRONT_BOOL(front, use_vmtree, true,
-                  "Use VMTREE and VMBLD env vars to locate symbols",
-                  "See \\ref sec_setup_syms.")
-# endif
-#endif /* UNIX + TOOL_DR_MEMORY + !USE_DRSYMS */
+/* TODO i#614, i#446: add support for cross-process aggregation */
 
 /****************************************************************************
  * Public client options
@@ -164,7 +145,6 @@ OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
 OPTION_CLIENT_BOOL(client, quiet, false,
                    "Suppress stderr messages and results",
                    "Suppress stderr messages and, on Windows, popup messages.  Overrides -results_to_stderr and -summary.")
-#ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(client, results_to_stderr, true,
                    "Print error reports to stderr in addition to results.txt",
                    "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.")
@@ -180,7 +160,6 @@ OPTION_CLIENT(client, prefix_style, uint, 0, 0, 2,
 OPTION_CLIENT_BOOL(client, log_suppressed_errors, false,
                    "Log suppressed error reports for postprocessing.",
                    "Log suppressed error reports for postprocessing.  Enabling this option will increase the logfile size, but will allow users to re-process suppressed reports with alternate suppressions or additional symbols.")
-#endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",
                    "Display, but do not abort, on asserts in debug build (in release build asserts are automatically disabled).")
@@ -261,7 +240,6 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x1fff,
               /* (when adding, update the max value as well!) */
 
 #ifdef TOOL_DR_MEMORY
-# ifdef USE_DRSYMS /* NYI for postprocess */
 /* _REPEATABLE would take too much capacity and too much option string space to
  * specify more than one or two.
  */
@@ -298,7 +276,6 @@ OPTION_CLIENT_STRING(client, src_whitelist, "",
 OPTION_CLIENT(client, src_whitelist_frames, uint, 4, 0, 4096,
                      "The number of frames to match vs -src_whitelist",
                      "The number of frames, starting from the top, that must not match -src_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -src_whitelist-based error separation.  If the top frame is a system call or a replace_* Dr. Memory routine, it is ignored and matching starts from the second frame.")
-# endif
 OPTION_CLIENT_STRING(drmemscope, check_uninit_blacklist, "",
                      ",-separated list of module basenames in which to not check uninits",
                    "For each library or executable basename on this list, Dr. Memory suspends checking of uninitialized reads.  Instead Dr. Memory marks all memory written by such modules as defined.  This is a more efficient way to ignore all errors from a module than suppressing them or adding to the lib_blacklist option.  Dr. Memory does automatically turn a whole-module suppression consisting of a single frame of the form 'modulename!*' into an entry on this list.  The entries on this list can contain wildcards.")
@@ -319,7 +296,7 @@ OPTION_CLIENT_BOOL(client, callstack_conservative, false,
 /* by default scan forward a fraction of a page: good compromise bet perf (scanning
  * can be the bottleneck) and good callstacks
  */
-OPTION_CLIENT(client, callstack_max_scan, uint, 2048, 0, 16384,
+OPTION_CLIENT(client, callstack_max_scan, uint, 4096, 0, 16384,
               "How far to scan to locate the first or next stack frame",
               "How far to scan to locate the first stack frame when starting in a frameless function, or to locate the next stack frame when crossing loader or glue stub thunks or a signal or exception frame.  Increasing this can produce better callstacks but may incur noticeable overhead for applications that make many allocation calls.")
 OPTION_CLIENT_STRING(client, callstack_bad_fp_list, IF_WINDOWS_ELSE("", "libstdc++*"),
@@ -336,11 +313,9 @@ OPTION_CLIENT_BOOL(client, count_leaks, true,
                    "Whether to detect memory leaks.  Whether details on each leak are shown is controlled by the -check_leaks option.  Disabling this option can reduce execution overhead as less information must be kept internally, while disabling -check_leaks will not affect execution overhead.")
 #endif /* TOOL_DR_MEMORY */
 
-#ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(client, symbol_offsets, false,
                    "Deprecated: use -callstack_style flag 0x4",
                    "Deprecated: use -callstack_style flag 0x4")
-#endif
 
 OPTION_CLIENT_BOOL(client, ignore_early_leaks, true,
                    "Ignore pre-app leaks",
@@ -441,7 +416,6 @@ OPTION_CLIENT_BOOL(drmemscope, report_write_to_read_only, true,
 OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
                    "Print details on each duplicate error",
                    "Print details on each duplicate error rather than only showing unique error details")
-#ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(drmemscope, batch, false,
                    "Do not invoke notepad at the end",
                    "Do not launch notepad with the results file at application exit.")
@@ -460,19 +434,14 @@ OPTION_CLIENT(client, symcache_minsize, uint, 1000, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, use_symcache_postcall, true,
                    "Cache post-call sites to speed up future runs",
                    "Cache post-call sites to speed up future runs.  Requires -use_symcache to be true.")
-# ifdef WINDOWS
+#ifdef WINDOWS
 OPTION_CLIENT_BOOL(drmemscope, preload_symbols, false,
                    "Preload debug symbols on module load",
                    "Preload debug symbols on module load.  Debug symbols cannot be loaded during leak reporting on Vista, so this option is on by default on Vista.  This option may cause excess memory usage from unneeded debugging symbols.")
 OPTION_CLIENT_BOOL(drmemscope, skip_msvc_importers, true,
                    "Do not search for alloc routines in modules that import from msvc*",
                    "Do not search for alloc routines in modules that import from msvc*")
-# endif /* WINDOWS */
-#else
-OPTION_CLIENT_BOOL(drmemscope, summary, false,
-                   "Display a summary prior to symbol processing",
-                   "Display process startup information and a summary of errors prior to symbol-based suppression and other processing.")
-#endif
+#endif /* WINDOWS */
 OPTION_CLIENT_BOOL(drmemscope, warn_null_ptr, false,
                    "Warn if NULL passed to free/realloc",
                    "Whether to warn when NULL is passed to free() or realloc().")

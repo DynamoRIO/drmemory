@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -29,9 +29,7 @@
 #include "callstack.h"
 #include "utils.h"
 #include "redblack.h"
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-#endif
+#include "drsyms.h"
 #include "drsyscall.h"
 #ifdef UNIX
 # include <string.h>
@@ -307,10 +305,8 @@ max_callstack_size(void)
 {
     static const char *max_line = "\tfp=0x12345678 parent=0x12345678 0x12345678 <>"NL;
     size_t max_addr_sym_len = MAX_ADDR_LEN;
-#ifdef USE_DRSYMS
     max_addr_sym_len += 1/*' '*/ + MAX_SYMBOL_LEN + 1/*\n*/ +
         strlen(LINE_PREFIX) + MAX_FILE_LINE_LEN;
-#endif
     return ((ops.global_max_frames+1)/*for the ... line: over-estimate*/
             *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
@@ -340,10 +336,8 @@ callstack_init(callstack_options_t *options)
         drmgr_register_bb_instrumentation_event(event_basic_block_analysis, NULL, NULL);
     }
 
-#ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     /* we rely on drsym_init() being called in utils_init() */
-#endif
 }
 
 void
@@ -361,9 +355,7 @@ callstack_exit(void)
     dr_mutex_unlock(modtree_lock);
     dr_mutex_destroy(modtree_lock);
 
-#ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
-#endif
 
     drmgr_unregister_tls_field(tls_idx_callstack);
 }
@@ -519,7 +511,6 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     frame->func[1] = '\0';
 }
 
-#ifdef USE_DRSYMS
 /* Symbol lookup: i#44/PR 243532 */
 static void
 lookup_func_and_line(symbolized_frame_t *frame OUT,
@@ -639,7 +630,6 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
     dr_free_module_data(data);
     return res;
 }
-#endif
 
 #ifdef DEBUG
 static void
@@ -647,8 +637,8 @@ dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t a
                app_pc pc)
 {
     byte *xsp = (byte *) MC_SP_REG(mc);
-    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX":\n", pc, MC_SP_REG(mc),
-        MC_FP_REG(mc));
+    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX" low="PFX":\n", pc, MC_SP_REG(mc),
+        MC_FP_REG(mc), pt->stack_lowest_frame);
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
         while (xsp < (byte *)MC_SP_REG(mc) + amount && xsp < pt->stack_lowest_frame) {
             void *val = *(void **)xsp;
@@ -657,7 +647,7 @@ dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t a
             ssize_t len;
             BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                      "\t"PFX"  "PFX, xsp, val);
-            IF_DRSYMS(print_symbol(val, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);)
+            print_symbol(val, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);
             LOG(1, "%s\n", buf);
             xsp += sizeof(void*);
         }
@@ -925,12 +915,10 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, pc - mod_start);
             NULL_TERMINATE_BUFFER(frame->modoffs);
-#ifdef USE_DRSYMS
             if (name_info->path != NULL) {
                 lookup_func_and_line(frame, name_info,
                                      pc - mod_start - (sub1_sym ? 1 : 0));
             }
-#endif
         }
         return true;
     } else if (!skip_non_module) {
@@ -1127,7 +1115,6 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
             LOG(3, "is_retaddr: can't read "PFX"\n", pc);
             STATS_INC(cstack_is_retaddr_unreadable);
         });
-#ifdef USE_DRSYMS
         DOLOG(5, {
             char buf[128];
             size_t sofar = 0;
@@ -1137,7 +1124,6 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
             print_symbol(pc, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);
             LOG(1, "%s\n", buf);
         });
-#endif
         if (!match)
             return false;
     }
@@ -1294,7 +1280,6 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
     }
     if (!TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
         return true; /* no further checks */
-#ifdef USE_DRSYMS
     /* Here we check that the target of the retaddr matches the function
      * containing frame_addr.  This is risky b/c the retaddr could target
      * some other routine that then tailcalls to frame_addr's function.
@@ -1351,9 +1336,6 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
     });
     LOG(4, "%s: returning %d\n", __FUNCTION__, res);
     return res;
-#else
-    return true; /* no info */
-#endif
 }
 
 static void
@@ -1458,6 +1440,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
         /* Scan one page worth and look for potential fp,retaddr pair */
         STATS_INC(find_next_fp_scans);
         /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) */
+        LOG(4, "find_next_fp: scanning %p-%p\n", tos, stop);
         for (sp = tos; sp < stop; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
@@ -1604,6 +1587,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
                 match = false;
             }
         }
+        LOG(4, "find_next_fp: returning NULL b/c didn't find fp,ra pair\n");
     } else
         LOG(4, "find_next_fp: returning NULL b/c couldn't read stack page\n");
     return NULL;
@@ -2178,7 +2162,6 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
             NULL_TERMINATE_BUFFER(frame->modoffs);
-#ifdef USE_DRSYMS
             /* PR 543863: subtract one from retaddrs in callstacks so the line#
              * is for the call and not for the next source code line, but only
              * for symbol lookup so we still display a valid instr addr.
@@ -2186,7 +2169,6 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
              */
             lookup_func_and_line(frame, info,
                                  (idx == 0 && !pcs->first_is_retaddr) ? offs : offs-1);
-#endif
         } else {
             ASSERT(!frame->is_module, "frame not initialized");
             dr_snprintf(frame->func, MAX_FUNC_LEN, "<not in a module>");

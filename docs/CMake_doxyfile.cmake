@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -152,27 +152,15 @@ string(REGEX REPLACE
 string(REGEX REPLACE
   "TOOL_VERSION=X.Y.Z"
   "TOOL_VERSION=${version_number}" string "${string}")
-if (PERL_TO_EXE OR USE_DRSYMS)
-  string(REGEX REPLACE
-    "FRONT_END=[^ ]*.pl"
-    "FRONT_END=${toolname}.exe" string "${string}")
-  string(REGEX REPLACE
-    "FRONT_END_PATH=[^ ]*.pl"
-    "FRONT_END_PATH=bin/${toolname}.exe" string "${string}")
-  string(REGEX REPLACE
-    "DRCONFIG_PATH=drconfig"
-    "DRCONFIG_PATH=bin/drconfig.exe" string "${string}")
-else (PERL_TO_EXE OR USE_DRSYMS)
-  string(REGEX REPLACE
-    "FRONT_END=[^ ]*.pl"
-    "FRONT_END=${toolname}.pl" string "${string}")
-  string(REGEX REPLACE
-    "FRONT_END_PATH=[^ ]*.pl"
-    "FRONT_END_PATH=bin/${toolname}.pl" string "${string}")
-  string(REGEX REPLACE
-    "DRCONFIG_PATH=drconfig"
-    "DRCONFIG_PATH=bin/drconfig" string "${string}")
-endif (PERL_TO_EXE OR USE_DRSYMS)
+string(REGEX REPLACE
+  "FRONT_END=[^ ]*.pl"
+  "FRONT_END=${toolname}.pl" string "${string}")
+string(REGEX REPLACE
+  "FRONT_END_PATH=[^ ]*.pl"
+  "FRONT_END_PATH=bin/${toolname}.pl" string "${string}")
+string(REGEX REPLACE
+  "DRCONFIG_PATH=drconfig"
+  "DRCONFIG_PATH=bin/drconfig" string "${string}")
 if (WIN32)
   string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=Windows" string "${string}")
 else ()

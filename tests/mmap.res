@@ -1,6 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# Copyright (c) 2021 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,18 +18,5 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# FIXME: for instr "inc 0x00000080(%eax) -> 0x00000080(%eax)"
-# shadow mode reports "reading 1 byte(s)" error
-# while pattern mode reports "writing 1 byte(s)" error.
-%if WINDOWS
-Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1418
-Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:1430
-%endif
-%if UNIX
-Error #1: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:612
-Error #2: UNADDRESSABLE ACCESS beyond heap bounds:
-registers.c_asm.asm:624
-%endif
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
+mmap.c:53

@@ -1,0 +1,332 @@
+# **********************************************************
+# Copyright (c) 2020 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for release packages.
+
+name: ci-package
+on:
+  # Our weekly cronbuild: 9pm EST on Fridays.
+  schedule:
+    - cron: '0 2 * * SAT'
+  # Manual trigger using the Actions page.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version number (blank for cronbuild)'
+        required: false
+        default: ''
+      build:
+        description: 'Package build number'
+        required: true
+        default: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ###########################################################################
+  # Linux tarball with 64-bit and 32-bit builds:
+  x86:
+    runs-on: ubuntu-16.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    # Install multilib for non-cross-compiling Linux build:
+    - name: Create Build Environment
+      run: sudo apt-get -y install doxygen jsonlint g++-multilib
+
+    - name: Get Version
+      id: version
+      # XXX: For now we duplicate this version number here with CMakeLists.txt.
+      # We should find a way to share (xref DRi#1565).
+      # We support setting the version and build for manual builds.
+      # We only use a non-zero build # when making multiple manual builds in one day.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export PREFIX="cronbuild-"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+          export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        DEPLOY_DOCS: yes
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux-tarball
+        path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
+
+    - name: Deploy Docs
+      uses: crazy-max/ghaction-github-pages@v2
+      with:
+        build_dir: html
+        repo: DynamoRIO/drmemory_docs
+        target_branch: master
+      env:
+        # We need a personal access token for write access to another repo.
+        GH_PAT: ${{ secrets.DOCS_TOKEN }}
+
+  ###########################################################################
+  # Mac tarball with x86-64 build:
+  osx:
+    runs-on: macos-10.15
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Create Build Environment
+      run: brew install nasm
+
+    - name: Get Version
+      id: version
+      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
+          export VERSION_NUMBER="2.3.${PATCHLEVEL}"
+          export PREFIX="cronbuild-"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+          export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        # See ci-osx.yml comments: we need to set the xcode version.
+        DEVELOPER_DIR: /Applications/Xcode_11.3.1.app/Contents/Developer
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: mac-tarball
+        path: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
+
+  ###########################################################################
+  # Windows .zip and .msi with 32-bit and 64-bit x86 builds:
+  windows:
+    runs-on: windows-2016
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    - name: Download Packages
+      shell: powershell
+      run: |
+        md c:\projects\install
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("https://sourceforge.net/projects/doxygen/files/rel-1.8.19/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
+
+    - name: Get Version
+      id: version
+      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export PREFIX="cronbuild-"
+        else
+            export VERSION_NUMBER=${{ github.event.inputs.version }}
+            export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+            export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+
+    - name: Build Package
+      working-directory: ${{ github.workspace }}
+      shell: cmd
+      run: |
+        echo ------ Setting up paths ------
+        7z x c:\projects\install\ninja.zip -oc:\projects\install\ninja > nul
+        set PATH=c:\projects\install\ninja;%PATH%
+        7z x c:\projects\install\doxygen.zip -oc:\projects\install\doxygen > nul
+        set PATH=c:\projects\install\doxygen;%PATH%
+        dir "c:\Program Files (x86)\WiX Toolset"*
+        set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        echo ------ Running suite ------
+        echo PATH is "%PATH%"
+        echo Running in directory "%CD%"
+        perl tests/runsuite_wrapper.pl travis use_ninja
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+
+    - name: Upload Zip
+      uses: actions/upload-artifact@v2
+      with:
+        name: windows-zip
+        path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
+
+    - name: Upload Msi
+      uses: actions/upload-artifact@v2
+      with:
+        name: windows-msi
+        path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
+
+  ###########################################################################
+  # Create release and populate with files.
+  # We can't have each OS job create the release because only the first
+  # succeeds and the others fail: there is no check in the create-release
+  # action to use an existing release if it already exists.
+  # Thus, our strategy is to share files from the build jobs with this
+  # single relese job via artifacts.
+
+  create_release:
+    needs: [x86, osx, windows]
+    runs-on: ubuntu-16.04
+
+    steps:
+      # We need a checkout to run git log for the version.
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Get Version
+      id: version
+      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export OSX_PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
+          export OSX_PATCHLEVEL=$(((OSX_PATCHLEVEL % 200) + 56))
+          export OSX_VERSION_NUMBER="2.3.${OSX_PATCHLEVEL}"
+          export PREFIX="cronbuild-"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+          export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+        echo "::set-output name=osx_version_number::${OSX_VERSION_NUMBER}"
+        echo "::set-output name=version_string::${PREFIX}${VERSION_NUMBER}"
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version_string }}
+        release_name: ${{ steps.version.outputs.version_string }}
+        body: |
+          Auto-generated periodic build.
+        draft: false
+        prerelease: false
+
+    - name: Download Linux
+      uses: actions/download-artifact@v2
+      with:
+        name: linux-tarball
+    - name: Upload Linux
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
+        asset_name: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
+        asset_content_type: application/x-gzip
+
+    - name: Download Mac
+      uses: actions/download-artifact@v2
+      with:
+        name: mac-tarball
+    - name: Upload Mac
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
+        asset_name: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
+        asset_content_type: application/x-gzip
+
+    - name: Download Zip
+      uses: actions/download-artifact@v2
+      with:
+        name: windows-zip
+    - name: Upload Zip
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
+        asset_name: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
+        asset_content_type: application/zip
+
+    - name: Download Msi
+      uses: actions/download-artifact@v2
+      with:
+        name: windows-msi
+    - name: Upload Msi
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        # This action doesn't seem to support a glob so we need the exact name.
+        asset_path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
+        asset_name: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
+        asset_content_type: application/octet-stream

@@ -2065,4 +2065,3 @@ sub process_callstack_log($log_file_in)
     }
     close LOG;
 }
-

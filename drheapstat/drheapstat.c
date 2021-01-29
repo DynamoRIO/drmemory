@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1308,7 +1308,6 @@ event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 {
     instru_info_t *ii = (instru_info_t *) user_data;
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
-#ifdef USE_DRSYMS
     DOLOG(3, {
         char buf[128];
         size_t sofar = 0;
@@ -1320,7 +1319,6 @@ event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
             LOG(1, "%s\n", buf);
         }
     });
-#endif
     if (options.staleness)
         fastpath_top_of_bb(drcontext, tag, bb, &ii->bi);
     return DR_EMIT_DEFAULT;
@@ -2135,10 +2133,8 @@ event_exit(void)
     free_shared_code();
     utils_exit();
 
-#ifdef USE_DRSYMS
     if (options.use_symcache)
         drsymcache_exit();
-#endif
 
 #ifdef STATISTICS
     dump_statistics();
@@ -2239,7 +2235,6 @@ dr_init(client_id_t client_id)
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Heapstat version %s\n", VERSION_STRING);
 
-#ifdef USE_DRSYMS
     if (options.use_symcache) {
         if (!option_specified.symcache_dir) {
             dr_snprintf(options.symcache_dir, BUFFER_SIZE_ELEMENTS(options.symcache_dir),
@@ -2248,7 +2243,6 @@ dr_init(client_id_t client_id)
         }
         drsymcache_init(client_id, options.symcache_dir, 0);
     }
-#endif
 
     snapshot_init();
 

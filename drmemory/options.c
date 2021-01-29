@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -80,6 +80,8 @@ get_windows_version(void)
 }
 # endif /* WINDOWS */
 #endif /* CLIENT_LIBNAME */
+
+volatile bool go_native;
 
 /***************************************************************************
  * OPTIONS
@@ -378,7 +380,7 @@ options_init(const char *opstr)
                     "%s", DEFAULT_LOGDIR);
         NULL_TERMINATE_BUFFER(options.logdir);
     }
-#if defined(TOOL_DR_MEMORY) && defined(USE_DRSYMS)
+#ifdef TOOL_DR_MEMORY
     if (!option_specified.symcache_dir) {
         /* XXX: dynamically allocating option space would save some space;
          * could then just point at logdir: though we now put the "/symcache"
@@ -604,13 +606,11 @@ options_init(const char *opstr)
     if (!options.count_leaks) {
         options.check_leaks_on_destroy = false;
     }
-# ifdef USE_DRSYMS
     if (options.quiet) {
         /* quiet overrides both of these. */
         options.results_to_stderr = false;
         options.summary = false;
     }
-# endif
     if (options.check_uninitialized) {
         if (options.check_stack_bounds)
             usage_error("-check_stack_bounds only valid w/ -no_check_uninitialized", "");
@@ -645,7 +645,6 @@ options_init(const char *opstr)
 # endif
     if (options.brief) {
         /* i#589: simpler error reports */
-# ifdef USE_DRSYMS
         if (!option_specified.callstack_srcfile_hide) { /* overridable */
             /* Hide Visual Studio STL and CRT source file paths.
              * But, don't hide VS6 default project dir on win2k:
@@ -669,7 +668,6 @@ options_init(const char *opstr)
                         "%s", app_path);
             NULL_TERMINATE_BUFFER(options.callstack_srcfile_prefix);
         }
-# endif
         /* Kind of a hack for now, making -brief "better reports", until
          * resolve perf issues w/ this option (i#205).  Those are now resolved:
          * but I'm leaving this so we don't lose it if we reverse the

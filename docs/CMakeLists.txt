@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -114,7 +114,6 @@ add_custom_command(
        -DDOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
        -DVMKERNEL=${VMKERNEL}
        -DPERL_TO_EXE=${PERL_TO_EXE}
-       -DUSE_DRSYMS=${USE_DRSYMS}
        -Doptions_for_docs=${options_for_docs}
        -Dtoolname=${toolname}
        -Dtoolname_cap_spc=${toolname_cap_spc}

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2020-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -31,12 +31,15 @@
 
 #define DRMEMORY_ANNOTATE_DUMP_MEMORY_LAYOUT() \
     DR_ANNOTATION(drmemory_dump_memory_layout)
+#define DRMEMORY_ANNOTATE_MAKE_UNADDRESSABLE(start, len)    \
+    DR_ANNOTATION(drmemory_make_unaddressable, start, len)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 DR_DECLARE_ANNOTATION(void, drmemory_dump_memory_layout, (void));
+DR_DECLARE_ANNOTATION(void, drmemory_make_unaddressable, (void *start, size_t len));
 
 #ifdef __cplusplus
 }

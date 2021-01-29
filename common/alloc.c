@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -53,10 +53,8 @@
 #include "heap.h"
 #include "callstack.h"
 #include "redblack.h"
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-# include "drsymcache.h"
-#endif
+#include "drsyms.h"
+#include "drsymcache.h"
 #ifdef MACOS
 # include <sys/syscall.h>
 # include <sys/mman.h>
@@ -266,17 +264,19 @@ static void *alloc_routine_lock; /* protects alloc_routine_table */
 
 /* Itanium ABI manglings */
 /* operator new(unsigned int) */
-#define MANGLED_NAME_NEW                    "_Znwj"
+#define MANGLED_NAME_NEW                    IF_X64_ELSE("_Znwm","_Znwj")
 /* operator new[](unsigned int) */
-#define MANGLED_NAME_NEW_ARRAY              "_Znaj"
+#define MANGLED_NAME_NEW_ARRAY              IF_X64_ELSE("_Znam","_Znaj")
 /* operator new(unsigned int, std::nothrow_t const&) */
-#define MANGLED_NAME_NEW_NOTHROW            "_ZnwjRKSt9nothrow_t"
+#define MANGLED_NAME_NEW_NOTHROW \
+    IF_X64_ELSE("_ZnwmRKSt9nothrow_t","_ZnwjRKSt9nothrow_t")
 /* operator new[](unsigned int, std::nothrow_t const&) */
-#define MANGLED_NAME_NEW_ARRAY_NOTHROW      "_ZnajRKSt9nothrow_t"
+#define MANGLED_NAME_NEW_ARRAY_NOTHROW \
+    IF_X64_ELSE("_ZnamRKSt9nothrow_t","_ZnajRKSt9nothrow_t")
 /* operator new(std::size_t, void* __p) */
-#define MANGLED_NAME_NEW_PLACEMENT          "_ZnwjPv"
+#define MANGLED_NAME_NEW_PLACEMENT          IF_X64_ELSE("_ZnwmPv","_ZnwjPv")
 /* operator new[](std::size_t, void* __p) */
-#define MANGLED_NAME_NEW_ARRAY_PLACEMENT    "_ZnajPv"
+#define MANGLED_NAME_NEW_ARRAY_PLACEMENT    IF_X64_ELSE("_ZnamPv","_ZnajPv")
 /* operator delete(void*) */
 #define MANGLED_NAME_DELETE                 "_ZdlPv"
 /* operator delete[](void*) */
@@ -431,7 +431,6 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 #define DEBUG_HEAP_DELETE_NAME "std::_DebugHeapDelete<>"
 
 static const possible_alloc_routine_t possible_cpp_routines[] = {
-#ifdef USE_DRSYMS
     /* XXX: currently drsyms does NOT include function params, which is what
      * we want here as we want to include all overloads in symcache but
      * be able to easily enumerate them from function name only.
@@ -451,17 +450,17 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     /* These are the names we store in the symcache to distinguish from regular
      * operators for i#882.
      * This means we are storing something different from the actual symbol names.
-     * We assume that these 4 (== OPERATOR_ENTRIE) entries immediately
+     * We assume that these 4 (== OPERATOR_ENTRIES) entries immediately
      * follow the 4 above!
      */
     { "operator new nothrow",      HEAP_ROUTINE_NEW_NOTHROW },
     { "operator new[] nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
     { "operator delete nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
     { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
-# ifdef WINDOWS
+#ifdef WINDOWS
     { DEBUG_HEAP_DELETE_NAME, HEAP_ROUTINE_DebugHeapDelete },
-# endif
-# ifdef UNIX
+#endif
+#ifdef UNIX
     /* i#267: support tcmalloc */
     { "tc_new",      HEAP_ROUTINE_NEW },
     { "tc_newarray",    HEAP_ROUTINE_NEW_ARRAY },
@@ -471,69 +470,10 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "tc_newarray_nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
     { "tc_delete_nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
     { "tc_deletearray_nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
-# endif
-#else
-    /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
-     * the standard Itanium ABI/VS manglings for the standard operators.
-     * XXX: we'll miss overloads that add more args.
-     * XXX: we assume drsyms will find and de-mangle exports
-     * in stripped modules so that when we have drsyms we can ignore
-     * these manglings.
-     */
-# ifdef UNIX
-    { MANGLED_NAME_NEW,                  HEAP_ROUTINE_NEW },
-    { MANGLED_NAME_NEW_ARRAY,            HEAP_ROUTINE_NEW_ARRAY },
-    { MANGLED_NAME_NEW_NOTHROW,          HEAP_ROUTINE_NEW_NOTHROW },
-    { MANGLED_NAME_NEW_ARRAY_NOTHROW,    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
-    { MANGLED_NAME_DELETE,               HEAP_ROUTINE_DELETE },
-    { MANGLED_NAME_DELETE_ARRAY,         HEAP_ROUTINE_DELETE_ARRAY },
-    { MANGLED_NAME_DELETE_NOTHROW,       HEAP_ROUTINE_DELETE_NOTHROW },
-    { MANGLED_NAME_DELETE_ARRAY_NOTHROW, HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
-# else
-    /* operator new(unsigned int) */
-    { "??2@YAPAXI@Z",       HEAP_ROUTINE_NEW },
-    /* operator new(unsigned int,int,char const *,int) */
-    { "??2@YAPAXIHPBDH@Z",  HEAP_ROUTINE_NEW },
-    /* operator new[](unsigned int) */
-    { "??_U@YAPAXI@Z",      HEAP_ROUTINE_NEW_ARRAY },
-    /* operator new[](unsigned int,int,char const *,int) */
-    { "??_U@YAPAXIHPBDH@Z", HEAP_ROUTINE_NEW_ARRAY },
-    /* operator delete(void *) */
-    { "??3@YAXPAX@Z",       HEAP_ROUTINE_DELETE },
-    /* operator delete[](void *) */
-    { "??_V@YAXPAX@Z",      HEAP_ROUTINE_DELETE_ARRAY },
-    /* XXX: we don't support nothrow operators w/o USE_DRSYMS */
-# endif
-#endif /* USE_DRSYMS */
+#endif
 };
 # define POSSIBLE_CPP_ROUTINE_NUM \
     (sizeof(possible_cpp_routines)/sizeof(possible_cpp_routines[0]))
-
-static const char *
-translate_routine_name(const char *name)
-{
-#ifndef USE_DRSYMS
-    /* temporary until we have online syms */
-    /* could add to table but doesn't seem worth adding a whole new field */
-    if (strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXI@Z", MANGLED_NAME_NEW)) == 0 ||
-        strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXIHPBDH@Z",
-                                     MANGLED_NAME_NEW_NOTHROW)) == 0)
-        return "operator new";
-    else if (strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXI@Z",
-                                          MANGLED_NAME_NEW_ARRAY)) == 0 ||
-             strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXIHPBDH@Z",
-                                           MANGLED_NAME_NEW_ARRAY_NOTHROW)) == 0)
-        return "operator new[]";
-    if (strcmp(name, IF_WINDOWS_ELSE("??3@YAXPAX@Z", MANGLED_NAME_DELETE)) == 0
-        IF_UNIX(|| strcmp(name, MANGLED_NAME_DELETE_NOTHROW) == 0))
-        return "operator delete";
-    else if (strcmp(name, IF_WINDOWS_ELSE("??_V@YAXPAX@Z",
-                                          MANGLED_NAME_DELETE_ARRAY)) == 0
-             IF_UNIX(|| strcmp(name,  MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0))
-        return "operator delete[]";
-#endif
-    return name;
-}
 
 #ifdef WINDOWS
 static const possible_alloc_routine_t possible_crtdbg_routines[] = {
@@ -755,7 +695,7 @@ alloc_routine_get_module_base(alloc_routine_entry_t *e)
     return e->set->modbase;
 }
 
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
 static alloc_routine_set_t *
 alloc_routine_set_for_module(app_pc modbase)
 {
@@ -1243,7 +1183,6 @@ replaced_nop_true_routine(void)
 static app_pc
 lookup_symbol_or_export(const module_data_t *mod, const char *name, bool internal)
 {
-#ifdef USE_DRSYMS
     app_pc res;
     if (mod->full_path != NULL) {
         if (internal)
@@ -1254,7 +1193,7 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
             return res;
     }
     res = (app_pc) dr_get_proc_address(mod->handle, name);
-# ifdef WINDOWS
+#ifdef WINDOWS
     /* Skip forwarded exports pointing at other libraries: we can't easily
      * cache them, and we assume we'll find them when examining the target lib.
      */
@@ -1264,14 +1203,11 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
             name, (modname == NULL) ? "<noname>" : modname);
         return NULL;
     }
-# endif
+#endif
     if (res != NULL && alloc_ops.use_symcache) {
         drsymcache_add(mod, name, res - mod->start);
     }
     return res;
-#else
-    return (app_pc) dr_get_proc_address(mod->handle, name);
-#endif
 }
 
 /* caller must hold alloc routine lock */
@@ -1360,7 +1296,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     return e;
 }
 
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
 /* Returns whether to add _CrtSetDbgFlag */
 static bool
 disable_crtdbg(const module_data_t *mod, byte *pc)
@@ -1648,14 +1584,13 @@ check_for_private_debug_delete(app_pc caller)
 }
 #endif
 
-#ifdef USE_DRSYMS
-# ifdef WINDOWS
+#ifdef WINDOWS
 static inline bool
 modname_is_libc_or_libcpp(const char *modname)
 {
     return (modname != NULL && text_matches_pattern(modname, "msvc*", true));
 }
-# endif
+#endif
 
 static bool
 distinguish_operator_by_decoding(routine_type_t generic_type,
@@ -1853,9 +1788,7 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
     return known;
 }
 
-/* for passing data to sym callback, and simpler to use for
- * non-USE_DRSYMS as well
- */
+/* For passing data to sym callback. */
 typedef struct _set_enum_data_t {
     alloc_routine_set_t *set;
     heapset_type_t set_type;
@@ -2063,7 +1996,6 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     global_free(buf, bufsz, HEAPSTAT_WRAP);
     return specific_type;
 }
-#endif
 
 /* caller must hold alloc routine lock */
 static void
@@ -2074,7 +2006,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         modname = "<noname>";
     ASSERT(edata != NULL && pc != NULL, "invalid params");
     ASSERT(dr_mutex_self_owns(alloc_routine_lock), "missing lock");
-#if defined(WINDOWS) && defined(USE_DRSYMS)
+#ifdef WINDOWS
     if (alloc_ops.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG) {
         if (!disable_crtdbg(edata->mod, pc))
             return; /* do not add */
@@ -2086,10 +2018,8 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
             edata->possible[idx].name, pc, modname);
         return;
     }
-#ifdef USE_DRSYMS
     if (alloc_ops.use_symcache)
         drsymcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
-#endif
     if (edata->set == NULL) {
         void *user_data;
         edata->set = (alloc_routine_set_t *)
@@ -2129,7 +2059,6 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->possible[idx].name, pc, edata->possible[idx].type, modname);
 }
 
-#ifdef USE_DRSYMS
 /* It's faster to search for multiple symbols at once via regex
  * and strcmp to identify precise targets (i#315).
  */
@@ -2166,14 +2095,14 @@ enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
                strlen(name) == len + 2 &&
                name[len] == '(' && name[len+1] == ')')))) {
             add_idx = i;
-# ifdef WINDOWS
+#ifdef WINDOWS
             if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
                 /* look for partial map (i#730) */
                 modoffs < edata->mod->end - edata->mod->start) {
                 modoffs = find_debug_delete_interception
                     (edata->mod->start, edata->mod->end, modoffs);
             }
-# endif
+#endif
             if (is_new_routine(edata->possible[i].type) ||
                 is_delete_routine(edata->possible[i].type)) {
                 /* Distinguish placement and nothrow new and delete. */
@@ -2210,7 +2139,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 {
     uint i;
     bool full = false;
-# ifdef WINDOWS
+#ifdef WINDOWS
     if (edata->is_libc || edata->is_libcpp) {
         /* The _calloc_impl in msvcr*.dll is private (i#960) */
         /* The std::_DebugHeapDelete<> (i#722) in msvcp*.dll is private (i#607 part C) */
@@ -2223,7 +2152,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         LOG(2, "%s: doing full symbol lookup for libc/libc++\n", __FUNCTION__);
         full = true;
     }
-# endif
+#endif
     if (lookup_all_symbols(edata->mod, regex, full,
                            enumerate_set_syms_cb, (void *)edata)) {
         for (i = 0; i < edata->num_possible; i++) {
@@ -2256,7 +2185,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
 }
 
-# if defined(WINDOWS) && defined(X64)
+#if defined(WINDOWS) && defined(X64)
 static app_pc
 find_RtlFreeStringRoutine_helper(void *drcontext, const module_data_t *mod,
                                  const char *export)
@@ -2368,8 +2297,7 @@ find_RtlFreeStringRoutine(const module_data_t *mod)
     }
     return pc;
 }
-# endif /* WINDOWS && X64 */
-#endif /* USE_DRSYMS */
+#endif /* WINDOWS && X64 */
 
 /* caller must hold alloc routine lock */
 static alloc_routine_set_t *
@@ -2400,7 +2328,6 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.set_libc = set_libc;
     edata.is_libc = is_libc;
     edata.is_libcpp = is_libcpp;
-#ifdef USE_DRSYMS
     /* Symbol lookup is expensive for large apps so we batch some
      * requests together using regex symbol lookup, which cuts the
      * total lookup time in half.  i#315.
@@ -2451,7 +2378,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                     find_alloc_regex(&edata, "*alloc", NULL, "alloc");
                     find_alloc_regex(&edata, "*_impl", NULL, "_impl");
                 }
-# ifdef WINDOWS
+#ifdef WINDOWS
             } else if (possible == possible_crtdbg_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
                     find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
@@ -2461,12 +2388,12 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                      * individual query.
                      */
                 }
-# endif
+#endif
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
                 find_alloc_regex(&edata, "operator new*", "operator new", NULL);
                 find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
-# ifdef WINDOWS
+#ifdef WINDOWS
                 /* wrapper in place of real delete or delete[] operators
                  * (i#722,i#655)
                  */
@@ -2475,11 +2402,10 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                                  /* no export lookups so pass NULL */
                                  NULL, NULL);
                 edata.wildcard_name = NULL;
-# endif
+#endif
             }
         }
     }
-#endif
     for (i = 0; i < num_possible; i++) {
         app_pc pc;
         const char *name = possible[i].name;
@@ -2515,7 +2441,6 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             continue;
         }
 #endif /* WINDOWS */
-#ifdef USE_DRSYMS
         if (is_operator_nothrow_routine(possible[i].type)) {
             /* The name doesn't match the real symbol so we take the
              * name from the non-nothrow entry which we assume is prior.
@@ -2527,7 +2452,6 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             ASSERT(i >= OPERATOR_ENTRIES, "possible_cpp_routines was reordered!");
             name = possible[i - OPERATOR_ENTRIES].name;
         }
-#endif
         pc = lookup_symbol_or_export(mod, name,
                                      /* We need internal syms for dbg routines */
 #ifdef WINDOWS
@@ -2587,10 +2511,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     }
     if (alloc_ops.replace_realloc && realloc_func_in_set(edata.set) != NULL)
         generate_realloc_replacement(edata.set);
-#ifdef USE_DRSYMS
     if (edata.processed != NULL)
         global_free(edata.processed, sizeof(*edata.processed)*num_possible, HEAPSTAT_WRAP);
-#endif
     return edata.set;
 }
 
@@ -2897,15 +2819,10 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
  * We record the callstack and when allocated so we can report leaks.
  */
 
-#ifdef USE_DRSYMS
-# define POST_CALL_SYMCACHE_NAME "__DrMemory_post_call"
-#endif
+#define POST_CALL_SYMCACHE_NAME "__DrMemory_post_call"
 
-#ifdef USE_DRSYMS
 static void *post_call_lock;
-#endif
 
-#ifdef USE_DRSYMS
 static void
 event_post_call_entry_added(app_pc postcall)
 {
@@ -2916,7 +2833,6 @@ event_post_call_entry_added(app_pc postcall)
         dr_free_module_data(data);
     }
 }
-#endif
 
 /* we need to know which heap allocations were there before we took
  * control (so we know whether size is stored in redzone) and for leak
@@ -3103,13 +3019,11 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         large_malloc_lock = dr_mutex_create();
     }
 
-#ifdef USE_DRSYMS
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
         post_call_lock = dr_mutex_create();
         if (!drwrap_register_post_call_notify(event_post_call_entry_added))
             ASSERT(false, "drwrap event registration failed");
     }
-#endif
 
     if (!alloc_ops.track_allocs) {
         return;
@@ -3150,11 +3064,9 @@ alloc_exit(void)
             hashtable_delete_with_stats(&malloc_table, "malloc table");
         rb_tree_destroy(large_malloc_tree);
         dr_mutex_destroy(large_malloc_lock);
-#ifdef USE_DRSYMS
         if (alloc_ops.cache_postcall) {
             dr_mutex_destroy(post_call_lock);
         }
-#endif
     }
 
     if (alloc_ops.replace_realloc) {
@@ -3243,7 +3155,6 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
 }
 #endif
 
-#ifdef USE_DRSYMS
 /* caller must hold post_call_lock */
 static void
 alloc_load_symcache_postcall(const module_data_t *info)
@@ -3270,13 +3181,11 @@ alloc_load_symcache_postcall(const module_data_t *info)
         }
     }
 }
-#endif
 
 #ifdef WINDOWS
 static bool
 module_has_pdb(const module_data_t *info)
 {
-# ifdef USE_DRSYMS
     /* Our notion of whether we have symbols must match symcache
      * b/c us thinking we have symbols and symcache having negative
      * entries is a disaster (i#973).
@@ -3287,9 +3196,6 @@ module_has_pdb(const module_data_t *info)
         return (drsymcache_module_has_debug_info(info, &res) == DRMF_SUCCESS && res);
     else
         return module_has_debug_info(info);
-# else
-    return false;
-# endif
 }
 #endif
 
@@ -3453,6 +3359,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              * numbers and find the specific sets used.
              */
             if (info->start == get_libc_base(NULL)) {
+                ASSERT(set_libc != NULL, "we require finding routines in libc");
                 if (set_dyn_libc == &set_dyn_libc_placeholder) {
                     /* Take over as the set_libc for modules we saw earlier */
                     LOG(2, "alloc set "PFX" taking over placeholder "PFX" as libc set\n",
@@ -3573,7 +3480,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         dr_mutex_unlock(alloc_routine_lock);
     }
 
-#ifdef USE_DRSYMS
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall &&
         drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res) {
         dr_mutex_lock(post_call_lock);
@@ -3584,7 +3490,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         alloc_load_symcache_postcall(info);
         dr_mutex_unlock(post_call_lock);
     }
-#endif
 }
 
 void
@@ -3857,10 +3762,8 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     ASSERT((alloc_ops.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
            alloc_ops.record_allocs,
            "internal inconsistency on when doing detailed malloc tracking");
-#ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t)
                       get_private_heap_handle(), "app using priv heap"));
-#endif
     e->start = start;
     e->end = end;
     ASSERT(real_end != NULL && real_end - end <= USHRT_MAX, "real_end suspicously big");
@@ -5086,7 +4989,7 @@ check_valid_heap_block(bool known_invalid, byte *block, cls_alloc_t *pt, void *w
         client_invalid_heap_arg(drwrap_get_retaddr(wrapcxt),
                                 /* client_data not needed so not bothering */
                                 block, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
-                                translate_routine_name(routine), is_free);
+                                routine, is_free);
         return false;
     }
     return true;
@@ -5376,7 +5279,7 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             client_mismatched_heap(drwrap_get_retaddr(wrapcxt),
                                    base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
                                    malloc_alloc_type_name(alloc_type),
-                                   translate_routine_name(routine->name), "freed",
+                                   routine->name, "freed",
                                    malloc_get_client_data(base), true/*C vs C++*/);
         }
         return false;
@@ -5479,8 +5382,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             /* when realloc calls free we've already invalidated the heap */
             ASSERT(pt->in_heap_routine > 1, "realloc calling free inconsistent");
         } else if (!check_valid_heap_block(true/*invalid*/, base, pt, wrapcxt,
-                                           translate_routine_name(routine->name),
-                                           true/*is free()*/)) {
+                                           routine->name, true/*is free()*/)) {
             pt->expect_lib_to_fail = true;
         } /* else, probably LFH free which we should ignore */
     } else {
@@ -6735,7 +6637,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         client_print_callstack(drcontext, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
                                call_site);
     });
-#if defined(WINDOWS) && defined (USE_DRSYMS)
+#ifdef WINDOWS
     DODEBUG({
         if (is_rtl_routine(type) &&
             (is_free_routine(type) || is_size_routine(type) ||

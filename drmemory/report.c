@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -25,9 +25,7 @@
  */
 
 #include "dr_api.h"
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-#endif
+#include "drsyms.h"
 #include "drmemory.h"
 #include "shadow.h"
 #include "slowpath.h"
@@ -392,9 +390,7 @@ static suppress_spec_t *supp_list[ERROR_MAX_VAL];
 static uint supp_num[ERROR_MAX_VAL];
 static bool have_module_wildcard;
 
-#ifdef USE_DRSYMS
 static void *suppress_file_lock;
-#endif
 
 static void
 error_callstack_init(error_callstack_t *ecs)
@@ -683,7 +679,6 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
                         const char *line_in, size_t line_len, int brace_line)
 {
     suppress_frame_t *frame;
-    IF_NOT_DRSYMS(bool has_symbols = false;)
     const char *line;
     bool skip_supp = false;
 
@@ -716,13 +711,11 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
              * frames within one callstack.  If there are no wildcards in the
              * frames, we could unmangle here (requires DRi#545).
              */
-            IF_NOT_DRSYMS(has_symbols = true;)
             frame->is_module = true;
             frame->modname = drmem_strdup("*", HEAPSTAT_REPORT);
             frame->func = drmem_strdup(line + strlen("fun:"), HEAPSTAT_REPORT);
         } else if (strstr(line, "obj:") == line) {
             /* Valgrind format obj:mod => mod!* */
-            IF_NOT_DRSYMS(has_symbols = true;)
             frame->is_module = true;
             frame->modname = drmem_strdup(line + strlen("obj:"), HEAPSTAT_REPORT);
             frame->func = drmem_strdup("*", HEAPSTAT_REPORT);
@@ -763,7 +756,6 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     } else if (strchr(line, '!') != NULL && line[0] != '<') {
         /* note that we can't exclude any + ("operator+") or < (templates) */
         const char *bang = strchr(line, '!');
-        IF_NOT_DRSYMS(has_symbols = true;)
         frame->is_module = true;
         frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_REPORT);
         if (strstr(bang + 1, "...") == bang + 1) {
@@ -801,7 +793,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
 
  add_frame_done:
     global_free((byte *)line, strlen(line) + 1, HEAPSTAT_REPORT);
-    return !skip_supp && IF_DRSYMS_ELSE(true, !has_symbols);
+    return !skip_supp;
 }
 
 static void
@@ -900,9 +892,7 @@ read_suppression_file(file_t f, bool is_default)
 static void
 open_and_read_suppression_file(const char *fname, bool is_default)
 {
-#ifdef USE_DRSYMS
     uint prev_suppressions = num_suppressions;
-#endif
     const char *label = (is_default) ? "default" : "user";
     if (fname == NULL || fname[0] == '\0') {
         dr_fprintf(f_global, "No %s suppression file specified\n", label);
@@ -914,7 +904,6 @@ open_and_read_suppression_file(const char *fname, bool is_default)
             return;
         }
         read_suppression_file(f, is_default);
-#ifdef USE_DRSYMS
         /* Don't print to stderr about default suppression file, and don't print
          * at all when postprocess is handling all the symbolic stacks.  Also
          * don't print if the user passed -no_summary, or we'll get this for
@@ -925,12 +914,10 @@ open_and_read_suppression_file(const char *fname, bool is_default)
                     num_suppressions - prev_suppressions, label, fname);
         ELOGF(0, f_results, "Recorded %d suppression(s) from %s %s"NL,
               num_suppressions - prev_suppressions, label, fname);
-#endif
         dr_close_file(f);
     }
 }
 
-#ifdef USE_DRSYMS
 /* up to caller to lock f_results file */
 static void
 write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic, uint id)
@@ -962,12 +949,10 @@ write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic, ui
         }
     }
 }
-#endif
 
 static void
 report_error_suppression(uint type, error_callstack_t *ecs, uint id)
 {
-#ifdef USE_DRSYMS /* else reported in postprocessing */
     if (!options.gen_suppress_syms && !options.gen_suppress_offs)
         return;
     /* write supp patterns to f_suppress */
@@ -986,7 +971,6 @@ report_error_suppression(uint type, error_callstack_t *ecs, uint id)
     }
     dr_fprintf(f_suppress, ""NL);
     dr_mutex_unlock(suppress_file_lock);
-#endif
 }
 
 /* Match a frame's module name against a suppression frame's module name.
@@ -1044,12 +1028,6 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
         const char *func = symbolized_callstack_frame_func(&ecs->scs, idx);
         if (!symbolized_callstack_frame_is_module(&ecs->scs, idx) || func == NULL)
             return false;
-#ifndef USE_DRSYMS
-        if ((func[0] == '?' && func[1] == '\0')) {
-            /* in-client frames don't have mod!fun */
-            return false;
-        }
-#endif
         LOG(4, "  error frame for cmp: %s!%s\n",
             symbolized_callstack_frame_modname(&ecs->scs, idx),
             symbolized_callstack_frame_func(&ecs->scs, idx));
@@ -1472,9 +1450,7 @@ callstack_ignore_initial_xbp(void *drcontext, dr_mcontext_t *mc)
 static void
 missing_syms_cb(const char *modpath)
 {
-#ifdef USE_DRSYMS
     dr_fprintf(f_missing_symbols, "%s\n", modpath);
-#endif
 }
 
 void
@@ -1502,7 +1478,6 @@ report_init(void)
                       (uint (*)(void*)) stored_error_hash,
                       (bool (*)(void*, void*)) stored_error_cmp);
 
-#ifdef USE_DRSYMS
     /* callstack.c wants these as null-separated, double-null-terminated */
     convert_commas_to_nulls(options.callstack_truncate_below,
                             BUFFER_SIZE_ELEMENTS(options.callstack_truncate_below));
@@ -1526,7 +1501,6 @@ report_init(void)
                             BUFFER_SIZE_ELEMENTS(options.lib_whitelist));
     convert_commas_to_nulls(options.src_whitelist,
                             BUFFER_SIZE_ELEMENTS(options.src_whitelist));
-#endif
     convert_commas_to_nulls(options.check_uninit_blacklist,
                             BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist));
 
@@ -1568,13 +1542,11 @@ report_init(void)
         callstack_ops.fp_flags |= FP_VERIFY_CALL_TARGET;
     }
     callstack_ops.fp_scan_sz = options.callstack_max_scan;
-    callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,
-                                               PRINT_FOR_POSTPROCESS);
+    callstack_ops.print_flags = options.callstack_style;
     callstack_ops.get_syscall_name = get_syscall_name;
     callstack_ops.is_dword_defined =
         options.shadowing ? is_stack_dword_defined : NULL;
     callstack_ops.ignore_xbp = callstack_ignore_initial_xbp;
-#ifdef USE_DRSYMS
     /* pass NULL since callstack.c uses that as quick check */
     callstack_ops.truncate_below =
         (options.callstack_truncate_below[0] == '\0') ? NULL :
@@ -1588,7 +1560,6 @@ report_init(void)
     callstack_ops.srcfile_prefix =
         (options.callstack_srcfile_prefix[0] == '\0') ? NULL :
         options.callstack_srcfile_prefix;
-#endif
     callstack_ops.missing_syms_cb = missing_syms_cb;
     /* i#1231: we don't zero for full mode but we want the cache */
     callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
@@ -1599,13 +1570,12 @@ report_init(void)
     callstack_ops.module_unload = callstack_module_unload_cb;
     callstack_init(&callstack_ops);
 
-#ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();
     ELOGF(0, f_results, "Dr. Memory results for pid %d: \"%s\""NL,
           dr_get_process_id(), dr_get_application_name());
-# ifdef WINDOWS
+#ifdef WINDOWS
     ELOGF(0, f_results, "Application cmdline: \"%S\""NL, get_app_commandline());
-# endif
+#endif
     ELOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
           dr_get_process_id(), dr_get_application_name());
     ELOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
@@ -1631,7 +1601,6 @@ report_init(void)
     ELOGF(0, f_potential, "If these are all false positives and your focus is "
           "unaddressable errors, consider running with -light to skip all "
           "uninitialized reads and leaks for higher performance."NL);
-#endif
 
     if (options.default_suppress) {
         /* the default suppression file must be located at
@@ -1827,7 +1796,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
         }
     }
 
-    NOTIFY_COND(notify IF_DRSYMS(&& options.results_to_stderr), f, NL);
+    NOTIFY_COND(notify && options.results_to_stderr, f, NL);
     NOTIFY_COND(notify, f, found_errors ? "%sERRORS FOUND:"NL : "NO %sERRORS FOUND:"NL,
                 potential ? POTENTIAL_PREFIX_ALLCAP " " : "",
                 potential ? POTENTIAL_PREFIX_ALLCAP " " : "");
@@ -1930,11 +1899,9 @@ report_summary(void)
 {
     report_summary_to_file(f_global, true, true, false);
     report_summary_to_file(f_global, false, false, true);
-#ifdef USE_DRSYMS
     /* we don't show default suppressions used in results.txt file */
     report_summary_to_file(f_results, false, false, false);
     report_summary_to_file(f_potential, false, false, true);
-#endif
 }
 
 void
@@ -1942,10 +1909,8 @@ report_exit(void)
 {
     uint i;
     report_exited = true;
-#ifdef USE_DRSYMS
     ELOGF(0, f_results, NL"==========================================================================="NL"FINAL SUMMARY:"NL);
     dr_mutex_destroy(suppress_file_lock);
-#endif
     report_summary();
 
     hashtable_delete(&error_table);
@@ -2087,7 +2052,7 @@ report_error_from_buffer(file_t f, char *buf, bool add_prefix)
                 p = nl + nlsz;
             }
         }
-#if defined(USE_DRSYMS) && defined(WINDOWS)
+#ifdef WINDOWS
         /* XXX DRi#556: console output not showing up on win7 for 64-bit apps! */
         if (f == STDERR && IN_CMD)
             print_to_cmd(newbuf);
@@ -2553,7 +2518,6 @@ report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *s
     }
 }
 
-#ifdef USE_DRSYMS
 static void
 report_symbol_advice(void)
 {
@@ -2569,7 +2533,6 @@ report_symbol_advice(void)
         }
     }
 }
-#endif
 
 /* Prints error reports to their various files:
  * + stderr: if -results_to_stderr, uses -callstack_style
@@ -2582,7 +2545,6 @@ print_error_report(void *drcontext, char *buf, size_t bufsz, bool reporting,
                    error_toprint_t *etp, stored_error_t *err,
                    error_callstack_t *ecs)
 {
-#ifdef USE_DRSYMS
     /* First, if using drsyms, print the report with user's -callstack_style to
      * f_results and stderr if -results_to_stderr.
      */
@@ -2594,14 +2556,12 @@ print_error_report(void *drcontext, char *buf, size_t bufsz, bool reporting,
             report_error_from_buffer(STDERR, buf, true);
         }
     }
-#endif
 
     /* Next, print to the log to support postprocessing.  Only print suppressed
      * errors if -log_suppressed_errors or at higher verbosity.
      */
-    if (etp->errtype < ERROR_MAX_VAL
-        IF_DRSYMS(&& (reporting || options.log_suppressed_errors ||
-                      options.verbose >= 2))) {
+    if (etp->errtype < ERROR_MAX_VAL &&
+        (reporting || options.log_suppressed_errors || options.verbose >= 2)) {
         print_error_to_buffer(buf, bufsz, etp, err, ecs, true/*for log*/);
         report_error_from_buffer(f_global, buf, false);
         if (options.thread_logs) {
@@ -2698,7 +2658,6 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     char  *errbuf;
     size_t errbufsz;
 
-#ifdef USE_DRSYMS
     /* we do not want to use dbghelp at init time b/c that's too early so we
      * only check symbols and give warnings if we end up reporting something
      */
@@ -2707,7 +2666,6 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
         report_symbol_advice();
         reported_any_error = true;
     }
-#endif
 
     error_callstack_init(&ecs);
     if (mc != NULL)
@@ -2783,7 +2741,7 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
      * error type, don't bother taking the stack trace, unless we need to log
      * it.
      */
-    if (have_module_wildcard IF_DRSYMS(&& !options.log_suppressed_errors)) {
+    if (have_module_wildcard && !options.log_suppressed_errors) {
         if (report_in_suppressed_module(etp->errtype, etp->loc, ecs.instruction)) {
             goto report_error_done;
         }
@@ -2901,14 +2859,6 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         BUFPRINT(buf, bufsz, sofar, len, ""NL);
     if (err != NULL && err->suppressed)
         BUFPRINT(buf, bufsz, sofar, len, "SUPPRESSED ");
-
-    /* For Linux and ESXi, postprocess.pl will produce the official
-     * error numbers (after symbol suppression might remove some errors).
-     * But we still want error numbers here, so that we can refer to them
-     * when we list the duplicate counts at the end of the run, and
-     * also for PR 423750 which will say "Error #n: reading 0xaddr".
-     * On Windows for USE_DRSYMS these are the official error numbers.
-     */
     if (err != NULL) {
         BUFPRINT(buf, bufsz, sofar, len, "%sError #%d: ",
                  err->potential ? POTENTIAL_PREFIX_CAP " " : "", err->id);

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -1079,3 +1079,48 @@ UNINITIALIZED READ
 name=default i#2237 __strncnt
 *!__strncnt
 *!__acrt*
+
+##################################################
+# i#2333: RtlCaptureContext
+# This needs more analysis but we are suppressing for
+# now as this is not in user app code.
+
+UNINITIALIZED READ
+name=default i#2333 RtlCaptureContext
+ntdll.dll!RtlCaptureContext
+
+##################################################
+# i#2339: Invalid heap arguments in VS2017
+# This needs more analysis but we are suppressing for
+# now as this is not in user app code.
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch A
+...
+*!std::_Fac_tidy_reg_t::~_Fac_tidy_reg_t
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch B
+...
+*!std::ios_base::_Ios_base_dtor
+
+INVALID HEAP ARGUMENT
+name=default i#2339 VS2017 CRT mismatch C
+...
+*!std::basic_streambuf<>::~basic_streambuf<>
+
+##################################################
+# i#2340: Leak in VS2017 CRT
+
+LEAK
+name=default i#2340 VS2017 CRT leak
+...
+*!_register_onexit_function
+
+##################################################
+# i#2361: NtContinue uninit
+
+UNINITIALIZED READ
+name=default i#2361 NtContinue
+system call NtContinue parameter value #0
+ntdll.dll!LdrInitializeThunk
