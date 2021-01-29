@@ -194,15 +194,13 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     int i;
     for (i = 0; i < instr_num_srcs(where); i++) {
-        if (opnd_is_memory_reference(instr_get_src(where, i)))
-        {
+        if (opnd_is_memory_reference(instr_get_src(where, i))) {
             instrument_mem(drcontext, ilist, where, instr_get_src(where, i),
                            scratch_reg, scratch_reg2);
         }
     }
     for (i = 0; i < instr_num_dsts(where); i++) {
-        if (opnd_is_memory_reference(instr_get_dst(where, i)))
-        {
+        if (opnd_is_memory_reference(instr_get_dst(where, i))) {
             instrument_mem(drcontext, ilist, where, instr_get_dst(where, i),
                            scratch_reg, scratch_reg2);
         }
