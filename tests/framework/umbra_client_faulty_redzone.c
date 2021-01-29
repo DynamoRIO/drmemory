@@ -147,8 +147,8 @@ static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
 {
-    reg_id_t scratch_reg;
-    reg_id_t scratch_reg2;
+    reg_id_t scratch_reg = DR_REG_NULL;
+    reg_id_t scratch_reg2 = DR_REG_NULL;
     instr_t *label = NULL;
     bool uses_mem = instr_uses_mem(where);
 
@@ -170,6 +170,11 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 #       ifdef X86
         drvector_delete(&allowed);
 #       endif
+
+        DR_ASSERT_MSG(scratch_reg != DR_REG_NULL,
+                      "First scratch register should not be NULL");
+        DR_ASSERT_MSG(scratch_reg2 != DR_REG_NULL,
+                      "Second scratch register should not be NULL");
 
         opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
         instr_t *load_instr = XINST_CREATE_load_1byte_zext4(drcontext,
