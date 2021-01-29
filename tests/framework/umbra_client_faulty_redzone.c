@@ -172,11 +172,18 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 #       endif
 
         opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
-        instr_t * check_instr = INSTR_CREATE_cmp(drcontext, flag_opnd, opnd_create_immed_int(0, OPSZ_1));
+        instr_t *load_instr = XINST_CREATE_load_1byte_zext4(drcontext,
+                                                            opnd_create_reg(scratch_reg),
+                                                            flag_opnd);
+        instrlist_meta_preinsert(ilist, where, load_instr);
+
+        instr_t * check_instr = XINST_CREATE_cmp(drcontext, opnd_create_reg(scratch_reg),
+                                                 opnd_create_immed_int(0, OPSZ_1));
         instrlist_meta_preinsert(ilist, where, check_instr);
 
         label = INSTR_CREATE_label(drcontext);
-        instr_t * jmp_instr = INSTR_CREATE_jcc(drcontext, OP_jnz, opnd_create_instr(label));
+        instr_t * jmp_instr = XINST_CREATE_jump_cond(drcontext, DR_PRED_NE,
+                                                     opnd_create_instr(label));
         instrlist_meta_preinsert(ilist, where, jmp_instr);
     }
 

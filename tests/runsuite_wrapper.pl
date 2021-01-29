@@ -183,7 +183,6 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'malloc_callstacks' => 1,
                 'app_suite.pattern' => 1,
                 'app_suite' => 1,
-                'umbra_client_faulty_redzone' => 1, # i#2341
                 # TODO i#2180/i#2334: evaluate why failing on GA CI.
                 'cs2bug' => 1,
                 'reachable' => 1,
