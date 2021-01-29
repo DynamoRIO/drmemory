@@ -45,7 +45,7 @@
 
 static umbra_map_t *umbra_map;
 /* Denotes whether redzone faults were ever handled during the run. */
-static bool redzone_fault = false;
+static bool *did_redzone_fault;
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -71,6 +71,10 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drmgr_init();
     drreg_init(&ops);
 
+    /* Initialise reachable flag. */
+    did_redzone_fault = dr_global_alloc(sizeof(bool));
+    *did_redzone_fault = false;
+
     memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
     umbra_map_ops.scale = UMBRA_MAP_SCALE_DOWN_4X;
     umbra_map_ops.flags =
@@ -93,71 +97,122 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 }
 
 static void
-instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref)
+instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
+               reg_id_t scratch_reg, reg_id_t scratch_reg2)
 {
-    reg_id_t regaddr;
-    reg_id_t scratch;
     bool ok;
 
-#ifdef X86
-    drvector_t allowed;
-    drreg_init_and_fill_vector(&allowed, false);
-    drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
-#endif
-
-    if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
-                               &scratch) != DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr) !=
-            DRREG_SUCCESS) {
-        DR_ASSERT(false); /* Can't recover. */
-        return;
-    }
-#ifdef X86
-    drvector_delete(&allowed);
-#endif
-
-    ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, regaddr, scratch);
+    ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, scratch_reg, scratch_reg2);
     DR_ASSERT(ok);
     /* Save the app address to a well-known spill slot, so that the fault handler
      * can recover if no shadow memory was installed yet.
      */
-    dr_save_reg(drcontext, ilist, where, regaddr, SPILL_SLOT_2);
+    dr_save_reg(drcontext, ilist, where, scratch_reg, SPILL_SLOT_2);
 
-    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, regaddr, &scratch,
+    if (umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, scratch_reg, &scratch_reg2,
                                    1) != DRMF_SUCCESS) {
         DR_ASSERT(false);
     }
 
     /* Use a displacement of a page size to access ahead and try to hit a faulty
-     * redzone.
+     * redzone. Naturally, this does not guarantee that the red-zone will always
+     * be accessed, but we hope that it will hit at least once to trigger a fault.
      */
     instrlist_meta_preinsert(
         ilist, where,
         INSTR_XL8(XINST_CREATE_store_1byte(
                       drcontext,
-                      OPND_CREATE_MEM8(regaddr, dr_page_size() /* enter redzone */),
-                      opnd_create_reg(reg_resize_to_opsz(scratch, OPSZ_1))),
+                      OPND_CREATE_MEM8(scratch_reg, dr_page_size() /* try enter redzone */),
+                      opnd_create_reg(reg_resize_to_opsz(scratch_reg2, OPSZ_1))),
                   instr_get_app_pc(where)));
+}
 
-    if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
-        drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
-        drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
-        DR_ASSERT(false);
+static bool
+instr_uses_mem(instr_t *where)
+{
+    int i;
+    for (i = 0; i < instr_num_srcs(where); i++) {
+        if (opnd_is_memory_reference(instr_get_src(where, i)))
+          return true;
+    }
+    for (i = 0; i < instr_num_dsts(where); i++) {
+        if (opnd_is_memory_reference(instr_get_dst(where, i)))
+            return true;
+    }
+
+    return false;
 }
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
 {
+    reg_id_t scratch_reg = DR_REG_NULL;
+    reg_id_t scratch_reg2 = DR_REG_NULL;
+    instr_t *label = NULL;
+    bool uses_mem = instr_uses_mem(where);
+
+    if (uses_mem) {
+
+#       ifdef X86
+        drvector_t allowed;
+        drreg_init_and_fill_vector(&allowed, false);
+        drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
+#       endif
+
+        if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
+            drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
+                                   &scratch_reg2) != DRREG_SUCCESS ||
+            drreg_reserve_register(drcontext, ilist, where, NULL, &scratch_reg) !=
+                DRREG_SUCCESS) {
+            DR_ASSERT(false); /* Can't recover. */
+        }
+#       ifdef X86
+        drvector_delete(&allowed);
+#       endif
+
+        DR_ASSERT_MSG(scratch_reg != DR_REG_NULL,
+                      "First scratch register should not be NULL");
+        DR_ASSERT_MSG(scratch_reg2 != DR_REG_NULL,
+                      "Second scratch register should not be NULL");
+
+        opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
+        instr_t *load_instr = XINST_CREATE_load_1byte_zext4(drcontext,
+                                                            opnd_create_reg(scratch_reg),
+                                                            flag_opnd);
+        instrlist_meta_preinsert(ilist, where, load_instr);
+
+        instr_t * check_instr = XINST_CREATE_cmp(drcontext, opnd_create_reg(scratch_reg),
+                                                 opnd_create_immed_int(0, OPSZ_1));
+        instrlist_meta_preinsert(ilist, where, check_instr);
+
+        label = INSTR_CREATE_label(drcontext);
+        instr_t * jmp_instr = XINST_CREATE_jump_cond(drcontext, DR_PRED_NE,
+                                                     opnd_create_instr(label));
+        instrlist_meta_preinsert(ilist, where, jmp_instr);
+    }
+
     int i;
     for (i = 0; i < instr_num_srcs(where); i++) {
-        if (opnd_is_memory_reference(instr_get_src(where, i)))
-            instrument_mem(drcontext, ilist, where, instr_get_src(where, i));
+        if (opnd_is_memory_reference(instr_get_src(where, i))) {
+            instrument_mem(drcontext, ilist, where, instr_get_src(where, i),
+                           scratch_reg, scratch_reg2);
+        }
     }
     for (i = 0; i < instr_num_dsts(where); i++) {
-        if (opnd_is_memory_reference(instr_get_dst(where, i)))
-            instrument_mem(drcontext, ilist, where, instr_get_dst(where, i));
+        if (opnd_is_memory_reference(instr_get_dst(where, i))) {
+            instrument_mem(drcontext, ilist, where, instr_get_dst(where, i),
+                           scratch_reg, scratch_reg2);
+        }
+    }
+
+    if (uses_mem) {
+        instrlist_meta_preinsert(ilist, where, label);
+
+        if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
+            drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
+            drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
+            DR_ASSERT(false);
     }
 
     return DR_EMIT_DEFAULT;
@@ -169,7 +224,9 @@ exit_event(void)
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
-    DR_ASSERT_MSG(redzone_fault, "No redzone faults have been handled");
+    DR_ASSERT_MSG(*did_redzone_fault, "No redzone faults have been handled");
+
+    dr_global_free(did_redzone_fault, sizeof(bool));
 
     umbra_exit();
     drreg_exit();
@@ -219,7 +276,7 @@ handle_special_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc, app_pc app_s
     }
 
     if (TEST(UMBRA_SHADOW_MEMORY_TYPE_REDZONE, shadow_type)) {
-        redzone_fault = true;
+        *did_redzone_fault = true;
         /* Fetch the base and cancel out the displacement so that we do
          * not hit the redzone again.
          */

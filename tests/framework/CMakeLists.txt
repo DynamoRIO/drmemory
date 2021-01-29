@@ -195,8 +195,8 @@ if (NOT X64)
   use_DynamoRIO_extension(umbra_client_faulty_redzone.client drutil)
   target_include_directories(umbra_client_faulty_redzone.client PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
-  # TODO i#2341: Figure out why this test hangs on the CI (and still thinks
-  # it passed).  For now we avoid a 600s hang:
+  # XXX i#2341: Historically, umbra_client_faulty_redzone was flaky and hung.
+  # We left this timeout here just in case we encounter the issue again.
   if (NOT ANDROID) # TODO i#1860: enable tests for Android
     set_tests_properties(umbra_client_faulty_redzone PROPERTIES TIMEOUT 60)
   endif ()
