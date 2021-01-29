@@ -152,13 +152,13 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     instr_t *label = NULL;
     bool uses_mem = instr_uses_mem(where);
 
-    if (uses_mem){
+    if (uses_mem) {
 
-    #ifdef X86
+#       ifdef X86
         drvector_t allowed;
         drreg_init_and_fill_vector(&allowed, false);
         drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
-    #endif
+#       endif
 
         if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
             drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
@@ -166,40 +166,44 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
             drreg_reserve_register(drcontext, ilist, where, NULL, &scratch_reg) !=
                 DRREG_SUCCESS) {
             DR_ASSERT(false); /* Can't recover. */
-      }
-  #ifdef X86
-      drvector_delete(&allowed);
-  #endif
+        }
+#       ifdef X86
+        drvector_delete(&allowed);
+#       endif
 
-   opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
-   instr_t * check_instr = INSTR_CREATE_cmp(drcontext, flag_opnd, opnd_create_immed_int(0, OPSZ_1));
-   instrlist_meta_preinsert(ilist, where, check_instr);
+        opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
+        instr_t * check_instr = INSTR_CREATE_cmp(drcontext, flag_opnd, opnd_create_immed_int(0, OPSZ_1));
+        instrlist_meta_preinsert(ilist, where, check_instr);
 
-   label = INSTR_CREATE_label(drcontext);
-   instr_t * jmp_instr = INSTR_CREATE_jcc(drcontext, OP_jnz, opnd_create_instr(label));
-   instrlist_meta_preinsert(ilist, where, jmp_instr);
-  }
+        label = INSTR_CREATE_label(drcontext);
+        instr_t * jmp_instr = INSTR_CREATE_jcc(drcontext, OP_jnz, opnd_create_instr(label));
+        instrlist_meta_preinsert(ilist, where, jmp_instr);
+    }
 
     int i;
     for (i = 0; i < instr_num_srcs(where); i++) {
         if (opnd_is_memory_reference(instr_get_src(where, i)))
+        {
             instrument_mem(drcontext, ilist, where, instr_get_src(where, i),
                            scratch_reg, scratch_reg2);
+        }
     }
     for (i = 0; i < instr_num_dsts(where); i++) {
         if (opnd_is_memory_reference(instr_get_dst(where, i)))
+        {
             instrument_mem(drcontext, ilist, where, instr_get_dst(where, i),
                            scratch_reg, scratch_reg2);
+        }
     }
 
-  if (uses_mem){
-     instrlist_meta_preinsert(ilist, where, label);
+    if (uses_mem) {
+        instrlist_meta_preinsert(ilist, where, label);
 
-      if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
-          drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
-          drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
-          DR_ASSERT(false);
-  }
+        if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
+            drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
+            drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
+            DR_ASSERT(false);
+    }
 
     return DR_EMIT_DEFAULT;
 }
