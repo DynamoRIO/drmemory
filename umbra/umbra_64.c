@@ -576,18 +576,29 @@ umbra_add_shadow_segment(umbra_map_t *map, app_segment_t *seg)
             if (segment_overlap(base, end,
                                 app_segments[i].shadow_base[map_idx],
                                 app_segments[i].shadow_end[map_idx]) ||
-                segment_overlap(base, end,
-                                app_segments[i].reserve_base[map_idx],
-                                app_segments[i].reserve_end[map_idx])) {
-                ELOG(1, "ERROR: new app segment ["PFX", "PFX")"
-                     " conflicts with app seg ["PFX", "PFX")'s "
-                     "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
-                     seg->app_base, seg->app_end,
-                     app_segments[i].app_base, app_segments[i].app_end,
-                     app_segments[i].shadow_base[map_idx],
-                     app_segments[i].shadow_end[map_idx],
-                     app_segments[i].reserve_base[map_idx],
-                     app_segments[i].reserve_end[map_idx]);
+                (SUPPORT_RESERVE_FOR_SCALE(map->options.scale) &&
+                 segment_overlap(base, end,
+                                 app_segments[i].reserve_base[map_idx],
+                                 app_segments[i].reserve_end[map_idx]))) {
+                    if (SUPPORT_RESERVE_FOR_SCALE(map->options.scale)) {
+                        ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                             "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                             "shadow ["PFX", "PFX") or reserve ["PFX", "PFX")\n",
+                             seg->app_base, seg->app_end, base, end,
+                             app_segments[i].app_base, app_segments[i].app_end,
+                             app_segments[i].shadow_base[map_idx],
+                             app_segments[i].shadow_end[map_idx],
+                             app_segments[i].reserve_base[map_idx],
+                             app_segments[i].reserve_end[map_idx]);
+                    } else {
+                        ELOG(1, "ERROR: new app segment ["PFX", "PFX")'s shadow segment "
+                             "["PFX", "PFX") conflicts with app seg ["PFX", "PFX") or its "
+                             "shadow ["PFX", "PFX")\n",
+                             seg->app_base, seg->app_end, base, end,
+                             app_segments[i].app_base, app_segments[i].app_end,
+                             app_segments[i].shadow_base[map_idx],
+                             app_segments[i].shadow_end[map_idx]);
+                    }
                 return false;
             }
         }

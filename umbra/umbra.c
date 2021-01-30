@@ -154,6 +154,9 @@ umbra_map_create(umbra_map_t **map_out, umbra_map_options_t *ops, uint idx)
     case UMBRA_MAP_SCALE_DOWN_32X:
         map->shift = 5;
         break;
+    case UMBRA_MAP_SCALE_DOWN_16X:
+        map->shift = 4;
+        break;
     case UMBRA_MAP_SCALE_DOWN_8X:
     case UMBRA_MAP_SCALE_UP_8X:
         map->shift = 3;
@@ -782,6 +785,9 @@ umbra_get_granularity(const umbra_map_t *map, OUT int *scale, OUT bool *is_scale
         break;
     case UMBRA_MAP_SCALE_DOWN_32X:
         *scale = 32;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_16X:
+        *scale = 16;
         break;
     case UMBRA_MAP_SCALE_DOWN_8X:
     case UMBRA_MAP_SCALE_UP_8X:
