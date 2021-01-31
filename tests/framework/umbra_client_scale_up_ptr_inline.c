@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2017-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2021 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -30,8 +30,9 @@
  * DAMAGE.
  */
 
-/* Tests that there are no conflicts in any scale factor with the target
- * application.
+/* Tests Umbra's inline interface when using scaled up memory. In particular,
+ * we set up the scale such that every app byte is mapped to a pointer-sized
+ * shadow tag.
  */
 #include <signal.h>
 #include <string.h>
@@ -116,16 +117,15 @@ static void check()
     size_t shdw_size = sizeof(void *);
     status = umbra_read_shadow_memory(umbra_map, app_target, 1, &shdw_size,
                                       (void *) &data);
-    CHECK(status == DRMF_SUCCESS, "Failed to read");
-    dr_fprintf(STDERR, "SIZES: %p %u %u\n", app_target, shdw_size, sizeof(void *));
+    CHECK(status == DRMF_SUCCESS, "failed to read");
     CHECK(shdw_size == sizeof(void *), "read shadow size should be pointer-sized");
-    CHECK(data == SHDW_VAL, "read shadow size should be pointer-sized");
+    CHECK(data == SHDW_VAL, "read shadow value should match");
 
     // Write NULL.
     data = NULL;
     status = umbra_write_shadow_memory(umbra_map, app_target, 1, &shdw_size,
                                        (void *) &data);
-    CHECK(status == DRMF_SUCCESS, "Failed to write");
+    CHECK(status == DRMF_SUCCESS, "failed to write");
     CHECK(shdw_size == sizeof(void *), "write shadow size should be pointer-sized");
 
     // Set flag.
@@ -194,17 +194,15 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
                                                           &scratch_reg2, 1);
         DR_ASSERT_MSG(status == DRMF_SUCCESS, "fail to insert translation");
 
-        instr_t *instr;
-
         // Load shadow value to reg.
-        opnd_t reg_opnd = opnd_create_reg(scratch_reg);
+        opnd_t reg_opnd = opnd_create_reg(scratch_reg2);
         instrlist_insert_mov_immed_ptrsz(drcontext, (ptr_int_t) SHDW_VAL, reg_opnd,
                                          ilist, where, NULL, NULL);
 
         opnd_t shadow_opnd = opnd_create_base_disp(scratch_reg, DR_REG_NULL, 0, 0,
                                                    OPSZ_PTR);
         opnd_t src_opnd = opnd_create_reg(scratch_reg2);
-        instr = XINST_CREATE_store(drcontext, shadow_opnd, src_opnd);
+        instr_t *instr = XINST_CREATE_store(drcontext, shadow_opnd, src_opnd);
         instr_set_translation(instr, instr_get_app_pc(where));
         instrlist_meta_preinsert(ilist, where, instr);
 
