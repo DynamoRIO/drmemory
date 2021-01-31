@@ -55,9 +55,9 @@ test_shadow_scale(umbra_map_t *umbra_map, int scale_val, bool is_scale_down)
 
     const size_t shdw_size = scale_val;
     size_t shdw_size_test = shdw_size;
-    byte buf[shdw_size];
+    byte buf[50]; // buf size should be big enough
 
-    // Write shadow value.
+    // Write shadow values.
     for (size_t i = 0; i < shdw_size; i++)
         buf[i] = SHDW_VAL;
     status = umbra_write_shadow_memory(umbra_map, APP_ADDR, 1, &shdw_size_test, buf);
@@ -72,15 +72,14 @@ test_shadow_scale(umbra_map_t *umbra_map, int scale_val, bool is_scale_down)
     for (size_t i = 0; i < shdw_size; i++)
         CHECK(buf[i] == SHDW_VAL, "read shadow data should match");
 
-    // Read shadow value of next app addr.
+    // Read and check shadow value of next app addr.
     status = umbra_read_shadow_memory(umbra_map, NEXT_APP_ADDR, 1, &shdw_size_test, buf);
     CHECK(status == DRMF_SUCCESS, "Failed to read");
     CHECK(shdw_size_test == shdw_size, "read shadow size should be correct");
-
     for (size_t i = 0; i < shdw_size; i++)
         CHECK(buf[i] == 0x0, "shadow values of next app addr should be zero");
 
-    // Write 0.
+    // Clear shadow values.
     for (size_t i = 0; i < shdw_size; i++)
         buf[i] = SHDW_VAL;
     status = umbra_write_shadow_memory(umbra_map, APP_ADDR, 1, &shdw_size_test, buf);

@@ -83,7 +83,6 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
         UMBRA_MAP_CREATE_SHADOW_ON_TOUCH | UMBRA_MAP_SHADOW_SHARED_READONLY;
     umbra_map_ops.default_value = 0;
     umbra_map_ops.default_value_size = 1;
-    umbra_map_ops.make_redzone_faulty = false;
     if (umbra_init(id) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
