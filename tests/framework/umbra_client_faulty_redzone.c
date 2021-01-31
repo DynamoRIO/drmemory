@@ -97,11 +97,12 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 }
 
 static void
-instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
-               reg_id_t scratch_reg, reg_id_t scratch_reg2)
+insert_redzone_entry(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
+                     reg_id_t scratch_reg, reg_id_t scratch_reg2)
 {
     bool ok;
 
+    // Get app address.
     ok = drutil_insert_get_mem_addr(drcontext, ilist, where, ref, scratch_reg, scratch_reg2);
     DR_ASSERT(ok);
     /* Save the app address to a well-known spill slot, so that the fault handler
@@ -125,6 +126,29 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
                       OPND_CREATE_MEM8(scratch_reg, dr_page_size() /* try enter redzone */),
                       opnd_create_reg(reg_resize_to_opsz(scratch_reg2, OPSZ_1))),
                   instr_get_app_pc(where)));
+}
+
+static bool
+instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where,
+               reg_id_t scratch_reg, reg_id_t scratch_reg2)
+{
+    int i;
+    for (i = 0; i < instr_num_srcs(where); i++) {
+        if (opnd_is_memory_reference(instr_get_src(where, i))) {
+            insert_redzone_entry(drcontext, ilist, where, instr_get_src(where, i),
+                                 scratch_reg, scratch_reg2);
+            return true;
+        }
+    }
+    for (i = 0; i < instr_num_dsts(where); i++) {
+        if (opnd_is_memory_reference(instr_get_dst(where, i))) {
+            insert_redzone_entry(drcontext, ilist, where, instr_get_dst(where, i),
+                                 scratch_reg, scratch_reg2);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool
@@ -152,68 +176,58 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     instr_t *label = NULL;
     bool uses_mem = instr_uses_mem(where);
 
-    if (uses_mem) {
+    if (!uses_mem)
+        return DR_EMIT_DEFAULT;
 
-#       ifdef X86
-        drvector_t allowed;
-        drreg_init_and_fill_vector(&allowed, false);
-        drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
-#       endif
+#   ifdef X86
+    drvector_t allowed;
+    drreg_init_and_fill_vector(&allowed, false);
+    drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
+#   endif
 
-        if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
-            drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
-                                   &scratch_reg2) != DRREG_SUCCESS ||
-            drreg_reserve_register(drcontext, ilist, where, NULL, &scratch_reg) !=
-                DRREG_SUCCESS) {
-            DR_ASSERT(false); /* Can't recover. */
-        }
-#       ifdef X86
-        drvector_delete(&allowed);
-#       endif
-
-        DR_ASSERT_MSG(scratch_reg != DR_REG_NULL,
-                      "First scratch register should not be NULL");
-        DR_ASSERT_MSG(scratch_reg2 != DR_REG_NULL,
-                      "Second scratch register should not be NULL");
-
-        opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
-        instr_t *load_instr = XINST_CREATE_load_1byte_zext4(drcontext,
-                                                            opnd_create_reg(scratch_reg),
-                                                            flag_opnd);
-        instrlist_meta_preinsert(ilist, where, load_instr);
-
-        instr_t * check_instr = XINST_CREATE_cmp(drcontext, opnd_create_reg(scratch_reg),
-                                                 opnd_create_immed_int(0, OPSZ_1));
-        instrlist_meta_preinsert(ilist, where, check_instr);
-
-        label = INSTR_CREATE_label(drcontext);
-        instr_t * jmp_instr = XINST_CREATE_jump_cond(drcontext, DR_PRED_NE,
-                                                     opnd_create_instr(label));
-        instrlist_meta_preinsert(ilist, where, jmp_instr);
+    if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
+        drreg_reserve_register(drcontext, ilist, where, IF_X86_ELSE(&allowed, NULL),
+                               &scratch_reg2) != DRREG_SUCCESS ||
+        drreg_reserve_register(drcontext, ilist, where, NULL, &scratch_reg) !=
+            DRREG_SUCCESS) {
+        DR_ASSERT(false); /* Can't recover. */
     }
+#   ifdef X86
+    drvector_delete(&allowed);
+#   endif
 
-    int i;
-    for (i = 0; i < instr_num_srcs(where); i++) {
-        if (opnd_is_memory_reference(instr_get_src(where, i))) {
-            instrument_mem(drcontext, ilist, where, instr_get_src(where, i),
-                           scratch_reg, scratch_reg2);
-        }
-    }
-    for (i = 0; i < instr_num_dsts(where); i++) {
-        if (opnd_is_memory_reference(instr_get_dst(where, i))) {
-            instrument_mem(drcontext, ilist, where, instr_get_dst(where, i),
-                           scratch_reg, scratch_reg2);
-        }
-    }
+    DR_ASSERT_MSG(scratch_reg != DR_REG_NULL,
+                  "First scratch register should not be NULL");
+    DR_ASSERT_MSG(scratch_reg2 != DR_REG_NULL,
+                  "Second scratch register should not be NULL");
 
-    if (uses_mem) {
-        instrlist_meta_preinsert(ilist, where, label);
+    opnd_t flag_opnd = opnd_create_abs_addr(did_redzone_fault, OPSZ_1);
+    instr_t *load_instr = XINST_CREATE_load_1byte_zext4(drcontext,
+                                                        opnd_create_reg(scratch_reg),
+                                                        flag_opnd);
+    instrlist_meta_preinsert(ilist, where, load_instr);
 
-        if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
-            drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
-            drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
-            DR_ASSERT(false);
-    }
+    instr_t * check_instr = XINST_CREATE_cmp(drcontext, opnd_create_reg(scratch_reg),
+                                             opnd_create_immed_int(0, OPSZ_1));
+    instrlist_meta_preinsert(ilist, where, check_instr);
+
+    label = INSTR_CREATE_label(drcontext);
+    instr_t * jmp_instr = XINST_CREATE_jump_cond(drcontext, DR_PRED_NE,
+                                                 opnd_create_instr(label));
+    instrlist_meta_preinsert(ilist, where, jmp_instr);
+
+    drreg_status_t status =
+    drreg_get_app_value(drcontext, ilist, where, scratch_reg, scratch_reg);
+    DR_ASSERT_MSG(status == DRREG_SUCCESS, "failed to restore scratch reg");
+
+    instrument_mem(drcontext, ilist, where, scratch_reg, scratch_reg2);
+
+    instrlist_meta_preinsert(ilist, where, label);
+
+    if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
+        drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
+        drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
+        DR_ASSERT(false);
 
     return DR_EMIT_DEFAULT;
 }
