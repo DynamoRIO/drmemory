@@ -189,10 +189,10 @@ target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
 
 add_drmf_test(umbra_client_scale_up_ptr_inline umbra_app
   umbra_client_scale_up_ptr_inline.c umbra "" "" ".*TEST PASSED")
-  use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drreg)
-  use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drutil)
-  target_include_directories(umbra_client_scale_up_ptr_inline.client PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR})
+use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drreg)
+use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drutil)
+target_include_directories(umbra_client_scale_up_ptr_inline.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Faulty redzones are only available on 32-bit.
 if (NOT X64)

@@ -66,7 +66,11 @@ static bool check_called = false;
                 __FILE__, __LINE__, #cond, msg), dr_abort(), 0)))
 
 #define TEST(mask, var) (((mask) & (var)) != 0)
+#ifdef X64
+#define SHDW_VAL (void *) 0x111111111111
+#else
 #define SHDW_VAL (void *) 0x11111111
+#endif
 
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
@@ -83,6 +87,9 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
         UMBRA_MAP_CREATE_SHADOW_ON_TOUCH | UMBRA_MAP_SHADOW_SHARED_READONLY;
     umbra_map_ops.default_value = 0;
     umbra_map_ops.default_value_size = 1;
+#   ifndef X64
+    umbra_map_ops.make_redzone_faulty = false;
+#    endif
     if (umbra_init(id) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
@@ -107,7 +114,8 @@ static void check()
     // Read shadow value.
     void *data = NULL;
     size_t shdw_size = sizeof(void *);
-    status = umbra_read_shadow_memory(umbra_map, app_target, 1, &shdw_size, (void *) &data);
+    status = umbra_read_shadow_memory(umbra_map, app_target, 1, &shdw_size,
+                                      (void *) &data);
     CHECK(status == DRMF_SUCCESS, "Failed to read");
     dr_fprintf(STDERR, "SIZES: %p %u %u\n", app_target, shdw_size, sizeof(void *));
     CHECK(shdw_size == sizeof(void *), "read shadow size should be pointer-sized");
@@ -115,7 +123,8 @@ static void check()
 
     // Write NULL.
     data = NULL;
-    status = umbra_write_shadow_memory(umbra_map, app_target, 1, &shdw_size, (void *) &data);
+    status = umbra_write_shadow_memory(umbra_map, app_target, 1, &shdw_size,
+                                       (void *) &data);
     CHECK(status == DRMF_SUCCESS, "Failed to write");
     CHECK(shdw_size == sizeof(void *), "write shadow size should be pointer-sized");
 
@@ -171,7 +180,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         drvector_delete(&allowed);
 #       endif
 
-        succ = drutil_insert_get_mem_addr(drcontext, ilist, where, src_mem_opnd, scratch_reg, scratch_reg2);
+        succ = drutil_insert_get_mem_addr(drcontext, ilist, where, src_mem_opnd,
+                                          scratch_reg, scratch_reg2);
         DR_ASSERT(succ);
 
         /* Save the app address to a well-known spill slot, so that the fault handler
@@ -179,18 +189,20 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
          */
         dr_save_reg(drcontext, ilist, where, scratch_reg, SPILL_SLOT_2);
 
-        drmf_status_t status = umbra_insert_app_to_shadow(drcontext, umbra_map, ilist, where, scratch_reg, &scratch_reg2, 1);
+        drmf_status_t status = umbra_insert_app_to_shadow(drcontext, umbra_map, ilist,
+                                                          where, scratch_reg,
+                                                          &scratch_reg2, 1);
         DR_ASSERT_MSG(status == DRMF_SUCCESS, "fail to insert translation");
 
         instr_t *instr;
 
         // Load shadow value to reg.
-        opnd_t reg_opnd = opnd_create_reg(scratch_reg2);
-        opnd_t immed_opnd = opnd_create_immed_int((intptr_t) SHDW_VAL, OPSZ_PTR);
-        instr = XINST_CREATE_load_int(drcontext, reg_opnd, immed_opnd);
-        instrlist_meta_preinsert(ilist, where, instr);
+        opnd_t reg_opnd = opnd_create_reg(scratch_reg);
+        instrlist_insert_mov_immed_ptrsz(drcontext, (ptr_int_t) SHDW_VAL, reg_opnd,
+                                         ilist, where, NULL, NULL);
 
-        opnd_t shadow_opnd = opnd_create_base_disp(scratch_reg, DR_REG_NULL, 0, 0, OPSZ_PTR);
+        opnd_t shadow_opnd = opnd_create_base_disp(scratch_reg, DR_REG_NULL, 0, 0,
+                                                   OPSZ_PTR);
         opnd_t src_opnd = opnd_create_reg(scratch_reg2);
         instr = XINST_CREATE_store(drcontext, shadow_opnd, src_opnd);
         instr_set_translation(instr, instr_get_app_pc(where));
@@ -199,8 +211,10 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         // Use a clean call to check write and refresh shadow value.
         dr_insert_clean_call(drcontext, ilist, where, check, false, 0);
 
-        if (drreg_unreserve_register(drcontext, ilist, where, scratch_reg) != DRREG_SUCCESS ||
-            drreg_unreserve_register(drcontext, ilist, where, scratch_reg2) != DRREG_SUCCESS ||
+        if (drreg_unreserve_register(drcontext, ilist,
+                                     where, scratch_reg) != DRREG_SUCCESS ||
+            drreg_unreserve_register(drcontext, ilist,
+                                     where, scratch_reg2) != DRREG_SUCCESS ||
             drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
             DR_ASSERT(false);
     }
