@@ -148,6 +148,7 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where,
         }
     }
 
+    // Found no memory operand to instrument.
     return false;
 }
 
@@ -216,8 +217,15 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
                                                  opnd_create_instr(label));
     instrlist_meta_preinsert(ilist, where, jmp_instr);
 
+    /* We need to calculate addresses. Restore scratch registers
+     * back to their original values.
+     */
     drreg_status_t status =
     drreg_get_app_value(drcontext, ilist, where, scratch_reg, scratch_reg);
+    DR_ASSERT_MSG(status == DRREG_SUCCESS, "failed to restore scratch reg");
+
+    status =
+    drreg_get_app_value(drcontext, ilist, where, scratch_reg2, scratch_reg2);
     DR_ASSERT_MSG(status == DRREG_SUCCESS, "failed to restore scratch reg");
 
     instrument_mem(drcontext, ilist, where, scratch_reg, scratch_reg2);
