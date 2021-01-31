@@ -187,6 +187,13 @@ use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
 target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
+add_drmf_test(umbra_client_scale_up_ptr_inline umbra_app
+  umbra_client_scale_up_ptr_inline.c umbra "" "" ".*TEST PASSED")
+use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drreg)
+use_DynamoRIO_extension(umbra_client_scale_up_ptr_inline.client drutil)
+target_include_directories(umbra_client_scale_up_ptr_inline.client PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Faulty redzones are only available on 32-bit.
 if (NOT X64)
   add_drmf_test(umbra_client_faulty_redzone umbra_app
@@ -209,5 +216,5 @@ use_DynamoRIO_extension(umbra_test_consistency.client drutil)
 target_include_directories(umbra_test_consistency.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_drmf_test(umbra_test_allscales umbra_app umbra_client_allscales.c
+add_drmf_test(umbra_test_all_scales umbra_app umbra_client_all_scales.c
   umbra "" "" ".*TEST PASSED")
