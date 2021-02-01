@@ -111,12 +111,12 @@ set(symcache_dir "${PROJECT_BINARY_DIR}/logs/symcache")
 
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
 add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
-  drsyscall "" "${symcache_dir}" "done\nTEST PASSED")
+  drsyscall "" "${symcache_dir}" "done\nTEST PASSED\n$")
 if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
   set_property(TEST drsyscall_test APPEND PROPERTY DEPENDS hello)
 endif ()
 add_drmf_test(strace_test drsyscall_app strace_client.c
-  drsyscall "" "${symcache_dir}" "done\n.*TEST PASSED")
+  drsyscall "" "${symcache_dir}" "done\n.*TEST PASSED\n$")
 if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
   set_property(TEST strace_test APPEND PROPERTY DEPENDS hello)
 endif ()
@@ -124,19 +124,19 @@ endif ()
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty drfuzz_client_empty.c
-  drfuzz "" "" "done\nTEST PASSED")
+  drfuzz "" "" "done\nTEST PASSED\n$")
 add_drmf_test(drfuzz_test_mutator drfuzz_app_empty drfuzz_client_mutator.c
   drfuzz "" "" "TEST PASSED\n.*done")
 
 add_drmf_test_app(drfuzz_app_repeat drfuzz_app_repeat.c)
 add_drmf_test(drfuzz_test_repeat drfuzz_app_repeat drfuzz_client_repeat.c
-  drfuzz "" "" "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED")
+  drfuzz "" "" "hello 1\nhello 2\nhello 3\nhello 4\nhello 5\ndone\nTEST PASSED\n$")
 
 add_drmf_test_app(drfuzz_app_segfault drfuzz_app_segfault.c)
 
 set(segfault_regex_1 "Fault occured in target.*with 1 args.*")
 set(segfault_regex_2 "Crash originated in target.*with 1 args.*")
-set(segfault_regex_3 "TEST PASSED")
+set(segfault_regex_3 "TEST PASSED\n$")
 
 add_drmf_test(drfuzz_test_segfault drfuzz_app_segfault drfuzz_client_segfault.c
   drfuzz "" "-crash" "${segfault_regex_1}${segfault_regex_2}${segfault_regex_3}")
@@ -147,7 +147,7 @@ add_drmf_test(drfuzz_test_app_abort drfuzz_app_segfault drfuzz_client_segfault.c
 use_DynamoRIO_extension(drfuzz_test_app_abort.client drsyms)
 
 add_drmf_test(drfuzz_test_no_crash drfuzz_app_segfault drfuzz_client_segfault.c
-  drfuzz "" "" ".*TEST PASSED")
+  drfuzz "" "" ".*TEST PASSED\n$")
 use_DynamoRIO_extension(drfuzz_test_no_crash.client drsyms)
 
 # XXX i#1734: add multi-threaded test, checking for aborted fuzz targets on all threads
@@ -165,23 +165,23 @@ endif ()
 target_include_directories(umbra_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_empty umbra_app umbra_client_empty.c
-  umbra "" "" ".*TEST PASSED")
+  umbra "" "" ".*TEST PASSED\n$")
 
 if (X64)
   # Test i#1712 with a region overlapping 0x7e00'-0x7f00'.
   add_drmf_test(umbra_test_overlap umbra_app umbra_client_empty.c
-    umbra "-vm_base;0x7efff0000000;-no_vm_base_near_app" "" ".*TEST PASSED")
+    umbra "-vm_base;0x7efff0000000;-no_vm_base_near_app" "" ".*TEST PASSED\n$")
 endif ()
 
 add_drmf_test(umbra_test_shadow_mem umbra_app umbra_client_shadow_mem.c
-  umbra "" "" ".*TEST PASSED")
+  umbra "" "" ".*TEST PASSED\n$")
 use_DynamoRIO_extension(umbra_test_shadow_mem.client drreg)
 use_DynamoRIO_extension(umbra_test_shadow_mem.client drutil)
 target_include_directories(umbra_test_shadow_mem.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_insert_app_to_shadow umbra_app
-  umbra_client_insert_app_to_shadow.c umbra "" "" ".*TEST PASSED")
+  umbra_client_insert_app_to_shadow.c umbra "" "" ".*TEST PASSED\n$")
 use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drreg)
 use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
 target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
@@ -190,7 +190,7 @@ target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
 # Faulty redzones are only available on 32-bit.
 if (NOT X64)
   add_drmf_test(umbra_client_faulty_redzone umbra_app
-    umbra_client_faulty_redzone.c umbra "" "" ".*TEST PASSED")
+    umbra_client_faulty_redzone.c umbra "" "" ".*TEST PASSED\n$")
   use_DynamoRIO_extension(umbra_client_faulty_redzone.client drreg)
   use_DynamoRIO_extension(umbra_client_faulty_redzone.client drutil)
   target_include_directories(umbra_client_faulty_redzone.client PRIVATE
@@ -203,11 +203,11 @@ if (NOT X64)
 endif()
 
 add_drmf_test(umbra_test_consistency umbra_app
-  umbra_client_consistency.c umbra "" "" ".*TEST PASSED")
+  umbra_client_consistency.c umbra "" "" ".*TEST PASSED\n$")
 use_DynamoRIO_extension(umbra_test_consistency.client drreg)
 use_DynamoRIO_extension(umbra_test_consistency.client drutil)
 target_include_directories(umbra_test_consistency.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_drmf_test(umbra_test_allscales umbra_app umbra_client_allscales.c
-  umbra "" "" ".*TEST PASSED")
+  umbra "" "" ".*TEST PASSED\n$")
