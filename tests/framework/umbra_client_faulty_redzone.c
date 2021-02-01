@@ -228,7 +228,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     drreg_get_app_value(drcontext, ilist, where, scratch_reg2, scratch_reg2);
     DR_ASSERT_MSG(status == DRREG_SUCCESS, "failed to restore scratch reg");
 
-    instrument_mem(drcontext, ilist, where, scratch_reg, scratch_reg2);
+    bool ok = instrument_mem(drcontext, ilist, where, scratch_reg, scratch_reg2);
+    DR_ASSERT_MSG(ok, "failed to instrument a memory operand");
 
     instrlist_meta_preinsert(ilist, where, label);
 
@@ -246,7 +247,7 @@ exit_event(void)
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
-    DR_ASSERT_MSG(*did_redzone_fault, "No redzone faults have been handled");
+    DR_ASSERT_MSG(*did_redzone_fault, "no redzone faults have been handled");
 
     dr_global_free(did_redzone_fault, sizeof(bool));
 
