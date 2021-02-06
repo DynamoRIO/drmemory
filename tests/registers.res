@@ -21,39 +21,39 @@
 #
 %if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1391
+registers.c_asm.asm:1395
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1398
+registers.c_asm.asm:1402
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:104
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1618
+registers.c_asm.asm:1622
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1635
+registers.c_asm.asm:1639
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1665
+registers.c_asm.asm:1669
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:187
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1367
+registers.c_asm.asm:1371
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c_asm.asm:1192
-Error #10: UNINITIALIZED READ: reading register eflags
 registers.c_asm.asm:1196
+Error #10: UNINITIALIZED READ: reading register eflags
+registers.c_asm.asm:1200
 Error #11: UNINITIALIZED READ: reading register cl
-registers.c_asm.asm:1201
+registers.c_asm.asm:1205
 Error #12: UNINITIALIZED READ: reading register xcx
-registers.c_asm.asm:1221
+registers.c_asm.asm:1225
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
-registers.c_asm.asm:1252
+registers.c_asm.asm:1256
 Error #14: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1418
+registers.c_asm.asm:1422
 Error #15: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1430
+registers.c_asm.asm:1434
 Error #16: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1443
+registers.c_asm.asm:1447
 Error #17: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-registers.c_asm.asm:1444
+registers.c_asm.asm:1448
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
@@ -99,7 +99,7 @@ registers.c_asm.asm:970
 %endif
 %if WINDOWS
 Error #19: UNINITIALIZED READ: reading register ecx
-registers.c_asm.asm:1760
+registers.c_asm.asm:1764
 %endif
 Error #20: UNINITIALIZED READ: reading register
 registers.c:267
@@ -107,15 +107,15 @@ Error #21: UNINITIALIZED READ: reading register
 registers.c:288
 %if WINDOWS
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1845
+registers.c_asm.asm:1849
 Error #23: UNINITIALIZED READ: reading 1 byte(s)
-registers.c_asm.asm:1859
+registers.c_asm.asm:1863
 Error #24: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1873
+registers.c_asm.asm:1877
 Error #25: UNINITIALIZED READ: reading 2 byte(s)
-registers.c_asm.asm:1887
+registers.c_asm.asm:1891
 Error #26: UNINITIALIZED READ: reading register eax
-registers.c_asm.asm:1922
+registers.c_asm.asm:1926
 %endif
 %if UNIX
 Error #22: UNINITIALIZED READ: reading 1 byte(s)
