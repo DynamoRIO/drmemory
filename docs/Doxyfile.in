@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -134,7 +134,6 @@ VERBATIM_HEADERS       = NO
 # configuration options related to the alphabetical class index
 #---------------------------------------------------------------------------
 ALPHABETICAL_INDEX     = NO
-COLS_IN_ALPHA_INDEX    = 5
 IGNORE_PREFIX          =
 #---------------------------------------------------------------------------
 # configuration options related to the HTML output
