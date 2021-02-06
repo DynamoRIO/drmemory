@@ -194,7 +194,7 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'gdi' => 1,
                 'handle' => 1,
                 'handle_only' => 1,
-                'blacklist' => 1,
+                'blocklist' => 1,
                 'pcache-use' => 1,
                 'drsyscall_test' => 1,
                 'strace_test' => 1,
@@ -234,7 +234,7 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'gdi' => 1,
                 'syscalls_win' => 1,
                 'handle_only' => 1,
-                'blacklist' => 1,
+                'blocklist' => 1,
                 'nudge' => 1,
                 'syscall_file_all' => 1,
                 'syscall_file_gen' => 1,
@@ -249,10 +249,10 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 # TODO i#2180/i#2334: extra uninit but not printed out on CI!
                 'nosyms' => 1,
                 # TODO i#2180/i#2334: extra potential error but not printed out on CI!
-                'whitelist_app' => 1,
-                'whitelist_justlib' => 1,
-                'whitelist_src' => 1,
-                'whitelist_srclib' => 1,
+                'allowlist_app' => 1,
+                'allowlist_justlib' => 1,
+                'allowlist_src' => 1,
+                'allowlist_srclib' => 1,
                 );
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038

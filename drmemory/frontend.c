@@ -33,7 +33,7 @@
  *   o groups: just going to eliminate the feature
  *   o during-run summary + counts: just going to eliminate the feature
  *   o -aggregate: not supporting on Windows
- *   o -srcfilter: not supporting on Windows; now replaced with -src_whitelist.
+ *   o -srcfilter: not supporting on Windows; now replaced with -src_allowlist.
  * - Very large symbol files that do not fit in the app address space
  *   are not yet supported: drsyms will eventually have symbol server
  *   support for those (PR 243532).
@@ -1424,19 +1424,19 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* Easier for the front-end to get the $SYSTEMROOT env var, so we set the
-     * default value here.  We add ` to rule out -lib_blacklist_frames.
+     * default value here.  We add ` to rule out -lib_blocklist_frames.
      */
-    if (strstr(client_ops, "-lib_blacklist`") == NULL) {
+    if (strstr(client_ops, "-lib_blocklist`") == NULL) {
         if (drfront_get_env_var("SYSTEMROOT", buf, BUFFER_SIZE_ELEMENTS(buf)) ==
             DRFRONT_SUCCESS) {
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
                      /* Add .d?? to still report errors in app .exe but not
                       * in *.dll or *.drv.
                       */
-                     "-lib_blacklist `%s*.d??",
+                     "-lib_blocklist `%s*.d??",
                      buf);
             /* i#1755: consider "C:\Program Files\Common Files\Microsoft Shared" to
-             * be on the blacklist.
+             * be on the blocklist.
              */
 # define    MS_SHARED_DIRNAME "Microsoft Shared"
             if (drfront_get_env_var("CommonProgramFiles", buf, BUFFER_SIZE_ELEMENTS(buf))

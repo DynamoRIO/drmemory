@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* Tests whitelist options */
+/* Tests allowlist options */
 
 #include <stdio.h>
 #include <stdlib.h>

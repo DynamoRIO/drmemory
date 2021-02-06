@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* Tests blacklist options */
+/* Tests blocklist options */
 
 #ifndef WINDOWS
 # error Windows-only
@@ -31,7 +31,7 @@
 static void
 test_system_lib()
 {
-    /* We run with -lib_blacklist_frames 0, where this should be marked "potential": */
+    /* We run with -lib_blocklist_frames 0, where this should be marked "potential": */
     MEMORY_BASIC_INFORMATION mbi;
     void **uninit = (void **) malloc(sizeof(*uninit));
     VirtualQuery(*uninit, &mbi, sizeof(mbi));

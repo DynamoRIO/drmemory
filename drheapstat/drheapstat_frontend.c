@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************
 
@@ -144,7 +144,7 @@ print_usage(bool full)
         fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
         return;
     }
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
             fprintf(stderr, "  -%-28s [%6s]  %s\n", #name,              \
@@ -156,7 +156,7 @@ print_usage(bool full)
     }
 #define OPTION_FRONT OPTION_CLIENT
 #include "optionsx.h"
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 }
 

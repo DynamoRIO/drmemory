@@ -131,6 +131,6 @@ void
 report_child_thread(void *drcontext, thread_id_t child);
 
 bool
-module_is_on_check_uninit_blacklist(app_pc pc);
+module_is_on_check_uninit_blocklist(app_pc pc);
 
 #endif /* _REPORT_H_ */
