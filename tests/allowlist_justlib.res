@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014 Google, Inc.  All rights reserved.
+# Copyright (c) 2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -17,8 +17,10 @@
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
-# Test i#1529: auto-blacklist whole-module uninit supp
-UNINITIALIZED READ
-name=i#1529
-registers*!*
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
+allowlist_lib.cpp:50
+
+# XXX i#1320: ideally we would also test that potential_errors.txt is
+# created and has the right contents.

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,26 +31,26 @@ typedef char opstring_t[MAX_OPTION_LEN];
 typedef char multi_opstring_t[MAX_OPTION_LEN];
 
 typedef struct _drmemory_options_t {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     type name;
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
 } drmemory_options_t;
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
 /* indicates whether a value was explicitly specified */
 typedef struct _option_specified_t {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     bool name;
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
 } option_specified_t;
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
 extern drmemory_options_t options;

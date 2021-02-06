@@ -174,37 +174,37 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
 #define PRCTL_NAME_SZ 16 /* from man page */
 
 static void
-check_prctl_whitelist(byte *prctl_arg1)
+check_prctl_allowlist(byte *prctl_arg1)
 {
     /* disable instrumentation on seeing prctl(PR_SET_NAME) that does not
      * match any of the specified ,-separated names (PR 574018)
      */
     char nm[PRCTL_NAME_SZ+1];
-    ASSERT(options.prctl_whitelist[0] != '\0', "caller should check for empty op");
+    ASSERT(options.prctl_allowlist[0] != '\0', "caller should check for empty op");
     if (safe_read(prctl_arg1, PRCTL_NAME_SZ, nm)) {
-        bool on_whitelist = false;
+        bool on_allowlist = false;
         char *s, *next;
-        char *list_end = options.prctl_whitelist + strlen(options.prctl_whitelist);
+        char *list_end = options.prctl_allowlist + strlen(options.prctl_allowlist);
         size_t white_sz;
         NULL_TERMINATE_BUFFER(nm);
         LOG(1, "prctl set name %s\n", nm);
-        s = options.prctl_whitelist;
+        s = options.prctl_allowlist;
         while (s < list_end) {
             next = strchr(s, ',');
             if (next == NULL)
                 white_sz = (list_end - s);
             else
                 white_sz = (next - s);
-            LOG(2, "comparing \"%s\" with whitelist entry \"%.*s\" sz=%d\n",
+            LOG(2, "comparing \"%s\" with allowlist entry \"%.*s\" sz=%d\n",
                 nm, white_sz, s, white_sz);
             if (strncmp(nm, s, white_sz) == 0) {
-                LOG(0, "prctl name %s matches whitelist\n", nm);
-                on_whitelist = true;
+                LOG(0, "prctl name %s matches allowlist\n", nm);
+                on_allowlist = true;
                 break;
             }
             s += white_sz + 1 /* skip , itself */;
         }
-        if (!on_whitelist) {
+        if (!on_allowlist) {
             /* ideally: suspend world, then set options, then flush
              * w/o resuming.
              * FIXME: just setting options is unsafe if another thread
@@ -237,8 +237,8 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     switch (request) {
     case PR_SET_NAME:
     case PR_GET_NAME:
-        if (request == PR_SET_NAME && options.prctl_whitelist[0] != '\0')
-            check_prctl_whitelist((byte *)arg1);
+        if (request == PR_SET_NAME && options.prctl_allowlist[0] != '\0')
+            check_prctl_allowlist((byte *)arg1);
         break;
     }
 }

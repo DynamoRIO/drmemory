@@ -20,7 +20,7 @@
 #
 
 Error #1: UNADDRESSABLE ACCESS beyond heap bounds: reading 1 byte(s)
-whitelist_lib.cpp:50
+allowlist.cpp:39
 
 # XXX i#1320: ideally we would also test that potential_errors.txt is
 # created and has the right contents.

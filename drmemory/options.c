@@ -130,36 +130,36 @@ static const char * const bool_string[2] = {
 };
 
 drmemory_options_t options = {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     defval,
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
 };
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
 drmemory_options_t option_defaults = {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     defval,
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
 };
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
 option_specified_t option_specified = {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
     false,
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
 };
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
 /* If the user sets a value, we disable our dynamic adjustments */
@@ -346,30 +346,33 @@ options_init(const char *opstr)
 #endif
     for (s = get_option_word(opstr, word); s != NULL; s = get_option_word(s, word)) {
 
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
-        if (TYPE_IS_BOOL_##type) {                                      \
-            if (stri_eq(word, "-"#name)) {                              \
-                option_specified.name = true;                           \
-                s = option_read_bool(s, NULL, (void *)&options.name,    \
-                                     "-"#name, true, 0);                \
-                continue; /* match found */                             \
-            } else if (stri_eq(word, "-no_"#name)) {                    \
-                option_specified.name = true;                           \
-                s = option_read_bool(s, NULL, (void *)&options.name,    \
-                                     "-"#name, false, 0);               \
-                continue; /* match found */                             \
-            }                                                           \
-        } else if (stri_eq(word, "-"#name)) {                           \
-            option_specified.name = true;                               \
-            s = option_read_##type(s, word, (void *)&options.name,      \
-                                   "-"#name, min, max);                 \
-            continue; /* match found */                                 \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \
+        if (TYPE_IS_BOOL_##type) {                                                  \
+            if (stri_eq(word, "-"#name) ||                                          \
+                (#altname[0] != '\0' && stri_eq(word, "-"#altname))) {               \
+                option_specified.name = true;                                       \
+                s = option_read_bool(s, NULL, (void *)&options.name,                \
+                                     "-"#name, true, 0);                            \
+                continue; /* match found */                                         \
+            } else if (stri_eq(word, "-no_"#name) ||                                \
+                (#altname[0] != '\0' && stri_eq(word, "-no_"#altname))) {            \
+                option_specified.name = true;                                       \
+                s = option_read_bool(s, NULL, (void *)&options.name,                \
+                                     "-"#name, false, 0);                           \
+                continue; /* match found */                                         \
+            }                                                                       \
+        } else if (stri_eq(word, "-"#name) ||                                       \
+                (#altname[0] != '\0' && stri_eq(word, "-"#altname))) {               \
+            option_specified.name = true;                                           \
+            s = option_read_##type(s, word, (void *)&options.name,                  \
+                                   "-"#name, min, max);                             \
+            continue; /* match found */                                             \
         }
 #define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
     /*nothing*/
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 
        option_error(word, "unknown option");
@@ -697,22 +700,22 @@ void
 options_print_usage()
 {
     NOTIFY_NO_PREFIX("Dr. Memory options (use -no_<op> to disable bool):"NL);
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
-    if (SCOPE_IS_PUBLIC_##scope) {                                      \
-        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
+#define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long)  \
+    if (SCOPE_IS_PUBLIC_##scope) {                                                   \
+        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */                     \
             type _tmp = defval; /* work around cl bogus integer overflow if in [] */ \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
-                             bool_string[(ptr_int_t)_tmp], short);      \
-            ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,    \
-                   "defval must be true/false");                        \
-        } else if (TYPE_HAS_RANGE_##type)                               \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,                          \
+                             bool_string[(ptr_int_t)_tmp], short);                   \
+            ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,                 \
+                   "defval must be true/false");                                     \
+        } else if (TYPE_HAS_RANGE_##type)                                            \
             NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <int>", #defval, short); \
-        else                                                            \
+        else                                                                         \
             NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <string>", #defval, short); \
     }
 #define OPTION_FRONT OPTION_CLIENT
     /* we use <> so other tools can override the optionsx.h in "." */
 #include <optionsx.h>
-#undef OPTION_CLIENT
+#undef OPTION_CLIENT_EX
 #undef OPTION_FRONT
 }

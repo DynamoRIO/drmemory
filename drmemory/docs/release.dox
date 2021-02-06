@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -61,7 +61,15 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 2.3.0 include:
- - Nothing yet.
+ - Renamed the following options (the old option names will still work
+   for compatibility):
+   - -lib_whitelist is now -lib_allowlist
+   - -lib_whitelist_frames is now -lib_allowlist_frames
+   - -src_whitelist is now -src_allowlist
+   - -src_whitelist_frames is now -src_allowlist_frames
+   - -lib_blacklist is now -lib_blocklist
+   - -lib_blacklist_frames is now -lib_blocklist_frames
+   - -check_uninit_blacklist is now -check_uninit_blocklist
 
 The changes between version 2.3.0 and version 2.2.0 include:
  - Added preliminary 64-bit Mac OSX support for small single-threaded

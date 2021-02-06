@@ -70,7 +70,7 @@ typedef struct _tls_report_t {
     size_t errbufsz;
     /* for callstack shadow xl8 cache */
     umbra_shadow_memory_info_t xl8_info;
-    /* cached values for module_is_on_check_uninit_blacklist() for i#1529 */
+    /* cached values for module_is_on_check_uninit_blocklist() for i#1529 */
     app_pc last_query_mod_start;
     size_t last_query_mod_size;
     bool last_query_res;
@@ -555,27 +555,27 @@ suppress_spec_finish(suppress_spec_t *spec,
     if (is_module_wildcard(spec)) {
         have_module_wildcard = true;
         if (spec->type == ERROR_UNDEFINED && options.check_uninitialized) {
-            /* i#1529: auto-add to the check_uninit_blacklist, which has already
+            /* i#1529: auto-add to the check_uninit_blocklist, which has already
              * been converted from commas to null-separated, double-null-terminated.
              * We assume no synch is needed as this is init time.
              */
             size_t len;
-            char *c = options.check_uninit_blacklist;
+            char *c = options.check_uninit_blocklist;
             while (*c != '\0')
                 c += strlen(c) + 1/*skip 1st null*/;
-            len = c - options.check_uninit_blacklist;
-            dr_snprintf(c, BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist) - len,
+            len = c - options.check_uninit_blocklist;
+            dr_snprintf(c, BUFFER_SIZE_ELEMENTS(options.check_uninit_blocklist) - len,
                         "%s", spec->frames[0].modname);
             len = strlen(c);
-            if (c + len + 1 - options.check_uninit_blacklist <
-                BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist))
+            if (c + len + 1 - options.check_uninit_blocklist <
+                BUFFER_SIZE_ELEMENTS(options.check_uninit_blocklist))
                 *(c + len + 1) = '\0';
-            NULL_TERMINATE_BUFFER(options.check_uninit_blacklist); /* paranoid */
-            LOG(1, "Found whole-module supp: added %s to -check_uninit_blacklist\n",
+            NULL_TERMINATE_BUFFER(options.check_uninit_blocklist); /* paranoid */
+            LOG(1, "Found whole-module supp: added %s to -check_uninit_blocklist\n",
                 spec->frames[0].modname);
             DOLOG(2, {
                 LOG(2, "Blacklist is now: ");
-                print_double_null_term_string(options.check_uninit_blacklist, ", ");
+                print_double_null_term_string(options.check_uninit_blocklist, ", ");
                 LOG(2, "\n");
             });
         }
@@ -1205,10 +1205,10 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
  */
 
 typedef struct _per_callstack_module_t {
-    bool on_blacklist;
-    bool on_whitelist;
+    bool on_blocklist;
+    bool on_allowlist;
     bool in_tool;
-    bool on_check_uninit_blacklist;
+    bool on_check_uninit_blocklist;
 } per_callstack_module_t;
 
 static void *
@@ -1218,20 +1218,20 @@ callstack_module_load_cb(const char *path, const char *modname, byte *base)
         global_alloc(sizeof(*mod), HEAPSTAT_CALLSTACK);
     /* We cache in the callstack module to avoid re-matching on every frame */
     /* XXX: what about '\' vs '/' ? */
-    mod->on_blacklist = (path != NULL && options.lib_blacklist[0] != '\0' &&
-                         text_matches_any_pattern(path, options.lib_blacklist,
+    mod->on_blocklist = (path != NULL && options.lib_blocklist[0] != '\0' &&
+                         text_matches_any_pattern(path, options.lib_blocklist,
                                                   FILESYS_CASELESS));
-    mod->on_whitelist = (path != NULL && options.lib_whitelist[0] != '\0' &&
-                         text_matches_any_pattern(path, options.lib_whitelist,
+    mod->on_allowlist = (path != NULL && options.lib_allowlist[0] != '\0' &&
+                         text_matches_any_pattern(path, options.lib_allowlist,
                                                   FILESYS_CASELESS));
     mod->in_tool = (path != NULL &&
                     text_matches_pattern(modname, DRMEMORY_LIBNAME, FILESYS_CASELESS));
-    mod->on_check_uninit_blacklist =
-        (modname != NULL && options.check_uninit_blacklist[0] != '\0' &&
-         text_matches_any_pattern(modname, options.check_uninit_blacklist,
+    mod->on_check_uninit_blocklist =
+        (modname != NULL && options.check_uninit_blocklist[0] != '\0' &&
+         text_matches_any_pattern(modname, options.check_uninit_blocklist,
                                   FILESYS_CASELESS));
     LOG(1, "%s: %s => black=%d white=%d uninit=%d\n", __FUNCTION__, path,
-        mod->on_blacklist, mod->on_whitelist, mod->on_check_uninit_blacklist);
+        mod->on_blocklist, mod->on_allowlist, mod->on_check_uninit_blocklist);
     return (void *) mod;
 }
 
@@ -1251,62 +1251,62 @@ callstack_module_unload_cb(const char *path, void *data)
 
 /* Returns whether the error should be treated as a false positive */
 static bool
-check_src_whitelist(error_callstack_t *ecs, uint start)
+check_src_allowlist(error_callstack_t *ecs, uint start)
 {
     uint i;
-    if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
-        for (i = 0; i < ecs->scs.num_frames && i < options.src_whitelist_frames; i++) {
+    if (options.src_allowlist_frames > 0 && options.src_allowlist[0] != '\0') {
+        for (i = 0; i < ecs->scs.num_frames && i < options.src_allowlist_frames; i++) {
             char *file = symbolized_callstack_frame_file(&ecs->scs, start + i);
-            if (file != NULL && text_matches_any_pattern(file, options.src_whitelist,
+            if (file != NULL && text_matches_any_pattern(file, options.src_allowlist,
                                                          FILESYS_CASELESS))
                 return false; /* report as true positive */
         }
-        /* if no frame matches whitelist, treat as false positive! */
+        /* if no frame matches allowlist, treat as false positive! */
         return true;
     }
     return false;
 }
 
 /* Returns whether the error should be treated as a false positive */
-/* XXX: i#1454: add per-error blacklist callstack frame depth support */
+/* XXX: i#1454: add per-error blocklist callstack frame depth support */
 static bool
-check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
+check_blocklist_and_allowlist(error_callstack_t *ecs, uint start)
 {
     uint i;
     /* We don't support combining black + white: for us, if white is set,
      * we only report what's on white and ignore black.
      * XXX: I'd report a usage error if user sets both, except
-     * currently the blacklist default is passed in from frontend
+     * currently the blocklist default is passed in from frontend
      * (for ease of getting $SYSTEMROOT env var).
      */
-    if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
-        for (i = 0; i < ecs->scs.num_frames && i < options.lib_whitelist_frames; i++) {
+    if (options.lib_allowlist_frames > 0 && options.lib_allowlist[0] != '\0') {
+        for (i = 0; i < ecs->scs.num_frames && i < options.lib_allowlist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
-            if (mod != NULL && mod->on_whitelist)
-                /* report as true positive, unless not on -src_whitelist */
-                return check_src_whitelist(ecs, start);
+            if (mod != NULL && mod->on_allowlist)
+                /* report as true positive, unless not on -src_allowlist */
+                return check_src_allowlist(ecs, start);
         }
-        /* if no frame matches whitelist, treat as false positive! */
+        /* if no frame matches allowlist, treat as false positive! */
         return true;
     }
-    if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')
-        return check_src_whitelist(ecs, start);
-    if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
-        for (i = 0; i < ecs->scs.num_frames && i < options.lib_blacklist_frames; i++) {
+    if (options.src_allowlist_frames > 0 && options.src_allowlist[0] != '\0')
+        return check_src_allowlist(ecs, start);
+    if (options.lib_blocklist_frames > 0 && options.lib_blocklist[0] != '\0') {
+        for (i = 0; i < ecs->scs.num_frames && i < options.lib_blocklist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
-            if (mod == NULL || !mod->on_blacklist)
+            if (mod == NULL || !mod->on_blocklist)
                 break;
         }
-        /* if all frames match blacklist, treat as false positive! */
-        return (i > 0 && i >= options.lib_blacklist_frames);
+        /* if all frames match blocklist, treat as false positive! */
+        return (i > 0 && i >= options.lib_blocklist_frames);
     }
     return false;
 }
 
 bool
-module_is_on_check_uninit_blacklist(app_pc pc)
+module_is_on_check_uninit_blocklist(app_pc pc)
 {
     /* We use TLS to cache the last lookup.  For -no_fastpath, or a series of
      * fastpath entrances, we expect a whole bunch of queries for the same module.
@@ -1320,7 +1320,7 @@ module_is_on_check_uninit_blacklist(app_pc pc)
             module_lookup_user_data(pc, &pt->last_query_mod_start,
                                     &pt->last_query_mod_size);
         if (mod != NULL)
-            pt->last_query_res = mod->on_check_uninit_blacklist;
+            pt->last_query_res = mod->on_check_uninit_blocklist;
         else
             pt->last_query_res = false;
     }
@@ -1331,7 +1331,7 @@ static bool
 error_is_likely_false_positive(error_callstack_t *ecs, error_toprint_t *etp)
 {
     /* i#1310: separate callstacks that are likely false positives.
-     * We look for the top N frames being on the blacklist or whitelist.
+     * We look for the top N frames being on the blocklist or allowlist.
      * We skip the top frame if a system call.
      */
     uint start = 0;
@@ -1346,18 +1346,18 @@ error_is_likely_false_positive(error_callstack_t *ecs, error_toprint_t *etp)
         if (mod != NULL && mod->in_tool)
             start = 1;
     }
-    return check_blacklist_and_whitelist(ecs, start);
+    return check_blocklist_and_allowlist(ecs, start);
 }
 
 static bool
 leak_is_likely_false_positive(error_callstack_t *ecs)
 {
     /* i#1310: separate callstacks that are likely false positives.
-     * We look for the top N frames being on the blacklist or whitelist.
+     * We look for the top N frames being on the blocklist or allowlist.
      * We skip the top frame for -replace_malloc.
      */
     uint start = (options.replace_malloc ? 1 : 0);
-    return check_blacklist_and_whitelist(ecs, start);
+    return check_blocklist_and_allowlist(ecs, start);
 }
 
 /***************************************************************************/
@@ -1495,14 +1495,14 @@ report_init(void)
     convert_commas_to_nulls(options.callstack_srcfile_prefix,
                             BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix));
     /* text_matches_any_pattern also wants these w/ nulls, not commas */
-    convert_commas_to_nulls(options.lib_blacklist,
-                            BUFFER_SIZE_ELEMENTS(options.lib_blacklist));
-    convert_commas_to_nulls(options.lib_whitelist,
-                            BUFFER_SIZE_ELEMENTS(options.lib_whitelist));
-    convert_commas_to_nulls(options.src_whitelist,
-                            BUFFER_SIZE_ELEMENTS(options.src_whitelist));
-    convert_commas_to_nulls(options.check_uninit_blacklist,
-                            BUFFER_SIZE_ELEMENTS(options.check_uninit_blacklist));
+    convert_commas_to_nulls(options.lib_blocklist,
+                            BUFFER_SIZE_ELEMENTS(options.lib_blocklist));
+    convert_commas_to_nulls(options.lib_allowlist,
+                            BUFFER_SIZE_ELEMENTS(options.lib_allowlist));
+    convert_commas_to_nulls(options.src_allowlist,
+                            BUFFER_SIZE_ELEMENTS(options.src_allowlist));
+    convert_commas_to_nulls(options.check_uninit_blocklist,
+                            BUFFER_SIZE_ELEMENTS(options.check_uninit_blocklist));
 
 #ifdef WINDOWS
     {
@@ -1580,22 +1580,22 @@ report_init(void)
           dr_get_process_id(), dr_get_application_name());
     ELOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
           "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
-    if ((options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') ||
-        (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')) {
-        if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
+    if ((options.lib_allowlist_frames > 0 && options.lib_allowlist[0] != '\0') ||
+        (options.src_allowlist_frames > 0 && options.src_allowlist[0] != '\0')) {
+        if (options.lib_allowlist_frames > 0 && options.lib_allowlist[0] != '\0') {
             ELOGF(0, f_potential,
-                  "These errors did not match the lib whitelist '%s' for %d frames."NL,
-                  options.lib_whitelist, options.lib_whitelist_frames);
+                  "These errors did not match the lib allowlist '%s' for %d frames."NL,
+                  options.lib_allowlist, options.lib_allowlist_frames);
         }
-        if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
+        if (options.src_allowlist_frames > 0 && options.src_allowlist[0] != '\0') {
             ELOGF(0, f_potential,
-                  "These errors did not match the src whitelist '%s' for %d frames."NL,
-                  options.src_whitelist, options.src_whitelist_frames);
+                  "These errors did not match the src allowlist '%s' for %d frames."NL,
+                  options.src_allowlist, options.src_allowlist_frames);
         }
-    } else if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
-        ELOGF(0, f_potential, "These errors matched the blacklist '%s' for %d frames."NL,
-              options.lib_blacklist, options.lib_blacklist_frames);
-        ELOGF(0, f_potential, "Run with -lib_blacklist_frames 0 to treat these as "
+    } else if (options.lib_blocklist_frames > 0 && options.lib_blocklist[0] != '\0') {
+        ELOGF(0, f_potential, "These errors matched the blocklist '%s' for %d frames."NL,
+              options.lib_blocklist, options.lib_blocklist_frames);
+        ELOGF(0, f_potential, "Run with -lib_blocklist_frames 0 to treat these as "
               "regular errors."NL);
     }
     ELOGF(0, f_potential, "If these are all false positives and your focus is "

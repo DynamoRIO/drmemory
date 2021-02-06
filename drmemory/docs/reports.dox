@@ -51,7 +51,7 @@ suppress specific reports:
 
 If Dr. Memory is reporting numerous errors that appear to be false
 positives and originate in libraries that are not part of your application,
-consider using the blacklist and whitelist options to isolate them, which
+consider using the blocklist and allowlist options to isolate them, which
 may be more effective than suppressing individual errors.  See \ref
 sec_potential_errors for more information.
 
@@ -161,8 +161,8 @@ recommend converting to the Dr. Memory format from a legacy format.
 
 Another method of ignoring errors is to filter the reported errors to focus
 on particular source files or particular libraries, using Dr. Memory's
-whitelisting options.  See \ref sec_potential_errors for further
-information on whitelists.
+allowlisting options.  See \ref sec_potential_errors for further
+information on allowlists.
 
 A final method of ignoring uninitialized reads, in particular, for an
 entire library is described in \ref sec_no_uninit_checks.

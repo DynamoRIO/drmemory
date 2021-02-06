@@ -588,10 +588,10 @@ else (UNIX)
 endif (UNIX)
 
 if (TOOL_DR_MEMORY)
-  # We turn off blacklist b/c it results in potential errors in the child,
+  # We turn off blocklist b/c it results in potential errors in the child,
   # causing runtest.cmake to pick the child's log instead of parent's
   # (it does it by size)!
-  newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" 0)
+  newtest_ex(procterm procterm.c "" "-lib_blocklist_frames;0" "" OFF "" 0)
   if (WIN32)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
@@ -680,11 +680,11 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
   if (NOT ARM) # XXX i#1726: port to ARM
-    newtest_nobuild_ex(blacklist_uninit.op registers ""
-      "-check_uninit_blacklist;registers*" "" OFF "registers.blacklist" 0 "")
-    newtest_nobuild_ex(blacklist_uninit.supp registers ""
-      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
-      "" OFF "registers.blacklist" 0 "")
+    newtest_nobuild_ex(blocklist_uninit.op registers ""
+      "-check_uninit_blocklist;registers*" "" OFF "registers.blocklist" 0 "")
+    newtest_nobuild_ex(blocklist_uninit.supp registers ""
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blocklist.suppress"
+      "" OFF "registers.blocklist" 0 "")
   endif ()
   # XXX: ideally we'd run drcov2lcov and test the output too.  For now this
   # is just a test of the coverage data line output.
@@ -848,7 +848,7 @@ if (TOOL_DR_MEMORY)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only" "" OFF "handle_only")
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
-    newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" 0)
+    newtest_ex(blocklist blocklist.cpp "" "-lib_blocklist_frames;1" "" OFF "" 0)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -939,7 +939,7 @@ if (NOT ARM) # XXX i#1726: port to ARM
     "${nudge_test_args}--;${infloop_path}" "" OFF "")
 endif ()
 if (TOOL_DR_MEMORY AND WIN32)
-  # See above for why passing -lib_blacklist_frames 0.
+  # See above for why passing -lib_blocklist_frames 0.
   set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
   newtest_nobuild(nudge_handle run_app_in_bg
     "-out;./nudge-handle-out"
@@ -976,27 +976,27 @@ file(REMOVE \${${locvar_name}})\n")
 endif (WIN32)
 
 if (TOOL_DR_MEMORY)
-  # We call this "whitelist_app" to more easily pattern-match vs its lib.
+  # We call this "allowlist_app" to more easily pattern-match vs its lib.
   # XXX i#1320: have runtest.cmake check potential_errors.txt too.
-  newtest_ex(whitelist_app whitelist.cpp ""
+  newtest_ex(allowlist_app allowlist.cpp ""
     # Exclude the lib's errors
-    "-lib_whitelist;*whitelist_app*;-lib_whitelist_frames;1"
-    "" OFF "whitelist" 0)
-  tobuild_lib(whitelist_lib whitelist_lib.cpp "" "")
-  target_link_libraries(whitelist_app whitelist_lib)
-  newtest_nobuild(whitelist_justlib whitelist_app ""
+    "-lib_allowlist;*allowlist_app*;-lib_allowlist_frames;1"
+    "" OFF "allowlist" 0)
+  tobuild_lib(allowlist_lib allowlist_lib.cpp "" "")
+  target_link_libraries(allowlist_app allowlist_lib)
+  newtest_nobuild(allowlist_justlib allowlist_app ""
     # Exclude the app's errors
-    "-lib_whitelist;*whitelist_lib*;-lib_whitelist_frames;1"
-    "" OFF "whitelist_justlib")
-  newtest_nobuild(whitelist_src whitelist_app ""
-    # Test -src_whitelist
-    "-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
-    "" OFF "whitelist")
-  newtest_nobuild(whitelist_srclib whitelist_app ""
-    # Test -src_whitelist in combination with -lib_whitelist.
+    "-lib_allowlist;*allowlist_lib*;-lib_allowlist_frames;1"
+    "" OFF "allowlist_justlib")
+  newtest_nobuild(allowlist_src allowlist_app ""
+    # Test -src_allowlist
+    "-src_allowlist;*allowlist.cpp;-src_allowlist_frames;1"
+    "" OFF "allowlist")
+  newtest_nobuild(allowlist_srclib allowlist_app ""
+    # Test -src_allowlist in combination with -lib_allowlist.
     # Not a great test as the lib selects both errors anyway.
-    "-lib_whitelist;*whitelist*;-lib_whitelist_frames;1;-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
-    "" OFF "whitelist")
+    "-lib_allowlist;*allowlist*;-lib_allowlist_frames;1;-src_allowlist;*allowlist.cpp;-src_allowlist_frames;1"
+    "" OFF "allowlist")
 endif (TOOL_DR_MEMORY)
 
 if (APPLE)
@@ -1038,9 +1038,9 @@ else ()
     "" OFF "track_origins" 0)
   if (WIN32)
     newtest_ex(handle handle.cpp ""
-      "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blacklist_frames;0" ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blocklist_frames;0" ""
       OFF "" 0)
-    newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blacklist_frames;0" "" OFF
+    newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blocklist_frames;0" "" OFF
       "procterm.addronly" 0)
   endif (WIN32)
 

@@ -550,32 +550,32 @@ used or read until deep into a system library callstack, though they are
 suspected of being false positives due to being reported in several layers
 of system library code.  The pattern checking used to identify system
 libraries whose errors should be reported separately can be tuned via two
-features, a blacklist and a whitelist.  Each feature contains patterns
+features, a blocklist and a allowlist.  Each feature contains patterns
 against which file paths are matched.  These patterns can contain \p * or
 \p ? wildcards.
 
-The whitelist takes precedence and if set the blacklist is ignored.  The
-whitelist is empty by default.  The option \p -lib_whitelist contains a
+The allowlist takes precedence and if set the blocklist is ignored.  The
+allowlist is empty by default.  The option \p -lib_allowlist contains a
 ;-separated sequence of patterns against which library or executable paths
-are matched.  The option \p -lib_whitelist_frames controls how many of the
-top frames in each callstack are matched.  If a whitelist pattern appears
+are matched.  The option \p -lib_allowlist_frames controls how many of the
+top frames in each callstack are matched.  If a allowlist pattern appears
 in any of those top frames, an error is reported normally.  Otherwise, it
 is separated as a potential error.  The expected usage model is to populate
-the whitelist with a list of paths in which application libraries or
+the allowlist with a list of paths in which application libraries or
 executables reside, to limit the error reports to those paths.
 
-The blacklist is controlled by parallel options \p -lib_blacklist and \p
--lib_blacklist_frames.  Running with <tt>-lib_blacklist_frames 0</tt> will
-disable the blacklist and report all errors as application errors in \p
+The blocklist is controlled by parallel options \p -lib_blocklist and \p
+-lib_blocklist_frames.  Running with <tt>-lib_blocklist_frames 0</tt> will
+disable the blocklist and report all errors as application errors in \p
 results.txt.  When non-zero, it controls how many of the top frames must
-all match the blacklist before an error is separated as a potential error.
-The blacklist is only enabled by default on Windows, where it is set to \p
+all match the blocklist before an error is separated as a potential error.
+The blocklist is only enabled by default on Windows, where it is set to \p
 $SYSTEMROOT*.d??.
 
-An additional whitelist based on source file paths is available under the
-options \p -src_whitelist and \p -src_whitelist_frames.  If combined with
-\p -lib_whitelist, the library-based whitelist acts first, with the source
-file-based whitelist filtering the errors that remain.
+An additional allowlist based on source file paths is available under the
+options \p -src_allowlist and \p -src_allowlist_frames.  If combined with
+\p -lib_allowlist, the library-based allowlist acts first, with the source
+file-based allowlist filtering the errors that remain.
 
 If many false positives are being reported and additional performance is
 desired at the risk of not detecting all application errors, Dr. Memory's
@@ -585,20 +585,20 @@ leaks.
 **********
 \subsection sec_no_uninit_checks Eliminating Uninitialized Read Checks By Library
 
-Dr. Memory has an additional type of blacklist beyond the blacklist for
+Dr. Memory has an additional type of blocklist beyond the blocklist for
 system library errors described in \ref sec_potential_errors.  This
-blacklist is controlled by the option \p -check_uninit_blacklist, which is
-a ,-separated list of library names.  Unlike the other blacklist, these
+blocklist is controlled by the option \p -check_uninit_blocklist, which is
+a ,-separated list of library names.  Unlike the other blocklist, these
 names are basenames and not whole paths, as they are meant to correspond to
 library names given in suppression files.  For each library on this list,
 Dr. Memory will not report any uninitialized reads while directly executing the
 library's code.  This is a more efficient means to eliminate
-errors than using suppressions or the \p -lib_blacklist option, but it only
+errors than using suppressions or the \p -lib_blocklist option, but it only
 applies to uninitialized reads.
 
 When Dr. Memory sees a whole-module suppression -- a suppression containing
 only a single frame of the form "name!*" -- it automatically adds "name" to
-the \p -check_uninit_blacklist option list.
+the \p -check_uninit_blocklist option list.
 
 ********************
 \section sec_children Controlling Child Processes
