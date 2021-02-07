@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2021 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -211,6 +211,8 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'wrap_cs2bugMTd' => 1,
                 'wrap_operatorsMDd' => 1,
                 'leak_string' => 1,
+                # TODO i#2375: Fix DR to avoid test failures.
+                'umbra_client_faulty_redzone' => 1,
                 );
             # FIXME i#2180: ignoring certain AppVeyor x64-full-mode failures until
             # we get all tests passing.
