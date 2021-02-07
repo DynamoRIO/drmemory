@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1424,16 +1424,16 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* Easier for the front-end to get the $SYSTEMROOT env var, so we set the
-     * default value here.  We add ` to rule out -lib_blocklist_frames.
+     * default value here.
      */
-    if (strstr(client_ops, "-lib_blocklist`") == NULL) {
+    if (strstr(client_ops, "-lib_blocklist_default") == NULL) {
         if (drfront_get_env_var("SYSTEMROOT", buf, BUFFER_SIZE_ELEMENTS(buf)) ==
             DRFRONT_SUCCESS) {
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops), cliops_sofar, len,
                      /* Add .d?? to still report errors in app .exe but not
                       * in *.dll or *.drv.
                       */
-                     "-lib_blocklist `%s*.d??",
+                     "-lib_blocklist_default `%s*.d??",
                      buf);
             /* i#1755: consider "C:\Program Files\Common Files\Microsoft Shared" to
              * be on the blocklist.
