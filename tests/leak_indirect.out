@@ -24,14 +24,14 @@ all done
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-%if X32
 %ANYLINE
 ~~Dr.M~~       2 unique,     2 total,     96 byte(s) of leak(s)
 ~~Dr.M~~       2 unique,     2 total,     80 byte(s) of leak(s)
+~~Dr.M~~       2 unique,     2 total,    192 byte(s) of leak(s)
 %ENDANYLINE
+%if X32
 ~~Dr.M~~       1 unique,     1 total,     16 byte(s) of possible leak(s)
 %endif
 %if X64
-~~Dr.M~~       2 unique,     2 total,    192 byte(s) of leak(s)
 ~~Dr.M~~       1 unique,     1 total,     32 byte(s) of possible leak(s)
 %endif
