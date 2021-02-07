@@ -589,9 +589,12 @@ results.txt.  When non-zero, it controls how many of the top frames must
 all match the blocklist before an error is separated as a potential error.
 I.e., there must be \p -lib_blocklist_frames frames in a row that match a
 blocklist entry (unlike the allowlist where only a single frame must match)..
-The blocklist is only enabled by default on Windows, where its default value
-matches libraries in $SYSTEMROOT and in the "Microsoft Shared"
-directories inside $CommonProgramFiles and $CommonProgramFiles(x86).
+The blocklist is only enabled by default on Windows.  There is a separate option
+\p -lib_blocklist_default which is appended to \p -lib_blocklist and whose
+default value matches libraries in $SYSTEMROOT and in the "Microsoft Shared"
+directories inside $CommonProgramFiles and $CommonProgramFiles(x86).  This
+separate option is intended to not be set by users; instead, users set the \p
+-lib_blocklist option and so avoid affecting the default values.
 
 An additional allowlist based on source file paths is available under the
 options \p -src_allowlist and \p -src_allowlist_frames.  If combined with

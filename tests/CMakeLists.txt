@@ -847,8 +847,11 @@ if (TOOL_DR_MEMORY)
       "" OFF "" 0)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only" "" OFF "handle_only")
-    # XXX i#1320: have runtest.cmake check potential_errors.txt too
-    newtest_ex(blocklist blocklist.cpp "" "-lib_blocklist_frames;1" "" OFF "" 0)
+    # XXX i#1320: have runtest.cmake check potential_errors.txt too.
+    # We set the blocklist as a sanity check that it does not clear the default
+    # list.
+    newtest_ex(blocklist blocklist.cpp ""
+      "-lib_blocklist_frames;1;-lib_blocklist;nomatch" "" OFF "" 0)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -996,6 +999,9 @@ if (TOOL_DR_MEMORY)
     # Test -src_allowlist in combination with -lib_allowlist.
     # Not a great test as the lib selects both errors anyway.
     "-lib_allowlist;*allowlist*;-lib_allowlist_frames;1;-src_allowlist;*allowlist.cpp;-src_allowlist_frames;1"
+    "" OFF "allowlist")
+  newtest_nobuild(blocklist_nolib allowlist_app ""
+    "-lib_blocklist;*allowlist_lib*;-lib_blocklist_frames;1"
     "" OFF "allowlist")
 endif (TOOL_DR_MEMORY)
 

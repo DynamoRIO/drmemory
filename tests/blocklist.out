@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2021 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -27,4 +27,7 @@
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 ~~Dr.M~~ ERRORS IGNORED:
+%ANYLINE
 ~~Dr.M~~       1 potential error(s) (suspected false positives)
+~~Dr.M~~       2 potential error(s) (suspected false positives)
+%ENDANYLINE

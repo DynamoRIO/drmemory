@@ -1219,8 +1219,10 @@ callstack_module_load_cb(const char *path, const char *modname, byte *base)
     /* We cache in the callstack module to avoid re-matching on every frame */
     /* XXX: what about '\' vs '/' ? */
     mod->on_blocklist = (path != NULL && options.lib_blocklist[0] != '\0' &&
-                         text_matches_any_pattern(path, options.lib_blocklist,
-                                                  FILESYS_CASELESS));
+                         (text_matches_any_pattern(path, options.lib_blocklist,
+                                                   FILESYS_CASELESS) ||
+                          text_matches_any_pattern(path, options.lib_blocklist_default,
+                                                   FILESYS_CASELESS)));
     mod->on_allowlist = (path != NULL && options.lib_allowlist[0] != '\0' &&
                          text_matches_any_pattern(path, options.lib_allowlist,
                                                   FILESYS_CASELESS));
@@ -1292,7 +1294,8 @@ check_blocklist_and_allowlist(error_callstack_t *ecs, uint start)
     }
     if (options.src_allowlist_frames > 0 && options.src_allowlist[0] != '\0')
         return check_src_allowlist(ecs, start);
-    if (options.lib_blocklist_frames > 0 && options.lib_blocklist[0] != '\0') {
+    if (options.lib_blocklist_frames > 0 &&
+        (options.lib_blocklist[0] != '\0' || options.lib_blocklist_default[0] != '\0')) {
         for (i = 0; i < ecs->scs.num_frames && i < options.lib_blocklist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
@@ -1497,6 +1500,8 @@ report_init(void)
     /* text_matches_any_pattern also wants these w/ nulls, not commas */
     convert_commas_to_nulls(options.lib_blocklist,
                             BUFFER_SIZE_ELEMENTS(options.lib_blocklist));
+    convert_commas_to_nulls(options.lib_blocklist_default,
+                            BUFFER_SIZE_ELEMENTS(options.lib_blocklist_default));
     convert_commas_to_nulls(options.lib_allowlist,
                             BUFFER_SIZE_ELEMENTS(options.lib_allowlist));
     convert_commas_to_nulls(options.src_allowlist,
@@ -1592,9 +1597,13 @@ report_init(void)
                   "These errors did not match the src allowlist '%s' for %d frames."NL,
                   options.src_allowlist, options.src_allowlist_frames);
         }
-    } else if (options.lib_blocklist_frames > 0 && options.lib_blocklist[0] != '\0') {
-        ELOGF(0, f_potential, "These errors matched the blocklist '%s' for %d frames."NL,
-              options.lib_blocklist, options.lib_blocklist_frames);
+    } else if (options.lib_blocklist_frames > 0 &&
+               (options.lib_blocklist[0] != '\0' ||
+                options.lib_blocklist_default[0] != '\0')) {
+        ELOGF(0, f_potential,
+              "These errors matched the blocklist '%s,%s' for %d frames."NL,
+              options.lib_blocklist, options.lib_blocklist_default,
+              options.lib_blocklist_frames);
         ELOGF(0, f_potential, "Run with -lib_blocklist_frames 0 to treat these as "
               "regular errors."NL);
     }
