@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2016-2017 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2021 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -24,7 +24,7 @@
 leak_indirect.c:48
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
 leak_indirect.c:53
-: LEAK 16 direct bytes + 16 indirect bytes
+: LEAK 16 direct bytes +
 leak_indirect.c:54
 %endif
 %if X64
