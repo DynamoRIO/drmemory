@@ -1219,12 +1219,12 @@ callstack_module_load_cb(const char *path, const char *modname, byte *base)
     /* We cache in the callstack module to avoid re-matching on every frame */
     /* XXX: what about '\' vs '/' ? */
     mod->on_blocklist = (path != NULL &&
-                         (options.lib_blocklist[0] != '\0' &&
-                          text_matches_any_pattern(path, options.lib_blocklist,
+                         ((options.lib_blocklist[0] != '\0' &&
+                           text_matches_any_pattern(path, options.lib_blocklist,
                                                    FILESYS_CASELESS)) ||
-                         (options.lib_blocklist_default[0] != '\0' &&
-                          text_matches_any_pattern(path, options.lib_blocklist_default,
-                                                   FILESYS_CASELESS)));
+                          (options.lib_blocklist_default[0] != '\0' &&
+                           text_matches_any_pattern(path, options.lib_blocklist_default,
+                                                    FILESYS_CASELESS))));
     mod->on_allowlist = (path != NULL && options.lib_allowlist[0] != '\0' &&
                          text_matches_any_pattern(path, options.lib_allowlist,
                                                   FILESYS_CASELESS));
