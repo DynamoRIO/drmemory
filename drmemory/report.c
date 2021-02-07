@@ -574,7 +574,7 @@ suppress_spec_finish(suppress_spec_t *spec,
             LOG(1, "Found whole-module supp: added %s to -check_uninit_blocklist\n",
                 spec->frames[0].modname);
             DOLOG(2, {
-                LOG(2, "Blacklist is now: ");
+                LOG(2, "Blocklist is now: ");
                 print_double_null_term_string(options.check_uninit_blocklist, ", ");
                 LOG(2, "\n");
             });
@@ -1230,7 +1230,7 @@ callstack_module_load_cb(const char *path, const char *modname, byte *base)
         (modname != NULL && options.check_uninit_blocklist[0] != '\0' &&
          text_matches_any_pattern(modname, options.check_uninit_blocklist,
                                   FILESYS_CASELESS));
-    LOG(1, "%s: %s => black=%d white=%d uninit=%d\n", __FUNCTION__, path,
+    LOG(1, "%s: %s => block=%d allow=%d uninit=%d\n", __FUNCTION__, path,
         mod->on_blocklist, mod->on_allowlist, mod->on_check_uninit_blocklist);
     return (void *) mod;
 }
@@ -1273,8 +1273,8 @@ static bool
 check_blocklist_and_allowlist(error_callstack_t *ecs, uint start)
 {
     uint i;
-    /* We don't support combining black + white: for us, if white is set,
-     * we only report what's on white and ignore black.
+    /* We don't support combining block + allow: for us, if allow is set,
+     * we only report what's on allow and ignore block.
      * XXX: I'd report a usage error if user sets both, except
      * currently the blocklist default is passed in from frontend
      * (for ease of getting $SYSTEMROOT env var).
