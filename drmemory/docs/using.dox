@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -524,7 +524,24 @@ For full details on each type of error reported by Dr. Memory, see \ref page_typ
 
 If you would like to attach a debugger at the point an error is first
 detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
-options (see \ref page_options).
+options (see \ref page_options).  Unfortunately, full debugger integration is
+not yet implemented, and the current PC and top few callstack frames are inside
+the Dr. Memory tool when attaching at the pause point.  When using the Debugging
+Tools for Windows debugger, switching to a pure application context can be done
+using a script provided by DynamoRIO
+<a href="https://github.com/DynamoRIO/dynamorio/blob/master/tools/windbg-scripts/load_syms64">for 64-bit</a> or
+<a href="https://github.com/DynamoRIO/dynamorio/blob/master/tools/windbg-scripts/load_syms">for 32-bit</a> to load the tool symbols.  Once loaded, use the CONTEXT local variable
+provided by Dr. Memory in the drmemorylib!report_pause_at_error frame to
+swap to the application context via the debugger command ".cxr".  This would look
+something like this from the windbg prompt:
+\verbatim
+  $><c:\downloaded\path\to\load_syms64
+  ~0s
+  kn
+  .frame 4
+  .cxr cxt
+  kn
+\endverbatim
 
 **********
 \subsection sec_potential_errors Application Versus System Library Errors
@@ -550,7 +567,7 @@ used or read until deep into a system library callstack, though they are
 suspected of being false positives due to being reported in several layers
 of system library code.  The pattern checking used to identify system
 libraries whose errors should be reported separately can be tuned via two
-features, a blocklist and a allowlist.  Each feature contains patterns
+features, a blocklist and an allowlist.  Each feature contains patterns
 against which file paths are matched.  These patterns can contain \p * or
 \p ? wildcards.
 
@@ -558,8 +575,9 @@ The allowlist takes precedence and if set the blocklist is ignored.  The
 allowlist is empty by default.  The option \p -lib_allowlist contains a
 ;-separated sequence of patterns against which library or executable paths
 are matched.  The option \p -lib_allowlist_frames controls how many of the
-top frames in each callstack are matched.  If a allowlist pattern appears
-in any of those top frames, an error is reported normally.  Otherwise, it
+frames in each callstack, starting from the top frame, are examined.
+If an allowlist pattern appears in any one or more
+of those top frames, an error is reported normally.  Otherwise, it
 is separated as a potential error.  The expected usage model is to populate
 the allowlist with a list of paths in which application libraries or
 executables reside, to limit the error reports to those paths.
@@ -569,8 +587,11 @@ The blocklist is controlled by parallel options \p -lib_blocklist and \p
 disable the blocklist and report all errors as application errors in \p
 results.txt.  When non-zero, it controls how many of the top frames must
 all match the blocklist before an error is separated as a potential error.
-The blocklist is only enabled by default on Windows, where it is set to \p
-$SYSTEMROOT*.d??.
+I.e., there must be \p -lib_blocklist_frames frames in a row that match a
+blocklist entry (unlike the allowlist where only a single frame must match)..
+The blocklist is only enabled by default on Windows, where its default value
+matches libraries in $SYSTEMROOT and in the "Microsoft Shared"
+directories inside $CommonProgramFiles and $CommonProgramFiles(x86).
 
 An additional allowlist based on source file paths is available under the
 options \p -src_allowlist and \p -src_allowlist_frames.  If combined with
