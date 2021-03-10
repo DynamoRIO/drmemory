@@ -295,6 +295,13 @@ file_is_readable(char *path)
     return (drfront_access(path, DRFRONT_READ, &ret) == DRFRONT_SUCCESS && ret);
 }
 
+static bool
+file_is_executable(char *path)
+{
+    bool ret = false;
+    return (drfront_access(path, DRFRONT_EXEC, &ret) == DRFRONT_SUCCESS && ret);
+}
+
 static void
 get_absolute_path(const char *src, char *buf, size_t buflen/*# elements*/)
 {
@@ -1297,7 +1304,7 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
-    if (!file_is_readable(dr_root)) {
+    if (!file_is_executable(dr_root)) {
         fatal("invalid -dr_root %s", dr_root);
         goto error; /* actually won't get here */
     }
