@@ -77,97 +77,117 @@ else (WIN32)
   endif (APPLE)
 endif (WIN32)
 
-set(options_for_docs "${PROJECT_BINARY_DIR}/docs/options-docs.dox.in")
-
-add_custom_command(
-  OUTPUT "${options_for_docs}"
-  DEPENDS "${PROJECT_SOURCE_DIR}/common/options-docs.c"
-  "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
-  COMMAND ${CMAKE_CPP_FOR_OPS}
-  ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-docs.c"
-  ${CPP_INC}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_docs}"
-  VERBATIM)
-
 include(${DynamoRIO_DIR}/docs_doxyutils.cmake)
 check_doxygen_version(${DOXYGEN_EXECUTABLE} "${DOXYGEN_VERSION}" DOXYGEN_VERSION)
 
-set(doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
-add_custom_command(
-  OUTPUT ${doxyfile}
-  DEPENDS ${dox_files}
-          ${headers}
-          ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
-          ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
-          ${PROJECT_SOURCE_DIR}/${tooldir}/docs/options-base.dox.in
-          ${options_for_docs}
-  COMMAND ${CMAKE_COMMAND}
-  # script does not inherit any vars so we must pass them all in
-  # Be sure to put a space after -D for 1st arg at least.
-  # When adding new DRMF extension docs, also add to Doxyfile.in and to
-  # DR's api/docs/ext.gendox.
-  ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
-       -D
-       srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox\;${PROJECT_SOURCE_DIR}/umbra/umbra.dox\;${PROJECT_SOURCE_DIR}/drfuzz/drfuzz.dox
-       -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
-       -Doutfile=${doxyfile}
-       -Dversion_number=${TOOL_VERSION_NUMBER}
-       -DDOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
-       -DVMKERNEL=${VMKERNEL}
-       -DPERL_TO_EXE=${PERL_TO_EXE}
-       -Doptions_for_docs=${options_for_docs}
-       -Dtoolname=${toolname}
-       -Dtoolname_cap_spc=${toolname_cap_spc}
-       -Ddoxygen_ver=${DOXYGEN_VERSION}
-       -DDynamoRIO_DIR=${DynamoRIO_DIR}
-       -DTOOL_DR_MEMORY=${TOOL_DR_MEMORY}
-       -DPACKAGED_WITH_DYNAMORIO=${BUILDING_SUB_PACKAGE}
-       -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
-  VERBATIM # recommended: p260
-  )
+macro (generate_html name dest_dir embeddable)
+  set(options_for_docs "${dest_dir}/options-docs.dox.in")
 
-set(docsgen ${CMAKE_CURRENT_BINARY_DIR}/html/index.html)
-add_custom_command(
-  OUTPUT ${docsgen} # among other files
-  DEPENDS ${dox_files} ${dox_files_gen} ${sub_files} ${in_files} ${imgs}
-          ${footer}
-          ${doxyfile}
-          ${DynamoRIO_DIR}/docs_rundoxygen.cmake
-  # We want doxygen to fail if it has warnings like "can't find header
-  # files" so we run it through a script
-  COMMAND ${CMAKE_COMMAND}
-  # Be sure to put a space after -D for 1st arg at least
-  ARGS -D DOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
-       -Ddoxygen_ver=${DOXYGEN_VERSION}
-       -Dversion_number=${TOOL_VERSION_NUMBER}
-       -Dmodule_string_long="DRMF Modules"
-       -Dmodule_string_short="DRMF Module"
-       -Dfiles_string="DRMF Files"
-       -Dstructs_string="DRMF Data Structures"
-       -Dhome_url="http://www.drmemory.org"
-       -Dhome_title="Dr. Memory Home Page"
-       # XXX: once we have a logo (in progress), put it here
-       -Dlogo_imgfile="favicon.png"
-       -P ${DynamoRIO_DIR}/docs_rundoxygen.cmake
-  VERBATIM # recommended: p260
-  )
-set_directory_properties(PROPERTIES
-  ADDITIONAL_MAKE_CLEAN_FILES "html;latex;rtf")
+  add_custom_command(
+    OUTPUT "${options_for_docs}"
+    DEPENDS "${PROJECT_SOURCE_DIR}/common/options-docs.c"
+    "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
+    COMMAND ${CMAKE_CPP_FOR_OPS}
+    ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-docs.c"
+    ${CPP_INC}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_docs}"
+    VERBATIM)
 
-add_custom_target(htmldocs ALL
-  DEPENDS ${doxyfile}
-          ${footer}
-          ${docsgen}
-  )
+  set(doxyfile ${dest_dir}/Doxyfile)
+  add_custom_command(
+    OUTPUT ${doxyfile}
+    DEPENDS ${dox_files}
+            ${headers}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
+            ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
+            ${PROJECT_SOURCE_DIR}/${tooldir}/docs/options-base.dox.in
+            ${options_for_docs}
+    COMMAND ${CMAKE_COMMAND}
+    # script does not inherit any vars so we must pass them all in
+    # Be sure to put a space after -D for 1st arg at least.
+    # When adding new DRMF extension docs, also add to Doxyfile.in and to
+    # DR's api/docs/ext.gendox.
+    ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
+         -D
+         srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox\;${PROJECT_SOURCE_DIR}/umbra/umbra.dox\;${PROJECT_SOURCE_DIR}/drfuzz/drfuzz.dox
+         -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
+         -Ddest_dir=${dest_dir}
+         -Doutfile=${doxyfile}
+         -Dembeddable=${embeddable}
+         -Dversion_number=${TOOL_VERSION_NUMBER}
+         -DDOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
+         -DVMKERNEL=${VMKERNEL}
+         -DPERL_TO_EXE=${PERL_TO_EXE}
+         -Doptions_for_docs=${options_for_docs}
+         -Dtoolname=${toolname}
+         -Dtoolname_cap_spc=${toolname_cap_spc}
+         -Ddoxygen_ver=${DOXYGEN_VERSION}
+         -DDynamoRIO_DIR=${DynamoRIO_DIR}
+         -DTOOL_DR_MEMORY=${TOOL_DR_MEMORY}
+         -DPACKAGED_WITH_DYNAMORIO=${BUILDING_SUB_PACKAGE}
+         -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
+    WORKING_DIRECTORY ${dest_dir}
+    VERBATIM # recommended: p260
+    )
 
-# XXX: once we have a logo (in progress), put it here
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.png
-  ${CMAKE_CURRENT_BINARY_DIR}/html/favicon.png
-  COPYONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
-  ${CMAKE_CURRENT_BINARY_DIR}/html/favicon.ico
-  COPYONLY)
+  set(docsgen ${dest_dir}/html/index.html)
+  add_custom_command(
+    OUTPUT ${docsgen} # among other files
+    DEPENDS ${dox_files} ${dox_files_gen} ${sub_files} ${in_files} ${imgs}
+            ${footer}
+            ${doxyfile}
+            ${CMAKE_CURRENT_SOURCE_DIR}/CMake_rundoxygen.cmake
+    # We want doxygen to fail if it has warnings like "can't find header
+    # files" so we run it through a script
+    COMMAND ${CMAKE_COMMAND}
+    # Be sure to put a space after -D for 1st arg at least
+    ARGS -D DOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
+         -Ddoxygen_ver=${DOXYGEN_VERSION}
+         -Dversion_number=${TOOL_VERSION_NUMBER}
+         -Dmodule_string_long="DRMF Modules"
+         -Dmodule_string_short="DRMF Module"
+         -Dfiles_string="DRMF Files"
+         -Dstructs_string="DRMF Data Structures"
+         -Dhome_url="http://www.drmemory.org"
+         -Dhome_title="Dr. Memory Home Page"
+         -Dlogo_imgfile="favicon.png"
+         -Dembeddable=${embeddable}
+         -Dproj_srcdir=${PROJECT_SOURCE_DIR}
+         -Dproj_bindir=${PROJECT_BINARY_DIR}
+         # XXX: We used to share DR's code at ${DynamoRIO_DIR}/docs_rundoxygen.cmake
+         # but for embedded docs we have custom steps.
+         # We could try to share the rest.
+         -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_rundoxygen.cmake
+    WORKING_DIRECTORY ${dest_dir}
+    VERBATIM # recommended: p260
+    )
+  set_directory_properties(PROPERTIES
+    ADDITIONAL_MAKE_CLEAN_FILES "html;latex;rtf")
 
-# FIXME: generate pdf: check for epstopdf and latex first
+  add_custom_target(${name} ALL
+    DEPENDS ${doxyfile}
+            ${dox_files}
+            ${footer}
+            ${docsgen}
+    )
+
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.png
+    ${dest_dir}/html/favicon.png
+    COPYONLY)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
+    ${dest_dir}/html/favicon.ico
+    COPYONLY)
+endmacro()
+
+generate_html(htmldocs ${CMAKE_CURRENT_BINARY_DIR} OFF)
+
+# We create two output versions of the docs:
+# 1) A standalone html version for local viewing.
+# 2) A stripped-down version suitable for embedding on our web site.
+set(embed_outdir ${CMAKE_CURRENT_BINARY_DIR}/embed)
+file(MAKE_DIRECTORY ${embed_outdir})
+generate_html(embed_docs ${embed_outdir} ON)
+# We must build the treeview version first, as we use its menu files.
+add_dependencies(embed_docs htmldocs)
 
 ###########################################################################
 # install rules
@@ -175,6 +195,11 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
 install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/html
   DESTINATION "${INSTALL_PREFIX}${toolname}/docs"
+  )
+
+install(DIRECTORY
+  ${CMAKE_CURRENT_BINARY_DIR}/embed/html
+  DESTINATION "${INSTALL_PREFIX}${toolname}/docs_embed"
   )
 
 # drmemory/docs/html/index.html is hard to find, so add a more-visible

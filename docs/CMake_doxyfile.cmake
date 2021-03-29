@@ -52,8 +52,10 @@
 # inputs:
 # * srcdir
 # * srclist
+# * dest_dir
 # * commondir
 # * outfile
+# * embeddable
 # * version_number
 # * DOXYGEN_EXECUTABLE
 # * VMKERNEL
@@ -65,7 +67,7 @@
 # * TOOL_DR_MEMORY
 # * PACKAGED_WITH_DYNAMORIO
 
-set(outdir "${CMAKE_CURRENT_BINARY_DIR}")
+set(outdir "${dest_dir}")
 get_filename_component(optionsdir "${options_for_docs}" PATH)
 # store cmake paths prior to cygwin conversion
 set(srcdir_orig "${srcdir}")
@@ -197,10 +199,21 @@ if (PACKAGED_WITH_DYNAMORIO)
     "\\1 PACKAGED_WITH_DYNAMORIO" string "${string}")
 endif()
 
+if (embeddable)
+  # Turn off the frames.
+  string(REGEX REPLACE "(GENERATE_TREEVIEW[ \t]*= )YES" "\\1 NO" string "${string}")
+  # Turn off the confusing search box.
+  string(REGEX REPLACE "(SEARCHENGINE[ \t]*= )YES" "\\1 NO" string "${string}")
+endif ()
+
 # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
 set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h ${commondir}/../drfuzz/drfuzz.h ${commondir}/../drfuzz/drfuzz_mutator.h")
 set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
-set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
+if (embeddable)
+  set(headers "${headers} ${outdir}/../../drmf/include/drmemory_framework.h")
+else ()
+  set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
+endif ()
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
     "using.dox" "using.dox errors.dox reports.dox light.dox fuzzer.dox coverage.dox"
