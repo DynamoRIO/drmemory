@@ -157,6 +157,11 @@ if (embeddable)
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/html/keywords.js "---\nlayout: null\n---\n")
   file(GLOB all_html ${CMAKE_CURRENT_BINARY_DIR}/html/*.html)
   foreach (html ${all_html})
+    if (html MATCHES "page_chinese.html")
+      # I had trouble getting the raw html through doxygen so I'm using
+      # chinese.md in drmemory.github.io instead.
+      continue ()
+    endif ()
     file(READ ${html} string)
     # Remove headers and body tag.
     string(REGEX REPLACE "<!-- HTML header.*<body>\n" "" string "${string}")
@@ -246,6 +251,8 @@ if (embeddable)
     # Ask jekyll to inline, instead of just naming for JS.
     string(REGEX REPLACE ", \"([^\"]+)\" \\]" ", {% include_relative \\1.js %} ]"
       string "${string}")
+    # Put in the Chinese menu entry.
+    string(REGEX REPLACE "Chinese Quickstart Instructions" "快速入门" string "${string}")
     if (js MATCHES "navtreedata.js")
       # Add a jekyll header.
       set(string "---\npermalink: /navtreedata.js\n---\n${string}")

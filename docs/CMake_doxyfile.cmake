@@ -216,10 +216,9 @@ else ()
 endif ()
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
-    "using.dox" "using.dox errors.dox reports.dox light.dox fuzzer.dox coverage.dox"
+    "using.dox"
+    "using.dox errors.dox reports.dox light.dox chinese.dox fuzzer.dox coverage.dox tools.dox ${headers}"
     string "${string}")
-  string(REGEX REPLACE
-    "main.dox" "main.dox tools.dox ${headers}" string "${string}")
 else ()
   string(REGEX REPLACE
     "main.dox" "main.dox ${headers}" string "${string}")

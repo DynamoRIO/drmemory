@@ -104,9 +104,9 @@ WARN_LOGFILE           =
 # top-level pages (we insert additional filenames here in CMake_doxyfile.cmake).
 # When adding new DRMF extension docs, also add to docs/CMakeLists.txt and
 # to DR's api/docs/ext.gendox.
-INPUT                  = using.dox \
-                         options-docs.dox release.dox main.dox \
-                         drmf.dox drsyscall.dox drsymcache.dox umbra.dox drfuzz.dox
+INPUT                  = main.dox using.dox debugging.dox options-docs.dox release.dox \
+                         drmf.dox drsyscall.dox drsymcache.dox umbra.dox drfuzz.dox \
+                         license.dox
 FILE_PATTERNS          =
 RECURSIVE              = NO
 EXCLUDE                =

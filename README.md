@@ -19,7 +19,7 @@ download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).
 Dr. Memory is built on the [DynamoRIO dynamic instrumentation tool
 plaform](http://dynamorio.org).
 
-![DynamoRIO logo](http://www.burningcutlery.com/images/dynamorio/drlogo.png)
+![Dr. Memory logo](http://www.burningcutlery.com/images/dynamorio/DrMemory-logo.png)
 
 ## Dr. Memory Performance
 
@@ -29,7 +29,7 @@ Dr. Memory](http://www.burningcutlery.com/derek/docs/drmem-CGO11.pdf),
 where we compare the two tools on Linux on the SPECCPU 2006 benchmark
 suite:
 
-![Performance chart](http://dynamorio.org/images/drmem-spec2k6-sm.png)
+![Performance chart](http://burningcutlery.com/images/dynamorio/drmem-spec2k6-sm.png)
 
 (Valgrind is unable to run 434.zeusmp and 447.dealII).
 
