@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -23,7 +23,7 @@
 /**
  ****************************************************************************
  ****************************************************************************
-\mainpage Dr. Memory
+\mainpage Home
 
 Dr. Memory is a memory monitoring tool capable of identifying
 memory-related programming errors such as accesses of uninitialized memory,
@@ -35,151 +35,51 @@ accesses to un-reserved thread local storage slots.
 Dr. Memory operates on unmodified application binaries running on Windows,
 Mac, Linux, or Android on commodity IA-32, AMD64, and ARM hardware.
 
-This document describes how to use Dr. Memory.  It is divided into the
-following sections:
+Dr. Memory is built on the [DynamoRIO](https://dynamorio.org)
+dynamic instrumentation tool platform.
 
-- \ref page_install
-  <br>How to install Dr. Memory onto your computer.
 
-- \ref page_prep
-  <br>Preparing your application to run under Dr. Memory.
+# Downloading Dr. Memory
 
-- \ref page_running
-  <br>How to run your application under Dr. Memory.
+Dr. Memory is released under [an LGPL license](page_license.html).  Windows, Linux, and Mac packages [are available for download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).  The sources are also [browsable](https://github.com/DynamoRIO/drmemory).
 
-\if VMX86_SERVER
-- \subpage page_ESXi
-  <br>Additional instructions when running on ESXi.
-\endif
 
-- \ref page_types
-  <br>Details on the types of errors reported by Dr. Memory.
+# Dr. Memory Performance
 
-- \ref page_reports
-  <br>Suppressing and understanding error reports.
+Dr. Memory is faster than comparable tools, including Valgrind, as shown in our [CGO 2011](http://www.cgo.org) paper [Practical Memory Checking with Dr. Memory](http://www.burningcutlery.com/derek/docs/drmem-CGO11.pdf), where we compare the two tools on Linux on the SPECCPU 2006 benchmark suite:
 
-- \ref page_light
-  <br>A lighter-weight mode for faster execution.
+\image html drmem-spec2k6-sm.png
 
-- \ref page_fuzzer
-  <br>A fuzz testing mode.
+(Valgrind is unable to run 434.zeusmp and 447.dealII).
 
-- \ref page_options
-  <br>Dr. Memory Runtime Option Reference
 
-- \ref page_help
+# Documentation
 
-- \ref page_release_notes
-  <br>Release notes for this release, including current limitations and
-  changes since prior releases.
+Documentation is included in the release package as well as on this site: start with \ref page_install and \ref page_prep.
 
-- \ref page_tools
-  <br>The Dr. Memory package includes additional tools beyond the core
-  Dr. Memory memory monitoring tool.  These additional tools include a
-  system call tracer for Windows and a symbol query tool.
 
-- \ref page_drmf
-  <br>The Dr. Memory Framework, an SDK enabling new tools to be built that
-  leverage Dr. Memory's powerful capabilities for shadowing memory and
-  tracking system calls and memory allocations.
+# System Call Tracer for Windows
 
-- \ref page_license
+The Dr. Memory release includes a \ref page_drstrace.
 
-See the Dr. Memory homepage at http://drmemory.org
-for source code and the latest release.
 
-****************************************************************************
-****************************************************************************
-*/
+# Fuzz Testing Infrastructure
 
-/* It's good to split up large C comments: we've hit some sort of doxygen
- * internal buffering error before if one comment gets too long.
- */
+ Dr. Memory includes Dr. Fuzz, a \ref page_fuzzer, along with a configurable \ref page_drfuzz.  Dr. Fuzz targets in-process function-level fuzzing, repeatedly running a target function while varying the inputs.  It requires no access to source code, and supports code coverage-guided fuzzing, an input corpus, input dictionaries, and custom mutators.
 
-/**
- ****************************************************************************
- ****************************************************************************
-\ifnot VMX86_SERVER
-\page page_help Obtaining Help and Reporting Bugs
+# Discussion List
 
-For questions, bug reports, and discussion, join the <a
-href="http://groups.google.com/group/drmemory-users/">Dr. Memory Users
-group</a>.
+Dr. Memory has its own [discussion list](http://groups.google.com/group/DrMemory-Users).
 
-The Dr. Memory issue tracker is located at:
-http://drmemory.org/issues
 
-If a problem in the Dr. Memory tool itself is encountered, try the
-following steps to help diagnose the issue:
+# Issue Tracker
 
- - Run the debug version of Dr. Memory and of its underlying engine
-   DynamoRIO by passing "-debug -dr_debug -pause_at_assert" to
-   drmemory.exe.  Are any messages reported?
- - Try running light mode ("-light").  Does the issue appear there?
- - Try running "-leaks_only -no_count_leaks -no_track_allocs".  Does that work?
- - Try a recent build from https://github.com/DynamoRIO/drmemory/wiki/Latest-Build
- - Try disabling anti-virus or other invasive software, as it may not
-   interoperate well with Dr. Memory (see \ref sec_interop).
+Dr. Memory has its own [Issue Tracker](https://github.com/DynamoRIO/drmemory/issues).
 
-To supply data for analyzing and fixing a bug, reproduce the problem using
-these options to Dr. Memory:
 
-\code
-  -dr_ops "-dumpcore_mask 0x8bff"
-\endcode
+# Contributing to Dr. Memory
 
-and provide the resulting
-<tt>&lt;appname&gt;.exe.&lt;pid&gt;.00000000.ldmp</tt> file from the
-<tt>&lt;installpath&gt;/drmemory/logs/dynamorio/</tt> directory.  The ldmp should
-compress nicely.
-
-If there is no ldmp produced, try asking for an ldmp on application faults
-and not just tool faults:
-
-\code
-  -dr_ops "-dumpcore_mask 0x48bff"
-\endcode
-
-Additionally, if the run is pretty short, run with the "-verbose 2" option
-and attach the resulting <tt>global.&lt;pid&gt;.log</tt> file from the same
-directory as the results.txt file (compress it if large).
-
-\endif
-****************************************************************************
-****************************************************************************
-*/
-
-/* It's good to split up large C comments: we've hit some sort of doxygen
- * internal buffering error before if one comment gets too long.
- */
-
-/**
- ****************************************************************************
- ****************************************************************************
-\page page_license License for Dr. Memory
-
-\verbinclude license.txt
-
-***************************************************************************
-\htmlonly
-<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td></td></tr></table></td></tr></table></td></tr></table>
-\endhtmlonly
-
-If this package contains a Windows NSIS .exe installer rather than an .msi
-installer, it was created using a standard, unmodified version of NSIS.
-The sources for NSIS can be obtained from:
-\code
-  http://nsis.sourceforge.net/
-\endcode
-
-The version of DynamoRIO packaged with Dr. Memory is a standard, unmodified
-version.  The sources for DynamoRIO can be obtained from:
-\code
-  http://dynamorio.org/
-\endcode
+We welcome contributions to Dr. Memory.  We use the [same code review and workflow as for DynamoRIO](https://dynamorio.org/page_contributing.html).
 
 ****************************************************************************
 ****************************************************************************
