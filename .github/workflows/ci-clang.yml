@@ -62,6 +62,12 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install doxygen jsonlint g++-multilib
 
+    # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
+    - name: Downgrade cmake
+      uses: jwlawson/actions-setup-cmake@v1.8
+      with:
+        cmake-version: '3.19.7'
+
     - name: Run Suite
       working-directory: ${{ github.workspace }}
       run: ./tests/runsuite_wrapper.pl travis
