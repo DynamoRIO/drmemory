@@ -37,6 +37,8 @@
 # define REG_FRAME_PTR DR_REG_XBP
 #elif defined(ARM)
 # define REG_FRAME_PTR DR_REG_FP
+#elif defined(AARCH64)
+# define REG_FRAME_PTR DR_REG_R29
 #endif
 
 /* we only need a little over 2 pages for whole_bb_spills_enabled(): could get
@@ -236,7 +238,7 @@ slowpath_module_unload(void *drcontext, const module_data_t *mod);
  */
 # define CMP_IMMED_OPCODE 0x81
 # define RET_NOIMM_OPCODE 0xc3
-#elif defined(ARM)
+#elif defined(ARM) || defined(AARCH64)
 # define UDF_THUMB_OPCODE 0xde00
 # define UDF_THUMB_LENGTH 2
 # define UDF_ARM_OPCODE 0xe7f000f0
@@ -262,11 +264,30 @@ reg_is_16bit(reg_id_t reg);
 bool
 reg_offs_in_dword(reg_id_t reg);
 
+#ifdef AARCH64
+opnd_t
+get_pushpop_offset(instr_t *inst);
+
 bool
 opc_is_push(uint opc);
 
 bool
+instr_is_push(instr_t *instr);
+#else
+bool
+opc_is_push(uint opc);
+#endif
+
+#ifdef AARCH64
+bool
 opc_is_pop(uint opc);
+
+bool
+instr_is_pop(instr_t *instr);
+#else
+bool
+opc_is_pop(uint opc);
+#endif
 
 bool
 opc_is_stringop(uint opc);

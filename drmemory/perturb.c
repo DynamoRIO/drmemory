@@ -372,7 +372,7 @@ instr_is_synch_op(instr_t *inst)
             (instr_get_opcode(inst) == OP_xchg &&
              !opnd_same(instr_get_src(inst, 0),
                         instr_get_src(inst, 1))));
-#elif defined(ARM)
+#elif defined(ARM) || defined(AARCH64)
     return instr_is_exclusive_store(inst);
 #endif
 }

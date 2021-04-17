@@ -1360,7 +1360,8 @@ leak_scan_for_leaks(bool at_exit)
 
     /* XXX: no MacOS private loader yet */
     /* ARM is always in app state */
-#if !defined(MACOS) && !defined(ARM)
+    //TDOD: is AARCH64 always in app state?
+#if !defined(MACOS) && !defined(ARM) && !defined(AARCH64)
     /* i#1016: ensure the thread performing the leak scan is in DR state,
      * which should be the case regardless of whether at exit or a nudge.
      */

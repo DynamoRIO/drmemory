@@ -108,28 +108,20 @@ function(set_props target)
   # DrMem itself gets ARM from dr_api.h but tests need it on their own:
   if (ARM)
     set(defs ${defs} ARM)
+  elseif (AARCH64)
+    set(defs ${defs} AARCH64)
   endif ()
   if (X86)
     set(defs ${defs} X86)
   endif ()
-  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS
-    "${defs};${DEFINES_NO_D};${DR_DEFINES_NO_D}")
+  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
+    ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
   # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
   # that we add to all tests
   if (nounused_avail)
     append_compile_flags(${target} "-Wno-unused-but-set-variable")
   endif (nounused_avail)
 endfunction(set_props)
-
-function(append_link_flags target newflags)
-  get_target_property(cur_ldflags ${target} LINK_FLAGS)
-  # cmake should add an APPEND option
-  if (NOT cur_ldflags)
-    set(cur_ldflags "")
-  endif (NOT cur_ldflags)
-  set_target_properties(${target} PROPERTIES
-    LINK_FLAGS "${cur_ldflags} ${newflags}")
-endfunction(append_link_flags)
 
 function(tobuild name source)
   set(srcs ${source} ${ARGN})
@@ -146,12 +138,6 @@ function(tobuild name source)
 
   add_executable(${name} ${srcs})
   set_props(${name})
-  if (UNIX)
-    # Older CMake would add this for us, but no longer.  We want global syms
-    # in .dynsym for all our executables, so our tests can use dr_get_proc_address()
-    # to find them.
-    append_link_flags(${name} "-rdynamic")
-  endif ()
 
   if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -160,6 +146,16 @@ function(tobuild name source)
   endif ()
   copy_target_to_device(${name})
 endfunction(tobuild)
+
+function(append_link_flags target newflags)
+  get_target_property(cur_ldflags ${target} LINK_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_ldflags)
+    set(cur_ldflags "")
+  endif (NOT cur_ldflags)
+  set_target_properties(${target} PROPERTIES
+    LINK_FLAGS "${cur_ldflags} ${newflags}")
+endfunction(append_link_flags)
 
 function(tobuild_lib name source cust_flags cust_link)
   add_library(${name} SHARED ${source})
@@ -207,7 +203,11 @@ if (NOT UNIX)
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
   # But for cygwin to find operators we need /MD (until we have online
   # syms)
-  set(LIBC_FLAG "/MT")
+  if (USE_DRSYMS)
+    set(LIBC_FLAG "/MT")
+  else (USE_DRSYMS)
+    set(LIBC_FLAG "/MD")
+  endif (USE_DRSYMS)
   string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
   string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
@@ -289,7 +289,11 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
   # we include absaddr and mod+offs for easier debugging of problems
-  set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
+  if (USE_DRSYMS)
+    set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
+  else (USE_DRSYMS)
+    set(drmem_ops -callstack_style 0x27 ${drmem_ops})
+  endif (USE_DRSYMS)
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
@@ -359,6 +363,7 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
     -D resmark:STRING=${resmark}
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
+    -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D X64:BOOL=${X64}
     -D ARM:BOOL=${ARM}
     -D ANDROID:BOOL=${ANDROID}
@@ -432,7 +437,7 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
 endfunction(newtest_gcc)
 
 # i#1726: ARM is only supported in pattern mode.
-if (NOT ARM)
+if (NOT ARM AND NOT AARCH64)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -443,11 +448,13 @@ if (ARM)
   append_test_compile_flags(free_arm "-marm")
 endif (ARM)
 newtest(badjmp badjmp.c)
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   newtest(registers registers.c)
 endif ()
 if (ARM)
   newtest(asmtest asmtest_arm.c)
+elseif (AARCH64)
+  newtest(asmtest asmtest_aarch64.c)
 else ()
   newtest(asmtest asmtest_x86.c)
 endif ()
@@ -455,7 +462,7 @@ if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
   newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
   if (WIN32)
     # i#489: building /GL results in a double-xor sequence
@@ -498,10 +505,6 @@ newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops
   "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
-if (LINUX)
-  newtest(mmap mmap.c)
-  target_link_libraries(mmap drmemory_annotations)
-endif ()
 newtest(patterns patterns.c)
 newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
@@ -639,7 +642,7 @@ CHECK_C_COMPILER_FLAG("-Wno-alloc-size-larger-than=4294967295"
   HAVE_ALLOC_SIZE_WARNING_INTERNAL)
 
 if (TOOL_DR_MEMORY)
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     # PR 525807: test malloc stacks
     newtest(varstack varstack.c)
   endif ()
@@ -650,7 +653,7 @@ if (TOOL_DR_MEMORY)
   if (NOT X64) # XXX i#111: -esp_fastpath not supported yet
     newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
   endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     if (NOT X64) # FIXME i#111: failing on Travis
       newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
     endif ()
@@ -661,10 +664,12 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
-  if (NOT X64) # FIXME i#111: failing on Travis
-    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
-  endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (USE_DRSYMS)
+    if (NOT X64) # FIXME i#111: failing on Travis
+      newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+    endif ()
+  endif (USE_DRSYMS)
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   endif ()
   # test this option to exercise the realloc handling code.
@@ -679,7 +684,7 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild_ex(blocklist_uninit.op registers ""
       "-check_uninit_blocklist;registers*" "" OFF "registers.blocklist" 0 "")
     newtest_nobuild_ex(blocklist_uninit.supp registers ""
@@ -747,21 +752,37 @@ if (TOOL_DR_MEMORY)
     set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
   # test multiple supp files (i#574)
-  newtest_nobuild(suppress suppress ""
-    "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
-    "" OFF "")
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
+      "" OFF "")
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF "")
+  endif (USE_DRSYMS)
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  newtest_nobuild(suppress-genoffs suppress ""
-    "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-  newtest_nobuild(suppress-gensyms suppress ""
-    "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress ""
+      "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+    newtest_nobuild(suppress-gensyms suppress ""
+      "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
+    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")
+  endif (USE_DRSYMS)
 
   set(nudge_test_args "")
+
+  # FIXME i#446: no support yet for post-process w/ drsyms
+  if (UNIX AND NOT USE_DRSYMS)
+    # test -skip_results + -results (PR 575481)
+    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
+  endif ()
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
@@ -895,13 +916,13 @@ if (TOOL_DR_MEMORY)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild(registers.pattern registers "" "-unaddr_only" "" OFF
       "registers.pattern")
   endif ()
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
   endif ()
 
@@ -931,7 +952,7 @@ else (TOOL_DR_MEMORY)
   set(nudge_test_args "")
 endif (TOOL_DR_MEMORY)
 
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   # nudge test: runs infloop in background and runtest.cmake nudges it
   tobuild(infloop infloop.c)
   get_target_path_for_execution(infloop_path infloop)
@@ -1016,7 +1037,11 @@ else ()
   # default mode == pattern + leaks
   newtest(hello hello.c)
   newtest(free free.c)
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (AARCH64)
+    newtest(malloc malloc.c)
+    newtest(leak_indirect leak_indirect.c)
+  endif ()
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
   endif ()
   newtest(patterns patterns.c)
@@ -1036,7 +1061,7 @@ else ()
   if (NOT ANDROID) # FIXME i#1860: fix for Android
     newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
   endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF
       "registers.pattern" 0)
   endif ()
@@ -1050,7 +1075,7 @@ else ()
       "procterm.addronly" 0)
   endif (WIN32)
 
-  if (NOT ARM) # i#1726: no shadow yet on ARM
+  if (NOT ARM AND NOT AARCH64) # i#1726: no shadow yet on ARM
     # shadow light testing
     newtest_nobuild_ex(hello.shadow hello "" "-pattern;0" "" OFF "hello" 0 "")
     newtest_nobuild_ex(free.shadow free "" "-pattern;0" "" OFF "free" 0 "")
@@ -1064,7 +1089,7 @@ endif ()
 
 # XXX i#1660: gtest is not building with clang 6.0
 # XXX i#1726: need to port app_suite to ARM.
-if (NOT APPLE AND NOT ARM)
+if (NOT APPLE AND NOT ARM AND NOT AARCH64)
   add_subdirectory(app_suite)
   if (TOOL_DR_HEAPSTAT)
     # i#1358: Dr. Heapstat currently can't handle code in the heap

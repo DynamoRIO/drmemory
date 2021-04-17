@@ -44,6 +44,8 @@ enum {
 # define NUM_LIVENESS_REGS IF_X64_ELSE(16, 8)
 #elif defined(ARM)
 # define NUM_LIVENESS_REGS IF_X64_ELSE(32, 16)
+#elif defined(AARCH64)
+# define NUM_LIVENESS_REGS 32
 #endif
 #define  REG_START         IF_X64_ELSE(REG_START_64, REG_START_32)
 
@@ -165,9 +167,12 @@ struct _bb_info_t {
     /* whole-bb spilling (PR 489221) */
     int aflags;
     int aflags_where;
+#ifndef AARCH64
     bool eax_dead;
+#endif
     bool eflags_used;
     bool is_repstr_to_loop;
+    reg_id_t shared_reg;
     scratch_reg_info_t reg1;
     scratch_reg_info_t reg2;
     /* the instr after which we should spill global regs */
@@ -309,11 +314,13 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
  * Utility routines
  */
 
+#ifndef AARCH64
 bool
 instr_is_spill(instr_t *inst);
 
 bool
 instr_is_restore(instr_t *inst);
+#endif
 
 bool
 instr_at_pc_is_restore(void *drcontext, byte *pc);

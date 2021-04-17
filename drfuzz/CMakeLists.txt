@@ -50,7 +50,7 @@ endif ()
 # We save pdb+dll space by not using libc (xref DRi#714).
 # For Android, we allow running w/o a private Bionic.
 # For Linux x86 we need libc for div+mod routines.
-if (WIN32 OR ARM OR ANDROID)
+if (WIN32 OR ARM OR ANDROID OR AARCH64)
   set(DynamoRIO_USE_LIBC OFF)
 endif ()
 

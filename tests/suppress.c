@@ -243,6 +243,9 @@ non_module_test(void)
 #elif defined(ARM)
     /* cmp r0, #0; bx lr */
     int buf[] = { 0xe3500000, 0xe12fff1e };
+#elif defined(AARCH64)
+    /* cmp r0, #0; bx lr */
+    int buf[] = { 0xe3500000, 0xe12fff1e };
 #endif
     int uninit[2];
     int x = 0; /* avoid compiler warning about uninit var use */

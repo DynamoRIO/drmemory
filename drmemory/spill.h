@@ -27,13 +27,14 @@
 #ifndef _SPILL_H_
 #define _SPILL_H_ 1
 
+#include "drvector.h"
 #include "fastpath.h"
 
 #ifdef DEBUG
 # ifdef X86
 /* use seg_tls for actual code */
 #  define EXPECTED_SEG_TLS IF_X64_ELSE(SEG_GS, SEG_FS)
-# elif defined(ARM)
+# elif defined(ARM) || defined(AARCH64)
 #  define EXPECTED_SEG_TLS dr_get_stolen_reg()
 # endif /* X86 */
 #endif /* DEBUG */
@@ -50,12 +51,37 @@ extern reg_id_t seg_tls;
 
 /* We separate the TLS slots we use to send params to the slowpath from those
  * used for reg preservation, to make using drreg simpler.
+ * These are slots within our own TLS.
  */
-#define SPILL_SLOT_SLOW_PARAM SPILL_SLOT_5
-#define SPILL_SLOT_SLOW_RET   SPILL_SLOT_6
+#define SPILL_SLOT_SLOW_PARAM SPILL_SLOT_1
+#define SPILL_SLOT_SLOW_RET   SPILL_SLOT_2
+
+void
+reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
+
+void
+unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where);
 
 int
 spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead);
+
+reg_id_t
+reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                 drvector_t *reg_allowed,
+                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out);
+
+void
+unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
+                   INOUT fastpath_info_t *mi, bool force_restore_now);
+
+/* For translation sharing we reserve the same register across the whole bb. */
+void
+reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                        drvector_t *reg_allowed, INOUT fastpath_info_t *mi);
+
+void
+unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi);
 
 void
 spill_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
@@ -149,5 +175,17 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
 void
 restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, bb_info_t *bi);
+
+void
+print_scratch_reg(void *drcontext, reg_id_t reg, instr_t *where, const char *name,
+                  file_t file);
+
+#ifdef AARCH64
+bool
+instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT);
+
+bool
+instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored OUT);
+#endif
 
 #endif /* _SPILL_H_ */

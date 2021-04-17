@@ -471,7 +471,7 @@ OPTION_CLIENT_BOOL(drmemscope, handle_leaks_only, false,
                    "Puts "TOOLNAME" into a handle-leak-check-only mode that has lower overhead but does not detect other types of errors other than handle leaks in Windows.")
 #endif /* WINDOWS */
 /* XXX i#1726: only pattern is currently supported on ARM */
-OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, IF_ARM_ELSE(false, true),
+OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, IF_AARCH64_ELSE(true, IF_ARM_ELSE(false, true)),
                    "Check for uninitialized read errors",
                    "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
 OPTION_CLIENT_BOOL(drmemscope, check_stack_bounds, false,
@@ -566,7 +566,7 @@ OPTION_CLIENT_BOOL(drmemscope, unaddr_only, false,
                    "Enables a lightweight mode that detects only unaddressable errors",
                    "This option enables a lightweight mode that only detects critical errors of unaddressable accesses on heap data.  This option cannot be used with 'light' or 'check_uninitialized'.")
 /* XXX i#1726: only pattern is currently supported on ARM */
-OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, IF_ARM_ELSE(DEFAULT_PATTERN, 0),
+OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, IF_AARCH64_ELSE(0, IF_ARM_ELSE(DEFAULT_PATTERN, 0)),
                     0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.  The value passed as the pattern must be a non-zero 2-byte value.")
@@ -775,14 +775,14 @@ OPTION_CLIENT_BOOL(internal, track_heap, true,
 OPTION_CLIENT_BOOL(internal, size_in_redzone, true,
                    "Store alloc size in redzone",
                    "Store size in redzone.  This can only be enabled if redzone_size >= sizeof(size_t).")
-OPTION_CLIENT_BOOL(internal, fastpath, true,
+OPTION_CLIENT_BOOL(internal, fastpath, IF_AARCH64_ELSE(false, true),
                    "Enable fastpath",
                    "Enable fastpath")
 /* XXX i#2027: implement and enable for x64 */
-OPTION_CLIENT_BOOL(internal, esp_fastpath, IF_X64_ELSE(false, true),
+OPTION_CLIENT_BOOL(internal, esp_fastpath, IF_AARCH64_ELSE(false, IF_X64_ELSE(false, true)),
                    "Enable esp-adjust fastpath",
                    "Enable esp-adjust fastpath")
-OPTION_CLIENT_BOOL(internal, shared_slowpath, true,
+OPTION_CLIENT_BOOL(internal, shared_slowpath, IF_AARCH64_ELSE(false, true),
                    "Enable shared slowpath calling code",
                    "Enable shared slowpath calling code")
 OPTION_CLIENT_BOOL(internal, loads_use_table, true,

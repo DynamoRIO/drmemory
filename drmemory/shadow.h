@@ -301,8 +301,13 @@ shadow_memory_is_shadow(app_pc addr);
 void
 print_shadow_registers(void);
 
+#ifdef X86
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg);
+#elif defined(AARCH64)
+opnd_t
+opnd_create_shadow_reg_slot(reg_id_t reg);
+#endif
 
 #ifdef X64
 opnd_t
@@ -313,8 +318,16 @@ opnd_create_shadow_reg_slot_high_dword(reg_id_t reg);
 uint
 get_shadow_xmm_offs(reg_id_t reg);
 
+#ifdef AARCH64
+uint
+get_shadow_simd_offs(reg_id_t reg);
+
+opnd_t
+opnd_create_shadow_nzcv_slot(void);
+#elif(defined X86)
 opnd_t
 opnd_create_shadow_eflags_slot(void);
+#endif
 
 opnd_t
 opnd_create_shadow_inheap_slot(void);
@@ -351,12 +364,19 @@ register_shadow_set_ptrsz(reg_id_t reg, uint val);
 void
 register_shadow_set_dqword(reg_id_t reg, uint val);
 
+#ifdef X86
 uint
 get_shadow_eflags(void);
 
 void
 set_shadow_eflags(uint val);
+#elif (defined AARCH64)
+uint
+get_shadow_eflags(void);
 
+void
+set_shadow_eflags(uint val);
+#endif
 byte
 get_shadow_inheap(void);
 

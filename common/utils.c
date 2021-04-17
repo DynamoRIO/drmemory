@@ -84,6 +84,7 @@ static thread_id_t primary_thread = INVALID_THREAD_ID;
  * But with /O2 it actually uses the intrinsic.
  */
 # ifndef NDEBUG /* cmake Release build type */
+#ifndef AARCH64
 void *
 memset(void *dst, int val, size_t size)
 {
@@ -92,6 +93,7 @@ memset(void *dst, int val, size_t size)
         *ptr++ = val;
     return dst;
 }
+#endif
 # endif
 #endif
 
@@ -425,6 +427,23 @@ print_mcontext(file_t f, dr_mcontext_t *mc)
                mc->r4, mc->r5, mc->r6, mc->r7,
                mc->r8, mc->r9, mc->r10, mc->r11,
                mc->r12, mc->sp, mc->lr, mc->pc);
+# elif defined(AARCH64)
+    dr_fprintf(f, "\tx0="PFX", x1="PFX", x2="PFX", x3="PFX"\n",
+               "\tx4="PFX", x5="PFX", x6="PFX", x7="PFX"\n",
+               "\tx8="PFX", x9="PFX", x10="PFX", x11="PFX"\n",
+               "\tx12="PFX", x13="PFX", x14="PFX", x15="PFX"\n",
+               "\tx16="PFX", x17="PFX", x18="PFX", x19="PFX"\n",
+               "\tx20="PFX", x21="PFX", x22="PFX", x23="PFX"\n",
+               "\tx24="PFX", x25="PFX", x26="PFX", x27="PFX"\n",
+               "\tx28="PFX", x29="PFX", lr="PFX", sp = "PFX", pc="PFX"\n",
+               mc->r0, mc->r1, mc->r2, mc->r3,
+               mc->r4, mc->r5, mc->r6, mc->r7,
+               mc->r8, mc->r9, mc->r10, mc->r11,
+               mc->r12, mc->r13, mc->r14, mc->r15,
+               mc->r16, mc->r17, mc->r18, mc->r19,
+               mc->r20, mc->r21, mc->r22, mc->r23,
+               mc->r24, mc->r25, mc->r26, mc->r27,
+               mc->r28, mc->r29, mc->r30, mc->sp, mc->pc);
 # endif
 }
 #endif

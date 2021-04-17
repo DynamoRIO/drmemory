@@ -150,6 +150,7 @@ get_isa_mode_from_fault_mc(dr_mcontext_t *mc)
 
 #ifdef TOOL_DR_MEMORY
 
+#ifndef AARCH64
 /* PR 448701: handle fault on write to a special shadow block */
 static byte *
 compute_app_address_on_shadow_fault(void *drcontext, byte *target,
@@ -260,7 +261,9 @@ handle_special_shadow_fault(void *drcontext, byte *target,
 
     instr_free(drcontext, &fault_inst);
 }
+#endif
 
+#ifndef AARCH64
 /* i#1015: report write-to-read-only as an unaddressable warning */
 static bool
 handle_possible_write_to_read_only(void *drcontext,
@@ -312,6 +315,7 @@ handle_possible_write_to_read_only(void *drcontext,
     return res;
 }
 
+#endif
 #endif /* TOOL_DR_MEMORY */
 
 /* PR 448701: we fault if we write to a special block */
@@ -319,7 +323,7 @@ handle_possible_write_to_read_only(void *drcontext,
 dr_signal_action_t
 event_signal_instrument(void *drcontext, dr_siginfo_t *info)
 {
-# ifdef TOOL_DR_MEMORY
+# if defined(TOOL_DR_MEMORY) && !defined(AARCH64)
     /* Handle faults from writes to special shadow blocks */
     /* i#1488: we sometimes get SIGBUS on Mac */
     if (info->sig == SIGSEGV || info->sig == SIGBUS) {

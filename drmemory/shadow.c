@@ -21,6 +21,8 @@
  */
 
 #include "dr_api.h"
+#include "dr_tools.h"
+#include "drreg.h"
 #include "drmemory.h"
 #include "utils.h"
 #include "shadow.h"
@@ -1482,7 +1484,7 @@ const byte shadow_word_addr_not_bit[4][256] = {
 /***************************************************************************
  * SHADOWING THE GPR REGISTERS
  */
-
+#ifdef X86
 #ifdef X64
 # define NUM_XMM_REGS 16
 #else
@@ -1499,6 +1501,16 @@ typedef struct _shadow_aux_registers_t {
     /* XXX i#471: add floating-point registers here as well */
 } shadow_aux_registers_t;
 
+#elif defined(AARCH64)
+/*FIXME: Support only for 128-bit sized SIMD regs. Add code to make
+ *       it generic enough to support 64-bit, 32-bit, 16-bit and
+ *       8-bit configurations. */
+#define NUM_SIMD_REGS 32
+typedef struct _shadow_aux_registers_t {
+    int simd[NUM_SIMD_REGS];
+} shadow_aux_registers_t;
+#endif
+
 #ifdef X64
 typedef unsigned short shadow_reg_type_t;
 #else
@@ -1508,6 +1520,7 @@ typedef byte shadow_reg_type_t;
 /* We keep our shadow register bits in TLS */
 typedef struct _shadow_registers_t {
 #ifdef TOOL_DR_MEMORY
+#ifdef X86
     /* First 8-byte TLS slot */
     shadow_reg_type_t xax;
     shadow_reg_type_t xcx;
@@ -1535,6 +1548,47 @@ typedef struct _shadow_registers_t {
      * a single tracked value.
      */
     shadow_reg_type_t eflags;
+#elif defined(AARCH64)
+    shadow_reg_type_t x0;
+    shadow_reg_type_t x1;
+    shadow_reg_type_t x2;
+    shadow_reg_type_t x3;
+    shadow_reg_type_t x4;
+    shadow_reg_type_t x5;
+    shadow_reg_type_t x6;
+    shadow_reg_type_t x7;
+    shadow_reg_type_t x8;
+    shadow_reg_type_t x9;
+    shadow_reg_type_t x10;
+    shadow_reg_type_t x11;
+    shadow_reg_type_t x12;
+    shadow_reg_type_t x13;
+    shadow_reg_type_t x14;
+    shadow_reg_type_t x15;
+    shadow_reg_type_t x16;
+    shadow_reg_type_t x17;
+    shadow_reg_type_t x18;
+    shadow_reg_type_t x19;
+    shadow_reg_type_t x20;
+    shadow_reg_type_t x21;
+    shadow_reg_type_t x22;
+    shadow_reg_type_t x23;
+    shadow_reg_type_t x24;
+    shadow_reg_type_t x25;
+    shadow_reg_type_t x26;
+    shadow_reg_type_t x27;
+    shadow_reg_type_t x28;
+    shadow_reg_type_t x29;
+    shadow_reg_type_t x30;
+
+    shadow_reg_type_t sp;
+
+    shadow_reg_type_t nzcv;
+    /*Confirm if the regs below need to be shadowed.
+    shadow_reg_type_t fpsr;
+    shadow_reg_type_t fpcr;
+    */
+#endif
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
     byte padding[IF_X64_ELSE(4,2)];
@@ -1542,10 +1596,9 @@ typedef struct _shadow_registers_t {
      * shadow memory.
      */
     shadow_aux_registers_t *aux;
-#else
+#endif
     /* Avoid empty struct.  FIXME: this is a waste of a tls slot */
     void *bogus;
-#endif
 } shadow_registers_t;
 
 #define NUM_SHADOW_TLS_SLOTS (sizeof(shadow_registers_t)/sizeof(reg_t))
@@ -1558,6 +1611,7 @@ static uint tls_shadow_base;
 static int tls_idx_shadow = -1;
 
 #ifdef TOOL_DR_MEMORY
+#ifdef X86
 /* For xmm this points at the shadow aux ptr: need a de-ref */
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg)
@@ -1581,7 +1635,46 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
          false, true, false);
 }
 
-#ifdef X64
+#elif defined(AARCH64)
+/* For xmm this points at the shadow aux ptr: need a de-ref */
+opnd_t
+opnd_create_shadow_reg_slot(reg_id_t reg)
+{
+    uint offs;
+    opnd_size_t opsz;
+    ASSERT(options.shadowing, "incorrectly called");
+    if (reg_is_gpr(reg)) {
+        reg_id_t r = reg_to_pointer_sized(reg);
+        offs = (r - DR_REG_START_GPR) * sizeof(shadow_reg_type_t);
+        opsz = SHADOW_GPR_OPSZ;
+    }
+    else {
+        ASSERT(reg_is_simd(reg), "internal shadow reg error");
+        offs = offsetof(shadow_registers_t, aux);
+        opsz = OPSZ_PTR;
+    }
+
+    opnd_t res = opnd_create_base_disp_aarch64
+        (tls_shadow_seg, REG_NULL, 0, false,
+         tls_shadow_base + offs, DR_OPND_MULTI_PART, opsz);
+    return res;
+}
+
+opnd_t
+opnd_create_shadow_reg_slot_high_dword(reg_id_t reg)
+{
+    uint offs;
+    reg_id_t r = reg_to_pointer_sized(reg);
+    ASSERT(options.shadowing && reg_is_gpr(reg), "incorrectly called");
+    offs = (r - DR_REG_START_GPR) * sizeof(shadow_reg_type_t) + 1/*little-endian*/;
+    opnd_t res = opnd_create_base_disp_aarch64
+        (tls_shadow_seg, REG_NULL, 0, false,
+         tls_shadow_base + offs, DR_OPND_MULTI_PART, OPSZ_1);
+    return res;
+}
+#endif
+
+#if defined(X64) && !defined(AARCH64)
 opnd_t
 opnd_create_shadow_reg_slot_high_dword(reg_id_t reg)
 {
@@ -1614,6 +1707,26 @@ get_shadow_xmm_offs(reg_id_t reg)
 #endif
 }
 
+#ifdef AARCH64
+uint
+get_shadow_simd_offs(reg_id_t reg)
+{
+    ASSERT(reg_is_simd(reg), "invalid reg");
+    return offsetof(shadow_aux_registers_t, simd) + sizeof(int)*(reg - DR_REG_Q0);
+}
+
+opnd_t opnd_create_shadow_nzcv_slot(void)
+{
+    ASSERT(options.shadowing, "incorrectly called");
+    return opnd_create_base_disp_aarch64
+        (tls_shadow_seg, REG_NULL, 0, false, tls_shadow_base +
+         offsetof(shadow_registers_t, nzcv), DR_OPND_MULTI_PART, SHADOW_GPR_OPSZ);
+}
+//DR_REG_X1, DR_REG_NULL, 0, false, 0, 0, OPSZ_8
+/*TODO: Check if similar functions for fpcr and fpsr are needed.
+ * */
+
+#elif(defined X86)
 opnd_t
 opnd_create_shadow_eflags_slot(void)
 {
@@ -1625,6 +1738,7 @@ opnd_create_shadow_eflags_slot(void)
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
 }
+#endif
 
 /* Opnd to acquire in_heap_routine TLS counter. Used for PR 578892. */
 opnd_t
@@ -1640,16 +1754,6 @@ opnd_create_shadow_inheap_slot(void)
 }
 #endif /* TOOL_DR_MEMORY */
 
-#if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
-static shadow_registers_t *
-get_shadow_registers(void)
-{
-    byte *seg_base;
-    ASSERT(options.shadowing, "incorrectly called");
-    seg_base = get_own_seg_base();
-    return (shadow_registers_t *)(seg_base + tls_shadow_base);
-}
-#endif /* TOOL_DR_MEMORY || WINDOWS */
 
 static void
 shadow_registers_thread_init(void *drcontext)
@@ -1678,7 +1782,11 @@ shadow_registers_thread_init(void *drcontext)
         memset(sr, SHADOW_DWORD_DEFINED, sizeof(*sr));
         sr->aux = aux;
         memset(sr->aux, SHADOW_DWORD_DEFINED, sizeof(*sr->aux));
+#ifdef X86
         sr->eflags = SHADOW_DEFINED;
+#elif defined(AARCH64)
+        sr->nzcv = SHADOW_DEFINED;
+#endif
     } else {
         /* we are in at start for new threads */
         uint init_shadow = SHADOW_DWORD_UNDEFINED;
@@ -1691,11 +1799,21 @@ shadow_registers_thread_init(void *drcontext)
         memset(sr, init_shadow, sizeof(*sr));
         sr->aux = aux;
         memset(sr->aux, init_shadow, sizeof(*sr->aux));
+#ifdef X86
         sr->eflags = init_shadow;
+#elif(defined AARCH64)
+        sr->nzcv = init_shadow;
+#endif
 #ifdef LINUX
         /* PR 426162: post-clone, esp and eax are defined */
+#ifdef X86
         sr->xsp = SHADOW_PTRSZ_DEFINED;
         sr->xax = SHADOW_PTRSZ_DEFINED;
+#elif(defined AARCH64)
+    /*TODO: Look into what PR 426162 means and confirm
+     * if only SP needs to be set to DEFINED*/
+        sr->sp = SHADOW_PTRSZ_DEFINED;
+#endif
 #elif defined(WINDOWS)
         /* new thread on Windows has esp defined */
         sr->xsp = SHADOW_PTRSZ_DEFINED;
@@ -1743,6 +1861,17 @@ shadow_registers_exit(void)
     drmgr_unregister_tls_field(tls_idx_shadow);
 }
 
+#if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
+static shadow_registers_t *
+get_shadow_registers(void)
+{
+    byte *seg_base;
+    ASSERT(options.shadowing, "incorrectly called");
+    seg_base = get_own_seg_base();
+    return (shadow_registers_t *)(seg_base + tls_shadow_base);
+}
+#endif /* TOOL_DR_MEMORY || WINDOWS */
+
 #ifdef TOOL_DR_MEMORY
 void
 print_shadow_registers(void)
@@ -1750,6 +1879,7 @@ print_shadow_registers(void)
     uint i;
     IF_DEBUG(shadow_registers_t *sr = get_shadow_registers());
     ASSERT(options.shadowing, "shouldn't be called");
+#ifdef X86
 #ifdef X64
     LOG(0, "    rax=%04x rcx=%04x rdx=%04x rbx=%04x "
         "rsp=%04x rbp=%04x rsi=%04x rdi=%04x\n"
@@ -1775,15 +1905,44 @@ print_shadow_registers(void)
     for (i = 0; i < NUM_MMX_REGS; i++) {
         LOG(0, "mm%d=%04x ", i, (unsigned short)sr->aux->mm[i]);
     }
+#elif(defined AARCH64)
+    LOG(0,  "x0=%04x x1=%04x x2=%04x x3=%04x\n"
+            "x4=%04x x5=%04x x6=%04x x7=%04x\n"
+            "x8=%04x x9=%04x x10=%04x x11=%04x "
+            "x12=%04x x13=%04x x14=%04x x15=%04x\n"
+            "x16=%04x x17=%04x x18=%04x x19=%04x "
+            "x20=%04x x21=%04x x22=%04x x23=%04x\n"
+            "x24=%04x x25=%04x x26=%04x x27=%04x "
+            "x28=%04x x29=%04x x30=%04x "
+            "sp=%04x nzcv=%04x\n",
+        sr->x0, sr->x1, sr->x2, sr->x3, sr->x4, sr->x5, sr->x6, sr->x7, sr->x8, sr->x9,
+        sr->x10, sr->x11, sr->x12, sr->x13, sr->x14, sr->x15, sr->x16, sr->x17, sr->x18, sr->x19,
+        sr->x20, sr->x21, sr->x22, sr->x23, sr->x24, sr->x25, sr->x26, sr->x27, sr->x28, sr->x29,
+    sr->x30, sr->sp, sr->nzcv);
+
+    for (i = 0; i < NUM_SIMD_REGS; i++) {
+        if (i % 4 == 0)
+            LOG(0, "    ");
+        LOG(0, "simd%d=%08x ", i, sr->aux->simd[i]);
+        if (i % 4 == 3)
+            LOG(0, "\n");
+    }
+#endif
     LOG(0, "\n");
 }
 
 static byte *
 reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
 {
+#ifdef X86
     /* REG_NULL means eflags */
     if (reg == REG_NULL)
         return ((byte *)sr) + offsetof(shadow_registers_t, eflags);
+#elif(defined AARCH64)
+    /* REG_NULL means nzcv */
+    if (reg == REG_NULL)
+        return ((byte *)sr) + offsetof(shadow_registers_t, nzcv);
+#endif
     else if (reg_is_gpr(reg)) {
         return ((byte *)sr) +
             (reg_to_pointer_sized(reg) - DR_REG_START_GPR)*sizeof(shadow_reg_type_t);
@@ -1798,12 +1957,14 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
             ASSERT(reg_is_mmx(reg), "invalid reg");
             return (byte *) &sr->aux->mm[reg - DR_REG_MM0];
         }
-#else
-        /* FIXME i#1726: port to ARM: shadow SIMD regs */
-        ASSERT_NOT_IMPLEMENTED();
-        return NULL;
+#elif(defined AARCH64)
+        if (reg_is_simd(reg))
+            return (byte *) &sr->aux->simd[reg - DR_REG_Q0];
 #endif
     }
+    /* FIXME i#1726: port to ARM: shadow SIMD regs */
+    ASSERT_NOT_IMPLEMENTED();
+    return NULL;
 }
 
 static uint
@@ -1813,8 +1974,13 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
     opnd_size_t sz = reg_get_size(reg);
     byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
+#ifdef X86
     if (reg_is_xmm(reg) || reg_is_mmx(reg))
         return *(uint *)addr;
+#elif(defined AARCH64)
+    if (reg_is_simd(reg))
+        return *(uint *)addr;
+#endif
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     if (sz == OPSZ_1) {
         val = *addr;
@@ -1828,8 +1994,12 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
     } else if (sz == OPSZ_4) {
         val = *addr;
     } else if (sz == OPSZ_8) {
-        IF_NOT_X86(ASSERT_NOT_REACHED());
+    /*TODO: Confirm comment below is needed for AARCH64*/
+#ifdef X86
         val = *(ushort*)addr;
+#elif defined(AARCH64)
+        val = *addr;
+#endif
     } else {
         val = 0;
         ASSERT_NOT_REACHED();
@@ -1870,8 +2040,10 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
     byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
     while (shift > 7) {
+#ifdef X86
         ASSERT(reg_is_xmm(reg) ||
                (shift < 16 IF_NOT_X64(&& reg_is_mmx(reg))), "shift too big for reg");
+#endif
         addr++;
         shift -= 8;
     }
@@ -1930,6 +2102,7 @@ register_shadow_set_dqword(reg_id_t reg, uint val)
     *(uint *)addr = val;
 }
 
+#ifdef X86
 uint
 get_shadow_eflags(void)
 {
@@ -1945,6 +2118,23 @@ set_shadow_eflags(uint val)
     ASSERT(options.shadowing, "incorrectly called");
     sr->eflags = (byte) val;
 }
+#elif(defined AARCH64)
+uint
+get_shadow_eflags(void)
+{
+    shadow_registers_t *sr = get_shadow_registers();
+    ASSERT(options.shadowing, "incorrectly called");
+    return sr->nzcv;
+}
+
+void
+set_shadow_eflags(uint val)
+{
+    shadow_registers_t *sr = get_shadow_registers();
+    ASSERT(options.shadowing, "incorrectly called");
+    sr->nzcv = (byte) val;
+}
+#endif
 
 byte
 get_shadow_inheap(void)

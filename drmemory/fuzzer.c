@@ -426,6 +426,10 @@ fuzzer_fuzz_target_init()
         else if (strcmp(options.fuzz_call_convention, "arm32") == 0)
             fuzz_target.callconv = DRWRAP_CALLCONV_ARM;
 #endif
+#ifdef AARCH64
+        else if (strcmp(options.fuzz_call_convention, "aarch64") == 0)
+            fuzz_target.callconv = DRWRAP_CALLCONV_AARCH64;
+#endif
         else
             FUZZ_WARN("Unknown calling convention, using default value instead.\n");
     }
@@ -902,9 +906,19 @@ struct _callconv_args_t { /* forward declared at top */
     uint stack_offset; /* retaddr (1) and/or reserved slots */
 };
 
-#ifdef ARM /* 32-bit */
+#ifdef AARCHXX/* 32-bit */
 # ifdef X64
-#  error NYI ARM X64
+static const reg_t arg_regs_aarch64[] = {
+    DR_REG_R0,
+    DR_REG_R1,
+    DR_REG_R2,
+    DR_REG_R3,
+    DR_REG_R4,
+    DR_REG_R5,
+    DR_REG_R6,
+    DR_REG_R7,
+};
+static const callconv_args_t callconv_args_aarch64 = { arg_regs_aarch64, 8, 0 };
 # else /* 32-bit */
 static const reg_t arg_regs_arm[] = {
     DR_REG_R0,
@@ -952,6 +966,9 @@ map_callconv_args(drwrap_callconv_t callconv)
 #ifdef ARM
     case DRWRAP_CALLCONV_ARM:
         return &callconv_args_arm;
+#elif defined(AARCH64)
+    case DRWRAP_CALLCONV_AARCH64:
+        return &callconv_args_aarch64;
 #else /* Intel x86 */
 # ifdef X64
     case DRWRAP_CALLCONV_AMD64:

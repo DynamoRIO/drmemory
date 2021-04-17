@@ -139,12 +139,16 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     instr_t *label;
     app_pc pc = instr_get_app_pc(app);
     IF_DEBUG(drreg_status_t res;)
-#ifdef ARM
+#ifdef AARCHXX
     uint i;
     reg_id_t scratch, scratch2;
     dr_pred_type_t pred = instr_get_predicate(app);
     instr_t *in;
+#endif
+#ifdef ARM
     uint val = opnd_get_immed_int(pattern);
+#elif defined(AARCH64)
+    uint64 val = opnd_get_immed_int(pattern);
 #endif
 
     label = INSTR_CREATE_label(drcontext);
@@ -155,7 +159,7 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     ASSERT(res == DRREG_SUCCESS, "should restore memref regs");
     PREXL8M(ilist, app,
             INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, pattern), pc));
-#elif defined(ARM)
+#elif defined(AARCHXX)
     /* We use an inefficient but simple 2-scratch-reg scheme for now.
      * XXX: if we limit the pattern value to a 1-byte value we can do a direct
      * cmp in thumb mode via a repeated-4-times immed and avoid scratch2.
@@ -170,6 +174,13 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     IF_DEBUG(res =)
         drreg_reserve_register(drcontext, ilist, app, NULL, &scratch2);
     ASSERT(res == DRREG_SUCCESS, "should always find 2nd scratch reg");
+
+#ifdef AARCH64
+    if (opnd_get_size(ref) == OPSZ_4) {
+        scratch = reg_64_to_32(scratch);
+        scratch2 = reg_64_to_32(scratch2);
+    }
+#endif
     /* To handle a predicated memref, because we can't predicate a conditional
      * branch nor OP_udf, we need an explicit branch to skip the OP_udf if the
      * app pred doesn't match.  We just skip all the instru and don't predicate.
@@ -219,17 +230,28 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
                                    OPND_CREATE_MEM16(scratch, 0));
         }
     } else {
-        ASSERT(opnd_get_size(ref) == OPSZ_4, "unsupported ARM memref size");
+        ASSERT(opnd_get_size(ref) == OPSZ_4 IF_AARCH64(|| opnd_get_size(ref) == OPSZ_8),
+                "unsupported ARM memref size");
         in = INSTR_CREATE_ldr(drcontext, opnd_create_reg(scratch), ref);
     }
     PREXL8M(ilist, app, INSTR_XL8(in, pc));
     /* movw+movt pattern to scratch2 */
-    in = INSTR_CREATE_movw(drcontext, opnd_create_reg(scratch2),
-                           OPND_CREATE_INT(val & 0xffff));
+    in = IF_AARCH64_ELSE(INSTR_CREATE_movz(drcontext, opnd_create_reg(scratch2),
+                           OPND_CREATE_INT16(val & 0xffff), OPND_CREATE_INT(0)),
+                           NSTR_CREATE_movw(drcontext, opnd_create_reg(scratch2),
+                           OPND_CREATE_INT(val & 0xffff)));
     PREXL8M(ilist, app, INSTR_XL8(in, pc));
-    if (opnd_get_size(ref) == OPSZ_4) {
-        in = INSTR_CREATE_movt(drcontext, opnd_create_reg(scratch2),
-                               OPND_CREATE_INT(val >> 16));
+    if (opnd_get_size(ref) == OPSZ_4 IF_AARCH64(|| opnd_get_size(ref) == OPSZ_8)) {
+        in = IF_AARCH64_ELSE(INSTR_CREATE_movk(drcontext, opnd_create_reg(scratch2),
+                               OPND_CREATE_INT16((val >> 16) & 0xffff), OPND_CREATE_INT(0)),
+                               INSTR_CREATE_movt(drcontext, opnd_create_reg(scratch2),
+                               OPND_CREATE_INT(val >> 16)));
+
+        PREXL8M(ilist, app, INSTR_XL8(in, pc));
+    }
+    if (opnd_get_size(ref) == OPSZ_8) {
+        in = INSTR_CREATE_movk(drcontext, opnd_create_reg(scratch2),
+            OPND_CREATE_INT16((val >> 32) && 0xffff), OPND_CREATE_INT(0));
         PREXL8M(ilist, app, INSTR_XL8(in, pc));
     }
     /* cmp scratch to scratch2 */
@@ -240,6 +262,13 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     in = INSTR_CREATE_cmp(drcontext, opnd_create_reg(scratch),
                           opnd_create_reg(scratch2));
     PREXL8M(ilist, app, INSTR_XL8(in, pc));
+
+#ifdef AARCH64
+    if (opnd_get_size(ref) == OPSZ_4) {
+        scratch = reg_32_to_64(scratch);
+        scratch2 = reg_32_to_64(scratch2);
+    }
+#endif
     IF_DEBUG(res =)
         drreg_unreserve_register(drcontext, ilist, app, scratch2);
     ASSERT(res == DRREG_SUCCESS, "should always succeed");
@@ -253,7 +282,7 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
 #ifdef X86
     PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
                                            opnd_create_instr(label)));
-#elif defined(ARM)
+#elif defined(AARCHXX)
     PRE(ilist, app, INSTR_PRED
         (XINST_CREATE_jump_short(drcontext, opnd_create_instr(label)), DR_PRED_NE));
 #endif
@@ -264,6 +293,8 @@ pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
 #elif defined(ARM)
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_udf(drcontext, OPND_CREATE_INT32(0)), pc));
+#elif defined(AARCH64)
+    PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ret(drcontext, opnd_create_reg(DR_REG_XZR)), pc));
 #endif
     /* label */
     PRE(ilist, app, label);
@@ -983,8 +1014,8 @@ pattern_handle_ill_fault(void *drcontext,
     /* we are not skipping all cmps for this instr, which is ok because we
      * clobberred the pattern if a 2nd memref was unaddr.
      */
-    skip = IF_ARM_ELSE(fault_mode == DR_ISA_ARM_THUMB ?
-                       UDF_THUMB_LENGTH : UDF_ARM_LENGTH, UD2A_LENGTH);
+    skip = IF_AARCH64_ELSE(UDF_ARM_LENGTH, IF_ARM_ELSE(fault_mode == DR_ISA_ARM_THUMB ?
+                       UDF_THUMB_LENGTH : UDF_ARM_LENGTH, UD2A_LENGTH));
     LOG(2, "pattern check ud2a triggered@"PFX" => skip to "PFX"\n",
         raw_mc->pc, raw_mc->pc + skip);
     raw_mc->pc += skip;

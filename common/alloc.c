@@ -995,12 +995,16 @@ generate_jmp_ind_stub(void *drcontext, app_pc tgt_pc, byte *epc)
     instr_t *instr;
     /* assuming %rax is dead, mov pc => %rax; jmp %rax */
     ASSERT(tgt_pc != NULL, "wrong target pc for call stub");
+#ifdef AARCH64
+    instr = INSTR_CREATE_b(drcontext, opnd_create_pc(tgt_pc));
+#else
     instr = INSTR_CREATE_mov_imm(drcontext,
                                  opnd_create_reg(DR_REG_XAX),
                                  OPND_CREATE_INTPTR(tgt_pc));
     epc = instr_encode(drcontext, instr, epc);
     instr_destroy(drcontext, instr);
     instr = INSTR_CREATE_jmp_ind(drcontext, opnd_create_reg(DR_REG_XAX));
+#endif
     epc = instr_encode(drcontext, instr, epc);
     instr_destroy(drcontext, instr);
     return epc;
@@ -2482,7 +2486,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 instr_init(drcontext, &inst);
                 decode(drcontext, pc, &inst);
                 if (!instr_valid(&inst) || instr_get_opcode(&inst) ==
-                    IF_X86_ELSE(OP_jmp_ind, OP_bx))
+                    IF_AARCH64_ELSE(OP_br || instr_get_opcode(&inst) == OP_blr,
+                    IF_X86_ELSE(OP_jmp_ind, OP_bx)))
                     pc = NULL;
                 instr_free(drcontext, &inst);
             } else

@@ -25,9 +25,14 @@
  */
 
 #include "dr_api.h"
+#include "dr_ir_opnd.h"
 #include "drutil.h"
 #include "drmemory.h"
 #include "instru.h"
+#include "utils.h"
+#ifdef AARCH64
+#include "drreg.h"
+#endif
 #include "slowpath.h"
 #include "slowpath_arch.h"
 #include "spill.h"
@@ -48,6 +53,7 @@
 #include "pattern.h"
 #include <stddef.h>
 #include "asm_utils.h"
+
 
 #ifdef STATISTICS
 /* per-opcode counts */
@@ -134,6 +140,17 @@ uint num_bbs;
  */
 /* XXX i#1726: update for ARM */
 /* variable-reg: reg1 and reg2 */
+#ifdef AARCH64
+enum {
+    SPILL_REG_NONE, /* !used and !dead */
+    SPILL_REG_R0,  /* this reg is spilled to tls */
+    SPILL_REG_R1,
+    SPILL_REG_R2,
+    SPILL_REG_R3,
+    SPILL_REG_R4,
+    SPILL_REG_NUM,
+};
+#else
 enum {
     SPILL_REG_NONE, /* !used and !dead */
     SPILL_REG_EAX,  /* this reg is spilled to tls */
@@ -146,6 +163,7 @@ enum {
     SPILL_REG_EBX_DEAD,
     SPILL_REG_NUM,
 };
+#endif
 enum {
     SPILL_REG3_NOSPILL,
     SPILL_REG3_SPILL,
@@ -583,6 +601,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 
     slowpath_update_app_loc_arch(opc, decode_pc, &loc);
 
+
 #ifdef STATISTICS
     STATS_INC(slowpath_count[opc]);
     {
@@ -661,7 +680,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
      */
     check_definedness = instr_check_definedness(&inst);
     always_defined = result_is_always_defined(&inst, false/*us*/);
+#ifdef AARCH64
+    pushpop = instr_is_push(&inst) || instr_is_pop(&inst);
+#else
     pushpop = opc_is_push(opc) || opc_is_pop(opc);
+#endif
     check_srcs_after = instr_needs_all_srcs_and_vals(&inst);
     if (check_srcs_after) {
         /* We need to check definedness of addressing registers, and so we do
@@ -670,7 +693,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
          * check_mem_opnd() and integrate_register_shadow(), causing the 2
          * sources to be laid out side-by-side in comb->dst.
          */
-        ASSERT(instr_num_srcs(&inst) == 2, "and/or special handling error");
+        ASSERT(IF_AARCH64_ELSE(true, instr_num_srcs(&inst) == 2), "and/or special handling error");
         check_definedness = false;
         IF_DEBUG(comb.opsz = 0;) /* for asserts below */
     }
@@ -930,8 +953,9 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                    (instr_at_pc_is_restore(drcontext, ret_pc) &&
                     pc == decode_next_pc(drcontext, xl8)) ||
                    /* for native ret we changed pc */
-                   (options.replace_malloc && opc == IF_X86_ELSE(OP_ret, OP_bx) &&
-                    alloc_entering_replace_routine(xl8)),
+                   //TODO: Might need to match more than just OP_ret for AARCH64?
+                   (options.replace_malloc && opc == IF_AARCH64_ELSE(OP_ret, IF_X86_ELSE(OP_ret, OP_bx) &&
+                    alloc_entering_replace_routine(xl8))),
                    "xl8 doesn't match");
         }
     });
@@ -990,7 +1014,9 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi,
          */
         *decode_pc_opnd = OPND_CREATE_INTPTR(decode_pc);
         return false;
-    } else if (pc == instr_get_raw_bits(inst)) {
+    }
+
+    if (IF_AARCH64(true || )pc == instr_get_raw_bits(inst)) {
         /* If it matches the raw bits we know we only need one pc */
         *decode_pc_opnd = OPND_CREATE_INTPTR(pc);
         return true;
@@ -1042,7 +1068,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     opnd_t decode_pc_opnd;
     ASSERT(options.pattern == 0, "No slow path for pattern mode");
     if (instr_shared_slowpath_decode_pc(inst, mi, &decode_pc_opnd)
-        IF_ARM(&& false/*NYI: see below*/)) {
+        IF_AARCH64_ELSE(&& false, IF_ARM(&& false/*NYI: see below*/))) {
 #ifdef X86
         /* Since the clean call instr sequence is quite long we share
          * it among all bbs.  Rather than switch to a clean stack we jmp
@@ -1147,12 +1173,6 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             instru_insert_mov_pc(drcontext, bb, inst, opnd_create_reg(mi->reg1.reg),
                                  OPND_CREATE_INTPTR(shadow_bitlevel_addr()));
         }
-#else
-        /* FIXME i#1726: add ARM port.  Some of the above code was
-         * made cross-platform, but the per-scratch-reg code and some
-         * of the generated instrs are x86-specific still.
-         */
-        ASSERT_NOT_IMPLEMENTED();
 #endif
     } else {
         app_pc pc = instr_get_app_pc(inst);
@@ -1228,7 +1248,9 @@ shared_slowpath_restore(void *drcontext, instrlist_t *ilist, int type, int slot)
 byte *
 generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
 {
-#ifdef X86
+#ifdef AARCH64
+    return pc;
+#elif defined (X86)
     int r1, r2, r3, ef;
 
     /* Create our shared slowpath.  To save space at the "call" site, we
@@ -1791,7 +1813,8 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
         return true;
 
     addr = opnd_compute_address(opnd, mc);
-    if (opc == OP_pop && !TEST(MEMREF_PUSHPOP, flags) &&
+
+    if (IF_AARCH64_ELSE(false, opc == OP_pop) && !TEST(MEMREF_PUSHPOP, flags) &&
         opnd_is_base_disp(opnd) && opnd_uses_reg(opnd, DR_REG_XSP)) {
         /* XXX i#1502: we probably want a solution coming from DR, but for
          * now we fix this inside DrMem.

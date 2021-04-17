@@ -46,7 +46,6 @@
 bool
 instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *bi)
 {
-    ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
     /* Probably a lot of code can be shared with fastpath_x86.c: it
      * needs further refactoring.
      */
@@ -86,4 +85,21 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
     return false;
 }
 
+void
+add_jcc_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, uint jcc_opcode,
+                 fastpath_info_t *mi)
+{
+    ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
+}
+
+void
+add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
+                        fastpath_info_t *mi,
+                        bool get_value, bool value_in_reg2, bool need_offs,
+                        bool zero_rest_of_offs,
+                        reg_id_t reg1, reg_id_t reg2, reg_id_t reg3,
+                        bool check_alignment)
+{
+    ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
+}
 #endif /* TOOL_DR_MEMORY */

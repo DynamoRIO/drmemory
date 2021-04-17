@@ -99,6 +99,8 @@ endif ()
 # The target arch:
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
   set(ARM 1)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64")
+  set(AARCH64 1)
 else ()
   set(X86 1)
 endif ()
@@ -323,13 +325,18 @@ if (UNIX)
   endif ()
   if (ARM)
     set(EXTRA_FLAGS "${EXTRA_FLAGS} -mthumb -march=armv7-a")
+  endif ()
+  if (AARCH64)
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -march=armv8-a")
+  endif ()
+  if (ARM OR AARCH64)
     if (ANDROID OR CMAKE_C_LIBRARY_ARCHITECTURE MATCHES "gnueabi$")
       set(EXTRA_FLAGS "${EXTRA_FLAGS} -mfloat-abi=softfp")
       # Android requires PIE.  We export symbols to match our test assumptions.
       set(CMAKE_EXE_LINKER_FLAGS
         "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
-    endif ()
   endif ()
+endif()
   # We use C++11.
   set(EXTRA_CXXFLAGS "-std=c++11")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
@@ -1007,6 +1014,8 @@ set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
 
 if (ARM)
   set(asm_file "asm_utils_arm.asm")
+elseif (AARCH64)
+  set(asm_file "asm_utils_aarch64.asm")
 else ()
   set(asm_file "asm_utils_x86.asm")
 endif ()
@@ -1098,6 +1107,7 @@ endfunction(append_src_compile_flags)
 # new set_property() doesn't want -D but our cpp invocation above does
 string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 string(REGEX REPLACE "-D" "" DR_DEFINES_NO_D "${DR_DEFINES}")
+
 
 option(BUILD_TOOL_TESTS "build Dr. Memory/Dr. Heapstat tests" ON)
 
