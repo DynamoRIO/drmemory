@@ -263,16 +263,9 @@ static dr_os_version_info_t os_version = {sizeof(os_version),};
 #define NUM_SEGMENTS      16 /* 16 segments per unit */
 
 
-#ifdef AARCH64
-// This simply masks off the lower 2 bits which must be 0 for
-// a valid address.
-#define AARCH64_SEG_MASK 0xfffffffffffffffc
-#endif
-
-
 static ptr_uint_t seg_index_mask(uint num_seg_bits)
 {
-    return IF_AARCH64_ELSE(0x0, (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits);
+    return (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits;
 }
 
 static ptr_uint_t segment_size(uint num_seg_bits)
@@ -282,7 +275,7 @@ static ptr_uint_t segment_size(uint num_seg_bits)
 
 static ptr_uint_t segment_mask(uint num_seg_bits)
 {
-    return IF_AARCH64_ELSE(AARCH64_SEG_MASK, segment_size(num_seg_bits) - 1);
+    return segment_size(num_seg_bits) - 1;
 }
 
 static ptr_uint_t segment_base(uint num_seg_bits, app_pc pc)
@@ -363,18 +356,6 @@ static ptr_uint_t map_disp_win81[] = {
  * We check conflicts later when creating shadow memory.
  */
 #ifdef LINUX
-#ifdef AARCH64
-static const app_segment_t app_segments_initial[] = {
-    {(app_pc)0x0000ff0000000000,  (app_pc)0x0001000000000000, 0},
-    {(app_pc)0x0000000000000000,  (app_pc)0x0000010000000000, 0},
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-    { NULL, NULL, 0 },
-};
-
-#else
 static const app_segment_t app_segments_initial[] = {
     /* We split app3 [0x7F0000000000, 0x800000000000) into two parts:
      * [0x7F0000000000, 0x7FFFFF400000) and [0x7FFFFF800000, 0x800000000000).
@@ -408,7 +389,6 @@ static const app_segment_t app_segments_initial[] = {
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
 };
-#endif
 static const app_segment_t app_segments_initial_no_vsyscall[] = {
     /* We do not need any gaps or splitting without vsyscall. */
     /* for all additional segments */
@@ -1285,8 +1265,16 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
 {
 #if defined(AARCH64)
     reg_id_t tmp = *scratch_regs;
+
+    instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
+                             OPND_CREATE_INT64(map->mask));
+    PRE(ilist, where, INSTR_CREATE_and(drcontext,
+                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(tmp)));
+
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                                 OPND_CREATE_INT64(map->disp));
+
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
                                        opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
@@ -1299,11 +1287,6 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                            opnd_create_reg(reg_addr),
                                            OPND_CREATE_INT8(map->shift)));
     }
-    instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
-                             OPND_CREATE_INT64(map->mask));
-    PRE(ilist, where, INSTR_CREATE_and(drcontext,
-                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
-                                       opnd_create_reg(tmp)));
 #else
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
                                        opnd_create_reg(reg_addr),
