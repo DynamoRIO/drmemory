@@ -1269,13 +1269,13 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
     reg_id_t tmp = *scratch_regs;
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
-                             OPND_CREATE_INT64(map->mask));
+                         OPND_CREATE_INT64(map->mask));
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
                                        opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
-                                OPND_CREATE_INT64(map->disp));
+                         OPND_CREATE_INT64(map->disp));
 
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
                                        opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
