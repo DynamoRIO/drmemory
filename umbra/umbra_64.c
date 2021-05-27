@@ -262,7 +262,6 @@ static dr_os_version_info_t os_version = {sizeof(os_version),};
 /* Each unit has 16 segments, which could be used for app or shadow. */
 #define NUM_SEGMENTS      16 /* 16 segments per unit */
 
-
 static ptr_uint_t seg_index_mask(uint num_seg_bits)
 {
     return (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits;
