@@ -1263,8 +1263,8 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                 int num_scratch_regs)
 {
 #if defined(AARCH64)
-    ASSERT(num_scratch_regs > umbra_num_scratch_regs_for_translation_arch(),
-        "umbra_insert_app_to_shadow_arch requires at least one scracth register provided");
+    if (num_scratch_regs >= umbra_num_scratch_regs_for_translation_arch())
+        return DRMF_ERROR_INVALID_PARAMETER;
 
     reg_id_t tmp = *scratch_regs;
 
