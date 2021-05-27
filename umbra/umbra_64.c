@@ -262,6 +262,7 @@ static dr_os_version_info_t os_version = {sizeof(os_version),};
 /* Each unit has 16 segments, which could be used for app or shadow. */
 #define NUM_SEGMENTS      16 /* 16 segments per unit */
 
+
 static ptr_uint_t seg_index_mask(uint num_seg_bits)
 {
     return (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits;
@@ -1247,7 +1248,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
 int
 umbra_num_scratch_regs_for_translation_arch()
 {
-    return 0;
+    return IF_AARCH64_ELSE(1, 0);
 }
 
 /* code sequence:
@@ -1263,6 +1264,9 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                 int num_scratch_regs)
 {
 #if defined(AARCH64)
+    ASSERT(num_scratch_regs > umbra_num_scratch_regs_for_translation_arch(),
+        "umbra_insert_app_to_shadow_arch requires at least one scracth register provided");
+
     reg_id_t tmp = *scratch_regs;
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
