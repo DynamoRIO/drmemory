@@ -26,6 +26,7 @@
  */
 
 #include "dr_api.h"
+#include "instru.h"
 #include "umbra.h"
 #include "umbra_private.h"
 #include "drmemory_framework.h"
@@ -1246,7 +1247,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
 int
 umbra_num_scratch_regs_for_translation_arch()
 {
-    return 0;
+    return IF_AARCH64_ELSE(1, 0);
 }
 
 /* code sequence:
@@ -1261,6 +1262,34 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                 reg_id_t *scratch_regs,
                                 int num_scratch_regs)
 {
+#if defined(AARCH64)
+    if (num_scratch_regs < umbra_num_scratch_regs_for_translation_arch())
+        return DRMF_ERROR_INVALID_PARAMETER;
+
+    reg_id_t tmp = *scratch_regs;
+
+    instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
+                         OPND_CREATE_INT64(map->mask));
+    PRE(ilist, where, INSTR_CREATE_and(drcontext,
+                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(tmp)));
+
+    instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
+                         OPND_CREATE_INT64(map->disp));
+
+    PRE(ilist, where, INSTR_CREATE_add(drcontext,
+                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(tmp)));
+    if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
+        PRE(ilist, where, INSTR_CREATE_lsl(drcontext,
+                                           opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                           OPND_CREATE_INT8(map->shift)));
+    } else if (map->options.scale <= UMBRA_MAP_SCALE_DOWN_2X) {
+        PRE(ilist, where, XINST_CREATE_slr_s(drcontext,
+                                             opnd_create_reg(reg_addr),
+                                             OPND_CREATE_INT8(map->shift)));
+    }
+#else
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
                                        opnd_create_reg(reg_addr),
                                        OPND_CREATE_ABSMEM(&map->mask,
@@ -1278,6 +1307,7 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                            opnd_create_reg(reg_addr),
                                            OPND_CREATE_INT8(map->shift)));
     }
+#endif
     return DRMF_SUCCESS;
 }
 
