@@ -1286,8 +1286,8 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
                                            OPND_CREATE_INT8(map->shift)));
     } else if (map->options.scale <= UMBRA_MAP_SCALE_DOWN_2X) {
         PRE(ilist, where, XINST_CREATE_slr_s(drcontext,
-                                           opnd_create_reg(reg_addr),
-                                           OPND_CREATE_INT8(map->shift)));
+                                             opnd_create_reg(reg_addr),
+                                             OPND_CREATE_INT8(map->shift)));
     }
 #else
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
