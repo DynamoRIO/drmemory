@@ -108,6 +108,8 @@ function(set_props target)
   # DrMem itself gets ARM from dr_api.h but tests need it on their own:
   if (ARM)
     set(defs ${defs} ARM)
+  elseif (AARCH64)
+    set(defs ${defs} AARCH64)
   endif ()
   if (X86)
     set(defs ${defs} X86)
@@ -432,7 +434,7 @@ function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
 endfunction(newtest_gcc)
 
 # i#1726: ARM is only supported in pattern mode.
-if (NOT ARM)
+if (NOT ARM AND NOT AARCH64)
 # Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -443,11 +445,13 @@ if (ARM)
   append_test_compile_flags(free_arm "-marm")
 endif (ARM)
 newtest(badjmp badjmp.c)
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   newtest(registers registers.c)
 endif ()
 if (ARM)
   newtest(asmtest asmtest_arm.c)
+elseif (AARCH64)
+  newtest(asmtest asmtest_aarch64.c)
 else ()
   newtest(asmtest asmtest_x86.c)
 endif ()
@@ -455,7 +459,7 @@ if (TOOL_DR_MEMORY)
   # Doesn't make sense for DrHeapstat
   newtest(multierror multierror.cpp)
 endif (TOOL_DR_MEMORY)
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
   if (WIN32)
     # i#489: building /GL results in a double-xor sequence
@@ -639,7 +643,7 @@ CHECK_C_COMPILER_FLAG("-Wno-alloc-size-larger-than=4294967295"
   HAVE_ALLOC_SIZE_WARNING_INTERNAL)
 
 if (TOOL_DR_MEMORY)
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     # PR 525807: test malloc stacks
     newtest(varstack varstack.c)
   endif ()
@@ -650,7 +654,7 @@ if (TOOL_DR_MEMORY)
   if (NOT X64) # XXX i#111: -esp_fastpath not supported yet
     newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
   endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     if (NOT X64) # FIXME i#111: failing on Travis
       newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
     endif ()
@@ -664,7 +668,7 @@ if (TOOL_DR_MEMORY)
   if (NOT X64) # FIXME i#111: failing on Travis
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   endif ()
   # test this option to exercise the realloc handling code.
@@ -679,7 +683,7 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild_ex(blocklist_uninit.op registers ""
       "-check_uninit_blocklist;registers*" "" OFF "registers.blocklist" 0 "")
     newtest_nobuild_ex(blocklist_uninit.supp registers ""
@@ -895,13 +899,13 @@ if (TOOL_DR_MEMORY)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild(registers.pattern registers "" "-unaddr_only" "" OFF
       "registers.pattern")
   endif ()
   newtest_nobuild(track_origins.pattern track_origins ""
     "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_nobuild_ex(state.pattern state "" "-unaddr_only" "" OFF "" "ANY" "")
   endif ()
 
@@ -931,7 +935,7 @@ else (TOOL_DR_MEMORY)
   set(nudge_test_args "")
 endif (TOOL_DR_MEMORY)
 
-if (NOT ARM) # XXX i#1726: port to ARM
+if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
   # nudge test: runs infloop in background and runtest.cmake nudges it
   tobuild(infloop infloop.c)
   get_target_path_for_execution(infloop_path infloop)
@@ -1016,7 +1020,11 @@ else ()
   # default mode == pattern + leaks
   newtest(hello hello.c)
   newtest(free free.c)
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (AARCH64)
+    newtest(malloc malloc.c)
+    newtest(leak_indirect leak_indirect.c)
+  endif ()
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_custbuild(bitfield bitfield.cpp "-DBITFIELD_ASM" bitfield)
   endif ()
   newtest(patterns patterns.c)
@@ -1036,7 +1044,7 @@ else ()
   if (NOT ANDROID) # FIXME i#1860: fix for Android
     newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" 0)
   endif ()
-  if (NOT ARM) # XXX i#1726: port to ARM
+  if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM
     newtest_ex(registers.pattern registers.c "" "-unaddr_only" "" OFF
       "registers.pattern" 0)
   endif ()
@@ -1064,7 +1072,7 @@ endif ()
 
 # XXX i#1660: gtest is not building with clang 6.0
 # XXX i#1726: need to port app_suite to ARM.
-if (NOT APPLE AND NOT ARM)
+if (NOT APPLE AND NOT ARM AND NOT AARCH64)
   add_subdirectory(app_suite)
   if (TOOL_DR_HEAPSTAT)
     # i#1358: Dr. Heapstat currently can't handle code in the heap
