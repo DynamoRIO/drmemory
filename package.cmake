@@ -233,14 +233,14 @@ if (NOT arg_sub_package)
         ${CMAKE_COMMAND} -E copy_directory ${html} "${arg_outdir}/html")
       # Create a .nojekyll file so Github Pages will display this as raw html.
       execute_process(COMMAND ${CMAKE_COMMAND} -E touch "${arg_outdir}/html/.nojekyll")
-      message("Successully copied docs")
+      message("Successully copied standalone docs")
     else ()
       message(FATAL_ERROR "failed to find html docs")
     endif ()
 
     message("Copying embedded documentation into ${arg_outdir}/html_embed")
-    message("Looking for ${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/embed/html")
-    file(GLOB allhtml "${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/embed/html")
+    message("Looking for ${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs_embed/html")
+    file(GLOB allhtml "${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs_embed/html")
     # If there's a source package we'll have multiple.  Just take the first one.
     list(GET allhtml 0 html)
     if (EXISTS "${html}")
@@ -251,7 +251,7 @@ if (NOT arg_sub_package)
       # Create a .nojekyll file so Github Pages will display this as raw html.
       execute_process(COMMAND ${CMAKE_COMMAND} -E touch
         "${arg_outdir}/html_embed/.nojekyll")
-      message("Successully copied docs")
+      message("Successully copied embedded docs")
     else ()
       message(FATAL_ERROR "failed to find html docs")
     endif ()
