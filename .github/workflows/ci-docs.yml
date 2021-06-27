@@ -53,6 +53,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
 
     - name: Fetch Sources
       run: |
@@ -85,7 +87,7 @@ jobs:
 
     - name: Build Docs
       working-directory: ${{ github.workspace }}
-      run: ./suite/runsuite_wrapper.pl travis 64_only
+      run: ./tests/runsuite_wrapper.pl travis 64_only
       env:
         CI_TARGET: package
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
@@ -100,7 +102,7 @@ jobs:
 
     - name: Deploy Embedded Docs
       run: |
-        rsync -av --delete embed/html/ drmemory.github.io/docs/
+        rsync -av --delete html_embed/ drmemory.github.io/docs/
         cd drmemory.github.io
         git config --local user.name "cronbuild"
         git config --local user.email "drmemory-devs@googlegroups.com"
