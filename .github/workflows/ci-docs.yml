@@ -85,7 +85,7 @@ jobs:
 
     - name: Build Docs
       working-directory: ${{ github.workspace }}
-      run: ./suite/runsuite_wrapper.pl travis 64_only
+      run: ./tests/runsuite_wrapper.pl travis 64_only
       env:
         CI_TARGET: package
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}

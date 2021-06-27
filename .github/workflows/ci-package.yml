@@ -100,16 +100,6 @@ jobs:
         name: linux-tarball
         path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
 
-    - name: Deploy Docs
-      uses: crazy-max/ghaction-github-pages@v2
-      with:
-        build_dir: html
-        repo: DynamoRIO/drmemory_docs
-        target_branch: master
-      env:
-        # We need a personal access token for write access to another repo.
-        GH_PAT: ${{ secrets.DOCS_TOKEN }}
-
   ###########################################################################
   # Mac tarball with x86-64 build:
   osx:
