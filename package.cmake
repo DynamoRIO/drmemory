@@ -222,7 +222,7 @@ if (NOT arg_sub_package)
   if (arg_copy_docs)
     # Prepare for copying the documentation to our Github Pages site by placing it
     # in a single fixed-name location with a .nojekyll file.
-    message("Copying documentation into ${arg_outdir}/html")
+    message("Copying standalone documentation into ${arg_outdir}/html")
     message("Looking for ${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/html")
     file(GLOB allhtml "${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/html")
     # If there's a source package we'll have multiple.  Just take the first one.
@@ -233,6 +233,24 @@ if (NOT arg_sub_package)
         ${CMAKE_COMMAND} -E copy_directory ${html} "${arg_outdir}/html")
       # Create a .nojekyll file so Github Pages will display this as raw html.
       execute_process(COMMAND ${CMAKE_COMMAND} -E touch "${arg_outdir}/html/.nojekyll")
+      message("Successully copied docs")
+    else ()
+      message(FATAL_ERROR "failed to find html docs")
+    endif ()
+
+    message("Copying embedded documentation into ${arg_outdir}/html_embed")
+    message("Looking for ${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/embed/html")
+    file(GLOB allhtml "${last_package_build_dir}/_CPack_Packages/*/*/DrMemory-*/drmemory/docs/embed/html")
+    # If there's a source package we'll have multiple.  Just take the first one.
+    list(GET allhtml 0 html)
+    if (EXISTS "${html}")
+      execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory
+        "${arg_outdir}/html_embed")
+      execute_process(COMMAND
+        ${CMAKE_COMMAND} -E copy_directory ${html} "${arg_outdir}/html_embed")
+      # Create a .nojekyll file so Github Pages will display this as raw html.
+      execute_process(COMMAND ${CMAKE_COMMAND} -E touch
+        "${arg_outdir}/html_embed/.nojekyll")
       message("Successully copied docs")
     else ()
       message(FATAL_ERROR "failed to find html docs")

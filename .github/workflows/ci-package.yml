@@ -92,7 +92,8 @@ jobs:
       env:
         CI_TARGET: package
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
-        DEPLOY_DOCS: yes
+        # Docs are deployed separately in ci-docs.yml.
+        DEPLOY_DOCS: no
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
