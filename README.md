@@ -13,8 +13,7 @@ Dr. Memory operates on unmodified application binaries running on Windows,
 Linux, Mac, or Android on commodity IA-32, AMD64, and ARM hardware.
 
 Dr. Memory is released under an LGPL license and binary packages are
-[available for
-download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).
+[available for download](https://drmemory.org/page_download.html).
 
 Dr. Memory is built on the [DynamoRIO dynamic instrumentation tool
 plaform](http://dynamorio.org).

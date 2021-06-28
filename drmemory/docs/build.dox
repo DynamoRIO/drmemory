@@ -1,0 +1,470 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_build Building from Sources
+
+# Source Code
+
+The source code can be obtained from our git repository.  Be sure to run the `devsetup.sh` script to set up the git aliases for [our workflow](\ref page_contribute).
+
+```
+$ git clone https://github.com/DynamoRIO/drmemory.git
+$ cd drmemory
+$ make/git/devsetup.sh
+```
+
+# Pre-Built Packages
+
+If you don't need to modify Dr. Memory and just want a build more recent than the last official release, we provide [weekly package builds](Latest-Build).
+
+# GitHub Zip Download Not Supported
+
+We do not support building from the "Download Zip" GitHub feature, as it A) fails to support submodules and B) thwarts our patchlevel setting mechanism (xref https://github.com/DynamoRIO/dynamorio/issues/1565).
+
+# Components
+
+The Dr. Memory code base contains two tools:
+-# Dr. Memory: memory debugging tool
+-# Dr. Heapstat: memory profiling tool
+
+Which tool to build is determined by whether the TOOL_DR_HEAPSTAT CMake
+variable is enabled.
+
+Both tools use the [DynamoRIO dynamic instrumentation tool platform](http://dynamorio.org).  The sources for the version of DynamoRIO needed is included as a git submodule in the dynamorio/ subdirectory.  By default, a Dr. Memory build also builds DynamoRIO from these embedded sources.  You can also point at a separate DynamoRIO build if you have built it or downloaded it separately, using the DynamoRIO_DIR CMake variable.
+
+# Windows Setup
+
+You'll need to install a compiler, the Debugging Tools for Windows, CMake, and a few other tools in order to build Dr. Memory
+on Windows.  Since Dr. Memory also builds DynamoRIO, you can follow the
+[setup instructions for DynamoRIO](https://dynamorio.org/page_building.html).  We summarize what is needed here for the specific DynamoRIO build built by Dr. Memory.
+
+## Compiler
+
+For the compiler, install Visual Studio 2013.  We have never tested building from within the
+Visual Studio IDE, but it should work (CMake can generate Visual Studio
+project files as well as Makefiles).  If you try it, please update these
+instructions.  From the command line, set up the path and environment
+variables for Visual Studio as normal: run the `vcvars` batch file, either manually in a cmd shell or by running the Visual Studio Command Prompt which has a Start Menu entry under Visual Studio Tools,
+or translate the vcvars environment variables into cygwin bash.
+
+## Debugging Tools for Windows
+
+Dr. Memory needs redistributable copies of dbghelp.dll and symsrv.dll.
+These are available in a Visual Studio or SDK installation that has the
+Remote Debugger installed, in the Windows 8 SDK, and in the WDK or DDK.
+Visual Studio Express seems to have the right files but has not been tested
+for all versions.
+
+If you choose to use the WDK or DDK, we have tested the Windows
+Driver Kit version 7.1.0 (7600.16385.1), the Windows Vista WDK (6000), and
+the Windows 2003 DDK (3790.1830).  If you install into a non-default
+location (i.e., other than `$SYSTEMDRIVE/WINDDK/3790.1830` or
+`$SYSTEMDRIVE/WINDDK/6000`) then you must point the DDKROOT environment
+variable at the base of the DDK/WDK:
+
+```
+export DDKROOT=`cygpath -dm ~/WINDDK/6000/`
+```
+
+Alternatively, you can point at a redistributable copy of dbghelp.dll of at
+least version 6.3 with the CMake variable DBGHELP_DLL and at a version of
+symsrv.dll with the CMake variable SYMSRV_DLL.
+
+## CMake
+
+You need CMake for Windows (*not* for Cygwin, as we need to pass paths with
+drive letters to our compiler), at least version 3.7.  You can download a
+binary installation here:
+
+  http://www.cmake.org/cmake/resources/software.html
+
+Install CMake and put its bin directory on the path for your shell.
+
+## Other Tools
+
+To build the Dr. Heapstat data visualizer, the Flex SDK and Java are
+required.  We have tested versions 3.3, 3.4, and 4.1 of the Flex SDK.  It
+can be obtained from http://www.adobe.com/go/flex4_sdk.  Set the CMake
+variable BUILD_VISUALIZER to ON, and then set the CMake variable FLEX_SDK
+to point at the base of the directory where you unzipped the SDK files, or
+set the FLEXROOT environment variable to point there:
+
+```
+export FLEXROOT=/home/bruening/work/flex_sdk_4.1
+```
+
+For Java, if the java interpreter is not found by CMake, set the JAVA CMake
+variable.  On Windows all that's needed is the Java runtime environment
+(e.g., from http://www.oracle.com/technetwork/java/javase/downloads/index.html).
+
+You can build the Dr. Heapstat data gathering tool without either Flex or
+Java.  By default, that's what is built: only if the BUILD_VISUALIZER CMake
+variable is enabled is the visualizer built.  Be aware that the visualizer
+is a prototype built several years ago and it may not work out of the box
+on modern browsers, in particular on Windows.  We are looking for
+contributors to build a new visualizer.
+
+In order to build the documentation, you will additionally need doxygen,
+which can be either a Cygwin package or native Windows.  Currently the
+documentation is always built, so this is required.
+
+To build a Windows installation packagage (with an installer, instead of
+just a zip file for local installs), you will need to have
+[NSIS](http://nsis.sourceforge.net) installed.  If NSIS is not found, there
+will not be an error, but only the zip package on Windows will be built.
+Your NSIS install must be patched with the ["Large Strings" build](http://nsis.sourceforge.net/Special_Builds) in order to support long PATHs.  A configure-time check ensures this is in place.  See [Issue 1029](http://code.google.com/p/drmemory/issues/detail?id=1029) for more information.
+
+In order to build DynamoRIO you must have a version of perl.  It can be
+either a Cygwin perl or a native Windows perl.
+
+----------------
+
+# Linux Setup
+
+In order to build you'll need the following packages:
+
+  - gcc
+  - binutils
+  - cmake (at least version 3.7)
+  - perl
+
+To build Dr. Heapstat you will additionally need:
+
+  - Flex SDK
+  - Java
+
+In order to build the documentation, you will additionally need:
+
+  - doxygen
+
+If your machine does not have support for running 32-bit applications and
+its version of binutils is older than 2.18.50 then you'll need to set the
+`CMAKE_ASM_COMPILER` CMake cache variable to point at a GNU assembler of at
+least version 2.18.50.
+
+If you're using a 64-bit Linux distribution, be sure to install 32-bit
+development support (for Ubuntu, the `ia32-libs` and `g++-multilib`
+packages).
+
+----------------
+
+# Building with CMake
+
+If you have all the required tools installed in standard locations, CMake
+will find them automatically.  Only the Flex SDK and the DDK (which is only
+needed with non-full installations of Visual Studio) are likely to
+not be found as they do not normally live in system install directories.
+If you set the FLEXROOT and DDKROOT environment variables as specified
+above, then CMake should find all your tools without any custom CMake
+variable settings.
+
+## Configuring Your Build
+
+First, configure your compiler.  On Windows this means setting up the
+environment variables (including `PATH`).  On Linux, if your compiler
+supports both 64-bit and 32-bit targets, you can select the non-default
+type by setting the `CFLAGS` and `CXXFLAGS` environment variables to the
+flags used to change your compiler's target.  For example, for gcc:
+
+```
+export CXXFLAGS=-m32
+export CFLAGS=-m32
+```
+
+Next, in your shell (which you have set up for building with your
+compiler), create a build directory.  Out-of-source builds are supported
+and recommended.
+
+You can configure using the CMake GUI or directly from the command line.
+We describe the GUI method first.  To use the GUI, invoke it from the build
+directory, pointing at the source directory.  For example, if your current
+directory is the base of the DynamoRIO tree:
+
+On Windows, from a Cygwin bash shell:
+```
+mkdir build
+cd build
+CMakeSetup ..
+```
+
+On Linux:
+```
+mkdir build
+cd build
+cmake-gui ..
+```
+
+Alternatively, `ccmake`, the curses-based GUI, can be used on Linux.
+
+On Windows, press "Configure" and select "Visual Studio 9 2008" or "Visual
+Studio 8 2005); on Linux, press Configure and then select "Unix Makefiles"
+(or, in `ccmake`, press `c` once).
+
+Now you can select the parameters to configure your build.  The main
+parameters are as follows:
+
+ - TOOL_DR_HEAPSTAT = whether to build Dr. Heapstat instead of Dr. Memory
+ - CMAKE_BUILD_TYPE = whether to build Debug or RelWithDebInfo
+
+Note that the DynamoRIO build options are present as advanced options but
+in general should be ignored as Dr. Memory sets the appropriate settings.
+
+Press Configure and then OK (or `c` and then `g`) to complete the
+configuration step and generate the Makefiles.  It is normal to see
+messages like this for various types (uint, ushort, bool, byte, sbyte,
+uint32, uint64, int32, int64):
+
+```
+-- Check size of bool
+-- Check size of bool - failed
+```
+
+This is really a check for the existence of a typedef and it is normal for
+some such checks to print a "failure" message.
+
+On Windows, if you have both `cl` and `gcc` on your path, you can ensure
+that CMake selects `cl` by setting the `CC` and `CXX` environment
+variables.  For example:
+
+```
+CC=cl CXX=cl cmake ..
+```
+
+To improve compilation speed on Windows, if you have CMake 2.8 or later,
+you can turn off the progress and status messages with this CMake define:
+
+```
+-DCMAKE_RULE_MESSAGES:BOOL=OFF
+```
+
+## Building and Installing
+
+After the configuration step is complete, type `cmake --build .`
+on Windows or `make` on Linux.
+
+For a release build on Windows, you'll need to use:
+```
+cmake --build . --config RelWithDebInfo
+```
+
+## Configuring in Batch Mode
+
+Instead of interactive configuration you can pass all your parameter
+changes to CMake on the command line.  For example:
+
+On Windows, with code checked out into the current directory named `src`:
+```
+mkdir ../build
+cd ../build
+cmake -G"Visual Studio 9 2008" -DCMAKE_BUILD_TYPE=Debug ../src
+cmake --build .
+```
+
+On Linux, with code checked out into the current directory named `src`:
+```
+mkdir ../build
+cd ../build
+cmake -DCMAKE_BUILD_TYPE=Debug ../src
+make
+```
+
+Developers may wish to pass `-DCMAKE_VERBOSE_MAKEFILE=1` to CMake in order
+to see the compilation command lines.  They can alternatively be seen for
+any individual build with `make VERBOSE=1`.
+
+## Re-Configuring
+
+You can re-run the configure step, using the same parameters that you
+originally used, in two ways:
+
+```
+  make rebuild_cache
+```
+
+Or:
+
+```
+  cmake .
+```
+
+With the latter command you can also change the configuration, but be sure
+to do a `make clean` prior to building as CMake does not perform
+dependence checking on this type of modification.  As an example:
+
+```
+  cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo .
+  make clean
+```
+
+## Using Ninja For Better Error Messages, Faster Builds, and Proper Incremental Builds
+
+Ninja is a new build system that provides a much better build experience
+from the command line.  We highly recommend using it on Windows.  Follow
+the
+[DynamoRIO instructions for using Ninja](https://dynamorio.org/page_building.html#sec_ninja).
+
+## Using MSBuild For Better Error Messages And Faster Builds
+
+We recommend Ninja (see above) over MSBuild, but we're leaving the
+information on MSBuild here as it is recommended over devenv.
+
+By default, CMake will use devenv when building for Visual Studio generators.
+An exception is CMake 2.8.4, which uses MSBuild by default, but does not build
+in parallel without passing the "/m" flag to MSBuild:
+
+```
+cmake --build . --target RelWithDebInfo -- /m
+```
+
+MSBuild summarizes all build warnings and errors at the end of the run, unlike
+devenv.  It is also a little faster than devenv (when parallel building is
+enabled).  There are some general outstanding issues with MSBuild, but it seems
+to work well for Dr. Memory with Visual Studio 2010.  To request MSBuild set the
+CMAKE_MAKE_PROGRAM variable at configuration time.  In a Visual Studio Command
+Prompt, MSBuild is on the PATH, so the absolute path is not needed (here the code is checked out into the current directory named `src`):
+
+```
+cmake -G"Visual Studio 10" -DCMAKE_MAKE_PROGRAM:FILEPATH=MSBuild ../src
+```
+
+Don't forget to pass the "/m" flag (after "--") as shown above when building.
+
+To request verbose build information, use the "/v:diag" flag:
+
+```
+cmake --build . --target RelWithDebInfo -- /m /v:diag
+```
+
+Here is a sample bash function to make building easier within Cygwin:
+
+```
+function build {
+    config=`grep ^CMAKE_CONFIGURATION_TYPES:S CMakeCache.txt | sed 's/^.*=//'`
+    /usr/bin/time cmake --build . --config $config -- /m
+}
+```
+
+## Building the Qt Dr. Heapstat visualizer
+
+See the [Qt DrGUI extension build instructions for DynamoRIO](https://dynamorio.org/page_building.html#sec_drgui).
+
+----------------
+
+## Cross-Compiling for ARM on Linux
+
+Install the cross compiler for the `gnueabihf` target:
+
+```
+$ sudo apt-get install gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+```
+
+Check out the sources as normal, and point at our toolchain CMake file:
+
+```
+$ git clone https://github.com/DynamoRIO/drmemory.git
+$ cd drmemory
+$ make/git/devsetup.sh
+$ cd ..
+$ mkdir build_arm
+$ cd build_arm
+$ cmake -DCMAKE_TOOLCHAIN_FILE=../drmemory/dynamorio/make/toolchain-arm32.cmake ../drmemory
+$ make -j
+```
+
+----------------
+
+## Cross-Compiling for ARM Android
+
+Install the Android NDK and configure it for the androideabi standalone toolchain.  Something like this:
+
+```
+/myndkpath/android-ndk-r10e/build/tools/make-standalone-toolchain.sh --arch=arm --platform=android-21 --install-dir=/mytooldir/android-ndk-21 --toolchain=arm-linux-androideabi-4.9
+```
+
+Switch from the gold linker to bfd:
+
+```
+ln -sf arm-linux-androideabi-ld.bfd /mytooldir/android-ndk-21/bin/arm-linux-androideabi-ld
+```
+
+You'll need a cmake version greater than 3.0.2 -- otherwise you'll see this error:
+
+```
+System is unknown to cmake, create:
+Platform/Android to use this system, please send your config file to ...
+```
+
+Now check out the sources as normal, and point at our toolchain CMake file.
+
+```
+$ git clone https://github.com/DynamoRIO/drmemory.git
+$ cd drmemory
+$ make/git/devsetup.sh
+$ cd ..
+$ mkdir build_android
+$ cd build_android
+$ cmake -DCMAKE_TOOLCHAIN_FILE=../drmemory/dynamorio/make/toolchain-android.cmake -DANDROID_TOOLCHAIN=/mytooldir/android-ndk-21 ../drmemory
+$ make -j
+```
+
+If your Android system does not have a writable `/data/local/tmp` directory, you will need to either set `DYNAMORIO_CONFIGDIR` to a writable location or always run from a writable current directory.
+
+If you have an Android device set up for access through the `adb shell` utility, the Android build is capable of automatically copying binaries to the device and running tests.  First, ensure that `adb` is on your PATH, and that `adb status` indicates an attached device.  Next, set the cmake variable `DRM_COPY_TO_DEVICE`.  This sets up post-build steps for each target needed by the tests to copy binaries over to the device.  Now `ctest` should work when run from the host machine.
+
+----------------
+
+# Building a Release Package
+
+We use Github Actions to build official release packages of
+Dr. Memory.  This section describes how to build a local package.
+
+Use the package.cmake CTest script to build a release package.  On Linux,
+this is a tarball; on Windows, both a zip file and an installation
+executable are built.  The Windows installer is only built, however, if
+[NSIS](http://nsis.sourceforge.net) is installed on your machine.  See the instructions under Other Tools for how to appropriately patch NSIS.
+
+Launch package.cmake using `ctest -S`.  Here is an example of building a
+Dr. Memory package from the current sources:
+
+```
+  git clone https://github.com/DynamoRIO/drmemory.git
+  cd drmemory
+  make/git/devsetup.sh
+  cd ..
+  mkdir build_package
+  cd build_package
+  ctest -S ../drmemory/package.cmake,drmem_only\;build=1
+```
+
+The arguments to a ctest script are ;-separated (but the ; must be escaped
+for most shells) and separated from the script name by a comma.
+
+To set a CMake variable for a CTest script, create a file and pass it
+in via the preload argument to package.cmake.
+
+To diagnose build failures, look at the detailed output in the log files for each step (configure, build, test) in the `Testing/Temporary/` directory inside each build directory.
+
+****************************************************************************
+****************************************************************************
+*/

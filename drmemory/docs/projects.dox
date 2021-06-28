@@ -1,0 +1,398 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_projects Project Suggestions for Dr. Memory Contributors
+
+# General Prerequisites for Contributors
+
+Dr. Memory and its underlying engine, DynamoRIO, are written in C.  Knowledge of C programming is required for all of the projects listed here.  Some projects that involve external pieces of software, such as a Visual Studio plugin, may additionally require C++ programming.
+
+Some lower-level projects need knowledge of x86/amd64 assembly code (though mainly just knowledge of the architecture, register set, and instruction set: experience writing in a particular assembler is not required), or program analysis and reverse engineering skills.  Each project lists the particular skill set most suited to work on that project.
+
+Knowledge of operating system fundamentals and experience with runtime systems are helpful for all of the projects here.
+
+# Project Suggestions for Contributors
+
+## Dr. Memory debugger integration
+
+The first step of this project would involve Visual Studio IDE integration.  Dr. Memory can currently be used as an External Tool in the Visual Studio
+IDE, but it requires manual setup.  We'd like to automate that and have Dr. Memory auto-registered as an External Tool during installation.
+
+The next step of this project will integrate with the Visual Studio debugger.  While Dr. Memory preserves transparency of as much as the application as possible, including the application stack, when examined in a debugger the program counter points into the software code cache used to implement Dr. Memory's instrumentation and not into the original application code.  This can be confusing to a user.
+
+This part of the project involves first connecting Dr. Memory to the debugger by creating a Visual Studio plugin.  The next step involves translating the program counter from the code cache to the corresponding application address whenever it is presented to the user.  In addition, at certain points during the execution, the full register state must be translated.
+
+The final step involves enabling a Dr. Memory-reported error to break into the debugger and allow the user to examine the application state at the point of the error.
+
+__Prerequisites__: The Visual Studio plugin will require C++ programming.  Converting the internal tool state to the presented debugger state will require C programming and x86/amd64 knowledge.
+
+See also:
+ - [issue 800](https://github.com/DynamoRIO/drmemory/issues/800)
+ - [issue 1009](https://github.com/DynamoRIO/drmemory/issues/1009)
+ - [issue 600](https://github.com/DynamoRIO/drmemory/issues/600)
+ - [issue 532](https://github.com/DynamoRIO/dynamorio/issues/532)
+ - [issue 559](https://github.com/DynamoRIO/dynamorio/issues/559)
+ - [Advanced debugging tools](Projects#advanced-debugging-tools)
+
+Similar work could be done for gdb or any other debugger.
+
+## Standalone GUI for running Dr. Memory
+
+Currently, Dr. Memory's main interface is command-line-only.  On Windows we also support drag-and-drop onto our icon, but no arguments can be passed that way.  After a manual setup step, Dr. Memory can also be run from within Visual Studio (see the prior project on improving that).
+
+This project involves building a graphical interface for launching Dr. Memory (or any DynamoRIO-based tool) and viewing the results.  For supporting general tools (such as code coverage, e.g.), the project could involve designing a client API for displaying arbitrary tool results in the GUI.
+
+__Prerequisites__: This project could be written entirely in C++ if desired and is one of the most high-level projects on the list, requiring the least low-level or architecture-specific knowledge.  It could build on MFC or any desired graphical application framework.
+
+See also:
+ - [issue 1128](https://github.com/DynamoRIO/drmemory/issues/1128)
+ - [issue 1150](https://github.com/DynamoRIO/drmemory/issues/1150)
+
+## Dr. Heapstat
+
+Today we have a prototype of a heap usage and "heap staleness" tool.  There
+is much work to be done in flushing it out.
+
+"Staleness": a memory profiling tool that leverages dynamic instrumentation
+to gather "staleness information" about the lifetime and access history
+of heap objects, guiding memory usage improvements.
+
+Visualizing the resulting data is a big part of making a tool like this
+successful.
+
+Another facet of this project could be to bridge domains in dual-language
+applications.  For example, bridge the Javascript and C++ domains, or
+the Java and C++ domains.
+
+__Prerequisites__: The visualizer could be written in a high-level language, such as Java.  The data-gathering tool needs C programming experience and some x86/amd64 assembly knowledge.
+
+## Partial native execution for hybrid tools
+
+Dr. Memory's light mode does not need to execute the entire process,
+meaning it can be applied to only part of the execution.  Dr. Memory can
+also be used as the dynamic portion of a hybrid tool that uses
+compiler-inserted instrumentation where possible.  Performance can be
+improved for these situations by natively executing the portion of the
+application not being monitored by Dr. Memory
+
+__Prerequisites__: C programming and x86/amd64 knowledge.
+
+See also:
+ - [issue 978](https://github.com/DynamoRIO/dynamorio/issues/978)
+
+## Port Dr. Memory to MacOS
+
+Add support for MacOS to both the DynamoRIO platform and the Dr. Memory
+tool built on top of it.  As DynamoRIO is a low-level system that operates
+at the system call layer this involves solving challenging problems unique
+to MacOS.
+
+__Prerequisites__: C programming and MacOS or general UNIX operating system-level knowledge.
+
+See also:
+ - [issue 58](https://github.com/DynamoRIO/dynamorio/issues/58)
+
+## Port Dr. Memory to ARM
+
+Port DynamoRIO and Dr. Memory to the ARM architecture.
+
+__Prerequisites__: C programming and ARM architectural knowledge or possibly general computer architecture knowledge.
+
+## Provide further information on the origins of uninitialized read bugs
+
+Dr. Memory must wait for a "meaningful" read before reporting an
+uninitialized read error in order to avoid false positives.  But this can
+make it harder to track backward to the source of the bug.  We would like
+to optionally track extra information on the origins of these bugs.
+
+__Prerequisites__: C programming and x86/amd64 assembly knowledge.
+
+See also:
+ - [issue 170](https://github.com/DynamoRIO/drmemory/issues/170)
+
+## Extend Dr. Memory's Windows system call database
+
+Analyze Windows system calls in order to remove false positives from
+Dr. Memory's error reports.
+
+__Prerequisites__: Program analysis and reverse engineering skills; Windows operating system knowledge.
+
+See also:
+ - [issue 98](https://github.com/DynamoRIO/drmemory/issues/98)
+ - [issue 424](https://github.com/DynamoRIO/drmemory/issues/424)
+ - [issue 437](https://github.com/DynamoRIO/drmemory/issues/437)
+ - [issue 1093](https://github.com/DynamoRIO/drmemory/issues/1093)
+ - [issue 1094](https://github.com/DynamoRIO/drmemory/issues/1094)
+ - [issue 1095](https://github.com/DynamoRIO/drmemory/issues/1095)
+
+## Analyze and eliminate Windows leak false positives
+
+On Windows, Dr. Memory reports a number of leaks involving system libraries.  We're not sure of the cause of these leaks being reported and which ones are true leaks versus false positives due to non-standard pointer treatment in the library code.
+
+__Prerequisites__: Program analysis and reverse engineering skills; Windows operating system knowledge.
+
+## Extend Dr. Memory's Linux system call database
+
+Add Linux system call information in order to remove false positives from
+Dr. Memory's error reports.
+
+__Prerequisites__: Linux operating system knowledge.
+
+See also:
+ - [issue 92](https://github.com/DynamoRIO/drmemory/issues/92)
+ - [issue 1019](https://github.com/DynamoRIO/drmemory/issues/1019)
+ - [issue 1106](https://github.com/DynamoRIO/drmemory/issues/1106)
+
+## Add post-processing and multi-run-aggregation features to Dr. Memory
+
+We would like to be able to re-symbolize, re-suppress, or combine results
+from prior runs under Dr. Memory.
+
+__Prerequisites__: C programming.
+
+See also:
+ - [issue 446](https://github.com/DynamoRIO/drmemory/issues/446)
+ - [issue 614](https://github.com/DynamoRIO/drmemory/issues/614)
+
+## Attach/detach on Linux or Windows
+
+Some modes of Dr. Memory do not need to observe the entire program
+execution.  Attaching after program startup can improve performance for
+repeated start/stop testing of large applications.
+
+__Prerequisites__: C programming, either Linux or Windows operating system knowledge, and x86/amd64 assembly knowledge.
+
+See also:
+ - [issue 37](https://github.com/DynamoRIO/dynamorio/issues/37)
+ - [issue 38](https://github.com/DynamoRIO/dynamorio/issues/38)
+ - [issue 95](https://github.com/DynamoRIO/dynamorio/issues/95)
+ - [issue 725](https://github.com/DynamoRIO/dynamorio/issues/95)
+
+## First-instruction injection
+
+Currently, DynamoRIO does not take over until some system library
+initialization is complete.  This feature covers taking over at the very
+first instruction, on both Linux and Windows.  This would simplify many
+aspects of Dr. Memory.
+
+__Prerequisites__: C programming, either Linux or Windows operating system knowledge, and x86/amd64 assembly knowledge.
+
+See also:
+ - [issue 234](https://github.com/DynamoRIO/dynamorio/issues/234)
+
+## Cross-architecture process following
+
+Currently, Dr. Memory is unable to monitor a child process of a different
+bitwidth (32 vs 64) from the parent process.
+
+__Prerequisites__: C programming, Windows operating system knowledge, and x86/amd64 assembly knowledge.
+
+See also:
+ - [issue 49](https://github.com/DynamoRIO/dynamorio/issues/49)
+
+## Annotation infrastructure
+
+Annotations in the application would provide many benefits to Dr. Memory.
+
+__Prerequisites__: C programming.
+
+See also:
+ - [issue 283](https://github.com/DynamoRIO/drmemory/issues/283)
+ - [issue 41](https://github.com/DynamoRIO/drmemory/issues/41)
+ - [issue 572](https://github.com/DynamoRIO/drmemory/issues/572)
+ - [issue 573](https://github.com/DynamoRIO/drmemory/issues/573)
+
+## Persistent cache
+
+Persistent code caches can improve startup performance for Dr. Memory when
+repeatedly running large applications.  Some work has been done in this
+area but it is not complete.
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 769](https://github.com/DynamoRIO/drmemory/issues/769)
+ - [issue 867](https://github.com/DynamoRIO/drmemory/issues/867)
+ - [issue 40](https://github.com/DynamoRIO/dynamorio/issues/40)
+
+## System call tracing tool
+
+Dr. Strace is our prototype system call tracing tool for Windows.  We're
+missing all of the non-pointer arguments for all graphical system calls and
+many recent system calls, however, and the tool is in rudimentary state: it
+does not display field details of most complex parameter types.
+
+__Prerequisites__: C programming, Windows operating system knowledge.
+
+## Build better performance analysis tools for analyzing Dr. Memory itself
+
+We need better tools to analyze performance of Dr. Memory and other
+DynamoRIO-based tools.
+
+__Prerequisites__: C programming, computer architecture knowledge.
+
+See also:
+ - [issue 140](https://github.com/DynamoRIO/dynamorio/issues/140)
+ - [Profiling DynamoRIO and Clients](https://dynamorio.org/page_profiling.html)
+
+## Better cache consistency handling
+
+Dynamically generated code is a challenge for Dr. Memory and DynamoRIO to
+handle.  We would like to improve our cache consistency handling by using a dual page map scheme that arranges for writable code to be backed by a file that is mapped twice, one read-only and one writable.
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 1114](https://github.com/DynamoRIO/dynamorio/issues/1114)
+
+## Run 32-bit applications in 64-bit mode to improve Dr. Memory performance
+
+Overview: We would like to experiment with Dr. Memory switching to 64-bit mode when running a 32-bit application on a 64-bit kernel.  We could use the extra registers as scratch space to reduce spills and improve performance.  Dr. Memory could also use the extra address space for more efficient memory shadowing.
+
+Current status: Currently, DynamoRIO has basic support for running mixed-mode (i.e., mixing 32-bit and 64-bit code), though some corner cases are not covered.  This is a special case of mixed-mode, though, where the application has rigid boundaries of its code transitions, which eliminates many corner cases.
+
+The next step is to scale it up and shift to Dr. Memory.  We need to handle callbacks and other transitions through the WOW64 layer, and ensure we preserve r12-r15, which are assumed to be untouched on every re-entry to WOW64 from 32-bit.
+
+We would start with Dr. Memory’s pattern mode, as that does support 64-bit applications today.
+
+ - Goal: improve performance of Dr. Memory on 32-bit applications.
+ - Platforms: Windows.  (32-bit is not very relevant on Linux.)
+ - Milestones:
+   1. 32-to-64 DynamoRIO running Windows Hello,World
+   1. 32-to-64 DynamoRIO running calc.exe
+   1. Finalize 32-to-64 client API: resolve issues such as whether clients must handle 32-bit instrlists or can assume all-64 (forcing us to translate things like BCD).
+   1. 32-to-64 Dr. Memory pattern mode running calc.exe
+   1. 32-to-64 Dr. Memory pattern mode running Chromium browser_tests
+   1. 32-to-64 Dr. Memory shadow full mode running Chromium browser_tests
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 751](https://github.com/DynamoRIO/dynamorio/issues/751)
+
+## Dynamic register stealing and coordination framework
+
+Improve Dr. Memory instrumentation by building a framework for dynamic
+register usage coordination for multi-component dynamic tools.
+
+__Prerequisites__: C programming, x86/amd64 knowledge, ideally experience with a compiler framework such as gcc or LLVM.
+
+See also:
+ - [issue 511](https://github.com/DynamoRIO/dynamorio/issues/511)
+
+## Add a buffer filling API to DynamoRIO
+
+The design could be based on the
+[PiPA academic tool](http://dynamorio.org/pubs/PiPA-pipelined-profiling-cgo08.pdf).
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 513](https://github.com/DynamoRIO/dynamorio/issues/513)
+
+## Advanced debugging tools
+
+This project involves extending existing debuggers with dynamic instrumentation to support novel capabilities in a performant manner.
+
+First, we would implement a communication and extension protocol for the chosen debugger: gdb's remote stub API, or a Visual Studio plugin (see also
+[the Dr. Memory debugger integration project](Projects#dr-memory-debugger-integration) above).
+
+Second, we would implement state translation to present the application state rather than the software code cache state used by DynamoRIO to implement dynamic instrumentation.  (See also [issue 532](https://github.com/DynamoRIO/dynamorio/issues/532) and
+[issue 559](https://github.com/DynamoRIO/dynamorio/issues/559)).
+
+Finally, once we have a baseline debugger integration to build off of, a wide variety of debugger improvements can be implemented using the power of dynamic instrumentation:
+
+  - Thread-specific breakpoints (or watchpoints).  On applications with many threads, a thread-specific breakpoint in a traditional debugger is inefficient.  With dynamic instrumentation we can create a thread-private software code cache for a target thread and implement a breakpoint with zero overhead on the other threads.
+  - More powerful and scalable watchpoints.  Using dynamic instrumentation and shadow memory we can support literally millions of watchpoints, while a traditional debugger is limited to the hardware registers, beyond which it typically goes into single-step mode.
+  - Apply arbitrary customized tools to selected code sequences while debugging.  For example, an uninitialized read detector, or a memory overflow detector, could be invoked while debugging from the debugger and applied to a sequence of code.  A memory trace could be gathered, an instruction trace, etc., all while debugging.
+  - Faster conditional breakpoints.  A traditional debugger interrupts the program every time to check whether a breakpoint's condition has been met.  Dynamic instrumentation can inline the condition and only break out when it is met.
+  - Reverse execution
+  - Dynamic slicing
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+
+ - [Dr. Memory debugger integration](Projects#dr-memory-debugger-integration)
+ - Academic paper: ["How to do a million watchpoints: Eﬃcient Debugging using Dynamic Instrumentation"](http://dynamorio.org/pubs/zhao-million-watchpoints-CC08.pdf)
+ - Academic paper: ["PinADX: an interface for customizable debugging with dynamic instrumentation"](http://dl.acm.org/citation.cfm?id=2259032)
+
+## Probe mode
+
+Complete the DynamoRIO Probe API for lighter-weight tools that only need to
+insert probes/callouts/hooks at certain points during execution
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 1281](https://github.com/DynamoRIO/dynamorio/issues/1281)
+
+## Add DynamoRIO IPC support
+
+We would like to augment DynamoRIO's IPC API support, as using native API's
+can result in no alertable syscalls or other problems.  We'd like to add
+shared memory, pipes, and semaphores in a Linux + Windows cross-platform
+manner.
+
+__Prerequisites__: C programming, either Linux or Windows operating system knowledge, x86/amd64 knowledge.
+
+See also:
+ - [issue 498](https://github.com/DynamoRIO/dynamorio/issues/498)
+
+## DynamoRIO performance optimizations
+
+Hashtable and indirect branch lookup optimizations that may improve
+DynamoRIO's performance.
+
+__Prerequisites__: C programming, x86/amd64 knowledge.
+
+See also:
+ - [issue 31](https://github.com/DynamoRIO/dynamorio/issues/31)
+ - [issue 32](https://github.com/DynamoRIO/dynamorio/issues/32)
+ - [issue 33](https://github.com/DynamoRIO/dynamorio/issues/33)
+
+## Create a new tool
+
+Create a dynamic tool using the DynamoRIO tool platform to use as a sample.
+Particular tools could include a fuzzer, a profiler (basic block, edge,
+function, parallelized profiling, etc.), some kind of reverse engineering
+tool, etc.
+
+__Prerequisites__: C or C++ programming, ideally x86/amd64 knowledge.
+
+## Create a tool library
+
+Create a library for dynamic tools to use.  Particular needs include
+building a control flow graph, building a call graph, maintaining a shadow
+stack, or data dependence analysis.
+
+__Prerequisites__: C or C++ programming.
+
+## Other, smaller features
+
+Search the issue tracker for the ["help wanted"](https://github.com/DynamoRIO/drmemory/issues?utf8=%E2%9C%93&q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22) and ["good first issue"](https://github.com/DynamoRIO/drmemory/issues?utf8=%E2%9C%93&q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22%20) labels.
+
+****************************************************************************
+****************************************************************************
+*/

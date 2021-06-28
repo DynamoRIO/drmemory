@@ -1,0 +1,89 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_developers Developer Documentation
+
+- \subpage page_contribute
+- \subpage page_build
+- \subpage page_submodule
+- \subpage page_projects
+- \subpage page_new_release
+- \subpage page_test
+- \subpage page_design_docs
+
+\page page_contribute Contributing to Dr. Memory
+
+We welcome contributions to Dr. Memory.  We do not require a formal contributor license agreement or transfer of copyright.  Contributions are implicitly assumed to be offered under terms of [Dr. Memory's primary LGPL 2.1 license](https://github.com/DynamoRIO/drmemory/blob/master/license.txt) as well as a [BSD license](https://github.com/DynamoRIO/drmemory/blob/master/license.txt#L485).
+
+We use the [same code review, code style, and workflow as for DynamoRIO](https://dynamorio.org/page_contributing.html).  The `git pullall` alias is extended for Dr. Memory to properly update the [DynamoRIO submodule](\ref page_submodule).
+
+
+\page page_submodule Updating the DynamoRIO Submodule
+
+# DynamoRIO Inside Dr. Memory
+
+DynamoRIO is included inside the Dr. Memory source tree as a [git submodule](http://git-scm.com/docs/git-submodule).  We support both building that embedded DR along with pointing to an already-built separate DR export tree.
+
+# Submodule Rollback
+
+Be careful with submodules when pulling upstream changes.  If a submodule
+was modified upstream and only a `git pull` is run without a subsequent
+`git submodule update`, that upstream change will be reverted upon the next
+`git push`.  Please use the `pullall` alias to avoid
+accidentally clobbering submodule changes.
+
+We do have a pre-commit hook in place that will warn you if you try to roll
+back the dynamorio submodule while checking in at least one other file:
+
+```
+% git commit -a
+Error: the dynamorio submodule is being rolled back.
+This is likely a mistake: did you pull but not run git submodule update?
+Aborting commit.
+```
+
+# Updating the DynamoRIO Version
+
+Run `git checkout <hash>` to update DynamoRIO to that hash:
+
+```
+cd dynamorio
+git pull
+git checkout 0c81acfc9aaea949e6f6ecfe0b4157c06a014dda
+```
+
+If Dr. Memory's sources are being changed to require this new version of DR, apply the Dr. Memory changes such that they will be included in the same commit that updates the submodule version.  Also add to the commit message something like "Relies on DR <hash>.  Updates DR to <hash>.".
+
+If Dr. Memory won't build, or shouldn't be built, with any older version of
+DR, also update the set of the "DynamoRIO_VERSION_REQUIRED" variable in
+trunk/CMakeLists.txt (use the patchlevel printed by `cmake .`).
+
+Now run the Dr. Memory test suite **with an embedded DR, not with an already-built DR** to ensure it's happy with the updated DR.
+
+In your commit log message state to which version you're updating DR, and why (typically to pull in a certain bug fix or new feature).
+
+
+****************************************************************************
+****************************************************************************
+*/

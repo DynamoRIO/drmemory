@@ -1,20 +1,11 @@
 # Contributing to Dr. Memory
 
 We welcome contributions to Dr. Memory.  See our [list of project ideas for
-contributors](http://drmemory.org/projects.html) and also [our list that
-includes DynamoRIO
-projects](https://github.com/DynamoRIO/drmemory/wiki/Projects).
+contributors](http://drmemory.org/projects.html).
 
-If you would like to contribute code to Dr. Memory, you will need to first sign a
-[Contributor License Agreement](https://developers.google.com/open-source/cla/individual).
-
-Our wiki contains further information on policies, how to check out the
-code, and how to add new code:
-
-- [Contribution policies and suggestions](https://github.com/DynamoRIO/drmemory/wiki/Contributing)
-- [Git workflow](https://github.com/DynamoRIO/drmemory/wiki/Workflow)
-- [Code style guide](https://github.com/DynamoRIO/drmemory/wiki/Code-Style)
-- [Code reviews](https://github.com/DynamoRIO/drmemory/wiki/Code-Reviews)
+[Our web site](https://drmemory.org/page_contribute.html)
+contains further information on policies, how to check out the
+code, and how to add new code.
 
 ## Reporting issues
 
@@ -38,7 +29,7 @@ Memory)?  What about when running with the options "-leaks_only
 -no_count_leaks -no_track_allocs"?
 
 Does the problem go away when using the most recent build from
-https://github.com/DynamoRIO/drmemory/wiki/Latest-Build?
+https://drmemory.org/Latest-Build?
 
 Try the debug version of Dr. Memory and of its underlying engine DynamoRIO
 by passing "-debug -dr_debug -pause_at_assert" to drmemory.exe. Are any
@@ -46,7 +37,7 @@ messages reported?
 
 Please provide any additional information below.  Please also see the
 "Narrowing Down the Source of the Problem" section
-of https://github.com/DynamoRIO/drmemory/wiki/Debugging.
+of https://drmemory.org/Debugging.
 ```
 
 ### Including code in issues
