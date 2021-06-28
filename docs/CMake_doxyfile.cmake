@@ -217,9 +217,9 @@ endif ()
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
     "using.dox"
-    "using.dox errors.dox reports.dox light.dox chinese.dox fuzzer.dox coverage.dox tools.dox ${headers} debugging.dox"
+    "download.dox using.dox errors.dox reports.dox light.dox chinese.dox fuzzer.dox coverage.dox tools.dox ${headers} debugging.dox"
     string "${string}")
-  string(REGEX REPLACE "drfuzz.dox" "drfuzz.dox license.dox" string "${string}")
+  string(REGEX REPLACE "drfuzz.dox" "drfuzz.dox license.dox contribute.dox build.dox projects.dox new_release.dox test.dox design_docs.dox arm_port.dox" string "${string}")
 else ()
   string(REGEX REPLACE
     "main.dox" "main.dox ${headers}" string "${string}")
