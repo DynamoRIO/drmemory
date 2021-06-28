@@ -36,7 +36,7 @@ group</a>.
 The Dr. Memory issue tracker is located at:
 https://github.com/DynamoRIO/drmemory/issues
 
-# Debugging Dr. Memory
+\section sec_debugging Debugging Dr. Memory
 
 For general information about debugging DynamoRIO, please see [its docs](https://dynamorio.org/page_debugging.html).
 This page contains a couple of how-tos with Dr. Memory specifics.
