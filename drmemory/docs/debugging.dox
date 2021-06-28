@@ -25,12 +25,23 @@
  ****************************************************************************
 \page page_help Obtaining Help and Reporting Bugs
 
+# Discussion Email List
+
 For questions, bug reports, and discussion, join the <a
 href="http://groups.google.com/group/drmemory-users/">Dr. Memory Users
 group</a>.
 
+# Issue Tracker
+
 The Dr. Memory issue tracker is located at:
-http://drmemory.org/issues
+https://github.com/DynamoRIO/drmemory/issues
+
+# Debugging Dr. Memory
+
+For general information about debugging DynamoRIO, please see [its docs](https://dynamorio.org/page_debugging.html).
+This page contains a couple of how-tos with Dr. Memory specifics.
+
+## General Tips
 
 If a problem in the Dr. Memory tool itself is encountered, try the
 following steps to help diagnose the issue:
@@ -40,9 +51,47 @@ following steps to help diagnose the issue:
    drmemory.exe.  Are any messages reported?
  - Try running light mode ("-light").  Does the issue appear there?
  - Try running "-leaks_only -no_count_leaks -no_track_allocs".  Does that work?
- - Try a recent build from https://github.com/DynamoRIO/drmemory/wiki/Latest-Build
+ - Try the [latest build](\ref sec_latest_build)
  - Try disabling anti-virus or other invasive software, as it may not
    interoperate well with Dr. Memory (see \ref sec_interop).
+ - Look in the log file, which is in the same process as the results.txt file but is named `global.<pid>.log` for warnings and other messages.  You can increase verbosity via the -verbose flag, but only use higher levels for short-running applications.
+
+\subsection sec_narrow Narrowing Down the Source of the Problem
+
+First, as with all debugging scenarios, try to reduce the application workload that shows the problem to the smallest and shortest scenario that you can, to make it easier to analyze upon re-execution.
+
+If you have a reproducible problem where an application does not work properly under Dr. Memory, try running it with each of these sets of runtime options to determine which component of Dr. Memory is responsible.  Try these in order, and as soon as your application works, you can then report that it works with one set of options but not with another, which will make it easier for a developer to further diagnose the issue:
+
+```
+-no_count_leaks
+```
+```
+-light
+```
+```
+-leaks_only
+```
+```
+-leaks_only -no_count_leaks
+```
+```
+-leaks_only -no_count_leaks -no_track_allocs
+```
+If the problem persists with all of the above options to Dr. Memory, try running under plain DynamoRIO.  You can run the version in the Dr. Memory package like this (ignore warnings about "incomplete installation"):
+
+```
+dynamorio/bin32/drrun -- <application and args>
+```
+
+For a 64-bit application run this instead:
+
+```
+dynamorio/bin64/drrun -- <application and args>
+```
+
+Alternatively, download [the latest standalone DynamoRIO](https://dynamorio.org/page_weekly_builds.html).
+
+## Gathering Additional Data
 
 To supply data for analyzing and fixing a bug, reproduce the problem using
 these options to Dr. Memory:
@@ -66,6 +115,67 @@ and not just tool faults:
 Additionally, if the run is pretty short, run with the "-verbose 2" option
 and attach the resulting <tt>global.&lt;pid&gt;.log</tt> file from the same
 directory as the results.txt file (compress it if large).
+
+## Windows
+
+To attach to a Dr. Memory process with the debugger, it's usually easiest to use the DynamoRIO -msgbox_mask flag which pops up a message box and pauses the app:
+```
+drmemory.exe -dr_ops "-msgbox_mask 15" <others flags> -- <command>
+```
+`-msgbox_mask 15` shows message boxes on all DR internal events, including the application start.
+
+Dr. Memory also has options -pause_at_exit, -pause_at_assert (which I normally have on all the time for development with the Dr. Memory Debug build), -pause_at_uninitialized, and -pause_at_unaddressable, each of which pop up message boxes at the appropriate point, allowing for a debugger to be attached.
+
+When the desired message box appears, open windbg and attach (F6 or File->Attach) to the PID mentioned in the message.
+
+You'll need to tell windbg where the DynamoRIO, Dr. Memory, and private libraries are located.  DynamoRIO provides a script for this.  You can tell windbg to execute it at startup:
+
+```
+"C:\Program Files (x86)\Debugging Tools for Windows\windbg.exe" -pt 1 -c "$><c:\src\dynamorio\tools\windbg-scripts\load_syms"
+```
+
+Or you can execute the command directly at the windbg prompt:
+```
+$><c:\src\dynamorio\tools\windbg-scripts\load_syms
+```
+
+## Private Symbols
+
+Dr. Memory will load in private symbols from paths specified by the `_NT_SYMBOL_PATH` environment variable.  Point it at the directory you downloaded the symbols to within windbg.  Eventually Dr. Memory will support downloading them but probably never online (xref [issue 143](https://github.com/DynamoRIO/drmemory/issues#issue/143)).
+
+E.g., inside windbg:
+```
+.symfix c:\src\symbols
+.reload
+x **!FOO  # force lazy loading for each module
+lm       # check that "(pdb symbols)" is mentioned for each system library
+```
+
+And outside in the shell or systemwide or wherever:
+```
+set _NT_SYMBOL_PATH=c:\src\symbols
+```
+
+## DMP files
+
+If you can reproduce a Dr. Memory assert in the Debug build, a DMP file would be very helpful.
+Re-run Dr. Memory with `-pause_at_assert` and attach as described above, then type this in windbg:
+```
+.dump /ma c:\mypath\issue543.dmp
+```
+and get the DMP file. It may take quite a lot of time to write and the file may be pretty large but it's not a big problem as DMP files compress very well.
+
+If you're debugging a custom build, please ZIP the DMP file together with your `<debug>/bin` and `<debug_or_release>/dynamorio` directories so we can have your DLL and PDB files as well. Then, attach the ZIP file to the issue you've filed
+
+## Application Callstack
+
+You can get a callstack of the application by pointing windbg at the frame pointer, stack pointer, and pc to use.  A common scenario is when the current windbg frame has a `dr_mcontext_t**` variable named "mc", and  the pc is inside an app_loc_t var named "loc":
+
+```
+kb =@@(mc->ebp) @@(mc->esp) @@(loc->u.addr.pc)
+```
+
+The windbg documentation is very good, so look up these commands to learn more.  Note that "@@" switches to C expression mode.
 
 ****************************************************************************
 ****************************************************************************

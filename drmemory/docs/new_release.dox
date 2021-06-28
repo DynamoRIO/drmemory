@@ -1,0 +1,185 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_new_release New Release
+
+# Versioning
+
+We use the same [versioning scheme as DynamoRIO](https://dynamorio.org/page_new_release.html).
+
+# Steps for Publishing a New Release
+
+## Sanity Testing
+
+It is a good idea to perform some sanity tests on all platforms beyond what our CI tests to catch issues before a new release.  Minimal tests on each platform include:
+
+- Installing from the .msi installer
+- Verifying that all of the Start Menu links work properly
+- Verifying that Dr. Memory is added to the user's path
+- Dragging calc.exe onto the Dr. Memory desktop icon (on Win10, drag notepad instead as calc is launched via service)
+- Installing from the zip file
+- Running something like tests/free.exe from the cygwin and cmd command line
+- Ensure installer set up as a Visual Studio External Tool.  Try running on a sample project that contains bugs.  Try to test this with as many versions of Visual Studio ({2005, 2008, 2010, 2012, 2013} x {Professional, Express}) as possible.
+- Run drstrace: `drstrace -- calc` and look at the log file
+- Run symquery: `symquery -e free.exe -s main`
+
+## Commit the Version and Changelist Changes
+
+Update the following in the code and commit the change:
+
++ Update `VERSION_NUMBER_DEFAULT`
++ Potentially update `DynamoRIO_VERSION_REQUIRED`
++ Potentially update `DRMF_VERSION_DEFAULT`
++ Update the default version number in `ci-package.yml`
++ Update the release changelist.
+
+## Trigger a Package Build
+
+To create a new build:
+
+1. Go to the Actions tab for the DynamoRIO/drmemory repository.
+2. Click on "ci-package" on the list of workflows on the left.
+3. Click on "Run workflow" on the right.
+4. Select the branch.
+5. Fill in the version number.  For a test build or periodic build (i.e., not an official new-version-number release), use the current version major.minor and the date-based patchlevel.  The patchlevel can be found from CMake's configuration output by running `cmake .`:
+```
+-- Dr. Memory version number: 2.3.18609
+```
+For the build number, start at 0 for any given version number and add 1 for each attempt to produce a successful build.  If the build number is 0 it is not appended to the version number.
+
+Wait for the workflow to finish.  It should create a new tag, a new Release, upload 4 binary packages to the Release, and update the online documentation.
+
+## Verify Package and Documentation Uploads
+
+Double-check that all binary package files were uploaded to the new release on Github.
+
+## Trigger a Documentation Build
+
+Run the "ci-docs" Action in the same manner as the "ci-package" action above.
+Double-check that the documentation was pushed to http://drmemory.org.
+
+## Update the Release Description
+
+Once the build is finished and posted to https://github.com/DynamoRIO/drmemory/releases, edit the description to list the highlights of the new release. You can use markdown to make a bulleted list.
+
+## Update download.dox
+
+Make a new list of direct links for the new version.
+
+## Add a New Changelist Section
+
+Update the changelist in release.dox: create a new entry for the next release.
+
+# Old Instructions for Locally Building Packages
+
+## Setup for Building Release Packages
+
+First, set up a symlink or NTFS junction such that the source path to Dr. Memory looks "professional", for the replace_malloc frames.  For example, here is what I did on Windows:
+
+```
+cd /d
+cmd /c mklink /J drmemory_package 'd:\derek\drmemory\trunk'
+```
+
+And on Linux:
+
+```
+ln -s /work/drmemory/drmemory/src /work/drmemory_package
+```
+
+When I build pointing at d:/drmemory_package/package.cmake, error messages then look like this:
+
+```
+Error #4: INVALID HEAP ARGUMENT to free 0x00001230
+# 0 replace_free               [# 1 main                       [d:\derek\drmemory\git\src\tests\malloc.c:175](d:\drmemory_package\common\alloc_replace.c:2352])
+Note: @0:00:00.344 in thread 3224
+```
+
+Next, be sure to use doxygen >= 1.8.1 for high-quality documentation.  On Windows, use a non-Cygwin build (I use ftp://ftp.stack.nl/pub/users/dimitri/doxygen-1.8.1.1.windows.bin.zip, with doxygen.exe placed in /usr/local/bin: see [DR issue 815](https://github.com/DynamoRIO/dynamorio/issues/815)).
+
+On Windows, we prefer our WIX-based MSI installer over the older NSIS installer.  Ensure you have at least CMake 3.3.0, WIX is installed, and WIX's `candle.exe` is on your PATH.  The configure status lines should then indicate the selection of WIX instead of NSIS for the installer build.
+
+To instead build an NSIS-based installer, ensure you have NSIS installed with large string support so that the installer will be properly built.  Configure status lines will indicate this. See [the build instructions](How-To-Build#other-tools) for more information.
+
+## Building Candidate Packages
+
+Build using package.cmake, and ensure your drmemory_package sources are up to date.  On Windows:
+
+```
+cd ~/drmemory/build_package/
+compilerVS2010_32
+ctest -VV -S d:/drmemory_package/package.cmake,drmem_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;use_ninja\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-Windows-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+chmod ugo+rx *.msi
+```
+
+On Linux:
+
+```
+cd /work/drmemory/build_package/
+ctest -V -S ctest -V -S /work/drmemory_package/package.cmake,drmem_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-Linux-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+```
+
+ARM eabihf:
+```
+cd /work/drmemory/build_package/
+ctest -D CMAKE_SYSTEM_PROCESSOR=arm -V -S /work/drmemory_package/package.cmake,drmem_only\;32_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cacheappend=CMAKE_TOOLCHAIN_FILE=/work/drmemory/git/src/dynamorio/make/toolchain-arm32.cmake\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-ARM-Linux-EABIHF-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+```
+
+Android:
+
+```
+cd /work/drmemory/build_package/
+ctest -D CMAKE_SYSTEM_PROCESSOR=arm -V -S /work/drmemory_package/package.cmake,drmem_only\;32_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cacheappend=CMAKE_TOOLCHAIN_FILE=/work/drmemory/git/src/dynamorio/make/toolchain-android.cmake\;cacheappend=ANDROID_TOOLCHAIN=/work/toolchain/android-ndk-21\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-ARM-Android-EABI-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+```
+
+On MacOS:
+
+```
+cd ~/drmemory/build_package
+ctest -V -S /drmemory_package/package.cmake,drmem_only\;32_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-MacOS-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+```
+
+Increment the build number for each RC.
+
+## Tag and Post
+
+Tag the release point:
+
+```
+git tag release_1.9.0 09e3d62
+git push origin --tags
+```
+
+Then make a new release on github at https://github.com/DynamoRIO/drmemory/releases.  Point at the precise changelist version in the online source viewer (look at prior releases for examples).
+
+Update download.dox
+
+Then commit to the top-level CMakeLists.txt (yes, *after* the tag) to update the line that sets `VERSION_NUMBER_DEFAULT`, potentially the lines that set `DynamoRIO_VERSION_REQUIRED` and `DRMF_VERSION_DEFAULT`, and the release changelist.
+
+## Update Documentation
+
+Update the online docs.
+****************************************************************************
+****************************************************************************
+*/
