@@ -43,12 +43,14 @@
 #ifdef LINUX
 /* See the big comment "64-bit vs 32-bit" in drsyscall_linux.c. */
 # ifdef X86
-#  define PACKNUM(x64,x86,arm) ((((uint)x64) << 16) | (x86 & 0xffff))
+#  define PACKNUM(x64,x86,arm, aarch64) ((((uint)x64) << 16) | (x86 & 0xffff))
 # elif defined(ARM)
 /* XXX i#1569: for AArch64 we'll have to see how the numbers change.
  * We can't pack in the same way b/c the arm-specific syscalls use top bits.
  */
-#  define PACKNUM(x64,x86,arm) arm
+#  define PACKNUM(x64,x86,arm, aarch64) arm
+# elif defined(AARCH64)
+#  define PACKNUM(x64,x86,arm, aarch64) aarch64
 # endif
 #endif
 

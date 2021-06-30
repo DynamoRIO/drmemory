@@ -36,7 +36,7 @@
 /* The name of the ioctl is "ioctl.name".  To avoid long lines from repeating
  * the request name we wrap it in a macro.
  */
-#define IOCTL(request) {PACKNUM(16,54,54), request}, "ioctl." STRINGIFY(request)
+#define IOCTL(request) {PACKNUM(16,54,54, 29), request}, "ioctl." STRINGIFY(request)
 
 /* All ioctls take fd and request as the first two args. */
 #define FD_REQ \

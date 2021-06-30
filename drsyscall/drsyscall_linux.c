@@ -84,6 +84,8 @@ union ioctl_data {
 # else
 #  define UNPACK_NATIVE(packed) packed
 # endif
+#elif defined(AARCH64)
+#  define UNPACK_NATIVE(packed) packed
 #endif
 
 /* Table that maps system call number to a syscall_info_t* */
@@ -196,12 +198,12 @@ sysparam_reg(uint argnum)
 {
 #ifdef X64
     switch (argnum) {
-    case 0: return REG_RDI;
-    case 1: return REG_RSI;
-    case 2: return REG_RDX;
-    case 3: return REG_R10; /* rcx = retaddr for OP_syscall */
-    case 4: return REG_R8;
-    case 5: return REG_R9;
+    case 0: return IF_X86_ELSE(REG_RDI, DR_REG_R0);
+    case 1: return IF_X86_ELSE(REG_RSI, DR_REG_R1);
+    case 2: return IF_X86_ELSE(REG_RDX, DR_REG_R2);
+    case 3: return IF_X86_ELSE(REG_R10, DR_REG_R3); /* rcx = retaddr for OP_syscall */
+    case 4: return IF_X86_ELSE(REG_R8,  DR_REG_R4);
+    case 5: return IF_X86_ELSE(REG_R9,  DR_REG_R5);
     default: ASSERT(false, "invalid syscall argnum");
     }
 #else
@@ -1600,6 +1602,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
     case SYS_clone:
         handle_clone(drcontext, pt, ii);
         break;
+#ifdef X86
     case SYS__sysctl: {
         struct __sysctl_args *args = SYSARG_AS_PTR(pt, 0, struct __sysctl_args *);
         if (args != NULL) {
@@ -1616,6 +1619,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         }
         break;
     }
+#endif
     case SYS_mremap: {
         /* 5th arg is conditionally valid */
         int flags = (int) pt->sysarg[3];
@@ -1761,6 +1765,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_pre_process_vm_readv_writev(drcontext, ii);
         break;
 #ifdef X64
+#ifdef X86
     case SYS_arch_prctl: {
         int code = (int) pt->sysarg[0];
         unsigned long addr = (unsigned long) pt->sysarg[1];
@@ -1772,6 +1777,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         break;
     }
 #endif
+#endif
     }
     /* If you add any handling here: need to check ii->abort first */
 }
@@ -1781,6 +1787,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
 {
     /* each handler checks result for success */
     switch (ii->arg->sysnum.number) {
+#ifdef X86
     case SYS__sysctl: {
         struct __sysctl_args *args = SYSARG_AS_PTR(pt, 0, struct __sysctl_args *);
         size_t len;
@@ -1797,6 +1804,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         }
         break;
     }
+#endif
     case SYS_ioctl:
         handle_post_ioctl(drcontext, pt, ii);
         break;
@@ -1845,6 +1853,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_post_process_vm_writev(drcontext, ii);
         break;
 #ifdef X64
+#ifdef X86
     case SYS_arch_prctl: {
         int code = (int) pt->sysarg[0];
         unsigned long addr = (unsigned long) pt->sysarg[1];
@@ -1855,6 +1864,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         } /* else, inlined */
         break;
     }
+#endif
 #endif
     }
     /* If you add any handling here: need to check ii->abort first */
@@ -1965,7 +1975,7 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
 bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t *pt)
 {
-    ptr_int_t res = (ptr_int_t) pt->mc.IF_ARM_ELSE(r0,xax);
+    ptr_int_t res = (ptr_int_t) pt->mc.IF_X86_ELSE(xax,r0);
     if (sysnum.number == SYS_mmap || IF_NOT_X64(sysnum.number == SYS_mmap2 ||)
         sysnum.number == SYS_mremap)
         return (res >= 0 || res < -PAGE_SIZE);

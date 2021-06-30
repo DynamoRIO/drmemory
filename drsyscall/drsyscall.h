@@ -472,7 +472,7 @@ typedef enum {
 #ifdef WINDOWS
     DRSYS_GATEWAY_WOW64,
 #endif
-    DRSYS_GATEWAY_SVC, /* ARM */
+    DRSYS_GATEWAY_SVC, /* ARM and AARCH64 */
 } drsys_gateway_t;
 
 /***************************************************************************
