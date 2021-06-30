@@ -192,7 +192,7 @@ check_syscall_gateway(instr_t *inst)
                             || syscall_gateway == DRSYS_GATEWAY_SYSCALL),
                    "multiple system call gateways not supported");
         }
-#elif defined(ARM)
+#elif defined(ARM) || defined(AARCH64)
     if (instr_get_opcode(inst) == OP_svc) {
         if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
             syscall_gateway = DRSYS_GATEWAY_SVC;
@@ -643,7 +643,7 @@ drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OU
     memset(&pt, 0, sizeof(pt));
     if (syscall == NULL || success == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    pt.mc.IF_ARM_ELSE(r0,xax) = result;
+    pt.mc.IF_X86_ELSE(xax,r0) = result;    /*r0 for ARM and AARCH64*/
     *success = os_syscall_succeeded(sysinfo->num, sysinfo, &pt);
     return DRMF_SUCCESS;
 #endif
@@ -659,7 +659,7 @@ get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
         *success = res;
     if (value != NULL) {
 #ifdef X64
-        *value = mc->IF_ARM_ELSE(r0,rax);
+        *value = mc->IF_X86_ELSE(rax,r0);    /*r0 for AARCH64*/
 #else
         /* yes, reg_t is unsigned so we have no sign-extension here */
         if (TEST(SYSINFO_RET_64BIT, sysinfo->flags))
@@ -674,7 +674,7 @@ get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
             *error_code = 0;
         else {
 #ifdef LINUX
-            *error_code = (uint)-(int)mc->IF_ARM_ELSE(r0,xax);
+            *error_code = (uint)-(int)mc->IF_X86_ELSE(xax,r0);    /*r0 for ARM and AARCH64*/
 #else
             *error_code = (uint)mc->xax;
 #endif
