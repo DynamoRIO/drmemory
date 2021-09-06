@@ -1168,6 +1168,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 /* Skip heap regions */
                 if (heap_region_bounds(pc, NULL, &chunk_end, NULL) &&
                     chunk_end != NULL) {
+                    LOG(3, "skipping heap "PFX"-"PFX"\n", pc, chunk_end);
                     pc = chunk_end - sizeof(void*); /* let loop inc bump pc */
                     ASSERT(ALIGNED(pc, sizeof(void*)), "heap region end not aligned!");
                     continue;
@@ -1185,6 +1186,8 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
              */
             if (leak_safe_read_heap(pc, (void **)&pointer))
                 check_reachability_pointer(pointer, pc, defined_end, data);
+            else
+                LOG(4, "failed to read value @%p\n", pc);
 #else
             /* Threads are suspended and we checked readability so safe to deref */
             pointer = *((app_pc*)pc);
@@ -1220,11 +1223,10 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
             }
         }
     }
-    if (data->at_exit || op_have_defined_info)
+    if (data->at_exit && op_have_defined_info)
         return;
     /* we ignore fp/mmx and xmm regs */
-    for (reg = REG_START_32; reg <= IF_X86_ELSE(REG_EDI/*STOP_32 is R15D!*/, REG_STOP_32);
-         reg++) {
+    for (reg = DR_REG_START_GPR; reg <= DR_REG_STOP_GPR; reg++) {
         if (!op_have_defined_info || cb_is_register_defined(drcontext, reg)) {
             reg_t val = reg_get_value(reg, mc);
             LOG(4, "thread "TIDFMT" reg %d: "PFX"\n", dr_get_thread_id(drcontext),
