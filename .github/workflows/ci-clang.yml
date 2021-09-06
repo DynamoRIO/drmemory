@@ -71,6 +71,3 @@ jobs:
     - name: Run Suite
       working-directory: ${{ github.workspace }}
       run: ./tests/runsuite_wrapper.pl travis
-      env:
-        CC: clang-9
-        CXX: clang++-9
