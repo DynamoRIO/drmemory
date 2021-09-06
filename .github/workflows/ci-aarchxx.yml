@@ -1,0 +1,111 @@
+# **********************************************************
+# Copyright (c) 2020-2021 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for AArchXX Continuous Integration testing.
+
+name: ci-aarchxx
+on:
+  # Run on pushes to master and on pull request changes, including from a
+  # forked repo with no "push" trigger, while avoiding duplicate triggers.
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+  # Manual trigger using the Actions page. May remove when integration complete.
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # AArchXX cross-compile with gcc, no tests:
+  aarchxx-cross-compile:
+    runs-on: ubuntu-16.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    # Cancel any prior runs for a PR (but do not cancel master branch runs).
+    - uses: n1hility/cancel-previous-runs@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+      if: ${{ github.event_name == 'pull_request' }}
+
+    - name: Fetch Sources
+      run: git fetch --no-tags --depth=1 origin master
+
+    # Install cross-compilers for cross-compiling Linux build.
+    # We are not yet testing aarch64 but we will be soon.
+    - name: Create Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install doxygen jsonlint \
+          g++-arm-linux-gnueabihf g++-aarch64-linux-gnu
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis
+      env:
+        DRMEMORY_CROSS_AARCHXX_LINUX_ONLY: yes
+
+  # Android ARM cross-compile with gcc, no tests:
+  android-arm-cross-compile:
+    runs-on: ubuntu-16.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    # Cancel any prior runs for a PR (but do not cancel master branch runs).
+    - uses: n1hility/cancel-previous-runs@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+      if: ${{ github.event_name == 'pull_request' }}
+
+    - run: git fetch --no-tags --depth=1 origin master
+
+    # Fetch and install Android NDK for Andoid cross-compile build.
+    - name: Create Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install doxygen jsonlint
+        cd /tmp
+        wget https://dl.google.com/android/repository/android-ndk-r10e-linux-x86_64.zip
+        unzip -q android-ndk-r10e-linux-x86_64.zip
+        android-ndk-r10e/build/tools/make-standalone-toolchain.sh --arch=arm \
+          --toolchain=arm-linux-androideabi-4.9 --platform=android-21 \
+          --install-dir=/tmp/android-gcc-arm-ndk-10e
+        # Manually force using ld.bfd, setting CMAKE_LINKER does not work.
+        ln -sf ld.bfd /tmp/android-gcc-arm-ndk-10e/arm-linux-androideabi/bin/ld
+        ln -sf arm-linux-androideabi-ld.bfd \
+          /tmp/android-gcc-arm-ndk-10e/bin/arm-linux-androideabi-ld
+
+    - name: Run Suite
+      working-directory: ${{ github.workspace }}
+      env:
+        DRMEMORY_CROSS_ANDROID_ONLY: yes
+        DRMEMORY_ANDROID_TOOLCHAIN: /tmp/android-gcc-arm-ndk-10e
+      run: ./tests/runsuite_wrapper.pl travis
