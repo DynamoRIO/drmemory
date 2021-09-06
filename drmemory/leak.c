@@ -1199,7 +1199,7 @@ static void
 check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t *data)
 {
     reg_id_t reg;
-    if (!op_have_defined_info || data.at_exit) {
+    if (!op_have_defined_info || data->at_exit) {
         /* with no shadow info we have to rule out stale stack data by
          * recording the current stacks and hoping any old stacks were
          * munmapped.  FIXME: altsigstack
@@ -1216,12 +1216,11 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
                           ((app_pc)mc->xsp) - stack_base, NULL);
             } else {
                 /* Store the full stack region. */
-                rb_insert(data->stack_tree, stack_base,
-                          stack_base + stack_size, NULL);
+                rb_insert(data->stack_tree, stack_base, stack_size, NULL);
             }
         }
     }
-    if (data.at_exit || op_have_defined_info)
+    if (data->at_exit || op_have_defined_info)
         return;
     /* we ignore fp/mmx and xmm regs */
     for (reg = REG_START_32; reg <= IF_X86_ELSE(REG_EDI/*STOP_32 is R15D!*/, REG_STOP_32);
