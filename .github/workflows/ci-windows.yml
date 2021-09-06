@@ -80,5 +80,5 @@ jobs:
         perl tests/runsuite_wrapper.pl travis use_ninja 32_only drmemory_only debug_only
 
     - name: Setup tmate session
-￼     if: ${{ failure() }}
-￼     uses: mxschmitt/action-tmate@v3
+      if: ${{ failure() }}
+      uses: mxschmitt/action-tmate@v3
