@@ -40,7 +40,7 @@ defaults:
 jobs:
   # 64-bit and 32-bit Linux build with gcc and tests:
   x86:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
 
     steps:
     - uses: actions/checkout@v2
