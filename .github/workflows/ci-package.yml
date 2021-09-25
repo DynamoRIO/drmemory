@@ -45,7 +45,7 @@ jobs:
   ###########################################################################
   # Linux tarball with 64-bit and 32-bit builds:
   x86:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -228,7 +228,7 @@ jobs:
 
   create_release:
     needs: [x86, osx, windows]
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
       # We need a checkout to run git log for the version.
