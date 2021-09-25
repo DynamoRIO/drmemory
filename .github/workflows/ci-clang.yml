@@ -40,7 +40,7 @@ defaults:
 jobs:
   # 32-bit and 64-bit Linux build with clang, no tests.
   clang:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
 
     steps:
     - uses: actions/checkout@v2
