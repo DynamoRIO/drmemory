@@ -182,13 +182,20 @@ instrument_read_shadow(void *drcontext, instrlist_t *ilist, instr_t *where,
     reg_id_t regaddr;
     reg_id_t scratch;
     bool ok;
+    drvector_t allowed;
+    drreg_init_and_fill_vector(&allowed, false);
+    drreg_set_vector_entry(&allowed, DR_REG_XAX, true);
+    drreg_set_vector_entry(&allowed, DR_REG_XBX, true);
+    drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
+    drreg_set_vector_entry(&allowed, DR_REG_XDX, true);
 
     if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr) !=
+        drreg_reserve_register(drcontext, ilist, where, &allowed, &scratch) !=
             DRREG_SUCCESS ||
-        drreg_reserve_register(drcontext, ilist, where, NULL, &scratch) !=
-            DRREG_SUCCESS) {
+        drreg_reserve_register(drcontext, ilist, where, NULL, &regaddr) !=
+        DRREG_SUCCESS) {
         DR_ASSERT(false); /* can't recover */
+        drvector_delete(&allowed);
         return;
     }
 
@@ -198,18 +205,21 @@ instrument_read_shadow(void *drcontext, instrlist_t *ilist, instr_t *where,
                                    1) != DRMF_SUCCESS)
         DR_ASSERT(false);
 
-    instrlist_meta_preinsert(
-        ilist, where,
-        INSTR_XL8(XINST_CREATE_load_1byte(
-                      drcontext,
-                      opnd_create_reg(reg_resize_to_opsz(scratch, OPSZ_1)),
-                      OPND_CREATE_MEM8(regaddr, 0)),
-                  instr_get_app_pc(where)));
+    if (reg_resize_to_opsz(scratch, OPSZ_1) == DR_REG_NULL)
+        DR_ASSERT(false); /* can't recover */
+    instrlist_meta_preinsert
+        (ilist, where,
+         INSTR_XL8(XINST_CREATE_load_1byte
+                   (drcontext,
+                    opnd_create_reg(reg_resize_to_opsz(scratch, OPSZ_1)),
+                    OPND_CREATE_MEM8(regaddr, 0)),
+                   instr_get_app_pc(where)));
 
     if (drreg_unreserve_register(drcontext, ilist, where, regaddr) != DRREG_SUCCESS ||
         drreg_unreserve_register(drcontext, ilist, where, scratch) != DRREG_SUCCESS ||
         drreg_unreserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS)
         DR_ASSERT(false);
+    drvector_delete(&allowed);
 }
 
 static dr_emit_flags_t
@@ -273,7 +283,8 @@ static void
 exit_event(void)
 {
 #ifndef X64
-    DR_ASSERT_MSG(was_redundant_cleared,
+    DR_ASSERT_MSG(was_redundant_cleared ||
+                  strstr(dr_get_application_name(), "umbra_wild") != NULL,
                   "The clearing of redundant blocks was never called.");
 #endif
     if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
