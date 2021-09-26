@@ -1498,8 +1498,8 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
     byte *prev_pc = NULL;
 #endif
     byte *pc = info->cache_start_pc;
-    if (pc == NULL)
-        return true; /* fault not in cache */
+    if (pc == NULL) /* fault not in cache */
+        return false;
     LOG(UMBRA_VERBOSE,
         "%s: decoding cache %p looking for %p\n", __FUNCTION__, pc, raw_mc->pc);
     umbra_map_t *map = NULL;
