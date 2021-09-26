@@ -183,11 +183,15 @@ instrument_read_shadow(void *drcontext, instrlist_t *ilist, instr_t *where,
     reg_id_t scratch;
     bool ok;
     drvector_t allowed;
+#ifdef X86
     drreg_init_and_fill_vector(&allowed, false);
     drreg_set_vector_entry(&allowed, DR_REG_XAX, true);
     drreg_set_vector_entry(&allowed, DR_REG_XBX, true);
     drreg_set_vector_entry(&allowed, DR_REG_XCX, true);
     drreg_set_vector_entry(&allowed, DR_REG_XDX, true);
+#else
+    drreg_init_and_fill_vector(&allowed, true);
+#endif
 
     if (drreg_reserve_aflags(drcontext, ilist, where) != DRREG_SUCCESS ||
         drreg_reserve_register(drcontext, ilist, where, &allowed, &scratch) !=
@@ -254,6 +258,11 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     int i;
 
     if (!instr_reads_memory(where) && !instr_writes_memory(where))
+        return DR_EMIT_DEFAULT;
+    /* XXX: Workaround for DRi#4958 where DR code shows up in blocks
+     * and DR can't handle a fault there.
+     */
+    if (dr_memory_is_dr_internal(dr_fragment_app_pc(tag)))
         return DR_EMIT_DEFAULT;
 
     if (subtest == UMBRA_TEST_1_C || subtest == UMBRA_TEST_2_C) {
