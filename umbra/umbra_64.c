@@ -1494,7 +1494,10 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
                             dr_fault_fragment_info_t *info, umbra_map_t **map_found)
 {
     instr_t inst;
-    byte *prev_pc = NULL, *pc = info->cache_start_pc;
+#ifdef DEBUG
+    byte *prev_pc = NULL;
+#endif
+    byte *pc = info->cache_start_pc;
     if (pc == NULL)
         return true; /* fault not in cache */
     LOG(UMBRA_VERBOSE,
@@ -1507,7 +1510,9 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
     instr_init(drcontext, &inst);
     while (pc < raw_mc->pc) {
         instr_reset(drcontext, &inst);
+#ifdef DEBUG
         prev_pc = pc;
+#endif
         pc = decode(drcontext, pc, &inst);
         LOG(UMBRA_VERBOSE, "%s: checking %p\n", __FUNCTION__, prev_pc);
 #ifdef AARCH64
@@ -1546,18 +1551,15 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
                 }
             }
         } else {
-            found_and = false;
-            found_xl8 = false;
-            if ((instr_get_opcode(&inst) == OP_shl ||
-                 instr_get_opcode(&inst) == OP_shr) &&
-                opnd_is_immed_int(instr_get_src(&inst, 0))) {
-                ptr_int_t shift = (ptr_int_t)opnd_get_immed_int(instr_get_src(&inst, 0));
-                if (shift == map->shift) {
-                    LOG(UMBRA_VERBOSE,
-                        "%s: found SHIFT of map shift at %p\n", __FUNCTION__, prev_pc);
-                    found_and = true;
-                    found_xl8 = true;
-                }
+            /* We do not bother to ensure the shift for scaled maps is there as finding
+             * both map addresses is enough.  We allow a few arithmetic operations
+             * between our sequence and the faulting instruction, but certainly no
+             * load or store: we need to reset there.
+             */
+            if (instr_is_cti(&inst) || instr_reads_memory(&inst) ||
+                instr_writes_memory(&inst)) {
+                found_and = false;
+                found_xl8 = false;
             }
         }
 #endif
