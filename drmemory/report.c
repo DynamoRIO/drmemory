@@ -1960,6 +1960,7 @@ report_thread_init(void *drcontext)
 {
     tls_report_t *pt = (tls_report_t *)
         thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
+    memset(pt, 0, sizeof(*pt));
     drmgr_set_tls_field(drcontext, tls_idx_report, pt);
     pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size()*2;
     pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_REPORT);
