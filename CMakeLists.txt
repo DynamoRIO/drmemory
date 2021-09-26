@@ -960,7 +960,7 @@ if (NOT DOXYGEN_FOUND)
   # installed on our bots so we live with just Linux catching docs errors.
   # Ditto for Mac.
   if (TEST_SUITE AND UNIX AND NOT APPLE)
-    message(FATAL_ERROR "doxygen is required to build the documentation")
+    message(WARNING "doxygen is required to build the documentation")
   else ()
     # Non-fatal for a single, un-official build, or on Windows
     message(WARNING "doxygen not found: documentation will NOT be built")
