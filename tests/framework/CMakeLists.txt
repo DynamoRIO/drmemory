@@ -102,6 +102,31 @@ function(add_drmf_test test_name app_name src_client ext_list dr_options
   endif ()
 endfunction(add_drmf_test)
 
+# We only expect a few tests, so we simplify things by having a simple
+# regex output for whether they passed.
+# ext_list should be a list of extensions minus the drmf_ prefix.
+function(add_drmf_additional_test test_name app_name client_name dr_options
+    client_options pass_regex)
+  get_target_path_for_execution(app_path ${app_name})
+  get_target_path_for_execution(client_path ${client_name})
+  if (DEBUG_BUILD)
+    set(drrun_extra -quiet -debug)
+  else ()
+    set(drrun_extra -quiet)
+  endif ()
+  set(drrun_path ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun)
+  convert_local_path_to_device_path(drrun_path ${drrun_path})
+  prefix_cmd_if_necessary(drrun_path OFF ${drrun_path})
+  if (NOT ANDROID) # FIXME i#1860: fix for Android
+    add_test(${test_name}
+      ${drrun_path} ${drrun_extra}
+      -client ${client_path} 0 "${client_options}"
+      -msgbox_mask 0 -stderr_mask 0xc ${dr_options}
+      "--" ${app_path})
+    set_tests_properties(${test_name} PROPERTIES PASS_REGULAR_EXPRESSION "${pass_regex}")
+  endif ()
+endfunction()
+
 # i#2273: We need to locate a sysnum file.  Unfortunately creating one is only
 # supported from a front end so we rely on a Dr. Memory test having created one.
 # These will fail w/ direct-named test launches in a fresh dir but we can live with
@@ -186,6 +211,10 @@ use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drreg)
 use_DynamoRIO_extension(umbra_test_insert_app_to_shadow.client drutil)
 target_include_directories(umbra_test_insert_app_to_shadow.client PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_drmf_test_app(umbra_wild umbra_wild.c)
+add_drmf_additional_test(umbra_wild_shadow umbra_wild
+  umbra_test_insert_app_to_shadow.client "" "" ".*TEST PASSED\n$")
 
 # Faulty redzones are only available on 32-bit.
 if (NOT X64)

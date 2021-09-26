@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2014-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2014-2021 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -81,7 +81,7 @@ endmacro(export_umbra_target)
 # msgboxes, so we link in globals to suppress notification in drmf_utils.c.
 add_library(umbra SHARED ${srcs} ../framework/drmf_utils.c)
 # Set a preferred base to avoid conflict if we can
-set(PREFERRED_BASE 0x78000000)
+set(PREFERRED_BASE 0x77000000)
 configure_DynamoRIO_client(umbra)
 use_DynamoRIO_extension(umbra drmgr)
 use_DynamoRIO_extension(umbra drcontainers)

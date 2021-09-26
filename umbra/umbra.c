@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -266,7 +266,8 @@ umbra_event_signal(void *drcontext, dr_siginfo_t *info)
     /* i#1488: MacOS raises SIGBUS */
     if ((info->sig == SIGSEGV || info->sig == SIGBUS) &&
         umbra_handle_fault(drcontext, info->access_address,
-                           info->raw_mcontext, info->mcontext)) {
+                           info->raw_mcontext, info->mcontext,
+                           &info->fault_fragment_info)) {
         return DR_SIGNAL_SUPPRESS;
     }
     return DR_SIGNAL_DELIVER;
@@ -278,7 +279,8 @@ umbra_event_exception(void *drcontext, dr_exception_t *excpt)
     if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
         if (umbra_handle_fault(drcontext, target,
-                               excpt->raw_mcontext, excpt->mcontext)) {
+                               excpt->raw_mcontext, excpt->mcontext,
+                               &excpt->fault_fragment_info)) {
             return false;
         }
     }
