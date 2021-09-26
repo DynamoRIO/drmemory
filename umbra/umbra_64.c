@@ -463,6 +463,35 @@ umbra_xl8_app_to_shadow(const umbra_map_t *map, app_pc pc)
     return (byte *)addr;
 }
 
+/* This cannot recover the actual app pc, but rather a canonical app pc whose shadow
+ * is at "pc".
+ */
+static byte *
+umbra_xl8_shadow_to_app(const umbra_map_t *map, app_pc pc)
+{
+    ptr_uint_t addr = (ptr_uint_t)pc;
+    switch (map->options.scale) {
+    case UMBRA_MAP_SCALE_DOWN_8X:
+        addr <<= 3;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_4X:
+        addr <<= 2;
+        break;
+    case UMBRA_MAP_SCALE_DOWN_2X:
+        addr <<= 1;
+        break;
+    case UMBRA_MAP_SCALE_SAME_1X:
+        break;
+    case UMBRA_MAP_SCALE_UP_2X:
+        addr >>= 1;
+        break;
+    default:
+        ASSERT(false, "invalid scale");
+    }
+    addr -= map->disp;
+    return (byte *)addr;
+}
+
 /***************************************************************************
  * SEGMENT ROUTINES
  */
@@ -1460,11 +1489,92 @@ umbra_get_shared_shadow_block_arch(IN  umbra_map_t *map,
     return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
 }
 
+static bool
+umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
+                            dr_fault_fragment_info_t *info, umbra_map_t **map_found)
+{
+    instr_t inst;
+#ifdef DEBUG
+    byte *prev_pc = NULL;
+#endif
+    byte *pc = info->cache_start_pc;
+    if (pc == NULL) /* fault not in cache */
+        return false;
+    LOG(UMBRA_VERBOSE,
+        "%s: decoding cache %p looking for %p\n", __FUNCTION__, pc, raw_mc->pc);
+    umbra_map_t *map = NULL;
+    bool found_xl8 = false;
+#ifndef AARCH64
+    bool found_and = false;
+#endif
+    instr_init(drcontext, &inst);
+    while (pc < raw_mc->pc) {
+        instr_reset(drcontext, &inst);
+#ifdef DEBUG
+        prev_pc = pc;
+#endif
+        pc = decode(drcontext, pc, &inst);
+        LOG(UMBRA_VERBOSE, "%s: checking %p\n", __FUNCTION__, prev_pc);
+#ifdef AARCH64
+        /* TODO i#2016: Match the umbra_insert_app_to_shadow_arch() instruction
+         * sequence here.
+         */
+#else
+        if (!found_and) {
+            if (instr_get_opcode(&inst) == OP_and &&
+                (opnd_is_abs_addr(instr_get_src(&inst, 0)) ||
+                 opnd_is_rel_addr(instr_get_src(&inst, 0)))) {
+                ptr_uint_t addr = (ptr_uint_t)opnd_get_addr(instr_get_src(&inst, 0));
+                for (int i = 0; i < MAX_NUM_MAPS; i++) {
+                    umbra_map_t *try_map = app_segments[0].map[i];
+                    if (try_map != NULL && addr == (ptr_uint_t)&try_map->mask) {
+                        found_and = true;
+                        LOG(UMBRA_VERBOSE,
+                            "%s: found AND of map mask at %p\n", __FUNCTION__, prev_pc);
+                        map = try_map;
+                        *map_found = map;
+                        break;
+                    }
+                }
+            }
+        } else if (!found_xl8) {
+            found_and = false; /* Unless we find the add. */
+            if (instr_get_opcode(&inst) == OP_add &&
+                (opnd_is_abs_addr(instr_get_src(&inst, 0)) ||
+                 opnd_is_rel_addr(instr_get_src(&inst, 0)))) {
+                ptr_uint_t addr = (ptr_uint_t)opnd_get_addr(instr_get_src(&inst, 0));
+                if (addr == (ptr_uint_t)&map->disp) {
+                    LOG(UMBRA_VERBOSE,
+                        "%s: found ADD of map disp at %p\n", __FUNCTION__, prev_pc);
+                    found_and = true;
+                    found_xl8 = true;
+                }
+            }
+        } else {
+            /* We do not bother to ensure the shift for scaled maps is there as finding
+             * both map addresses is enough.  We allow a few arithmetic operations
+             * between our sequence and the faulting instruction, but certainly no
+             * load or store: we need to reset there.
+             */
+            if (instr_is_cti(&inst) || instr_reads_memory(&inst) ||
+                instr_writes_memory(&inst)) {
+                found_and = false;
+                found_xl8 = false;
+            }
+        }
+#endif
+    }
+    instr_free(drcontext, &inst);
+    return found_xl8;
+}
+
 bool
 umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
-                   dr_mcontext_t *mc)
+                   dr_mcontext_t *mc, dr_fault_fragment_info_t *info)
 {
     uint i, j;
+    LOG(UMBRA_VERBOSE, "%s: checking whether %p is in a shadow region\n",
+        __FUNCTION__, target);
     for (i = 0; i < MAX_NUM_APP_SEGMENTS; i++) {
         for (j = 0; j < MAX_NUM_MAPS; j++) {
             /* first check if it is in any shadow memory range */
@@ -1476,6 +1586,8 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
                     app_segments[i].app_base +
                     umbra_map_scale_shadow_to_app
                     (map, target - app_segments[i].shadow_base[j]);
+                LOG(UMBRA_VERBOSE, "%s: creating a new shadow region for %p-%p\n",
+                    __FUNCTION__, app_addr, app_addr+8);
                 umbra_create_shadow_memory_arch(map, 0, app_addr, 8,
                                                 map->options.default_value,
                                                 map->options.default_value_size);
@@ -1483,6 +1595,18 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
             }
         }
     }
+    /* Handle a wild access to an unmapped region. */
+    umbra_map_t *map;
+    if (umbra_identify_shadow_fault(drcontext, raw_mc, info, &map)) {
+        LOG(UMBRA_VERBOSE, "umbra_handle_fault: new shadow for wild access\n");
+        umbra_map_t *map = app_segments[0].map[0];
+        umbra_create_shadow_memory_arch(map, 0,
+                                        umbra_xl8_shadow_to_app(map, target), 8,
+                                        map->options.default_value,
+                                        map->options.default_value_size);
+        return true;
+    }
+    LOG(UMBRA_VERBOSE, "umbra_handle_fault: not handling\n");
     return false;
 }
 
