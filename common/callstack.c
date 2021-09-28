@@ -1023,6 +1023,7 @@ walk_wide_string(wchar_t *start, size_t safe_wchars,
 # define OP_SEG_FS   0x64
 # define WOW64_SYSOFFS  0xc0
 # define ENDBR32 0xfb1e0ff3
+# define ENDBR64 0xfa1e0ff3
 #endif
 
 static bool
@@ -1229,9 +1230,9 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
                     if (*(pc - 5) == OP_CALL_DIR) {
                         pc = *(int*)(pc - 4) + pc;
                         /* Follow "call; jmp*", where jmp* is 0xff /4.
-                         * Allow endbr32 before.
+                         * Allow endbr{32,64} before.
                          */
-                        if (*(int*)pc == ENDBR32)
+                        if (*(int*)pc == IF_X64_ELSE(ENDBR64,ENDBR32))
                             pc += 4;
                         if (*pc != OP_JMP_IND ||
                             ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
