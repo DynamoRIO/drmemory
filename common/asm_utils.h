@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,6 +26,10 @@
 /* Returns the current values of xsp and xbp */
 void
 get_stack_registers(reg_t *xsp OUT, reg_t *xbp OUT);
+
+/* Returns the current values of xsp and xbp */
+void
+get_unwind_registers(reg_t *xsp OUT, reg_t *xbp OUT, app_pc *xip OUT);
 
 #ifdef UNIX
 ptr_int_t

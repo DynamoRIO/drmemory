@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -54,7 +54,7 @@ static void
 intercept_signal(int sig, handler_t handler)
 {
     int rc;
-    struct sigaction act;
+    struct sigaction act = {0,};
     act.sa_sigaction = (handler_3_t) handler;
     rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
     assert(rc == 0);

@@ -266,6 +266,9 @@ typedef struct _callstack_options_t {
     void (*module_unload)(const char * /*module path*/,
                           void * /*user data returned by module_load()*/);
 
+    /* if this is set, raw scanning and frame pointer walking is not done. */
+    bool use_unwind;
+
     /* Add new options here */
 } callstack_options_t;
 

@@ -61,6 +61,8 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 2.3.0 include:
+ - Add better callstack walking on Linux via -callstack_use_unwind which
+   is on by default.
  - Renamed the following options (the old option names will still work
    for compatibility):
    - -lib_whitelist is now -lib_allowlist
