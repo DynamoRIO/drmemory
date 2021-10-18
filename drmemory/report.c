@@ -1575,6 +1575,7 @@ report_init(void)
     callstack_ops.dump_app_stack = options.callstack_dump_stack;
     callstack_ops.module_load = callstack_module_load_cb;
     callstack_ops.module_unload = callstack_module_unload_cb;
+    callstack_ops.use_unwind = options.callstack_use_unwind;
     callstack_init(&callstack_ops);
 
     suppress_file_lock = dr_mutex_create();
@@ -2114,7 +2115,11 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                 modpath = module_lookup_path(pc);
             }
         }
-        if (options.callstack_use_top_fp_selectively &&
+        /* Do NOT clear MC_FP_REG when using unwind (it breaks the walks).
+         * We assume unwind won't actually be used for non-module code.
+         */
+        if ((!options.callstack_use_unwind || !is_in_module(mc->pc)) &&
+            options.callstack_use_top_fp_selectively &&
             /* for -replace_malloc invalid args and leaks we have our own
              * malloc routine as the top frame (i#639).  we ensure it has ebp.
              */

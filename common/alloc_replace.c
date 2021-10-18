@@ -640,11 +640,11 @@ get_replace_native_caller(void *drcontext)
 #endif
 
 /* This must be inlined to get an xsp that's in the call chain */
-#define INITIALIZE_MCONTEXT_FOR_REPORT(mc) do {            \
-    /* assumption: we only need xsp and xbp initialized */ \
-    (mc)->size = sizeof(*(mc));                            \
-    (mc)->flags = DR_MC_CONTROL | DR_MC_INTEGER;           \
-    get_stack_registers(&MC_SP_REG(mc), &MC_FP_REG(mc)); \
+#define INITIALIZE_MCONTEXT_FOR_REPORT(mc) do {                        \
+    /* Assumption: we only need xsp, xbp, and pc initialized. */       \
+    (mc)->size = sizeof(*(mc));                                        \
+    (mc)->flags = DR_MC_CONTROL | DR_MC_INTEGER;                       \
+    get_unwind_registers(&MC_SP_REG(mc), &MC_FP_REG(mc), &((mc)->pc)); \
 } while (0)
 
 #ifdef WINDOWS
