@@ -44,7 +44,7 @@ It is a good idea to perform some sanity tests on all platforms beyond what our 
 - Run drstrace: `drstrace -- calc` and look at the log file
 - Run symquery: `symquery -e free.exe -s main`
 
-## Commit the Version and Changelist Changes
+## Update the Version and Changelist Changes
 
 Update the following in the code and commit the change:
 
@@ -54,6 +54,15 @@ Update the following in the code and commit the change:
 + Update the default version number in `ci-package.yml`
 + Update the release changelist.
 
+## Update download.dox
+
+Make a new list of direct links for the new version.
+
+## Create a Pull Request
+
+Create a new Pull Request with the version, changelist, and download
+changes listed above.
+
 ## Trigger a Package Build
 
 To create a new build:
@@ -61,7 +70,7 @@ To create a new build:
 1. Go to the Actions tab for the DynamoRIO/drmemory repository.
 2. Click on "ci-package" on the list of workflows on the left.
 3. Click on "Run workflow" on the right.
-4. Select the branch.
+4. Select the branch for your Pull Request.
 5. Fill in the version number.  For a test build or periodic build (i.e., not an official new-version-number release), use the current version major.minor and the date-based patchlevel.  The patchlevel can be found from CMake's configuration output by running `cmake .`:
 ```
 -- Dr. Memory version number: 2.3.18609
@@ -74,6 +83,10 @@ Wait for the workflow to finish.  It should create a new tag, a new Release, upl
 
 Double-check that all binary package files were uploaded to the new release on Github.
 
+## Merge the Pull Request
+
+Merge the changes into master.
+
 ## Trigger a Documentation Build
 
 Run the "ci-docs" Action in the same manner as the "ci-package" action above.
@@ -82,10 +95,6 @@ Double-check that the documentation was pushed to http://drmemory.org.
 ## Update the Release Description
 
 Once the build is finished and posted to https://github.com/DynamoRIO/drmemory/releases, edit the description to list the highlights of the new release. You can use markdown to make a bulleted list.
-
-## Update download.dox
-
-Make a new list of direct links for the new version.
 
 ## Add a New Changelist Section
 
