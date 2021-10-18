@@ -1889,6 +1889,9 @@ if (BUILD_TOOL_TESTS)
     prefix_cmd_if_necessary(unit_relpath OFF ${unit_relpath})
     if (NOT ANDROID) # FIXME i#: not working on Android
       add_test(unit_tests ${unit_relpath})
+      set_tests_properties(unit_tests PROPERTIES LABELS ONLY_UNIT)#TEMP
+      add_test(ldd_unit_tests ldd ${unit_relpath})#TEMP
+      set_tests_properties(ldd_unit_tests PROPERTIES LABELS ONLY_UNIT)#TEMP
     endif ()
     copy_target_to_device(unit_tests)
   endif (TOOL_DR_MEMORY)
