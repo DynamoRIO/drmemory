@@ -1633,7 +1633,7 @@ walk_unwind_info(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     /* XXX: Presumably we don't need the !FP_DO_NOT_SKIP_VSYSCALL_PUSH code?  Or do we
      * need to integrate this further into print_callstack()?
      */
-    LOG(4, "drcallstack init pc=%p sp=%p fp=%p\n", mc->pc, mc->xsp, mc->xbp);
+    LOG(4, "drcallstack init pc=%p sp=%p fp=%p\n", mc->pc, MC_SP_REG(mc), MC_FP_REG(mc));
     drcallstack_status_t res = drcallstack_init_walk(mc, &walk);
     ASSERT(res == DRCALLSTACK_SUCCESS, "failed to init drcallstack walk");
     drcallstack_frame_t frame = {
