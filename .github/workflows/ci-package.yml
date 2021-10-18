@@ -64,12 +64,14 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install doxygen jsonlint g++-multilib libunwind-dev
         sudo add-apt-repository 'deb [arch=i386] http://us.archive.ubuntu.com/ubuntu focal main'
-        apt download libunwind8:i386 libunwind-dev:i386 liblzma5:i386
         mkdir ../extract
-        for i in *.deb; do dpkg-deb -x $i ../extract; done
-        sudo rsync -av ../extract/usr/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
-        sudo rsync -av ../extract/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
-        sudo rsync -av ../extract/usr/include/i386-linux-gnu/ /usr/include/
+        pushd ../extract
+        apt download libunwind8:i386 libunwind-dev:i386 liblzma5:i386
+        for i in *.deb; do dpkg-deb -x $i .; done
+        sudo rsync -av ./usr/lib/i386-linux-gnu/ /lib/i386-linux-gnu/
+        sudo rsync -av ./lib/i386-linux-gnu/ /lib/i386-linux-gnu/
+        sudo rsync -av ./usr/include/i386-linux-gnu/ /usr/include/
+        popd
 
     # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
     - name: Downgrade cmake
