@@ -66,11 +66,13 @@ jobs:
         sudo apt-get -y install doxygen jsonlint \
           g++-arm-linux-gnueabihf g++-aarch64-linux-gnu
         sudo add-apt-repository 'deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports focal main'
-        apt download libunwind8:armhf libunwind-dev:armhf liblzma5:armhf
         mkdir ../extract
-        for i in *.deb; do dpkg-deb -x $i ../extract; done
-        for i in include lib; do sudo rsync -av ../extract/usr/${i}/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/${i}/; done
-        sudo rsync -av ../extract/lib/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/lib/
+        pushd ../extract
+        apt download libunwind8:armhf libunwind-dev:armhf liblzma5:armhf
+        for i in *.deb; do dpkg-deb -x $i .; done
+        for i in include lib; do sudo rsync -av ./usr/${i}/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/${i}/; done
+        sudo rsync -av ./lib/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/lib/
+        popd
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}

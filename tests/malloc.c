@@ -54,7 +54,7 @@ static void
 intercept_signal(int sig, handler_t handler)
 {
     int rc;
-    struct sigaction act = {0,};
+    struct sigaction act = {};
     act.sa_sigaction = (handler_3_t) handler;
     rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
     assert(rc == 0);
