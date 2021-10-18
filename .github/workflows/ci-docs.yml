@@ -64,7 +64,7 @@ jobs:
     - name: Create Build Environment
       run: |
         sudo apt-get update
-        sudo apt-get -y install doxygen jsonlint
+        sudo apt-get -y install doxygen jsonlint libunwind-dev
 
     - name: Get Version
       id: version
