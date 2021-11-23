@@ -259,11 +259,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     if (!instr_reads_memory(where) && !instr_writes_memory(where))
         return DR_EMIT_DEFAULT;
-    /* XXX: Workaround for DRi#4958 where DR code shows up in blocks
-     * and DR can't handle a fault there.
-     */
-    if (dr_memory_is_dr_internal(dr_fragment_app_pc(tag)))
-        return DR_EMIT_DEFAULT;
 
     if (subtest == UMBRA_TEST_1_C || subtest == UMBRA_TEST_2_C) {
         for (i = 0; i < instr_num_srcs(where); i++) {
