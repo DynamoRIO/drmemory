@@ -141,7 +141,7 @@ print_usage(bool full)
                 "your application onto drheapstat.exe.  To pass arguments you must\n"
                 "instead invoke drheapstat.exe from an existing shell.\n");
 #endif
-        fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
+        fprintf(stderr, "See http://drmemory.org/ for more information.\n");
         return;
     }
 #define OPTION_CLIENT_EX(scope, name, altname, type, defval, min, max, short, long) \

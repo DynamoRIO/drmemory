@@ -35,7 +35,7 @@ suite:
 ## Documentation
 
 Documentation is included in the release package.  We also maintain a copy
-for [online browsing](http://drmemory.org/docs/).
+for [online browsing](http://drmemory.org/).
 
 ## System call tracer for Windows
 
