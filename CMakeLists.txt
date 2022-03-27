@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -462,6 +462,14 @@ if (UNIX)
 endif (UNIX)
 
 if (WIN32)
+  # Ensure that _AMD64_ or _X86_ are defined on Microsoft Windows, as otherwise
+  # um/winnt.h provided since Windows 10.0.22000 will error.
+  if (X64)
+    add_definitions(-D_AMD64_)
+  else (X64)
+    add_definitions(-D_X86_)
+  endif (X64)
+
   # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var).
   # We don't require the DDK as dbghelp and symsrv are in the SDK as well, and
   # we get ntdll_imports.lib from DR.
