@@ -1248,10 +1248,6 @@ _DR_append_property_list(TARGET ${client_target} COMPILE_DEFINITIONS
   # If we end up wanting this for other DEFINES uses above we'll have to set
   # client_target earlier.  For now we only need for the C code.
   "${DEFINES_NO_D};CLIENT_LIBNAME=${client_target};RC_IS_TOOLLIB")
-if (WIN32)
-  # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
-  append_property_string(TARGET ${client_target} LINK_FLAGS "/force:multiple")
-endif ()
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # ensure race-free parallel builds
   add_dependencies(${client_target} ${asm_utils_tgt})
@@ -1331,6 +1327,9 @@ if (WIN32)
   # This flag is added by VS generators so we may as well add for Ninja
   set(new_flags "/nxcompat")
 
+  # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+  set(new_flags "${new_flags} /force:multiple")
+
   # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
   # and VS generators seem to set it already, so we add here for Ninja).
   # XXX: DRi#2167 is adding this for all clients so we can remove this once
@@ -1350,6 +1349,7 @@ if (WIN32)
   endif (NOT cur_flags)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} ${new_flags}")
+  message(STATUS "Link flags for ${client_target} are: |${cur_flags} ${new_flags}|")
 endif (WIN32)
 
 if (DEFINED DynamoRIO_RPATH)
