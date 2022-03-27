@@ -1248,6 +1248,10 @@ _DR_append_property_list(TARGET ${client_target} COMPILE_DEFINITIONS
   # If we end up wanting this for other DEFINES uses above we'll have to set
   # client_target earlier.  For now we only need for the C code.
   "${DEFINES_NO_D};CLIENT_LIBNAME=${client_target};RC_IS_TOOLLIB")
+if (WIN32)
+  # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+  append_property_string(TARGET ${client_target} LINK_FLAGS "/force:multiple")
+endif ()
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # ensure race-free parallel builds
   add_dependencies(${client_target} ${asm_utils_tgt})
@@ -1866,6 +1870,10 @@ if (BUILD_TOOL_TESTS)
     add_executable(unit_tests ${srcs})
     _DR_append_property_list(TARGET unit_tests COMPILE_DEFINITIONS
       "${DEFINES_NO_D};BUILD_UNIT_TESTS;RC_IS_UNITTESTS")
+    if (WIN32)
+      # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+      append_property_string(TARGET unit_tests LINK_FLAGS "/force:multiple")
+    endif ()
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # ensure race-free parallel builds
       add_dependencies(unit_tests ${asm_utils_tgt})
