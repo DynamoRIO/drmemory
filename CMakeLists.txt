@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -462,6 +462,14 @@ if (UNIX)
 endif (UNIX)
 
 if (WIN32)
+  # Ensure that _AMD64_ or _X86_ are defined on Microsoft Windows, as otherwise
+  # um/winnt.h provided since Windows 10.0.22000 will error.
+  if (X64)
+    add_definitions(-D_AMD64_)
+  else (X64)
+    add_definitions(-D_X86_)
+  endif (X64)
+
   # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var).
   # We don't require the DDK as dbghelp and symsrv are in the SDK as well, and
   # we get ntdll_imports.lib from DR.
@@ -1319,6 +1327,9 @@ if (WIN32)
   # This flag is added by VS generators so we may as well add for Ninja
   set(new_flags "/nxcompat")
 
+  # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+  set(new_flags "${new_flags} /force:multiple")
+
   # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
   # and VS generators seem to set it already, so we add here for Ninja).
   # XXX: DRi#2167 is adding this for all clients so we can remove this once
@@ -1858,6 +1869,10 @@ if (BUILD_TOOL_TESTS)
     add_executable(unit_tests ${srcs})
     _DR_append_property_list(TARGET unit_tests COMPILE_DEFINITIONS
       "${DEFINES_NO_D};BUILD_UNIT_TESTS;RC_IS_UNITTESTS")
+    if (WIN32)
+      # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+      append_property_string(TARGET unit_tests LINK_FLAGS "/force:multiple")
+    endif ()
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # ensure race-free parallel builds
       add_dependencies(unit_tests ${asm_utils_tgt})
