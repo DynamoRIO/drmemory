@@ -1349,7 +1349,6 @@ if (WIN32)
   endif (NOT cur_flags)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} ${new_flags}")
-  message(STATUS "Link flags for ${client_target} are: |${cur_flags} ${new_flags}|")
 endif (WIN32)
 
 if (DEFINED DynamoRIO_RPATH)
