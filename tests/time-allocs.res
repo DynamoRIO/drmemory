@@ -25,7 +25,7 @@ Error #1: INVALID HEAP ARGUMENT
 malloc.c:166
 %endif
 %if UNIX
-malloc.c:180
+malloc.c:181
 %endif
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
