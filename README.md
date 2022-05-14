@@ -40,7 +40,7 @@ for [online browsing](http://drmemory.org/).
 ## System call tracer for Windows
 
 The Dr. Memory package includes [an "strace for Windows" tool called
-`drstrace`](http://drmemory.org/strace_for_windows.html).
+`drstrace`](https://drmemory.org/page_drstrace.html).
 
 ## Obtaining help
 
