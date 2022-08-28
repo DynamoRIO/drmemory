@@ -1252,14 +1252,10 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
              */
             DR_TRY_EXCEPT(dr_get_current_drcontext(), {
                 IF_AARCH64_ELSE({
-                    // TODO i#2016: WRONG
-                    /* A32 bl <label> */
-                    if ((*(pc - 1) & 0x0f) == 0x09) {
-                        pc = pc - 4;
-                        LOG(4, "%s: call tgt is "PFX"\n", __FUNCTION__, pc);
-                        /* Just look for an add -- rare in func prologue 1st instr */
-                        if (((*(uint*)pc) & 0xe2800000) == 0xe2800000)
-                            res = false;
+                    /* A64 bl <label>: 100101xxxxxxxxxxxxxxxxxxxxxxxxxx */
+                    if ((*((int*)(pc - 4))) & 0x94000000 == 0x94000000) {
+                        /* TODO i#2016: Rule out call;jmp*. */
+                        res = false;
                     }
                 }, {
                     IF_X86_ELSE({
