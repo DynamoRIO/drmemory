@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -974,7 +974,15 @@ syscall_info_t syscall_info[] = {
          {2,2 * sizeof(struct timeval), R},
      }
     },
-    {{PACKNUM(-1,300,327),0},"fstatat64", OK, RLONG, 4, /* FIXME 1, sizeof(char), U, 2, sizeof(struct stat64), U, */},
+#ifndef X64
+    /* XXX i#1013: we'll need our own defs of stat64 for mixed-mode */
+    {{PACKNUM(-1,300,327),0},"fstatat64", OK, RLONG, 4,
+     {
+         {1,0, R|CT, CSTRING},
+         {2,sizeof(struct stat64),W},
+     }
+    },
+#endif
     {{PACKNUM(263,301,328),0},"unlinkat", OK, RLONG, 3,
      {
          {1,0, R|CT, CSTRING},
@@ -1223,7 +1231,7 @@ syscall_info_t syscall_info[] = {
      }
     },
     {{PACKNUM(71,-1,304),0},"msgctl", OK, RLONG, 3, /*special-cased*/},
-    {{PACKNUM(158,-1,-1),0},"arch_prctl", OK, RLONG, 2,
+    {{PACKNUM(158,384,-1),0},"arch_prctl", OK, RLONG, 2,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          /* 2nd arg is special-cased */
@@ -1248,7 +1256,12 @@ syscall_info_t syscall_info[] = {
      }
     },
     {{PACKNUM(236,-1,-1),0},"vserver", UNKNOWN, RLONG, 0, },
-    {{PACKNUM(262,-1,-1),0},"newfstatat", UNKNOWN, RLONG, 0, },
+    {{PACKNUM(262,-1,-1),0},"newfstatat", OK, RLONG, 4,
+     {
+         {1,0, R|CT, CSTRING},
+         {2,sizeof(struct stat),W},
+     }
+    },
     {{PACKNUM(288,-1,366),0},"paccept", OK, RLONG, 4,
      {
          {1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},

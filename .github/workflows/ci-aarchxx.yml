@@ -40,7 +40,7 @@ defaults:
 jobs:
   # AArchXX cross-compile with gcc, no tests:
   aarchxx-cross-compile:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -58,11 +58,21 @@ jobs:
 
     # Install cross-compilers for cross-compiling Linux build.
     # We are not yet testing aarch64 but we will be soon.
+    # Unfortunately there is no libunwind-dev or libunwind cross-compile
+    # package so we unpack the native versions and copy their files.
     - name: Create Build Environment
       run: |
         sudo apt-get update
         sudo apt-get -y install doxygen jsonlint \
           g++-arm-linux-gnueabihf g++-aarch64-linux-gnu
+        sudo add-apt-repository 'deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports focal main'
+        mkdir ../extract
+        pushd ../extract
+        apt download libunwind8:armhf libunwind-dev:armhf liblzma5:armhf
+        for i in *.deb; do dpkg-deb -x $i .; done
+        for i in include lib; do sudo rsync -av ./usr/${i}/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/${i}/; done
+        sudo rsync -av ./lib/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/lib/
+        popd
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
@@ -72,7 +82,7 @@ jobs:
 
   # Android ARM cross-compile with gcc, no tests:
   android-arm-cross-compile:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -871,6 +871,7 @@ if (TOOL_DR_MEMORY)
 
   if (UNIX AND NOT ANDROID) # Android doesn't seem to support these alloc routines
     newtest(memalign memalign.c)
+    append_test_compile_flags(memalign "-Wno-deprecated-declarations")
     newtest_nobuild(memalign.nodelay memalign "" "-delay_frees;0" "" OFF "memalign")
     newtest_nobuild(memalign.pattern memalign "" "-light" "" OFF "")
   endif ()
@@ -896,6 +897,7 @@ if (TOOL_DR_MEMORY)
   endif ()
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
     OFF "" 0)
+  append_test_compile_flags(track_origins "-Wno-uninitialized")
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
@@ -989,7 +991,8 @@ if (TOOL_DR_MEMORY)
     # Exclude the lib's errors
     "-lib_allowlist;*allowlist_app*;-lib_allowlist_frames;1"
     "" OFF "allowlist" 0)
-  tobuild_lib(allowlist_lib allowlist_lib.cpp "" "")
+  append_test_compile_flags(allowlist_app "-Wno-uninitialized")
+  tobuild_lib(allowlist_lib allowlist_lib.cpp "-Wno-uninitialized" "")
   target_link_libraries(allowlist_app allowlist_lib)
   newtest_nobuild(allowlist_justlib allowlist_app ""
     # Exclude the app's errors

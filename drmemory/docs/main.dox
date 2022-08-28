@@ -41,7 +41,7 @@ dynamic instrumentation tool platform.
 
 # Downloading Dr. Memory
 
-Dr. Memory is released under [an LGPL license](page_license.html).  Windows, Linux, and Mac packages [are available for download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).  The sources are also [browsable](https://github.com/DynamoRIO/drmemory).
+Dr. Memory is released under [an LGPL license](page_license.html).  Windows, Linux, and Mac packages [are available for download](\ref page_download).  The sources are also [browsable](https://github.com/DynamoRIO/drmemory).
 
 
 # Dr. Memory Performance

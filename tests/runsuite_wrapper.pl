@@ -260,7 +260,10 @@ for (my $i = 0; $i <= $#lines; ++$i) {
         } else {
             %ignore_failures_32 = ('pcache-use' => 1, # i#2202
                                    'fuzz_threads' => 1, # i#2242
+                                   # XXX: We should probably drop wrap_ support as we
+                                   # do not have the resources to maintain it.
                                    'wrap_cs2bug' => 1,
+                                   'wrap_operators' => 1,
                                    'app_suite.pattern' => 1,
                                    'app_suite' => 1);
             %ignore_failures_64 = ('pcache' => 1, # i#2243
