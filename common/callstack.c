@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,6 +26,9 @@
 
 #include "dr_api.h"
 #include "drmgr.h"
+#ifdef HAVE_LIBUNWIND_H
+# include "drcallstack.h"
+#endif
 #include "callstack.h"
 #include "utils.h"
 #include "redblack.h"
@@ -314,6 +317,14 @@ max_callstack_size(void)
 void
 callstack_init(callstack_options_t *options)
 {
+#ifdef HAVE_LIBUNWIND_H
+    drcallstack_options_t drcs_ops = {
+        sizeof(drcs_ops),
+    };
+    if (drcallstack_init(&drcs_ops) != DRCALLSTACK_SUCCESS)
+        ASSERT(false, "failed to initialize drcallstack");
+#endif
+
     tls_idx_callstack = drmgr_register_tls_field();
     ASSERT(tls_idx_callstack > -1, "unable to reserve TLS slot");
 
@@ -358,6 +369,9 @@ callstack_exit(void)
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
     drmgr_unregister_tls_field(tls_idx_callstack);
+#ifdef HAVE_LIBUNWIND_H
+    drcallstack_exit();
+#endif
 }
 
 #ifdef STATISTICS
@@ -1022,6 +1036,8 @@ walk_wide_string(wchar_t *start, size_t safe_wchars,
 # define OP_JMP_IND 0xff
 # define OP_SEG_FS   0x64
 # define WOW64_SYSOFFS  0xc0
+# define ENDBR32 0xfb1e0ff3
+# define ENDBR64 0xfa1e0ff3
 #endif
 
 static bool
@@ -1058,7 +1074,7 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
             IF_AARCH64_ELSE(
                 match =
-                //TODO: Should be checked, BLR + PAC variation?
+                    // XXX i#2016: Should be checked, BLR + PAC variation?
                     /* A64 bl <label> */
                     ((*(pc - 1) & 0xfc) == 0x94) ||
                     /* A64 blr <reg> */
@@ -1236,7 +1252,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
              */
             DR_TRY_EXCEPT(dr_get_current_drcontext(), {
                 IF_AARCH64_ELSE({
-                    //TODO: WRONG
+                    // TODO i#2016: WRONG
                     /* A32 bl <label> */
                     if ((*(pc - 1) & 0x0f) == 0x09) {
                         pc = pc - 4;
@@ -1249,7 +1265,11 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
                     IF_X86_ELSE({
                         if (*(pc - 5) == OP_CALL_DIR) {
                             pc = *(int*)(pc - 4) + pc;
-                            /* Follow "call; jmp*", where jmp* is 0xff /4 */
+                            /* Follow "call; jmp*", where jmp* is 0xff /4.
+                             * Allow endbr{32,64} before.
+                             */
+                            if (*(int*)pc == IF_X64_ELSE(ENDBR64,ENDBR32))
+                                pc += 4;
                             if (*pc != OP_JMP_IND ||
                                 ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
                                 res = false;
@@ -1615,7 +1635,99 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
     return NULL;
 }
 
-/* XXX i#1222: on win64, we should use SEH unwind tables to walk the callstack. */
+#ifdef HAVE_LIBUNWIND_H
+/* We have ELF unwind info support in drcallstack now.
+ * XXX i#1222: on win64, we should similarly use SEH unwind tables to walk the callstack.
+ */
+void
+walk_unwind_info(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
+                bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
+                bool for_log, uint max_frames,
+                bool (*frame_cb)(app_pc pc, byte *fp, void *user_data), void *user_data)
+{
+    int num = num_frames_printed;
+    ssize_t len = 0;
+    size_t prev_sofar = 0;
+    bool first_iter = true;
+    bool last_frame = false;
+
+    drcallstack_walk_t *walk;
+    /* XXX: Presumably we don't need the !FP_DO_NOT_SKIP_VSYSCALL_PUSH code?  Or do we
+     * need to integrate this further into print_callstack()?
+     */
+    LOG(4, "drcallstack init pc=%p sp=%p fp=%p\n", mc->pc, MC_SP_REG(mc), MC_FP_REG(mc));
+    drcallstack_status_t res = drcallstack_init_walk(mc, &walk);
+    ASSERT(res == DRCALLSTACK_SUCCESS, "failed to init drcallstack walk");
+    drcallstack_frame_t frame = {
+        sizeof(frame),
+    };
+    do {
+        res = drcallstack_next_frame(walk, &frame);
+        if (res != DRCALLSTACK_SUCCESS) {
+            LOG(3, "drcallstack error %d\n", res);
+                break;
+        }
+        /* XXX: Measure perf: do we want to use fpcache_update()? */
+        if (buf != NULL) {
+            prev_sofar = *sofar;
+            if (for_log)
+                BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"#%2d ", num);
+            if (print_fps) {
+                /* We don't have the parent FP here. */
+                BUFPRINT(buf, bufsz, *sofar, len, "fp=" PFX, frame.sp);
+            }
+        }
+        if (pcs != NULL && first_iter && num == 1 &&
+            PCS_FRAME_LOC(pcs, 0).addr == frame.pc) {
+            /* caller already added this frame */
+            if (buf != NULL) /* undo the fp= print */
+                *sofar = prev_sofar;
+        } else if ((pcs == NULL &&
+                    print_address_common(buf, bufsz, sofar, frame.pc, NULL,
+                                         !TEST(FP_SHOW_NON_MODULE_FRAMES, ops.fp_flags),
+                                         true, for_log, &last_frame, num)) ||
+                   (pcs != NULL &&
+                    address_to_frame(NULL, pcs, frame.pc, NULL,
+                                     !TEST(FP_SHOW_NON_MODULE_FRAMES, ops.fp_flags),
+                                     true, pcs->num_frames))) {
+            num++;
+            if (frame_cb != NULL) {
+                if (!(*frame_cb)(frame.pc, (app_pc)frame.sp, user_data))
+                    break;
+            }
+            if (last_frame)
+                break;
+        } else {
+            /* Unlesss FP_SHOW_NON_MODULE_FRAMES, we do not include not-in-a-module
+             * addresses.
+             * XXX: Should we integrate fully with the raw scan/frame-walk code
+             * in print_callstack() so we can interleave frames from each method?
+             */
+            LOG(4, "Skipping sp=%p pc=%p <unknown-module>\n", frame.sp, frame.pc);
+        }
+        if (num >= max_frames || (pcs != NULL && pcs->num_frames >= max_frames)) {
+            if (buf != NULL)
+                BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"..."NL);
+            LOG(4, "truncating callstack: hit max frames %d %d\n",
+                num, pcs == NULL ? -1 : pcs->num_frames);
+            break;
+        }
+    } while (res == DRCALLSTACK_SUCCESS);
+    if (res != DRCALLSTACK_NO_MORE_FRAMES)
+        LOG(3, "final drcallstack error %d\n", res);
+    res = drcallstack_cleanup_walk(walk);
+    DR_ASSERT(res == DRCALLSTACK_SUCCESS);
+
+    if (num == 0 && buf != NULL && print_fps) {
+        BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"<call stack walk failed>"NL);
+    }
+    if (buf != NULL) {
+        buf[bufsz-2] = '\n';
+        buf[bufsz-1] = '\0';
+    }
+}
+#endif
+
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
@@ -1668,6 +1780,22 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         MC_FP_REG(mc), MC_SP_REG(mc),
         (ops.is_dword_defined == NULL) ?
         0 : ops.is_dword_defined(drcontext, (byte*)MC_FP_REG(mc)));
+
+#ifdef HAVE_LIBUNWIND_H
+    /* If the start pc is not in a module we bail on using libunwind.
+     * XXX: Should we interleave the methods and try libunwind on the next frame
+     * if we find a valid first one by scanning?
+     * If we change this is_in_module() call we need to change the corresponding
+     * one in record_error() deciding whether to zero the fp.
+     */
+    if (ops.use_unwind && is_in_module(mc->pc)) {
+        walk_unwind_info(buf, bufsz, sofar, mc, print_fps, pcs, num_frames_printed,
+                         for_log, max_frames, frame_cb, user_data);
+        return;
+    }
+#endif
+
+    /* XXX i#2016: Does frame walk code work for a64?  Disabling for now. */
     if (IF_AARCH64(false &&) MC_SP_REG(mc) != 0 &&
         (!ALIGNED(MC_FP_REG(mc), sizeof(void*)) ||
          MC_FP_REG(mc) < MC_SP_REG(mc) ||
@@ -2047,6 +2175,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             pcs->num_frames++;
         } else {
             app_pc pc = loc_to_pc(loc);
+            /* The caller should have already set mc->pc. */
             ASSERT(loc->type == APP_LOC_PC, "unknown loc type");
             address_to_frame(NULL, pcs, pc, NULL, false, false, 0);
         }

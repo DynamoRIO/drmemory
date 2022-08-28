@@ -21,7 +21,7 @@
 #
 Error #1: INVALID HEAP ARGUMENT
 # addr2line and winsyms report slightly different results here
-malloc.c:180
+malloc.c:181
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
 malloc.c:192

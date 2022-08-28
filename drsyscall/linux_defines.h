@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -113,7 +113,6 @@
 #include <linux/serial.h>
 #include <linux/ax25.h>
 #include <linux/cdrom.h>
-#include <linux/cyclades.h>
 #include <linux/fs.h>
 
 /* linux/cdk.h was removed from the kernel in 3.6 */
@@ -152,7 +151,6 @@ struct rlimit64 {
 #include <linux/hdreg.h>
 #include <linux/if.h>
 #include <linux/if_plip.h>
-#include <linux/ipx.h>
 #include <linux/kd.h>
 #include <linux/lp.h>
 #include <linux/mroute.h>

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -75,7 +75,7 @@ Full Documentation
 If you are viewing this file, you have already successfully unpacked the
 Dr. Memory distribution archive.  To view the documention, point your web
 browser at the drmemory/docs/html/index.html file, or online at
-http://drmemory.org/docs/.
+http://drmemory.org/.
 
 ===========================================================================
 Contact
@@ -88,8 +88,7 @@ help on using Dr. Memory.
 Dr. Memory's source code and issue tracker live at
 https://github.com/DynamoRIO/drmemory
 
-If you would like to submit a patch, you will need to first sign a
-Contributor License Agreement.  See
-https://github.com/DynamoRIO/drmemory/wiki/Contributing for more information.
+We welcome contributions to Dr. Memory.  Please see our
+instructions for contributing at https://drmemory.org/page_contribute.html.
 
 ===========================================================================

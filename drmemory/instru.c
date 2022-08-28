@@ -1328,11 +1328,12 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized)
         insert_zero_retaddr(drcontext, bb, inst, bi);
 
-    /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
-    if (INSTRUMENT_MEMREFS())
+ instru_event_bb_insert_done:
+    /* We do need to process labels for annotations. */
+    if (INSTRUMENT_MEMREFS() &&
+        (!instr_is_meta(inst) || instr_is_label(inst)))
         fastpath_pre_app_instr(drcontext, bb, inst, bi, &mi);
 
- instru_event_bb_insert_done:
     if (bi->first_instr && instr_is_app(inst))
         bi->first_instr = false;
     if (!used_fastpath && options.shadowing) {

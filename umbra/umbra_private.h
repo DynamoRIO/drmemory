@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -265,6 +265,6 @@ umbra_get_shared_shadow_block_arch(IN  umbra_map_t *map,
 
 bool
 umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
-                   dr_mcontext_t *mc);
+                   dr_mcontext_t *mc, dr_fault_fragment_info_t *info);
 #endif /* _UMBRA_PRIVATE_H_ */
 

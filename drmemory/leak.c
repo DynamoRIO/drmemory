@@ -97,8 +97,11 @@ typedef struct _reachability_data_t {
     pc_entry_t *midreachq_tail;
     /* Tree for interval lookup to find head given mid-chunk pointer */
     rb_tree_t *alloc_tree;
-    /* Tree for storing beyond-TOS ranges for -leaks_only */
+    /* Tree for storing beyond-TOS ranges for -leaks_only, or full stack regions
+     * for exit-time stack ignoring.
+     */
     rb_tree_t *stack_tree;
+    bool at_exit;
     /* Lowest possible pointer value */
     byte *low_ptr;
 } reachability_data_t;
@@ -1142,6 +1145,19 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 pc = iter_end;
                 continue;
             }
+            if (data->at_exit) {
+                /* i#2367: Do not consider stack memory at exit to contain roots. */
+                rb_node_t *node = rb_in_node(data->stack_tree, pc);
+                if (node != NULL) {
+                    byte *stack_base;
+                    size_t stack_size;
+                    rb_node_fields(node, &stack_base, &stack_size, NULL);
+                    pc = stack_base + stack_size;
+                    LOG(3, "skipping thread stack "PFX"-"PFX"\n", stack_base, pc);
+                    if (pc >= iter_end)
+                        continue;
+                }
+            }
             defined_end = cb_end_of_defined_region(pc, iter_end);
         }
         LOG(3, "defined range "PFX"-"PFX"\n", pc, defined_end);
@@ -1152,6 +1168,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 /* Skip heap regions */
                 if (heap_region_bounds(pc, NULL, &chunk_end, NULL) &&
                     chunk_end != NULL) {
+                    LOG(3, "skipping heap "PFX"-"PFX"\n", pc, chunk_end);
                     pc = chunk_end - sizeof(void*); /* let loop inc bump pc */
                     ASSERT(ALIGNED(pc, sizeof(void*)), "heap region end not aligned!");
                     continue;
@@ -1169,6 +1186,8 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
              */
             if (leak_safe_read_heap(pc, (void **)&pointer))
                 check_reachability_pointer(pointer, pc, defined_end, data);
+            else
+                LOG(4, "failed to read value @%p\n", pc);
 #else
             /* Threads are suspended and we checked readability so safe to deref */
             pointer = *((app_pc*)pc);
@@ -1183,7 +1202,7 @@ static void
 check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t *data)
 {
     reg_id_t reg;
-    if (!op_have_defined_info) {
+    if (!op_have_defined_info || data->at_exit) {
         /* with no shadow info we have to rule out stale stack data by
          * recording the current stacks and hoping any old stacks were
          * munmapped.  FIXME: altsigstack
@@ -1194,14 +1213,20 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
             LOG(2, "thread "TIDFMT" stack is "PFX"-"PFX", sp="PFX"\n",
                 dr_get_thread_id(drcontext), stack_base,
                 stack_base + stack_size, mc->xsp);
-            /* store the region beyond TOS */
-            rb_insert(data->stack_tree, stack_base,
-                      ((app_pc)mc->xsp) - stack_base, NULL);
+            if (!op_have_defined_info) {
+                /* store the region beyond TOS */
+                rb_insert(data->stack_tree, stack_base,
+                          ((app_pc)mc->xsp) - stack_base, NULL);
+            } else {
+                /* Store the full stack region. */
+                rb_insert(data->stack_tree, stack_base, stack_size, NULL);
+            }
         }
     }
+    if (data->at_exit && op_have_defined_info)
+        return;
     /* we ignore fp/mmx and xmm regs */
-    for (reg = REG_START_32; reg <= IF_X86_ELSE(REG_EDI/*STOP_32 is R15D!*/, REG_STOP_32);
-         reg++) {
+    for (reg = DR_REG_START_GPR; reg <= DR_REG_STOP_GPR; reg++) {
         if (!op_have_defined_info || cb_is_register_defined(drcontext, reg)) {
             reg_t val = reg_get_value(reg, mc);
             LOG(4, "thread "TIDFMT" reg %d: "PFX"\n", dr_get_thread_id(drcontext),
@@ -1405,6 +1430,7 @@ leak_scan_for_leaks(bool at_exit)
     data.primary_scan = true;
     data.alloc_tree = rb_tree_create(NULL);
     data.stack_tree = rb_tree_create(NULL);
+    data.at_exit = at_exit;
     /* get the lowest allocated memory */
     dr_query_memory_ex(NULL, &mem_info);
     if (mem_info.prot == DR_MEMPROT_NONE)
@@ -1420,19 +1446,17 @@ leak_scan_for_leaks(bool at_exit)
      */
     malloc_iterate(malloc_iterate_build_tree_cb, (void *) data.alloc_tree);
 
-    if (!at_exit || !op_have_defined_info) {
-        /* Walk the thread's registers.  We rely on mcontext field ordering here. */
-        for (i = 0; i < num_threads; i++) {
-            LOG(3, "\nwalking registers of thread "TIDFMT"\n",
-                dr_get_thread_id(drcontexts[i]));
-            dr_get_mcontext(drcontexts[i], &mc);
-            check_reachability_regs(drcontexts[i], &mc, &data);
-        }
+    /* Walk the thread's registers.  We rely on mcontext field ordering here. */
+    for (i = 0; i < num_threads; i++) {
         LOG(3, "\nwalking registers of thread "TIDFMT"\n",
-            dr_get_thread_id(my_drcontext));
-        dr_get_mcontext(my_drcontext, &mc);
-        check_reachability_regs(my_drcontext, &mc, &data);
+            dr_get_thread_id(drcontexts[i]));
+        dr_get_mcontext(drcontexts[i], &mc);
+        check_reachability_regs(drcontexts[i], &mc, &data);
     }
+    LOG(3, "\nwalking registers of thread "TIDFMT"\n",
+        dr_get_thread_id(my_drcontext));
+    dr_get_mcontext(my_drcontext, &mc);
+    check_reachability_regs(my_drcontext, &mc, &data);
 
     check_reachability_helper(NULL, (app_pc)POINTER_MAX, true/*skip heap*/, &data);
     LOG(3, "\nwalking reachable-chunk queue\n");

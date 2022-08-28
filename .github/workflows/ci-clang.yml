@@ -40,7 +40,7 @@ defaults:
 jobs:
   # 32-bit and 64-bit Linux build with clang, no tests.
   clang:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -56,11 +56,23 @@ jobs:
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
 
-    # Install multilib for non-cross-compiling Linux build:
+    # Install multilib for non-cross-compiling Linux build.
+    # GA CI uses packages.microsoft.com which is missing i386 packages, and
+    # attempts at using apt with us.archive-ubuntu.com hit dep issues:
+    # so we manually install the libunwind i386 packages we need.
     - name: Create Build Environment
       run: |
         sudo apt-get update
-        sudo apt-get -y install doxygen jsonlint g++-multilib
+        sudo apt-get -y install doxygen jsonlint g++-multilib libunwind-dev
+        sudo add-apt-repository 'deb [arch=i386] http://us.archive.ubuntu.com/ubuntu focal main'
+        mkdir ../extract
+        pushd ../extract
+        apt download libunwind8:i386 libunwind-dev:i386 liblzma5:i386
+        for i in *.deb; do dpkg-deb -x $i .; done
+        sudo rsync -av ./usr/lib/i386-linux-gnu/ /lib32/
+        sudo rsync -av ./lib/i386-linux-gnu/ /lib32/
+        sudo rsync -av ./usr/include/i386-linux-gnu/ /usr/include/
+        popd
 
     # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
     - name: Downgrade cmake
@@ -71,6 +83,3 @@ jobs:
     - name: Run Suite
       working-directory: ${{ github.workspace }}
       run: ./tests/runsuite_wrapper.pl travis
-      env:
-        CC: clang-9
-        CXX: clang++-9

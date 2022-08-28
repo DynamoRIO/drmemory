@@ -1,0 +1,198 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_arm_port ARM Port
+
+# ARM Port Design Document
+
+## Pattern Mode
+
+### Instrumentation to compare a memory value to an immediate
+
+We can't easily use our x86 instrumentation:
+
+    cmp <memval>, 0xf1fdf1fd
+
+We may have to do sthg like:
+
+    spill r0
+    spill r1
+    ldr r0, <memval>
+    movw 0xf1fd, r1
+    movt 0xf1fd, r1
+    cmp r0, r1
+    restore r0
+    restore r1
+
+#### Thumb mode: can repeat single byte
+
+The expanded-immeds do allow:
+
+    cmp r0, 0xf100f100
+
+Or
+
+    cmp r0, 0x00fd00fd
+
+Or
+
+    cmp r0, 0xf1f1f1f1
+
+For Thumb, anyway.
+
+Probably it's worth changing the pattern to avoid extra spills and instrs.
+
+What it looks like with 0xf1f1f1f1:
+
+    +22   m4 @0x5291e120             <label>
+    +22   m4 @0x5291db00  f8ca c084  str    %r12 -> +0x00000084(%r10)[4byte]
+    +26   m4 @0x5291e088  f8d3 c004  ldr    +0x04(%r3)[4byte] -> %r12
+    +30   m4 @0x5291e03c  f1bc 3ff1  cmp    %r12 $0xf1f1f1f1
+    +34   m4 @0x5291dfa4  e7fe       b.ne   @0x5291e0d4[4byte]
+    +36   m4 @0x5291df58  de00       udf    $0x00000000
+    +38   m4 @0x5291e0d4             <label>
+    +38   L3              f843 1f04  str    %r1 $0x00000004 %r3 -> +0x04(%r3)[4byte] %r3
+
+With flags save:
+
+    +12   m4 @0x550b2408  f8ca 0084  str    %r0 -> +0x00000084(%r10)[4byte]
+    +16   m4 @0x550b2920  f3ef 8000  mrs    %cpsr -> %r0
+    +20   m4 @0x550b2454  f8ca 0080  str    %r0 -> +0x00000080(%r10)[4byte]
+    +24   m4 @0x550b1e98  f8d1 00e4  ldr    +0x000000e4(%r1)[4byte] -> %r0
+    +28   m4 @0x550b24a0  f1b0 3ff1  cmp    %r0 $0xf1f1f1f1
+    +32   m4 @0x550b231c  e7fe       b.ne   @0x550b26fc[4byte]
+    +34   m4 @0x550b22d0  de00       udf    $0x00000000
+    +36   m4 @0x550b26fc             <label>
+    +36   L3              f8c1 20e4  str.hi %r2 -> +0x000000e4(%r1)[4byte]
+    +40   m4 @0x550b1bd8  f8da 0080  ldr    +0x00000080(%r10)[4byte] -> %r0
+    +44   m4 @0x550b252c  f380 8c00  msr    $0x0c %r0 -> %cpsr
+    +48   m4 @0x550b26a8  f8da 0084  ldr    +0x00000084(%r10)[4byte] -> %r0
+
+#### To avoid spilling flags, try sub+cbnz in thumb mode
+
+Our scratch reg must be r0-r7 for cbnz though.
+
+And we'd have to add an IT block for sub (but cbnz cannot be inside it).
+
+So maybe we should only do it when the flags are live?  Thus
+adding more complexity to the fault identification code.
+
+#### ARM mode: cannot repeat an immmed byte!  Use OP_sub x4?
+
+But what about ARM?  ARM immediates in GPR instrs are just an 8-bit value
+rotated: no repeating.  Even the SIMD and VFP immeds aren't much help,
+except maybe the cmode=1111 combined with cmode=1100?  Subtract one and
+then the other?
+
+We could use mvn if most bits are 1's: sthg like 0xfff1ffff, but we still
+need to spill a reg, and if we do that we may as well use movw,movt.
+
+#### Do 4 subtracts?
+
+Faster than a spill, though not if we have a (2nd) dead reg.
+
+So we'd do:
+
+     sub r0, 0xf1000000
+     sub r0, 0x00f10000
+     sub r0, 0x0000f100
+     sub r0, 0x000000f1
+     cmp r0, 0  (cbnz is Thumb-only)
+     jne skip
+     udf
+    skip:
+
+We could use 0xf1fdf1fd here -- but maybe simplest to still limit to
+single-byte for consistency w/ Thumb?
+
+Vs the movw,movt: 2 extra instrs if reg dead, same # and no mem access if
+live.  Can we ask drreg whether dead or not?
+=>
+add drreg_is_register_dead()
+
+However, having 2 different versions complicates the fault handling.
+
+Double-checking the compiler doesn't have some trick:
+
+    if (argc == 0xf1fdf1fd)
+        return 1;
+        =>
+    gcc thumb -O3:
+     8372:       f24f 13fd       movw    r3, #61949      ; 0xf1fd
+     8376:       f2cf 13fd       movt    r3, #61949      ; 0xf1fd
+     837a:       4298            cmp     r0, r3
+    gcc arm -O3:
+     8374:       e30f31fd        movw    r3, #61949      ; 0xf1fd
+     8378:       e34f31fd        movt    r3, #61949      ; 0xf1fd
+     837c:       e1500003        cmp     r0, r3
+
+Real example:
+
+    +4    m4 @0x4f8c5be8  e58a1084   str    %r1 -> +0x00000084(%r10)[4byte]
+    +8    m4 @0x4f8c60a8  e10f1000   mrs    %cpsr -> %r1
+    +12   m4 @0x4f8c5c34  e58a1080   str    %r1 -> +0x00000080(%r10)[4byte]
+    +16   m4 @0x4f8c6134  e5901000   ldr    (%r0)[4byte] -> %r1
+    +20   m4 @0x4f8c6180  e24114f1   sub    %r1 $0xf1000000 -> %r1
+    +24   m4 @0x4f8c5ff4  e24118f1   sub    %r1 $0x00f10000 -> %r1
+    +28   m4 @0x4f8c5b10  e2411cf1   sub    %r1 $0x0000f100 -> %r1
+    +32   m4 @0x4f8c5f28  e24110f1   sub    %r1 $0x000000f1 -> %r1
+    +36   m4 @0x4f8c5f68  e3510000   cmp    %r1 $0x00000000
+    +40   m4 @0x4f8c5b50  1afffffe   b.ne   @0x4f8c60f4[4byte]
+    +44   m4 @0x4f8c6250  e7f000f0   udf    $0x00000000
+    +48   m4 @0x4f8c60f4  e7f000f0   <label>
+    +48   L3              e5900000   ldr    (%r0)[4byte] -> %r0
+    +52   m4 @0x4f8c6290  e59a1080   ldr    +0x00000080(%r10)[4byte] -> %r1
+    +56   m4 @0x4f8c62dc  e12cf001   msr    $0x0c %r1 -> %cpsr
+    +60   m4 @0x4f8c6334  e59a1084   ldr    +0x00000084(%r10)[4byte] -> %r1
+
+#### Switch to thumb mode just for the cmp?
+
+Breaks DR's rules: would mess up decode_fragment.
+
+Instead of inlining, could jump to separate gencode (need 15 forms one for
+each scratch reg) -- if already in cache maybe ok that it's not local.
+
+#### Load immed from TLS slot
+
+If TLS in data cache and have L1 hit, may be as fast as movw,movt, and
+it's shorter code.
+
+#### Go w/ unified ARM+Thumb same approach for simpler code?
+
+#### Permanently steal another reg?
+
+Very complex w/ interactions w/ r10 though
+
+#### Put the optimizations under an option and under option switch to single-byte pattern val
+
+#### For 2 spills, have drreg use ldm or ldrd?
+
+For 2 spills, is ldm or ldrd faster?  Qin's initial tests showed no faster
+than separate ldr x2, so even though instr density is better, if it makes drreg
+really complex it's prob not worth doing.
+
+
+****************************************************************************
+****************************************************************************
+*/

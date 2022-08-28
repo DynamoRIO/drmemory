@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -244,8 +244,8 @@ non_module_test(void)
     /* cmp r0, #0; bx lr */
     int buf[] = { 0xe3500000, 0xe12fff1e };
 #elif defined(AARCH64)
-    /* cmp r0, #0; bx lr */
-    int buf[] = { 0xe3500000, 0xe12fff1e };
+    /* cmp x0, #0; ret */
+    int buf[] = { 0x1f0000f1, 0xc0035fd6 };
 #endif
     int uninit[2];
     int x = 0; /* avoid compiler warning about uninit var use */

@@ -1,0 +1,114 @@
+# **********************************************************
+# Copyright (c) 2020-2021 Google, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation;
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Github Actions workflow for building doxygen docs for the web site.
+
+name: ci-docs
+on:
+  # Built weekly: 10pm EST Fridays.  A re-build even with no content
+  # changes updates timestamps on every page, increasing the repo size.
+  # We thus use manual builds for rare docs changes we want to deploy to
+  # the website and have automated builds match our weekly package builds.
+  schedule:
+    - cron: '0 3 * * FRI'
+  # Manual trigger using the Actions page.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number for docs (blank for cronbuild)'
+        required: false
+        default: ''
+      build:
+        description: 'Build number for docs'
+        required: true
+        default: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ###########################################################################
+  # Docs deployment, building on Linux.
+  docs:
+    # We use a more recent Ubuntu for better markdown support.
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Fetch Sources
+      run: |
+        git fetch --no-tags --depth=1 origin master
+
+    # Install needed packages.
+    - name: Create Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install doxygen jsonlint libunwind-dev
+
+    - name: Get Version
+      id: version
+      # XXX: For now we duplicate this version number here with CMakeLists.txt.
+      # We should find a way to share (xref DRi#1565).
+      # We support setting the version and build for manual builds.
+      # We only use a non-zero build # when making multiple manual builds in one day.
+      run: |
+        if test -z "${{ github.event.inputs.version }}"; then
+          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export PREFIX="cronbuild-"
+        else
+          export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export PREFIX="release_"
+        fi
+        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
+          export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+        fi
+        echo "::set-output name=version_number::${VERSION_NUMBER}"
+
+    - name: Build Docs
+      working-directory: ${{ github.workspace }}
+      run: ./tests/runsuite_wrapper.pl travis 64_only
+      env:
+        CI_TARGET: package
+        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
+        DEPLOY_DOCS: yes
+
+    - name: Check Out Web
+      uses: actions/checkout@v2
+      with:
+        repository: DynamoRIO/drmemory.github.io
+        token: ${{ secrets.DOCS_TOKEN }}
+        path: drmemory.github.io
+
+    - name: Deploy Embedded Docs
+      run: |
+        rsync -av --delete html_embed/ drmemory.github.io/docs/
+        cd drmemory.github.io
+        git config --local user.name "cronbuild"
+        git config --local user.email "drmemory-devs@googlegroups.com"
+        git add -A
+        git commit -m "Snapshot for cronbuild-${{ steps.version.outputs.version_number }}"
+        git push
+      env:
+        # We need a personal access token for write access to another repo.
+        GITHUB_TOKEN: ${{ secrets.DOCS_TOKEN }}

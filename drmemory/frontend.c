@@ -238,7 +238,7 @@ print_usage(bool full)
                 "your application onto drmemory.exe.  To pass arguments you must\n"
                 "instead invoke drmemory.exe from an existing shell.\n");
 #endif
-        fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
+        fprintf(stderr, "See http://drmemory.org/ for more information.\n");
         pause_if_in_cmd();
         return;
     }

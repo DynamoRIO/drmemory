@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1717,9 +1717,14 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     if ((bi->reg1.reg != DR_REG_NULL || bi->reg2.reg != DR_REG_NULL) &&
         (!result_is_always_defined(inst, true/*natively*/) ||
          /* if sub-dword then we have to restore for rest of bits */
-         opnd_get_size(instr_get_src(inst, 0)) != OPSZ_4)) {
+         opnd_size_in_bytes(opnd_get_size(instr_get_src(inst, 0))) < 4)) {
         /* we don't mark as used: if unused so far, no reason to restore */
         if (instr_reads_from_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) ||
+            /* Restore all app values prior to an annotation to ensure the
+             * arguments passed to the handler are correct.
+             */
+            (instr_is_label(inst) &&
+             (ptr_uint_t)instr_get_note(inst) == DR_NOTE_ANNOTATION) ||
             /* if sub-reg is written we need to restore rest */
             (instr_writes_to_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL) &&
              !instr_writes_to_exact_reg(inst, bi->reg1.reg, DR_QUERY_INCLUDE_ALL)) ||
@@ -1752,6 +1757,11 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             insert_spill_global(drcontext, bb, inst, &bi->reg1, false/*restore*/);
         }
         if (instr_reads_from_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) ||
+            /* Restore all app values prior to an annotation to ensure the
+             * arguments passed to the handler are correct.
+             */
+            (instr_is_label(inst) &&
+             (ptr_uint_t)instr_get_note(inst) == DR_NOTE_ANNOTATION) ||
             /* if sub-reg is written we need to restore rest */
             (instr_writes_to_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL) &&
              !instr_writes_to_exact_reg(inst, bi->reg2.reg, DR_QUERY_INCLUDE_ALL)) ||

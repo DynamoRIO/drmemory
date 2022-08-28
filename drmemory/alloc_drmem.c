@@ -1692,6 +1692,12 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
      *   +11  8b 0a               mov    (%edx) -> %ecx
      *   +13  bf ff fe fe 7e      mov    $0x7efefeff -> %edi
      *
+     * Newer glibc has this in an internal routine:
+     *    0xf764542f:	mov    (%eax),%ecx     <===== unaddr
+     *    0xf7645431:	add    $0x4,%eax
+     *    0xf7645434:	sub    %ecx,%edx
+     *    0xf7645436:	add    $0xfefefeff,%ecx
+     *
      * xref PR 485131: propagate partial-unaddr on loads?  but would still
      * complain on the jnb.
      *
@@ -1721,7 +1727,26 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
                 goto is_rawmemchr_pattern_done;
         }
         if (instr_valid(&next) &&
-            instr_get_opcode(&next) == OP_mov_imm &&
+            instr_get_opcode(&next) == OP_add &&
+            opnd_is_immed_int(instr_get_src(&next, 0)) &&
+            opnd_is_reg(instr_get_dst(&next, 0)) &&
+            opnd_get_size(instr_get_dst(&next, 0)) == OPSZ_PTR) {
+            instr_reset(drcontext, &next);
+            if (!safe_decode(drcontext, dpc, &next, &dpc))
+                goto is_rawmemchr_pattern_done;
+            if (instr_valid(&next) &&
+                instr_get_opcode(&next) == OP_sub &&
+                opnd_is_reg(instr_get_src(&next, 0)) &&
+                opnd_is_reg(instr_get_dst(&next, 0)) &&
+                opnd_get_size(instr_get_dst(&next, 0)) == OPSZ_PTR) {
+                instr_reset(drcontext, &next);
+                if (!safe_decode(drcontext, dpc, &next, &dpc))
+                    goto is_rawmemchr_pattern_done;
+            }
+        }
+        if (instr_valid(&next) &&
+            (instr_get_opcode(&next) == OP_mov_imm ||
+             instr_get_opcode(&next) == OP_add) &&
             (opnd_get_immed_int(instr_get_src(&next, 0)) == 0xfefefeff ||
              opnd_get_immed_int(instr_get_src(&next, 0)) == 0x7efefeff) &&
             opnd_is_reg(instr_get_dst(&next, 0))) {

@@ -1,0 +1,180 @@
+/* **********************************************************
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_test Test Suite
+
+# Automated Test Machines
+
+We use Github Actions with a setup that is similar to that [described for DynamoRIO[(https://dynamorio.org/page_test_suite.html).
+
+# Test Suite
+
+The test suite for Dr. Memory resides in the tests/ directory.
+The tests are applications that we execute under control of Dr. Memory.
+
+## Building and Running Tests
+
+The tests are built by default along with the rest of Dr. Memory.
+
+CTest is used to run the tests.  After building, you can use the `test`
+make target to run them:
+
+```
+  make -j6
+  make test
+```
+
+You can also invoke `ctest` directly, which gives greater control over
+which subsets of the tests are run.  Use `ctest -N` to see the list of
+tests and which number is assigned to each.  Then you can use `ctest -I
+x,y` to run all tests from number x to number y, and the -V parameter to
+display the command line and the output of the test.  For example:
+
+```
+  ctest -V -I 49,49
+```
+
+You can also specify tests using inclusion and exclusion regular
+expressions.  For example:
+
+```
+  ctest -R 'suppress|realloc'
+```
+
+will run all tests with the string "suppress" or the string "realloc" in their
+names, while
+
+```
+  ctest -E alloc
+```
+
+will run all tests except those with alloc in their names.
+
+If you are using CTest version 2.8 or later, you can run tests in
+parallel by passing -jN to `ctest` on the command line:
+
+```
+  ctest -j5
+```
+
+As an alternative to using -V to display the test command line and output
+during executing, CTest stores that information (even when not run with -V)
+in the `Testing/Temporary/LastTest.log` file in the build directory.
+
+## Test Output
+
+Each test produces two types of output: stdout and the Dr. Memory results
+file.  Both are checked against expected output, stdout versus a .out file
+and the results file versus a .res file.  The checking is not a regular
+diff and simply looks for each line.  We may want to change this to a
+stronger diff with regular expression support in the future.
+
+## Pre-Commit Test Suite
+
+The tests/runsuite.cmake script is used to execute a series of builds and
+test runs.  Running `make test` in a single build directory is not
+sufficient to test all of the configurations that we support.
+
+The runsuite.cmake script is meant to be executed from an empty directory.
+It creates a subdirectory for each build in the suite.  Use `ctest -S` to
+execute the script.  Here is an example:
+
+```
+  mkdir ../build_suite
+  cd ../build_suite
+  ctest -S ../drmemory/tests/runsuite.cmake
+```
+
+You can pass -V to ctest to see the results as the test suite runs.  Note
+that it is normal to have ctest output strings such as "No tests were
+found!!!" as we have builds for which we run no tests (particularly in the
+short suite).  It is also expected to have an error at the end of the
+suite (if run with -V):
+
+```
+CMake Error: Some required settings in the configuration file were missing:
+CTEST_SOURCE_DIRECTORY = E:/derek/drmemory/src/suite/..
+CTEST_BINARY_DIRECTORY = (Null)
+CTEST_COMMAND = c:/PROGRA~2/CMAKE2~1.6/bin/ctest.exe
+```
+
+This warning is an artifact of how CTest assumes we've set things up and
+can be ignored.
+
+At the end of the suite a file called results.txt will be created and
+displayed.  It shows configure failures, build failures, and test failures.
+
+Here are sample results from running the test suite:
+
+```
+### ============================================
+
+RESULTS
+
+drheapstat-dbg-32: all 19 tests passed
+drheapstat-rel-32: build successful; no tests for this build
+drmemory-dbg-32: all 23 tests passed
+drmemory-rel-32: build successful; no tests for this build
+final package: build successful; no tests for this build
+
+Error in read script: /home/bruening/work/build/drmem_suite/src/tests/runsuite.cmake
+```
+
+The "Error in read script" is expected: ignore it.
+
+Here is an example of running the test suite on Windows from the cmd shell
+on a new checkout, with the -V flag for more verbose output:
+
+```
+cd "c:\Program Files (x86)\Microsoft Visual Studio *"
+VC\vcvarsall.bat
+
+set DDKROOT=C:/derek/ddk
+set FLEXROOT=C:/derek/flex_sdk_4.1
+
+cd \derek\drmemory
+git clone https://github.com/DynamoRIO/drmemory.git
+cd drmemory
+make/git/devsetup.sh
+
+cd \derek\drmemory\build_suite
+
+"c:\Program Files (x86)\CMake 2.8\bin\ctest.exe" -V -S c:/derek/drmemory/src/tests/runsuite.cmake
+```
+
+## Embedded Versus Separate DynamoRIO
+
+DynamoRIO is included inside the Dr. Memory source tree as an svn:externals property.  We support both building that embedded DR along with pointing to an already-built separate DR export tree.  Whenever a new feature from DynamoRIO is used within Dr. Memory, be sure to update the svn:externals following the instructions at UpdatingDR.  In addition, be sure to run the pre-commit test suite using the embedded DR, or be very careful if using an external DR that it matches the svn:externals version.
+
+## Cross-Compilation and Android Testing
+
+The test suite includes cross-compilation tests to ensure that the ARM and Android builds are not broken.  If a cross-compiler is not found on the PATH, these builds will fail, but they are considered optional, so the whole suite will not be considered a failure.  However, we recommend installing the cross-compilers and placing them on your PATH for more thorough testing.
+
+If you have an Android device set up for access through the `adb shell` utility, the Android build is capable of automatically copying binaries to the device and running tests.  If both the Android cross-compiler and `adb` are on your PATH, and `adb status` indicates an attached device, the tests will be run.
+
+
+
+****************************************************************************
+****************************************************************************
+*/

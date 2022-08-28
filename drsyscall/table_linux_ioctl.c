@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -159,6 +159,7 @@ syscall_info_t syscall_ioctl_info[] = {
 #endif
 
     // <include/linux/cyclades.h>
+#if 0 /* XXX: cycles has been removed from the kernel */
     {IOCTL(CYGETMON), OK, RLONG, 3, {FD_REQ, {2, sizeof(struct cyclades_monitor), W}}},
     {IOCTL(CYGETTHRESH), OK, RLONG, 3, {FD_REQ, {2, sizeof(int), W, INT_TYPE}}},
     {IOCTL(CYSETTHRESH), OK, RLONG, 3, {FD_REQ, /* int */}},
@@ -168,6 +169,7 @@ syscall_info_t syscall_ioctl_info[] = {
     {IOCTL(CYSETTIMEOUT), OK, RLONG, 3, {FD_REQ, /* int */}},
     {IOCTL(CYGETDEFTIMEOUT), OK, RLONG, 3, {FD_REQ, {2, sizeof(int), W, INT_TYPE}}},
     {IOCTL(CYSETDEFTIMEOUT), OK, RLONG, 3, {FD_REQ, /* int */}},
+#endif
 
     // <include/linux/ext2_fs.h>
     {IOCTL(EXT2_IOC_GETFLAGS), OK, RLONG, 3, {FD_REQ, {2, sizeof(int), W, INT_TYPE}}},

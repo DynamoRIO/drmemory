@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -231,7 +231,7 @@ endif (APPLE)
 
 # N.B.: When updating this, update all instances in .github/workflows/ci-package.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "2.3.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "2.5.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
@@ -411,6 +411,14 @@ if (UNIX)
     # see comments above about adding configure.h
     set(DEFINES ${DEFINES} -DHAVE_ASM_I386)
   endif (HAVE_ASM_I386)
+  if (LINUX)
+    check_include_files("libunwind.h" HAVE_LIBUNWIND_H)
+    if (HAVE_LIBUNWIND_H)
+      set(DEFINES ${DEFINES} -DHAVE_LIBUNWIND_H)
+    endif ()
+  else ()
+    set(HAVE_LIBUNWIND_H OFF)
+  endif ()
 endif (UNIX)
 
 if (UNIX)
@@ -461,6 +469,14 @@ if (UNIX)
 endif (UNIX)
 
 if (WIN32)
+  # Ensure that _AMD64_ or _X86_ are defined on Microsoft Windows, as otherwise
+  # um/winnt.h provided since Windows 10.0.22000 will error.
+  if (X64)
+    add_definitions(-D_AMD64_)
+  else (X64)
+    add_definitions(-D_X86_)
+  endif (X64)
+
   # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var).
   # We don't require the DDK as dbghelp and symsrv are in the SDK as well, and
   # we get ntdll_imports.lib from DR.
@@ -792,7 +808,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "7.91.18077")
+set(DynamoRIO_VERSION_REQUIRED "8.0.18915")
 
 set(DR_install_dir "dynamorio")
 
@@ -1304,6 +1320,9 @@ use_DynamoRIO_extension(${client_target} drx_static)
 use_DynamoRIO_extension(${client_target} drutil_static)
 use_DynamoRIO_extension(${client_target} drwrap_static)
 use_DynamoRIO_extension(${client_target} drreg_static)
+if (HAVE_LIBUNWIND_H)
+  use_DynamoRIO_extension(${client_target} drcallstack_static)
+endif ()
 # DRi#1829: we discussed invoking drcov as a separate client, which would require using
 # all shared ext libs.  We ended up making drcovlib.
 use_DynamoRIO_extension(${client_target} drcovlib_static)
@@ -1317,6 +1336,9 @@ if (WIN32)
 
   # This flag is added by VS generators so we may as well add for Ninja
   set(new_flags "/nxcompat")
+
+  # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+  set(new_flags "${new_flags} /force:multiple")
 
   # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
   # and VS generators seem to set it already, so we add here for Ninja).
@@ -1857,6 +1879,10 @@ if (BUILD_TOOL_TESTS)
     add_executable(unit_tests ${srcs})
     _DR_append_property_list(TARGET unit_tests COMPILE_DEFINITIONS
       "${DEFINES_NO_D};BUILD_UNIT_TESTS;RC_IS_UNITTESTS")
+    if (WIN32)
+      # i#1805: avoid strtol dup symbol errors (libucrtd vs ntdll_imports).
+      append_property_string(TARGET unit_tests LINK_FLAGS "/force:multiple")
+    endif ()
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # ensure race-free parallel builds
       add_dependencies(unit_tests ${asm_utils_tgt})
@@ -1875,6 +1901,9 @@ if (BUILD_TOOL_TESTS)
     use_DynamoRIO_extension(unit_tests drutil_static)
     use_DynamoRIO_extension(unit_tests drwrap_static)
     use_DynamoRIO_extension(unit_tests drsyms_static)
+    if (HAVE_LIBUNWIND_H)
+      use_DynamoRIO_extension(unit_tests drcallstack_static)
+    endif ()
     use_DynamoRIO_extension(unit_tests drcovlib_static)
     target_link_libraries(unit_tests drsyscall_int)
     target_link_libraries(unit_tests umbra_int)

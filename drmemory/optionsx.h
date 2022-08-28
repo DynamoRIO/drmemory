@@ -288,7 +288,9 @@ OPTION_CLIENT_STRING_EX(drmemscope, check_uninit_blocklist, check_uninit_blackli
                      ",-separated list of module basenames in which to not check uninits",
                    "For each library or executable basename on this list, Dr. Memory suspends checking of uninitialized reads.  Instead Dr. Memory marks all memory written by such modules as defined.  This is a more efficient way to ignore all errors from a module than suppressing them or adding to the lib_blocklist option.  Dr. Memory does automatically turn a whole-module suppression consisting of a single frame of the form 'modulename!*' into an entry on this list.  The entries on this list can contain wildcards.")
 #endif
-
+OPTION_CLIENT_BOOL(client, callstack_use_unwind, IF_LINUX_ELSE(true, false),
+              "Use unwind info to walk callstacks",
+              "Use unwind info rather than stack scanning and frame pointers where available to walk callstacks.  When enabled, the other callstack options regarding frame pointers are ignored.")
 OPTION_CLIENT_BOOL(client, callstack_use_top_fp, true,
               "Use the top-level ebp/rbp register as the first frame pointer",
               "Whether to trust the top-level ebp/rbp register to hold the next frame pointer.  If enabled, overridden when -callstack_use_top_fp_selectively is enabled.  Normally trusting the register is correct.  However, if a frameless function is on top of the stack, using the ebp register can cause a callstack to skip the next function.  If this option is set to false, the callstack walk will perform a stack scan at the top of every callstack.  This adds additional overhead in exchange for more accuracy, although in -light mode the additional accuracy has some tradeoffs and can result in incorrect frames.  It should not be necessary to disable this option normally, unless an application or one of its static libraries is built with optimizations that omit frame pointers.")

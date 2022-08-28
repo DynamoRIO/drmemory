@@ -13,8 +13,7 @@ Dr. Memory operates on unmodified application binaries running on Windows,
 Linux, Mac, or Android on commodity IA-32, AMD64, and ARM hardware.
 
 Dr. Memory is released under an LGPL license and binary packages are
-[available for
-download](https://github.com/DynamoRIO/drmemory/wiki/Downloads).
+[available for download](https://drmemory.org/page_download.html).
 
 Dr. Memory is built on the [DynamoRIO dynamic instrumentation tool
 plaform](http://dynamorio.org).
@@ -36,12 +35,12 @@ suite:
 ## Documentation
 
 Documentation is included in the release package.  We also maintain a copy
-for [online browsing](http://drmemory.org/docs/).
+for [online browsing](http://drmemory.org/).
 
 ## System call tracer for Windows
 
 The Dr. Memory package includes [an "strace for Windows" tool called
-`drstrace`](http://drmemory.org/strace_for_windows.html).
+`drstrace`](https://drmemory.org/page_drstrace.html).
 
 ## Obtaining help
 
