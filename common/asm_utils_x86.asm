@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -73,6 +73,36 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG2
         mov      PTRSZ [REG_XCX], REG_XBP
         mov      REG_XCX, REG_XSP
+        /* The caller may not use push to call us: it may allocate its
+         * max frame up front.  However, all current uses are from functions
+         * with large frames themselves, so our removals here are not a problem.
+         */
+#if defined(X64) && defined(WINDOWS)
+        add      REG_XCX, 32 + ARG_SZ   /* remove frame space + retaddr */
+#elif !defined(X64)
+        add      REG_XCX, 3 * ARG_SZ    /* remove args + retaddr */
+
+#endif
+        mov      PTRSZ [REG_XAX], REG_XCX
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+/* void get_unwind_registers(reg_t *xsp OUT, reg_t *xbp OUT, app_pc *xip OUT);
+ *
+ * Returns the caller's values of xsp and xbp and xip.
+ */
+#define FUNCNAME get_unwind_registers
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        /* we don't bother to be SEH64 compliant */
+        mov      REG_XAX, ARG1
+        mov      REG_XCX, ARG2
+        mov      PTRSZ [REG_XCX], REG_XBP
+        mov      REG_XCX, ARG3
+        mov      REG_XDX, PTRSZ [REG_XSP]
+        mov      PTRSZ [REG_XCX], REG_XDX
         /* The caller may not use push to call us: it may allocate its
          * max frame up front.  However, all current uses are from functions
          * with large frames themselves, so our removals here are not a problem.

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,7 +27,7 @@ malloc.c:122
 Error #3: UNINITIALIZED READ
 malloc.c:135
 Error #4: INVALID HEAP ARGUMENT
-malloc.c:180
+malloc.c:181
 %if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:192

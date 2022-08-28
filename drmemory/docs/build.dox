@@ -148,6 +148,7 @@ In order to build you'll need the following packages:
   - binutils
   - cmake (at least version 3.7)
   - perl
+  - libunwind-dev
 
 To build Dr. Heapstat you will additionally need:
 
@@ -164,8 +165,7 @@ its version of binutils is older than 2.18.50 then you'll need to set the
 least version 2.18.50.
 
 If you're using a 64-bit Linux distribution, be sure to install 32-bit
-development support (for Ubuntu, the `ia32-libs` and `g++-multilib`
-packages).
+development support (for Ubuntu, the `g++-multilib` package).
 
 ----------------
 

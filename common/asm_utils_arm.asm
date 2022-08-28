@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -65,6 +65,18 @@ START_FILE
 GLOBAL_LABEL(FUNCNAME:)
         str      sp, [REG_R0]
         str      fp, [REG_R1]
+        bx       lr
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+/* void get_unwind_registers(reg_t *sp OUT, reg_t *fp OUT, app_pc *pc OUT) */
+#define FUNCNAME get_unwind_registers
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        str      sp, [REG_R0]
+        str      fp, [REG_R1]
+        str      lr, [REG_R2]
         bx       lr
         END_FUNC(FUNCNAME)
 #undef FUNCNAME

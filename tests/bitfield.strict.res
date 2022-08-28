@@ -24,29 +24,29 @@ Error #2: UNINITIALIZED READ
 bitfield.cpp:54
 %if WINDOWS
 Error #3: UNINITIALIZED READ: reading register ecx
-bitfield.cpp_asm.asm:916
+bitfield.cpp_asm.asm:920
 Error #4: UNINITIALIZED READ: reading register bl
-bitfield.cpp_asm.asm:929
+bitfield.cpp_asm.asm:933
 Error #5: UNINITIALIZED READ: reading register cl
-bitfield.cpp_asm.asm:937
+bitfield.cpp_asm.asm:941
 Error #6: UNINITIALIZED READ: reading register ecx
-bitfield.cpp_asm.asm:942
+bitfield.cpp_asm.asm:946
 Error #7: UNINITIALIZED READ: reading register ch
-bitfield.cpp_asm.asm:951
+bitfield.cpp_asm.asm:955
 Error #8: UNINITIALIZED READ: reading register cl
-bitfield.cpp_asm.asm:954
+bitfield.cpp_asm.asm:958
 Error #9: UNINITIALIZED READ: reading register ch
-bitfield.cpp_asm.asm:959
+bitfield.cpp_asm.asm:963
 Error #10: UNINITIALIZED READ: reading register ecx
-bitfield.cpp_asm.asm:962
+bitfield.cpp_asm.asm:966
 Error #11: UNINITIALIZED READ: reading register dl
-bitfield.cpp_asm.asm:986
+bitfield.cpp_asm.asm:990
 Error #12: UNINITIALIZED READ: reading register esi
-bitfield.cpp_asm.asm:987
+bitfield.cpp_asm.asm:991
 Error #13: UNINITIALIZED READ: reading 1 byte
-bitfield.cpp_asm.asm:1001
+bitfield.cpp_asm.asm:1005
 Error #14: UNINITIALIZED READ: reading 1 byte
-bitfield.cpp_asm.asm:1012
+bitfield.cpp_asm.asm:1016
 %endif
 %if UNIX
 Error #3: UNINITIALIZED READ: reading register ecx

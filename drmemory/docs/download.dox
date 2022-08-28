@@ -32,51 +32,25 @@ For more recent bug fixes and features prior to the next official release, [week
 
 Official Dr. Memory packages are hosted as [GitHub releases](https://github.com/DynamoRIO/drmemory/releases).
 
-The [2.3.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.3.0):
+The [2.5.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.5.0):
 
-  - [Dr. Memory installer for Windows (DrMemory-Windows-2.3.0-1.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.3.0/DrMemory-Windows-2.3.0-1.msi)
+  - [Dr. Memory installer for Windows (DrMemory-Windows-2.5.0.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.5.0/DrMemory-Windows-2.5.0.msi)
 
-  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-2.3.0-1.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.3.0/DrMemory-Windows-2.3.0-1.zip)
+  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-2.5.0.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.5.0/DrMemory-Windows-2.5.0.zip)
 
-  - [Dr. Memory for Linux (DrMemory-Linux-2.3.0-1.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.3.0/DrMemory-Linux-2.3.0-1.tar.gz)
+  - [Dr. Memory for Linux (DrMemory-Linux-2.5.0.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.5.0/DrMemory-Linux-2.5.0.tar.gz)
 
-  - [Dr. Memory for Mac -- alpha release (DrMemory-MacOS-2.3.0-1.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.3.0/DrMemory-MacOS-2.3.0-1.tar.gz)
+  - [Dr. Memory for Mac -- alpha release (DrMemory-MacOS-2.5.0.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.5.0/DrMemory-MacOS-2.5.0.tar.gz)
 
-The prior [2.2.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.2.0):
+The prior [2.4.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.4.0):
 
-  - [Dr. Memory installer for Windows (DrMemory-Windows-2.2.0-1.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.2.0/DrMemory-Windows-2.2.0-1.msi)
+  - [Dr. Memory installer for Windows (DrMemory-Windows-2.4.0-2.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.4.0/DrMemory-Windows-2.4.0-2.msi)
 
-  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-2.2.0-1.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.2.0/DrMemory-Windows-2.2.0-1.zip)
+  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-2.4.0-2.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.4.0/DrMemory-Windows-2.4.0-2.zip)
 
-  - [Dr. Memory for Linux (DrMemory-Linux-2.2.0-1.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.2.0/DrMemory-Linux-2.2.0-1.tar.gz)
+  - [Dr. Memory for Linux (DrMemory-Linux-2.4.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.4.0/DrMemory-Linux-2.4.0-2.tar.gz)
 
-  - [Dr. Memory for Mac -- alpha release (DrMemory-MacOS-2.2.1-alpha2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.2.1_alpha2/DrMemory-MacOS-2.2.1-alpha2.tar.gz)
-
-The prior [2.1.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.1.0), with 64-bit uninitialized read support for Linux and Windows, and Windows auto-syscall-generation:
-
-  - [Dr. Memory installer for Windows (DrMemory-Windows-2.1.0-1.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.1.0/DrMemory-Windows-2.1.0-1.msi)
-
-  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-2.1.0-1.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.1.0/DrMemory-Windows-2.1.0-1.zip)
-
-  - [Dr. Memory for Linux (DrMemory-Linux-2.1.0-1.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.1.0/DrMemory-Linux-2.1.0-1.tar.gz)
-
-The prior Linux-only [2.0.1 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_2.0.1), with 64-bit uninitialized read support:
-
-  - [Dr. Memory for Linux (DrMemory-Linux-2.0.1-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.0.1/DrMemory-Linux-2.0.1-2.tar.gz)
-
-The older multi-platform [1.11.0 release](https://github.com/DynamoRIO/drmemory/releases/tag/release_1.11.0):
-
-  - [Dr. Memory installer for Windows (DrMemory-Windows-1.11.0-2.msi)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-Windows-1.11.0-2.msi)
-
-  - [Dr. Memory zip file for portable/local installation on Windows (DrMemory-Windows-1.11.0-2.zip)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-Windows-1.11.0-2.zip)
-
-  - [Dr. Memory for Linux (DrMemory-Linux-1.11.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-Linux-1.11.0-2.tar.gz)
-
-  - [Dr. Memory for Mac (DrMemory-MacOS-1.11.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-MacOS-1.11.0-2.tar.gz)
-
-  - [Dr. Memory for Android/ARM (DrMemory-ARM-Android-EABI-1.11.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-ARM-Android-EABI-1.11.0-2.tar.gz)
-
-  - [Dr. Memory for Linux/ARM (DrMemory-ARM-Linux-EABIHF-1.11.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_1.11.0/DrMemory-ARM-Linux-EABIHF-1.11.0-2.tar.gz)
+  - [Dr. Memory for Mac -- alpha release (DrMemory-MacOS-2.4.0-2.tar.gz)](https://github.com/DynamoRIO/drmemory/releases/download/release_2.4.0/DrMemory-MacOS-2.4.0-2.tar.gz)
 
 # Tutorials and talks
 

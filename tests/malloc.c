@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -54,7 +54,7 @@ static void
 intercept_signal(int sig, handler_t handler)
 {
     int rc;
-    struct sigaction act;
+    struct sigaction act = {};
     act.sa_sigaction = (handler_3_t) handler;
     rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
     assert(rc == 0);
@@ -94,7 +94,7 @@ static void *p2;
 static void *p3;
 
 int
-main()
+main(int argc, const char *argv[])
 {
     void *p1;
     int x, *arr;
@@ -176,13 +176,13 @@ main()
 #else
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
-    if (setjmp(mark) == 0)
-        free((void *)0x1230); /* i#916: addr must be 0x10 aligned */
+    if (setjmp(mark) == 0) {
+        void *bad = argc < 0 ? argv : (void*)0x1230UL; /* i#916: must be 0x10 aligned */
+        free(bad);
+    }
     printf("invalid free\n");
-
 #if 0 /* avoiding double free b/c glibc reports it and aborts */
     free(p1);
-    printf("double free\n");
 #endif
 
 #ifdef WINDOWS

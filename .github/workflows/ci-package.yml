@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2020-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2020-2022 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -45,7 +45,7 @@ jobs:
   ###########################################################################
   # Linux tarball with 64-bit and 32-bit builds:
   x86:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -55,11 +55,23 @@ jobs:
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
 
-    # Install multilib for non-cross-compiling Linux build:
+    # Install multilib for non-cross-compiling Linux build.
+    # GA CI uses packages.microsoft.com which is missing i386 packages, and
+    # attempts at using apt with us.archive-ubuntu.com hit dep issues:
+    # so we manually install the libunwind i386 packages we need.
     - name: Create Build Environment
       run: |
         sudo apt-get update
-        sudo apt-get -y install doxygen jsonlint g++-multilib
+        sudo apt-get -y install doxygen jsonlint g++-multilib libunwind-dev
+        sudo add-apt-repository 'deb [arch=i386] http://us.archive.ubuntu.com/ubuntu focal main'
+        mkdir ../extract
+        pushd ../extract
+        apt download libunwind8:i386 libunwind-dev:i386 liblzma5:i386
+        for i in *.deb; do dpkg-deb -x $i .; done
+        sudo rsync -av ./usr/lib/i386-linux-gnu/ /lib32/
+        sudo rsync -av ./lib/i386-linux-gnu/ /lib32/
+        sudo rsync -av ./usr/include/i386-linux-gnu/ /usr/include/
+        popd
 
     # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
     - name: Downgrade cmake
@@ -75,7 +87,7 @@ jobs:
       # We only use a non-zero build # when making multiple manual builds in one day.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export VERSION_NUMBER="2.5.$((`git log -n 1 --format=%ct` / (60*60*24)))"
           export PREFIX="cronbuild-"
         else
           export VERSION_NUMBER=${{ github.event.inputs.version }}
@@ -124,7 +136,7 @@ jobs:
         if test -z "${{ github.event.inputs.version }}"; then
           export PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
           export PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
-          export VERSION_NUMBER="2.3.${PATCHLEVEL}"
+          export VERSION_NUMBER="2.5.${PATCHLEVEL}"
           export PREFIX="cronbuild-"
         else
           export VERSION_NUMBER=${{ github.event.inputs.version }}
@@ -153,7 +165,7 @@ jobs:
   ###########################################################################
   # Windows .zip and .msi with 32-bit and 64-bit x86 builds:
   windows:
-    runs-on: windows-2016
+    runs-on: windows-2019
 
     steps:
     - uses: actions/checkout@v2
@@ -167,7 +179,7 @@ jobs:
       shell: powershell
       run: |
         md c:\projects\install
-        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip", "c:\projects\install\ninja.zip")
         (New-Object System.Net.WebClient).DownloadFile("https://sourceforge.net/projects/doxygen/files/rel-1.8.19/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
 
     - name: Get Version
@@ -175,7 +187,7 @@ jobs:
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export VERSION_NUMBER="2.5.$((`git log -n 1 --format=%ct` / (60*60*24)))"
           export PREFIX="cronbuild-"
         else
             export VERSION_NUMBER=${{ github.event.inputs.version }}
@@ -197,7 +209,7 @@ jobs:
         set PATH=c:\projects\install\doxygen;%PATH%
         dir "c:\Program Files (x86)\WiX Toolset"*
         set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
-        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
@@ -228,7 +240,7 @@ jobs:
 
   create_release:
     needs: [x86, osx, windows]
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
 
     steps:
       # We need a checkout to run git log for the version.
@@ -241,17 +253,19 @@ jobs:
       # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
       run: |
         if test -z "${{ github.event.inputs.version }}"; then
-          export VERSION_NUMBER="2.3.$((`git log -n 1 --format=%ct` / (60*60*24)))"
+          export VERSION_NUMBER="2.5.$((`git log -n 1 --format=%ct` / (60*60*24)))"
           export OSX_PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
           export OSX_PATCHLEVEL=$(((OSX_PATCHLEVEL % 200) + 56))
-          export OSX_VERSION_NUMBER="2.3.${OSX_PATCHLEVEL}"
+          export OSX_VERSION_NUMBER="2.5.${OSX_PATCHLEVEL}"
           export PREFIX="cronbuild-"
         else
           export VERSION_NUMBER=${{ github.event.inputs.version }}
+          export OSX_VERSION_NUMBER=${{ github.event.inputs.version }}
           export PREFIX="release_"
         fi
         if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
           export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
+          export OSX_VERSION_NUMBER="${OSX_VERSION_NUMBER}-${{ github.event.inputs.build }}"
         fi
         echo "::set-output name=version_number::${VERSION_NUMBER}"
         echo "::set-output name=osx_version_number::${OSX_VERSION_NUMBER}"

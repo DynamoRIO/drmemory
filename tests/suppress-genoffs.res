@@ -185,7 +185,7 @@ Error #15: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
 suppress.c:63
 suppress!do_uninit_cb
-suppress.c:261
+suppress.c:264
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames
@@ -213,7 +213,7 @@ Error #16: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
 suppress.c:63
 suppress!do_uninit_cb
-suppress.c:261
+suppress.c:264
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames

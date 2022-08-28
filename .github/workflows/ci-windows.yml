@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2020-2022 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -38,9 +38,9 @@ defaults:
     shell: cmd
 
 jobs:
-  # 32-bit VS2017 and tests:
-  vs2017-32:
-    runs-on: windows-2016
+  # 32-bit VS2019 and tests:
+  vs2019-32:
+    runs-on: windows-2019
 
     steps:
     - uses: actions/checkout@v2
@@ -60,7 +60,7 @@ jobs:
       shell: powershell
       run: |
         md c:\projects\install
-        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip", "c:\projects\install\ninja.zip")
         (New-Object System.Net.WebClient).DownloadFile("https://sourceforge.net/projects/doxygen/files/rel-1.8.19/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
 
     - name: Run Suite
@@ -73,15 +73,15 @@ jobs:
         set PATH=c:\projects\install\doxygen;%PATH%
         dir "c:\Program Files (x86)\WiX Toolset"*
         set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
-        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
         perl tests/runsuite_wrapper.pl travis use_ninja 32_only drmemory_only debug_only
 
-  # 64-bit VS2017 and tests:
-  vs2017-64:
-    runs-on: windows-2016
+  # 64-bit VS2019 and tests:
+  vs2019-64:
+    runs-on: windows-2019
 
     steps:
     - uses: actions/checkout@v2
@@ -101,7 +101,7 @@ jobs:
       shell: powershell
       run: |
         md c:\projects\install
-        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip", "c:\projects\install\ninja.zip")
         (New-Object System.Net.WebClient).DownloadFile("https://sourceforge.net/projects/doxygen/files/rel-1.8.19/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
 
     - name: Run Suite
@@ -114,15 +114,15 @@ jobs:
         set PATH=c:\projects\install\doxygen;%PATH%
         dir "c:\Program Files (x86)\WiX Toolset"*
         set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
-        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
         perl tests/runsuite_wrapper.pl travis use_ninja 64_only debug_only
 
   # drheapstat and release builds:
-  vs2017-builds:
-    runs-on: windows-2016
+  vs2019-builds:
+    runs-on: windows-2019
 
     steps:
     - uses: actions/checkout@v2
@@ -142,7 +142,7 @@ jobs:
       shell: powershell
       run: |
         md c:\projects\install
-        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-win.zip", "c:\projects\install\ninja.zip")
+        (New-Object System.Net.WebClient).DownloadFile("https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip", "c:\projects\install\ninja.zip")
         (New-Object System.Net.WebClient).DownloadFile("https://sourceforge.net/projects/doxygen/files/rel-1.8.19/doxygen-1.8.19.windows.x64.bin.zip", "c:\projects\install\doxygen.zip")
 
     - name: Run Suite
@@ -155,7 +155,7 @@ jobs:
         set PATH=c:\projects\install\doxygen;%PATH%
         dir "c:\Program Files (x86)\WiX Toolset"*
         set PATH=C:\Program Files (x86)\WiX Toolset v3.11\bin;%PATH%
-        call "C:/Program Files (x86)/Microsoft Visual Studio/2017/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        call "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
