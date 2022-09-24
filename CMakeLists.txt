@@ -310,6 +310,12 @@ if (UNIX)
   if (have_format_truncation_warning)
     set(WARN "${WARN} -Wno-format-truncation")
   endif ()
+  # Disable string compare warning in clang about our assert on defval for
+  # bool options from optionsx.h expansion.
+  CHECK_C_COMPILER_FLAG("-Wno-string-compare" have_str_cmp_warning)
+  if (have_str_cmp_warning)
+    set(WARN "${WARN} -Wno-string-compare")
+  endif ()
   if (CMAKE_C_COMPILER MATCHES "/build/toolchain")
     # needed for linux/ipmi.h (PR 531644)
     set(EXTRA_FLAGS "-idirafter /build/toolchain/lin32/glibc-2007q3-51/usr/include")
