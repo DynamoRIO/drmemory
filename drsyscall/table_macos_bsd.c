@@ -1149,7 +1149,7 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-#if 0 /* Disabling since these may have been removed from 11.0?
+#if 0 /* Disabling since these may have been removed from 11.0? */
     {{SYS_watchevent /*231*/}, "watchevent", OK, RLONG, 2,
      {
          {0, sizeof(struct eventreq), W|HT, DRSYS_TYPE_STRUCT},
