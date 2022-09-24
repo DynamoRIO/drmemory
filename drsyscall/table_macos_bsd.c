@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2014-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014-2022 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1149,6 +1149,7 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
+#if 0 /* Disabling since these may have been removed from 11.0? */
     {{SYS_watchevent /*231*/}, "watchevent", OK, RLONG, 2,
      {
          {0, sizeof(struct eventreq), W|HT, DRSYS_TYPE_STRUCT},
@@ -1167,6 +1168,7 @@ syscall_info_t syscall_info_bsd[] = {
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
+#endif
     {{SYS_getxattr /*234*/}, "getxattr", OK, RLONG, 6,
      {
          {0, 0, R|CT, DRSYS_TYPE_CSTRING},

@@ -119,8 +119,8 @@ function(set_props target)
   if (X86)
     set(defs ${defs} X86)
   endif ()
-  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
-    ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
+  _DR_append_property_list(TARGET ${target} COMPILE_DEFINITIONS
+    "${defs};${DEFINES_NO_D};${DR_DEFINES_NO_D}")
   # Enough tests need these (malloc, free, registers, cs2bug, float, etc.)
   # that we add to all tests.  We also turn off Wall as newer compilers are
   # complaining about our deliberate bugs in too many places.
