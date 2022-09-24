@@ -44,6 +44,10 @@ endforeach (config)
 
 if (UNIX)
   CHECK_C_COMPILER_FLAG("-Wno-unused-but-set-variable" nounused_avail)
+  CHECK_C_COMPILER_FLAG("-Wno-analyzer-use-after-free" no_uaf_avail)
+  CHECK_C_COMPILER_FLAG("-Wno-analyzer-use-of-uninitialized-value" no_uninit_use_avail)
+  CHECK_C_COMPILER_FLAG("-Wno-maybe-uninitialized" no_maybe_uninit_avail)
+  CHECK_C_COMPILER_FLAG("-Wno-uninitialized" no_uninit_avail)
 endif(UNIX)
 
 # tests are always built w/o optimizations and with symbols,
@@ -92,6 +96,7 @@ function(append_compile_flags target newflags)
   if (NOT cur_flags)
     set(cur_flags "")
   endif (NOT cur_flags)
+  string(REPLACE "-Wall" "" cur_flags "${cur_flags}")
   set_target_properties(${target} PROPERTIES
     COMPILE_FLAGS "${cur_flags} ${newflags}")
 endfunction(append_compile_flags)
@@ -116,11 +121,25 @@ function(set_props target)
   endif ()
   set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS
     ${defs} ${DEFINES_NO_D} ${DR_DEFINES_NO_D})
-  # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
-  # that we add to all tests
+  # Enough tests need these (malloc, free, registers, cs2bug, float, etc.)
+  # that we add to all tests.  We also turn off Wall as newer compilers are
+  # complaining about our deliberate bugs in too many places.
+  append_compile_flags(${target} "-Wno-all")
   if (nounused_avail)
     append_compile_flags(${target} "-Wno-unused-but-set-variable")
   endif (nounused_avail)
+  if (no_uaf_avail)
+    append_compile_flags(${target} "-Wno-analyzer-use-after-free")
+  endif ()
+  if (no_uninit_use_avail)
+    append_compile_flags(${target} "-Wno-analyzer-use-of-uninitialized-value")
+  endif ()
+  if (no_maybe_uninit_avail)
+    append_compile_flags(${target} "-Wno-maybe-uninitialized")
+  endif ()
+  if (no_uninit_avail)
+    append_compile_flags(${target} "-Wno-uninitialized")
+  endif ()
 endfunction(set_props)
 
 function(tobuild name source)
