@@ -57,7 +57,7 @@ jobs:
       run: git fetch --no-tags --depth=1 origin master
 
     - name: Create Build Environment
-      run: brew install nasm
+      run: brew install nasm zlib snappy lz4
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
