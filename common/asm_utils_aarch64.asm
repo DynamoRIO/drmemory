@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2022 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -60,16 +60,28 @@
 START_FILE
 
 /* void get_stack_registers(reg_t *sp OUT, reg_t *fp OUT) */
-/*  Get this reviewed. Assuming x0 and x1 hold addresses
-  * of the memory locations for the arguments which are
-  * passed by reference.
-*/
+/* Assuming x0 and x1 hold addresses of the memory locations for the
+ * arguments which are passed by reference.
+ */
 #define FUNCNAME get_stack_registers
         DECLARE_FUNC(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         mov      x2, SP
         str      x2, [x0]
-        str      FP, [x1]
+        str      fp, [x1]
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+/* void get_unwind_registers(reg_t *sp OUT, reg_t *fp OUT, app_pc *pc OUT) */
+#define FUNCNAME get_unwind_registers
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      x2, SP
+        str      x2, [x0]
+        str      fp, [x1]
+        str      lr, [x2]
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
@@ -83,8 +95,8 @@ GLOBAL_LABEL(FUNCNAME:)
  */
         DECLARE_FUNC(raw_syscall)
 GLOBAL_LABEL(raw_syscall:)
-        /*Set up first 6 args and read 7th arg from stack
-        only if there are at least 7 args*/
+        /* Set up first 6 args and read 7th arg from stack
+         * only if there are at least 7 args. */
         cmp      w1, #7
         mov      x8, x0
         mov      x0, x2

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -192,6 +192,8 @@ opnd_create_own_spill_slot(uint index)
     return opnd_create_base_disp_aarch64
         (seg_tls, REG_NULL, 0, false,
         tls_instru_base + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t), DR_OPND_MULTI_PART, OPSZ_PTR);
+#else
+    return opnd_create_null();
 #endif
 }
 

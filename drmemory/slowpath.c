@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -246,15 +246,21 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
             return false;
         return (safe_read(addr, sz, val));
     } else if (opnd_is_reg(src)) {
-        byte val32[sizeof(dr_ymm_t)];
         reg_id_t reg = opnd_get_reg(src);
         if (!reg_is_gpr(reg)) {
             mc.flags |= DR_MC_MULTIMEDIA;
             dr_get_mcontext(drcontext, &mc);
         }
+#ifdef AARCH64
+        /* reg_get_value_ex() is NYI but we're only handling GPR values for now. */
+        ASSERT(reg_is_gpr(reg), "non-gpr reg_get_value_ex NYI");
+        *val = reg_get_value(reg, &mc);
+#else
+        byte val32[sizeof(dr_ymm_t)];
         if (!reg_get_value_ex(reg, &mc, val32))
             return false;
         *val = *(reg_t*)val32;
+#endif
         return true;
     }
     return false;
@@ -1796,7 +1802,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
         /* First check definedness of base+index regs */
         for (i = 0; i < opnd_num_regs_used(opnd); i++) {
             reg_id_t reg = opnd_get_reg_used(opnd, i);
-            if (!reg_is_segment(reg) &&
+            if (IF_X86_ELSE(!reg_is_segment(reg), true) &&
                 !is_shadow_register_defined(get_shadow_register(reg))) {
                 /* FIXME: report which bytes within reg via container params? */
                 report_undefined_read

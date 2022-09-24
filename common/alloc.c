@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -996,6 +996,7 @@ generate_jmp_ind_stub(void *drcontext, app_pc tgt_pc, byte *epc)
     /* assuming %rax is dead, mov pc => %rax; jmp %rax */
     ASSERT(tgt_pc != NULL, "wrong target pc for call stub");
 #ifdef AARCH64
+    /* XXX i#2016: This will fail for far-away targets. */
     instr = INSTR_CREATE_b(drcontext, opnd_create_pc(tgt_pc));
 #else
     instr = INSTR_CREATE_mov_imm(drcontext,

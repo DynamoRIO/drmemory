@@ -1335,19 +1335,24 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->mask));
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
-                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->disp));
 
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
-                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
     if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
-        PRE(ilist, where, INSTR_CREATE_lsl(drcontext,
-                                           opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
-                                           OPND_CREATE_INT8(map->shift)));
+        /* XXX: Use INSTR_CREATE_lsl or an xinst variant when DR provides it. */
+        PRE(ilist, where, instr_create_1dst_3src(drcontext, OP_ubfm,
+                                                 opnd_create_reg(reg_addr),
+                                                 opnd_create_reg(reg_addr),
+                                                 OPND_CREATE_INT(64 - map->shift),
+                                                 OPND_CREATE_INT(63 - map->shift)));
     } else if (map->options.scale <= UMBRA_MAP_SCALE_DOWN_2X) {
         PRE(ilist, where, XINST_CREATE_slr_s(drcontext,
                                              opnd_create_reg(reg_addr),
@@ -1537,9 +1542,9 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
         return false;
     LOG(UMBRA_VERBOSE,
         "%s: decoding cache %p looking for %p\n", __FUNCTION__, pc, raw_mc->pc);
-    umbra_map_t *map = NULL;
     bool found_xl8 = false;
 #ifndef AARCH64
+    umbra_map_t *map = NULL;
     bool found_and = false;
 #endif
     instr_init(drcontext, &inst);

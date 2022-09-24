@@ -336,7 +336,7 @@ if (UNIX)
       set(CMAKE_EXE_LINKER_FLAGS
         "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
   endif ()
-endif()
+endif ()
   # We use C++11.
   set(EXTRA_CXXFLAGS "-std=c++11")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
@@ -1123,7 +1123,6 @@ endfunction(append_src_compile_flags)
 # new set_property() doesn't want -D but our cpp invocation above does
 string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 string(REGEX REPLACE "-D" "" DR_DEFINES_NO_D "${DR_DEFINES}")
-
 
 option(BUILD_TOOL_TESTS "build Dr. Memory/Dr. Heapstat tests" ON)
 

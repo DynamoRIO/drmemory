@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -461,23 +461,24 @@ generate_shared_esp_slowpath_helper(void *drcontext, instrlist_t *ilist, app_pc 
      * Need retaddr in persistent storage: slot5 is guaranteed free.
      */
 
-#ifdef AARCH64
-    mov_str_aarch64(drcontext, ilist, NULL, spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action)),
-                    opnd_create_reg(ESP_SLOW_SCRATCH2));
-#else
     PRE(ilist, NULL, XINST_CREATE_store
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action)),
          opnd_create_reg(ESP_SLOW_SCRATCH2)));
-#endif
 
     dr_insert_clean_call(drcontext, ilist, NULL,
                          (void *)handle_esp_adjust_shared_slowpath, false, 2,
                          opnd_create_reg(ESP_SLOW_SCRATCH1), OPND_CREATE_INT32(sp_action));
 
 #ifdef AARCH64
-    opnd_t memory_location = spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action));
-
-    branch_aarch64(drcontext, ilist, NULL, memory_location);
+    /* XXX i#2016: Shared slowpath is not supported for AArch64. */
+    /* XXX: There is no OP_udf support in DR so we build a zero-bit instr. */
+    instr_t *udf = instr_build_bits(drcontext, OP_INVALID, 4);
+    instr_set_raw_byte(udf, 0, 0);
+    instr_set_raw_byte(udf, 1, 0);
+    instr_set_raw_byte(udf, 2, 0);
+    instr_set_raw_byte(udf, 3, 0);
+    instr_set_operands_valid(udf, true);
+    PRE(ilist, NULL, udf);
 #else
     PRE(ilist, NULL, XINST_CREATE_jump_mem
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action))));

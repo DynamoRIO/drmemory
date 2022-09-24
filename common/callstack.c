@@ -1253,7 +1253,7 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
             DR_TRY_EXCEPT(dr_get_current_drcontext(), {
                 IF_AARCH64_ELSE({
                     /* A64 bl <label>: 100101xxxxxxxxxxxxxxxxxxxxxxxxxx */
-                    if ((*((int*)(pc - 4))) & 0x94000000 == 0x94000000) {
+                    if (((*((int*)(pc - 4))) & 0x94000000) == 0x94000000) {
                         /* TODO i#2016: Rule out call;jmp*. */
                         res = false;
                     }

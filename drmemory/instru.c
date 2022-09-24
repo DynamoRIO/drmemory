@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -808,7 +808,7 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
             POST(bb, inst, XINST_CREATE_store
                  (drcontext, memop, opnd_create_reg(dr_get_stolen_reg())));
         }
-#endif
+# endif
     }
 }
 

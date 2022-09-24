@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -84,7 +84,6 @@ static thread_id_t primary_thread = INVALID_THREAD_ID;
  * But with /O2 it actually uses the intrinsic.
  */
 # ifndef NDEBUG /* cmake Release build type */
-#ifndef AARCH64
 void *
 memset(void *dst, int val, size_t size)
 {
@@ -93,7 +92,6 @@ memset(void *dst, int val, size_t size)
         *ptr++ = val;
     return dst;
 }
-#endif
 # endif
 #endif
 

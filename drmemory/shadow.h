@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -364,19 +364,12 @@ register_shadow_set_ptrsz(reg_id_t reg, uint val);
 void
 register_shadow_set_dqword(reg_id_t reg, uint val);
 
-#ifdef X86
 uint
 get_shadow_eflags(void);
 
 void
 set_shadow_eflags(uint val);
-#elif (defined AARCH64)
-uint
-get_shadow_eflags(void);
 
-void
-set_shadow_eflags(uint val);
-#endif
 byte
 get_shadow_inheap(void);
 

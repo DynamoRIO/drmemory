@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2022 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -337,15 +337,15 @@ result_is_always_defined(instr_t *inst, bool natively)
 
 #ifdef TOOL_DR_MEMORY
     /* i#1529: mark an entire module defined */
-    if (!natively && options.check_uninit_blacklist[0] != '\0') {
+    if (!natively && options.check_uninit_blocklist[0] != '\0') {
         /* Fastpath should have already checked the cached value in
          * bb_info_t.mark_defined, so we should only be paying this
          * cost for each slowpath entry.
          */
         app_pc pc = instr_get_app_pc(inst) != NULL ?
             instr_get_app_pc(inst) : instr_get_raw_bits(inst);
-        if (module_is_on_check_uninit_blacklist(pc)) {
-            LOG(3, "module is on uninit blacklist: always defined\n");
+        if (module_is_on_check_uninit_blocklist(pc)) {
+            LOG(3, "module is on uninit blocklist: always defined\n");
             return true;
         }
     }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1485,12 +1485,12 @@ const byte shadow_word_addr_not_bit[4][256] = {
  * SHADOWING THE GPR REGISTERS
  */
 #ifdef X86
-#ifdef X64
-# define NUM_XMM_REGS 16
-#else
-# define NUM_XMM_REGS 8
-#endif
-#define NUM_MMX_REGS 8
+# ifdef X64
+#  define NUM_XMM_REGS 16
+# else
+#  define NUM_XMM_REGS 8
+# endif
+# define NUM_MMX_REGS 8
 
 typedef struct _shadow_aux_registers_t {
     /* i#243: shadow xmm registers */
@@ -1505,7 +1505,7 @@ typedef struct _shadow_aux_registers_t {
 /*FIXME: Support only for 128-bit sized SIMD regs. Add code to make
  *       it generic enough to support 64-bit, 32-bit, 16-bit and
  *       8-bit configurations. */
-#define NUM_SIMD_REGS 32
+# define NUM_SIMD_REGS 32
 typedef struct _shadow_aux_registers_t {
     int simd[NUM_SIMD_REGS];
 } shadow_aux_registers_t;
@@ -1520,7 +1520,7 @@ typedef byte shadow_reg_type_t;
 /* We keep our shadow register bits in TLS */
 typedef struct _shadow_registers_t {
 #ifdef TOOL_DR_MEMORY
-#ifdef X86
+# ifdef X86
     /* First 8-byte TLS slot */
     shadow_reg_type_t xax;
     shadow_reg_type_t xcx;
@@ -1531,7 +1531,7 @@ typedef struct _shadow_registers_t {
     shadow_reg_type_t xbp;
     shadow_reg_type_t xsi;
     shadow_reg_type_t xdi;
-# ifdef X64
+#  ifdef X64
     /* Third 8-byte TLS slot */
     shadow_reg_type_t r8;
     shadow_reg_type_t r9;
@@ -1542,13 +1542,13 @@ typedef struct _shadow_registers_t {
     shadow_reg_type_t r13;
     shadow_reg_type_t r14;
     shadow_reg_type_t r15;
-# endif
+#  endif
     /* Third/fifth TLS slot.  We go ahead and write GPR-sized values here
      * for simplicity in our fastpath even though we treat this as
      * a single tracked value.
      */
     shadow_reg_type_t eflags;
-#elif defined(AARCH64)
+# elif defined(AARCH64)
     shadow_reg_type_t x0;
     shadow_reg_type_t x1;
     shadow_reg_type_t x2;
@@ -1584,11 +1584,10 @@ typedef struct _shadow_registers_t {
     shadow_reg_type_t sp;
 
     shadow_reg_type_t nzcv;
-    /*Confirm if the regs below need to be shadowed.
-    shadow_reg_type_t fpsr;
-    shadow_reg_type_t fpcr;
-    */
-#endif
+    /* XXX i#2016: Should we shadow fpsr + fpcr? */
+# elif defined(ARM)
+    /* TODO i#1726: Currently only pattern mode is supported for ARM. */
+# endif
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
     byte padding[IF_X64_ELSE(4,2)];
@@ -1596,7 +1595,7 @@ typedef struct _shadow_registers_t {
      * shadow memory.
      */
     shadow_aux_registers_t *aux;
-#endif
+#endif /* TOOL_DR_MEMORY */
     /* Avoid empty struct.  FIXME: this is a waste of a tls slot */
     void *bogus;
 } shadow_registers_t;
@@ -1754,6 +1753,16 @@ opnd_create_shadow_inheap_slot(void)
 }
 #endif /* TOOL_DR_MEMORY */
 
+#if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
+static shadow_registers_t *
+get_shadow_registers(void)
+{
+    byte *seg_base;
+    ASSERT(options.shadowing, "incorrectly called");
+    seg_base = get_own_seg_base();
+    return (shadow_registers_t *)(seg_base + tls_shadow_base);
+}
+#endif /* TOOL_DR_MEMORY || WINDOWS */
 
 static void
 shadow_registers_thread_init(void *drcontext)
@@ -1860,17 +1869,6 @@ shadow_registers_exit(void)
     ASSERT(ok, "WARNING: unable to free tls slots");
     drmgr_unregister_tls_field(tls_idx_shadow);
 }
-
-#if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
-static shadow_registers_t *
-get_shadow_registers(void)
-{
-    byte *seg_base;
-    ASSERT(options.shadowing, "incorrectly called");
-    seg_base = get_own_seg_base();
-    return (shadow_registers_t *)(seg_base + tls_shadow_base);
-}
-#endif /* TOOL_DR_MEMORY || WINDOWS */
 
 #ifdef TOOL_DR_MEMORY
 void
@@ -2133,6 +2131,22 @@ set_shadow_eflags(uint val)
     shadow_registers_t *sr = get_shadow_registers();
     ASSERT(options.shadowing, "incorrectly called");
     sr->nzcv = (byte) val;
+}
+#elif(defined ARM)
+uint
+get_shadow_eflags(void)
+{
+    /* TODO i#1726: Not supported yet for ARM. */
+    ASSERT_NOT_REACHED();
+    return 0;
+}
+
+void
+set_shadow_eflags(uint val)
+{
+    /* TODO i#1726: Not supported yet for ARM. */
+    ASSERT_NOT_REACHED();
+    return 0;
 }
 #endif
 
