@@ -116,7 +116,7 @@ jobs:
   ###########################################################################
   # Mac tarball with x86-64 build:
   osx:
-    runs-on: macos-10.15
+    runs-on: macos-11
 
     steps:
     - uses: actions/checkout@v2
