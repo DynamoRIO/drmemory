@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -65,6 +65,11 @@ tar xzf DrMemory-Linux-X.X.X-X.tar.gz
 
 Now either place the \p bin subdirectory of the Dr. Memory directory
 structure on your PATH, or invoke Dr. Memory via its full path.
+
+You will need to have libunwind installed:
+\verbatim
+sudo apt install libunwind8
+\endverbatim
 
 ***************************************************************************
 \page page_install_macos Installing on Mac
