@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -213,7 +213,8 @@ endforeach ()
 
 
 # i#1099: avoid absolute path complaint on package build step
-set(base_cache "BUILDING_PACKAGE:BOOL=ON")
+set(base_cache "BUILDING_PACKAGE:BOOL=ON
+  AUTOMATED_TESTING:BOOL=ON")
 
 if (arg_travis AND WIN32)
   # XXX i#1938: AppVeyor's MinGW g++ crashes for as-yet-unknown reasons.
