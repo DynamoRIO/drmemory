@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -87,7 +87,7 @@ handle_drreg_error(drreg_status_t status)
 void
 instru_tls_init(void)
 {
-    if (options.pattern != 0) {
+    if (options.pattern != 0 IF_AARCH64(|| true)) {
         drreg_options_t ops = {
             sizeof(ops), options.num_spill_slots, options.conservative,
             handle_drreg_error,
@@ -119,11 +119,9 @@ instru_tls_init(void)
             seg_tls = DR_SEG_FS;
 # endif
 #elif defined(ARM)
-# ifdef X64
-            seg_tls = DR_REG_TPIDRURO;
-# else
             seg_tls = DR_REG_TPIDRURW;
-# endif
+#elif defined(AARCH64)
+            seg_tls = DR_REG_TPIDRRO_EL0;
 #endif
         }
     }
@@ -138,7 +136,7 @@ instru_tls_exit(void)
         ASSERT(ok, "WARNING: unable to free tls slots");
         drmgr_unregister_tls_field(tls_idx_instru);
     }
-    if (options.pattern != 0) {
+    if (options.pattern != 0 IF_AARCH64(|| true)) {
         IF_DEBUG(drreg_status_t res =)
             drreg_exit();
         ASSERT(res == DRREG_SUCCESS, "WARNING: drreg failed on exit");
@@ -176,11 +174,13 @@ num_own_spill_slots(void)
     return options.num_spill_slots;
 }
 
+
 static opnd_t
 opnd_create_own_spill_slot(uint index)
 {
     ASSERT(index < options.num_spill_slots, "spill slot index overflow");
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
+#ifdef X86
     return opnd_create_far_base_disp_ex
         /* must use 0 scale to match what DR decodes for opnd_same */
         (seg_tls, REG_NULL, REG_NULL, 0,
@@ -188,6 +188,13 @@ opnd_create_own_spill_slot(uint index)
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
+#elif defined(AARCH64)
+    return opnd_create_base_disp_aarch64
+        (seg_tls, REG_NULL, 0, false,
+        tls_instru_base + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t), DR_OPND_MULTI_PART, OPSZ_PTR);
+#else
+    return opnd_create_null();
+#endif
 }
 
 ptr_uint_t
@@ -195,9 +202,15 @@ get_own_tls_value(uint index)
 {
     ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
+#ifdef AARCH64
+        byte *seg_base = get_own_seg_base();
+        return *(ptr_uint_t *) (tls_instru_base + seg_base +
+                                (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t));
+#else
         byte *seg_base = get_own_seg_base();
         return *(ptr_uint_t *) (seg_base + tls_instru_base +
                                 (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t));
+#endif
     } else {
         dr_spill_slot_t DR_slot = index - options.num_spill_slots;
         return dr_read_saved_reg(dr_get_current_drcontext(), DR_slot);
@@ -209,9 +222,15 @@ set_own_tls_value(uint index, ptr_uint_t val)
 {
     ASSERT(NUM_TLS_SLOTS > 0, "should not get here if we have no slots");
     if (index < options.num_spill_slots) {
+#ifdef AARCH64
+        byte *seg_base = get_own_seg_base();
+        *(ptr_uint_t *)(tls_instru_base + seg_base +
+                        (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
+#else
         byte *seg_base = get_own_seg_base();
         *(ptr_uint_t *)(seg_base + tls_instru_base +
                         (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
+#endif
     } else {
         dr_spill_slot_t DR_slot = index - options.num_spill_slots;
         dr_write_saved_reg(dr_get_current_drcontext(), DR_slot, val);
@@ -327,7 +346,7 @@ restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
 opnd_t
 spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
 {
-    ASSERT(options.pattern == 0, "not converted to drreg yet");
+    ASSERT(options.pattern == 0 IF_AARCH64(|| true), "not converted to drreg yet");
     if (slot < options.num_spill_slots) {
         return opnd_create_own_spill_slot(slot);
     } else {
@@ -336,6 +355,7 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
     }
 }
 
+#ifndef AARCH64
 static bool
 is_spill_slot_opnd(void *drcontext, opnd_t op)
 {
@@ -358,6 +378,28 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
             return true;
     }
     return false;
+}
+#endif
+
+void
+reserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
+{
+    IF_DEBUG(drreg_status_t res =)
+        drreg_reserve_aflags(drcontext, ilist, where);
+    /* We're ok with IN_USE b/c of our "lazy spill, single restore" strategy. */
+    ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_IN_USE, "failed to reserve aflags");
+    LOG(4, "\t%s @"PFX"\n", __FUNCTION__, instr_get_app_pc(where));
+}
+
+void
+unreserve_aflags(void *drcontext, instrlist_t *ilist, instr_t *where)
+{
+    IF_DEBUG(drreg_status_t res =)
+        drreg_unreserve_aflags(drcontext, ilist, where);
+    /* We're ok with INVALID b/c of our "lazy spill, single restore" strategy. */
+    ASSERT(res == DRREG_SUCCESS || res == DRREG_ERROR_INVALID_PARAMETER,
+           "failed to unreserve aflags");
+    LOG(4, "\t%s @"PFX"\n", __FUNCTION__, instr_get_app_pc(where));
 }
 
 /***************************************************************************
@@ -553,7 +595,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
  * SCRATCH REGISTER SELECTION
  */
 
-#ifdef X86 /* ARM uses drreg's state restoration */
+#ifdef X86/* ARM uses drreg's state restoration */
 
 # ifdef DEBUG
 static void
@@ -1425,6 +1467,105 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
 #endif
 }
 
+
+reg_id_t
+reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                 drvector_t *reg_allowed,
+                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out)
+{
+    reg_id_t reg;
+    IF_DEBUG(drreg_status_t res =)
+        drreg_reserve_register(drcontext, ilist, where, reg_allowed, &reg);
+    ASSERT(res == DRREG_SUCCESS, "failed to reserve scratch register");
+    return reg;
+}
+
+void
+unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
+                   INOUT fastpath_info_t *mi, bool force_restore_now)
+{
+    IF_DEBUG(drreg_status_t res =)
+        drreg_unreserve_register(drcontext, ilist, where, reg);
+    if (force_restore_now)
+        drreg_get_app_value(drcontext, ilist, where, reg, reg);
+    ASSERT(res == DRREG_SUCCESS, "failed to unreserve scratch register");
+    if (mi != NULL) {
+        if (reg == mi->reg1.reg) {
+            mi->reg1.reg = DR_REG_NULL;
+        } else if (reg == mi->reg2.reg) {
+            mi->reg2.reg = DR_REG_NULL;
+        } else if (reg == mi->reg3.reg) {
+            mi->reg3.reg = DR_REG_NULL;
+        }
+    }
+}
+
+void
+reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                        drvector_t *reg_allowed, INOUT fastpath_info_t *mi)
+{
+    ASSERT(mi != NULL && mi->bb != NULL, "shared register requires fastpath & bb info");
+    if (mi->reg1.reg == DR_REG_NULL) {
+        if (mi->bb->shared_reg != DR_REG_NULL)
+            mi->reg1.reg = mi->bb->shared_reg;
+        else {
+            mi->reg1.reg = reserve_register(drcontext, ilist, where, reg_allowed, mi,
+                                        &mi->reg1.reg);
+            mi->bb->shared_reg = mi->reg1.reg;
+        }
+    } else
+        ASSERT(mi->reg1.reg == mi->bb->shared_reg, "shared register inconsistency");
+}
+
+void
+unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
+                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi)
+{
+    ASSERT(bi != NULL, "shared register requires fastpath && bb info");
+    if (bi->shared_reg != DR_REG_NULL) {
+        unreserve_register(drcontext, ilist, where, bi->shared_reg, NULL, false);
+        bi->shared_reg = DR_REG_NULL;
+        if (mi != NULL) {
+            ASSERT(bi->shared_reg == mi->reg1.reg, "shared register inconsistency");
+            mi->reg1.reg = DR_REG_NULL;
+        }
+    }
+}
+
+#ifdef AARCH64
+bool
+instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT)
+{
+    bool spill;
+    drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, &spill,
+                                                         NULL, reg_spilled);
+    ASSERT(res == DRREG_SUCCESS, "failed to query drreg for spill info");
+    return spill;
+}
+
+bool
+instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored OUT)
+{
+    bool restore;
+    drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, NULL,
+                                                         &restore, reg_restored);
+    ASSERT(res == DRREG_SUCCESS, "failed to query drreg for spill info");
+    return restore;
+}
+
+bool
+instr_at_pc_is_restore(void *drcontext, byte *pc)
+{
+    instr_t inst;
+    bool res;
+    instr_init(drcontext, &inst);
+    res = (decode(drcontext, pc, &inst) != NULL &&
+           instr_is_restore(drcontext, &inst, NULL));
+    instr_free(drcontext, &inst);
+    return res;
+}
+#else
+
 bool
 instr_is_spill(instr_t *inst)
 {
@@ -1452,7 +1593,9 @@ instr_at_pc_is_restore(void *drcontext, byte *pc)
     instr_free(drcontext, &inst);
     return res;
 }
+#endif
 
+#ifndef AARCH64
 void
 mark_eflags_used(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 {
@@ -1514,6 +1657,7 @@ mark_scratch_reg_used(void *drcontext, instrlist_t *bb,
     /* Even if global we have to mark the si copy as used too */
     si->used = true;
 }
+#endif
 
 bool
 instr_needs_eflags_restore(instr_t *inst, uint aflags_liveness)
@@ -1533,6 +1677,17 @@ void
 fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
                        bb_info_t *bi, fastpath_info_t *mi)
 {
+#ifdef AARCH64
+    if (!instr_is_app(inst))
+        return;
+    app_pc pc = instr_get_app_pc(inst);
+    if (pc != NULL) {
+        if (bi->first_app_pc == NULL)
+            bi->first_app_pc = pc;
+        bi->last_app_pc = pc;
+    }
+    return;
+#endif
     /* Preserve app semantics wrt global spilled registers */
     /* XXX i#777: gets next instr, and below does liveness analysis w/ forward scan.
      * should use stored info from reverse scan done during analysis phase.
@@ -1684,7 +1839,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             save_aflags_if_live(drcontext, bb, next, mi, bi);
         }
     }
-#endif /* X86 */
+#endif
 }
 
 void
@@ -1692,6 +1847,50 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
                       bb_info_t *bi, bool added_instru, bool translating,
                       bool check_ignore_unaddr)
 {
+#ifdef AARCH64
+    bb_saved_info_t *save;
+    ASSERT(!added_instru || instrlist_first(bb) != NULL, "can't add instru w/o instrs");
+
+    if (!translating) {
+        /* Add to table so we can restore on slowpath or a fault */
+        save = (bb_saved_info_t *) global_alloc(sizeof(*save), HEAPSTAT_PERBB);
+        memset(save, 0, sizeof(*save));
+        save->check_ignore_unaddr = check_ignore_unaddr;
+        /* i#826: share_xl8_max_diff can change, save it. */
+        save->share_xl8_max_diff = bi->share_xl8_max_diff;
+        /* store style of instru rather than ask DR to store xl8.
+         * XXX DRi#772: could add flush callback and avoid this save
+         */
+        save->pattern_4byte_check_only = bi->pattern_4byte_check_only;
+
+        /* we store the size and assume bbs are contiguous so we can free (i#260) */
+        ASSERT(bi->first_app_pc != NULL, "first instr should have app pc");
+        ASSERT(bi->last_app_pc != NULL, "last instr should have app pc");
+        if (bi->is_repstr_to_loop) /* first is +1 hack */
+            bi->first_app_pc = bi->last_app_pc;
+        else {
+            ASSERT(bi->last_app_pc >= bi->first_app_pc,
+                   "bb should be contiguous w/ increasing pcs");
+        }
+        save->bb_size = decode_next_pc(drcontext, bi->last_app_pc) - bi->first_app_pc;
+
+        /* PR 495787: Due to non-precise flushing we can have a flushed bb
+         * removed from the htables and then a new bb created before we received
+         * the deletion event.  We can't tell this apart from duplication due to
+         * thread-private copies: but this mechanism should handle that as well,
+         * since our saved info should be deterministic and identical for each
+         * copy.  Note that we do not want a new "unreachable event" b/c we need
+         * to keep our bb info around in case the semi-flushed bb hits a fault.
+         */
+        hashtable_lock(&bb_table);
+        bb_save_add_entry(tag, save);
+        hashtable_unlock(&bb_table);
+    }
+
+    if (options.pattern == 0)
+        unreserve_shared_register(drcontext, bb, instrlist_last(bb), NULL, bi);
+    return;
+#elif defined(X86)
     instr_t *last = instrlist_last(bb);
     bb_saved_info_t *save;
     if (!whole_bb_spills_enabled())
@@ -1777,4 +1976,5 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         if (bi->reg2.reg != DR_REG_NULL)
             insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
     }
+#endif
 }

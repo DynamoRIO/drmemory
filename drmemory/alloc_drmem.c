@@ -1965,7 +1965,7 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
     instr_free(drcontext, &next);
 
     return match;
-#elif defined(ARM)
+#elif defined(ARM) || defined(AARCH64)
     /* FIXME i#1726: add ARM patterns */
     return false;
 #endif

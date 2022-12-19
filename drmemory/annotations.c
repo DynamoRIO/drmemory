@@ -45,7 +45,7 @@
 extern void check_reachability(bool at_exit);
 #endif
 
-#ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
+#if !defined(ARM) && !defined(AARCH64) /* FIXME DRi#1672: add ARM annotation support to DR */
 static ptr_uint_t
 handle_make_mem_defined_if_addressable(dr_vg_client_request_t *request)
 {
@@ -105,7 +105,7 @@ annotate_init(void)
 {
     /* Valgrind annotations are not available for 64-bit Windows */
 #if !(defined(WINDOWS) && defined(X64))
-# ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
+# if !defined(ARM) && !defined(AARCH64) /* FIXME DRi#1672: add ARM annotation support to DR */
     dr_annotation_register_valgrind(DR_VG_ID__MAKE_MEM_DEFINED_IF_ADDRESSABLE,
                                     handle_make_mem_defined_if_addressable);
     dr_annotation_register_valgrind(DR_VG_ID__DO_LEAK_CHECK,
@@ -113,7 +113,7 @@ annotate_init(void)
 # endif
 #endif
 
-#ifndef ARM /* FIXME DRi#1672: add ARM annotation support to DR */
+#if !defined(ARM) && !defined(AARCH64) /* FIXME DRi#1672: add ARM annotation support to DR */
     const char *dumpmem_name = "drmemory_dump_memory_layout";
     if (!dr_annotation_register_call(dumpmem_name,
                                      handle_dump_memory_layout, false, 0,

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -808,7 +808,7 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
             POST(bb, inst, XINST_CREATE_store
                  (drcontext, memop, opnd_create_reg(dr_get_stolen_reg())));
         }
-#endif
+# endif
     }
 }
 
@@ -1118,6 +1118,15 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 
     memset(&mi, 0, sizeof(mi));
 
+#ifdef AARCH64
+    if (options.pattern == 0){
+        // There is probably optimisation to do here
+        IF_DEBUG(drreg_status_t res =)
+            drreg_reserve_aflags(drcontext, bb, inst);
+        ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
+    }
+#endif
+
     /* We can't change bi->check_ignore_unaddr in the middle b/c of recreation
      * so only set if entering/exiting on first
      */
@@ -1142,7 +1151,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          */
         if (whole_bb_spills_enabled() &&
             !(options.pattern != 0 && options.pattern_opt_repstr)) {
-            if (options.pattern != 0) { /* pattern uses drreg */
+#ifndef AARCH64
+            if (options.pattern != 0 IF_AARCH64( && false)) { /* pattern uses drreg */
                 IF_DEBUG(drreg_status_t res =)
                     drreg_reserve_aflags(drcontext, bb, inst);
                 ASSERT(res == DRREG_SUCCESS, "reserve of aflags should work");
@@ -1157,6 +1167,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
                  * jecxz is an app instr now so we should naturally restore it
                  */
             }
+#endif
         }
     }
 
@@ -1215,7 +1226,11 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
                 /* written to => no longer known to be addressable,
                  * unless modified by const amt: we look for push/pop
                  */
+#ifdef AARCH64
+                if ((!(instr_is_push(inst) || (instr_is_push(inst) && i > 0)))) {
+#else
                 if (!(opc_is_push(opc) || (opc_is_pop(opc) && i > 0))) {
+#endif
                     bi->addressable[reg_to_pointer_sized(opnd_get_reg(opnd)) -
                                     DR_REG_START_GPR] = false;
                 }
@@ -1327,6 +1342,10 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
          */
         bi->shared_memop = opnd_create_null();
     }
+#ifdef AARCH64
+    drreg_unreserve_aflags(drcontext, bb, inst);
+#endif
+
     /* We store whether bi->check_ignore_unaddr in our own data struct to avoid
      * DR having to store translations, so we can recreate deterministically
      * => DR_EMIT_DEFAULT

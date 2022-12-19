@@ -142,16 +142,6 @@ function(set_props target)
   endif ()
 endfunction(set_props)
 
-function(append_link_flags target newflags)
-  get_target_property(cur_ldflags ${target} LINK_FLAGS)
-  # cmake should add an APPEND option
-  if (NOT cur_ldflags)
-    set(cur_ldflags "")
-  endif (NOT cur_ldflags)
-  set_target_properties(${target} PROPERTIES
-    LINK_FLAGS "${cur_ldflags} ${newflags}")
-endfunction(append_link_flags)
-
 function(tobuild name source)
   set(srcs ${source} ${ARGN})
 
@@ -167,12 +157,6 @@ function(tobuild name source)
 
   add_executable(${name} ${srcs})
   set_props(${name})
-  if (UNIX)
-    # Older CMake would add this for us, but no longer.  We want global syms
-    # in .dynsym for all our executables, so our tests can use dr_get_proc_address()
-    # to find them.
-    append_link_flags(${name} "-rdynamic")
-  endif ()
 
   if ("${srccode}" MATCHES "ifndef ASM_CODE_ONLY")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
@@ -181,6 +165,16 @@ function(tobuild name source)
   endif ()
   copy_target_to_device(${name})
 endfunction(tobuild)
+
+function(append_link_flags target newflags)
+  get_target_property(cur_ldflags ${target} LINK_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_ldflags)
+    set(cur_ldflags "")
+  endif (NOT cur_ldflags)
+  set_target_properties(${target} PROPERTIES
+    LINK_FLAGS "${cur_ldflags} ${newflags}")
+endfunction(append_link_flags)
 
 function(tobuild_lib name source cust_flags cust_link)
   add_library(${name} SHARED ${source})
@@ -228,7 +222,11 @@ if (NOT UNIX)
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
   # But for cygwin to find operators we need /MD (until we have online
   # syms)
-  set(LIBC_FLAG "/MT")
+  if (USE_DRSYMS)
+    set(LIBC_FLAG "/MT")
+  else (USE_DRSYMS)
+    set(LIBC_FLAG "/MD")
+  endif (USE_DRSYMS)
   string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
   string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
@@ -310,7 +308,11 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
   # we include absaddr and mod+offs for easier debugging of problems
-  set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
+  if (USE_DRSYMS)
+    set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
+  else (USE_DRSYMS)
+    set(drmem_ops -callstack_style 0x27 ${drmem_ops})
+  endif (USE_DRSYMS)
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
@@ -380,6 +382,7 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
     -D resmark:STRING=${resmark}
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
+    -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D X64:BOOL=${X64}
     -D ARM:BOOL=${ARM}
     -D ANDROID:BOOL=${ANDROID}
@@ -521,10 +524,6 @@ newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops
   "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
-if (LINUX)
-  newtest(mmap mmap.c)
-  target_link_libraries(mmap drmemory_annotations)
-endif ()
 newtest(patterns patterns.c)
 newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
@@ -684,9 +683,11 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
-  if (NOT X64) # FIXME i#111: failing on Travis
-    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
-  endif ()
+  if (USE_DRSYMS)
+    if (NOT X64) # FIXME i#111: failing on Travis
+      newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+    endif ()
+  endif (USE_DRSYMS)
   if (NOT ARM AND NOT AARCH64) # XXX i#1726: port to ARM + i#2016 port to AArch64
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   endif ()
@@ -770,21 +771,37 @@ if (TOOL_DR_MEMORY)
     set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
   # test multiple supp files (i#574)
-  newtest_nobuild(suppress suppress ""
-    "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
-    "" OFF "")
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
+      "" OFF "")
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF "")
+  endif (USE_DRSYMS)
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  newtest_nobuild(suppress-genoffs suppress ""
-    "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-  newtest_nobuild(suppress-gensyms suppress ""
-    "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress ""
+      "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+    newtest_nobuild(suppress-gensyms suppress ""
+      "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
+    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")
+  endif (USE_DRSYMS)
 
   set(nudge_test_args "")
+
+  # FIXME i#446: no support yet for post-process w/ drsyms
+  if (UNIX AND NOT USE_DRSYMS)
+    # test -skip_results + -results (PR 575481)
+    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
+  endif ()
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
@@ -1080,7 +1097,7 @@ else ()
       "procterm.addronly" 0)
   endif (WIN32)
 
-  if (NOT ARM) # i#1726: no shadow yet on ARM
+  if (NOT ARM AND NOT AARCH64) # i#1726: no shadow yet on ARM
     # shadow light testing
     newtest_nobuild_ex(hello.shadow hello "" "-pattern;0" "" OFF "hello" 0 "")
     newtest_nobuild_ex(free.shadow free "" "-pattern;0" "" OFF "free" 0 "")

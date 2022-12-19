@@ -292,6 +292,10 @@ extern "C" {
 # define MC_RET_REG(mc) (mc)->r0
 # define MC_FP_REG(mc)  (mc)->r11
 # define MC_SP_REG(mc)  (mc)->sp
+#elif defined(AARCH64)
+# define MC_RET_REG(mc) (mc)->r0
+# define MC_FP_REG(mc)  (mc)->r29
+# define MC_SP_REG(mc)  (mc)->sp
 #endif
 
 #define DR_REG_PTR_RETURN IF_X86_ELSE(DR_REG_XAX, DR_REG_R0)
@@ -708,6 +712,53 @@ atomic_add32_return_sum(volatile int *x, int val)
        : "r"  (val)                                         \
        : "cc", "memory", "r2", "r3")
 
+static inline int
+atomic_add32_return_sum(volatile int *x, int val)
+{
+    int temp;
+    ATOMIC_ADD_EXCHANGE32(x, val, temp);
+    return (temp + val);
+}
+# elif defined(AARCH64)
+#  define ATOMIC_INC32(x)                                   \
+     __asm__ __volatile__(                                  \
+       "1: ldxr  w2, %0         \n\t"                       \
+       "   add   w2, w2, #1     \n\t"                       \
+       "   stxr  w3, w2, %0     \n\t"                       \
+       "   cbnz  w3, 1b         \n\t"                       \
+       "   cmp   w2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for AARCH64 mode */          \
+       : : "cc", "memory", "w2", "w3")
+#  define ATOMIC_DEC32(x)                                   \
+     __asm__ __volatile__(                                  \
+       "1: ldxr  w2, %0         \n\t"                       \
+       "   sub   w2, w2, #1     \n\t"                       \
+       "   stxr  w3, w2, %0     \n\t"                       \
+       "   cbnz  w3, 1b         \n\t"                       \
+       "   cmp   w2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for AARCH64 mode */          \
+       : : "cc", "memory", "w2", "w3")
+#  define ATOMIC_ADD32(x, val)                              \
+     __asm__ __volatile__(                                  \
+       "1: ldxr  w2, %0         \n\t"                       \
+       "   add   x2, x2, %1     \n\t"                       \
+       "   stxr  w3, w2, %0     \n\t"                       \
+       "   cbnz  w3, 1b         \n\t"                       \
+       "   cmp   w2, #0" /* for possible SET_FLAG use */    \
+       : "=Q" (x) /* no offset for AARCH64 mode */          \
+       : "r"  (val)                                         \
+       : "cc", "memory", "w2", "w3")
+#  define ATOMIC_ADD_EXCHANGE32(x, val, result)             \
+     __asm__ __volatile__(                                  \
+       "1: ldxr  w2, %0         \n\t"                       \
+       "   add   x2, x2, %2     \n\t"                       \
+       "   stxr  w3, w2, %0     \n\t"                       \
+       "   cbnz  w3, 1b         \n\t"                       \
+       "   sub   x2, x2, %2     \n\t"                       \
+       "   str   w2, %1"                                    \
+       : "=Q" (*x), "=m" (result)                           \
+       : "r"  (val)                                         \
+       : "cc", "memory", "w2", "w3")
 static inline int
 atomic_add32_return_sum(volatile int *x, int val)
 {

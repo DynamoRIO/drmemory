@@ -122,7 +122,7 @@ typedef struct _pass_target_t {
     void *wrapcxt;
     fuzz_target_t *target;
     reg_t xsp;            /* stack level at entry to the fuzz target */
-#ifdef ARM
+#ifdef AARCHXX
     reg_t lr;             /* link register value at entry */
 #endif
     retaddr_unclobber_t unclobber; /* see comment on retaddr_unclobber_t */
@@ -697,7 +697,10 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
 #ifdef X86
         live->unclobber.retaddr_loc = (reg_t *) mc->xsp; /* see retaddr_unclobber_t */
 #endif
-        IF_ARM(live->lr = mc->lr);
+
+#ifdef AARCHXX
+    live->lr = mc->lr;
+#endif
         live->unclobber.retaddr = (reg_t) drwrap_get_retaddr(wrapcxt);
         DRFUZZ_LOG(4, "fuzz target "PFX": saving stack pointer "PFX"\n",
                    target_to_fuzz, mc->xsp);
@@ -717,7 +720,7 @@ pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
         drwrap_set_arg(wrapcxt, i, (void *) live->original_args[i]);
     }
 
-#ifdef ARM
+#ifdef AARCHXX
     mc->lr = live->unclobber.retaddr; /* restore retaddr to link register */
 #else /* X86 */
     *live->unclobber.retaddr_loc = live->unclobber.retaddr; /* restore retaddr to stack */
@@ -751,7 +754,9 @@ post_fuzz_handler(void *wrapcxt, void *user_data)
         /* Restore lr, to avoid incorrect flushes in drwrap from it thinking there
          * is a different retaddr for our repeating function.
          */
-        IF_ARM(mc->lr = live->lr);
+#ifdef AARCHXX
+   mc->lr = live->lr;
+#endif
         mc->pc = live->target->func_pc;
         IF_DEBUG(redirect_status =) drwrap_redirect_execution(wrapcxt);
         DRFUZZ_LOG(4, "fuzz target "PFX" requesting redirect to self entry; result: %d\n",

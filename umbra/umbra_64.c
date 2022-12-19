@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2022 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -262,10 +262,13 @@ static dr_os_version_info_t os_version = {sizeof(os_version),};
 /* Each unit has 16 segments, which could be used for app or shadow. */
 #define NUM_SEGMENTS      16 /* 16 segments per unit */
 
+
+#ifndef AARCH64
 static ptr_uint_t seg_index_mask(uint num_seg_bits)
 {
     return (ptr_uint_t)(NUM_SEGMENTS - 1) << num_seg_bits;
 }
+#endif
 
 static ptr_uint_t segment_size(uint num_seg_bits)
 {
@@ -355,6 +358,37 @@ static ptr_uint_t map_disp_win81[] = {
  * We check conflicts later when creating shadow memory.
  */
 #ifdef LINUX
+#ifdef AARCH64
+static const app_segment_t app_segments_initial[] = {
+    /* We split app3 [0x7F0000000000, 0x800000000000) into two parts:
+     * [0x7F0000000000, 0x7FFFFF400000) and [0x7FFFFF800000, 0x800000000000).
+     * And we skip [0x7FFFFF400000-0x7FFFFF800000)
+     * for app4 [0xFFFFFFFFFF400000,  0xFFFFFFFFFF800000) because current
+     * mapping schema maps app3 and app4 to the same segment.
+     * We cannot use smaller size due to the block allocation size
+     * (ALLOC_UNIT_SIZE) and the correspoinding bitmap for the shadow memory
+     * allocation tracking.
+     *
+     * We assume [0x7FFFFF400000-0x7FFFFF800000) will not be used by app.
+     * If app allocates memory from that region, umbra_add_app_segment
+     * will fail because umbra_add_shadow_segment fails to add corresponding
+     * shadow memory segment.
+     * FIXME i#1782, i#1798: we can proactively track memory allocation and
+     * use more expensive instrumentation when necessary to get rid of the
+     * assumption and segment split.
+     */
+    {(app_pc)0x0000ff0000000000,  (app_pc)0x0001000000000000, 0},
+    {(app_pc)0x0000000000000000,  (app_pc)0x0000010000000000, 0},
+    /* app4: [0xFFFFFFFF'FF600000, 0xFFFFFFFF'FF601000] */
+    /* for all additional segments */
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+    { NULL, NULL, 0 },
+};
+
+#else
 static const app_segment_t app_segments_initial[] = {
     /* We split app3 [0x7F0000000000, 0x800000000000) into two parts:
      * [0x7F0000000000, 0x7FFFFF400000) and [0x7FFFFF800000, 0x800000000000).
@@ -388,6 +422,7 @@ static const app_segment_t app_segments_initial[] = {
     { NULL, NULL, 0 },
     { NULL, NULL, 0 },
 };
+#endif
 static const app_segment_t app_segments_initial_no_vsyscall[] = {
     /* We do not need any gaps or splitting without vsyscall. */
     /* for all additional segments */
@@ -869,7 +904,7 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
     ASSERT(map->shadow_block_size >= ALLOC_UNIT_SIZE &&
            map->app_block_size    >= ALLOC_UNIT_SIZE,
            "block size too small");
-    map->mask = segment_mask(num_seg_bits) | seg_index_mask(num_seg_bits);
+    map->mask = IF_AARCH64_ELSE(0xfffffffffffffffc, segment_mask(num_seg_bits) | seg_index_mask(num_seg_bits));
 #ifdef WINDOWS
     if (UMBRA_MAP_SCALE_IS_UP(map->options.scale)) {
         /* The only way we can avoid reserves from wrapping around or overlapping
@@ -1300,19 +1335,24 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->mask));
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
-                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->disp));
 
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
-                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
     if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
-        PRE(ilist, where, INSTR_CREATE_lsl(drcontext,
-                                           opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
-                                           OPND_CREATE_INT8(map->shift)));
+        /* XXX: Use INSTR_CREATE_lsl or an xinst variant when DR provides it. */
+        PRE(ilist, where, instr_create_1dst_3src(drcontext, OP_ubfm,
+                                                 opnd_create_reg(reg_addr),
+                                                 opnd_create_reg(reg_addr),
+                                                 OPND_CREATE_INT(64 - map->shift),
+                                                 OPND_CREATE_INT(63 - map->shift)));
     } else if (map->options.scale <= UMBRA_MAP_SCALE_DOWN_2X) {
         PRE(ilist, where, XINST_CREATE_slr_s(drcontext,
                                              opnd_create_reg(reg_addr),
@@ -1502,9 +1542,9 @@ umbra_identify_shadow_fault(void *drcontext, dr_mcontext_t *raw_mc,
         return false;
     LOG(UMBRA_VERBOSE,
         "%s: decoding cache %p looking for %p\n", __FUNCTION__, pc, raw_mc->pc);
-    umbra_map_t *map = NULL;
     bool found_xl8 = false;
 #ifndef AARCH64
+    umbra_map_t *map = NULL;
     bool found_and = false;
 #endif
     instr_init(drcontext, &inst);

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -24,7 +24,9 @@
  * STACK ADJUSTMENT HANDLING
  */
 
+#include "instru.h"
 #include "dr_api.h"
+#include "drreg.h"
 #include "drmemory.h"
 #include "slowpath.h"
 #include "spill.h"
@@ -346,8 +348,9 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
             }
         } else {
             app_pc sp = (app_pc)mc.xsp - BEYOND_TOS_REDZONE_SIZE;
-            shadow_set_range(delta > 0 ? sp : (sp + delta),
-                             delta > 0 ? (sp + delta) : sp,
+            // TODO: +-16 is right for ldp/ldr, but are there other push pop AArch64 operations?
+            shadow_set_range(delta > 0 ? sp : (sp + delta) ,//IF_AARCH64(+ 16),
+                             delta > 0 ? (sp + delta) : sp, //IF_AARCH64(- 16) : sp,
                              (delta > 0 ? SHADOW_UNADDRESSABLE :
                               ((sp_action == SP_ADJUST_ACTION_DEFINED) ?
                                SHADOW_DEFINED : SHADOW_UNDEFINED)));
@@ -457,14 +460,29 @@ generate_shared_esp_slowpath_helper(void *drcontext, instrlist_t *ilist, app_pc 
      *   - scratch2 holds the return address
      * Need retaddr in persistent storage: slot5 is guaranteed free.
      */
+
     PRE(ilist, NULL, XINST_CREATE_store
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action)),
          opnd_create_reg(ESP_SLOW_SCRATCH2)));
+
     dr_insert_clean_call(drcontext, ilist, NULL,
                          (void *)handle_esp_adjust_shared_slowpath, false, 2,
                          opnd_create_reg(ESP_SLOW_SCRATCH1), OPND_CREATE_INT32(sp_action));
+
+#ifdef AARCH64
+    /* XXX i#2016: Shared slowpath is not supported for AArch64. */
+    /* XXX: There is no OP_udf support in DR so we build a zero-bit instr. */
+    instr_t *udf = instr_build_bits(drcontext, OP_INVALID, 4);
+    instr_set_raw_byte(udf, 0, 0);
+    instr_set_raw_byte(udf, 1, 0);
+    instr_set_raw_byte(udf, 2, 0);
+    instr_set_raw_byte(udf, 3, 0);
+    instr_set_operands_valid(udf, true);
+    PRE(ilist, NULL, udf);
+#else
     PRE(ilist, NULL, XINST_CREATE_jump_mem
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(sp_action))));
+#endif
 
     pc = instrlist_encode(drcontext, ilist, pc, false);
     instrlist_clear(drcontext, ilist);

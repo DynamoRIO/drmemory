@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1072,57 +1072,68 @@ is_retaddr(app_pc pc, bool exclude_tool_lib)
         bool match;
         STATS_INC(cstack_is_retaddr_backdecode);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-            IF_X86_ELSE({
-                match = ((*(pc - 5) == OP_CALL_DIR
-                      /* rule out call to next instr used for PIC */
-                      IF_UNIX(&& *(int*)(pc - 4) != 0)) ||
-                     (*(pc - 2) == OP_CALL_IND &&
-                      /* indirect through mem: 0xff /2 (mod==0)
-                       *   => top 5 bits are 0x02, and rule out disp32 (rm==0x5)
-                       */
-                      ((((*(pc - 1) >> 3) == 0x02) && ((*(pc - 1) & 0x3) != 0x5)) ||
-                       /* indirect through reg: 0xff /2 (mod==3)
+            IF_AARCH64_ELSE(
+                match =
+                    // XXX i#2016: Should be checked, BLR + PAC variation?
+                    /* A64 bl <label> */
+                    ((*(pc - 1) & 0xfc) == 0x94) ||
+                    /* A64 blr <reg> */
+                    ((*(pc - 1) == 0xd6) &&
+                    *(pc - 2) == 0x3f &&
+                    (*(pc - 3) & 0xfc) == 0x00 &&
+                    ((*(pc - 4) & 0x3f) == 0x00));
+                , IF_X86_ELSE({
+                    match =
+                        ((*(pc - 5) == OP_CALL_DIR
+                        /* rule out call to next instr used for PIC */
+                        IF_UNIX(&& *(int*)(pc - 4) != 0)) ||
+                        (*(pc - 2) == OP_CALL_IND &&
+                        /* indirect through mem: 0xff /2 (mod==0)
+                        *   => top 5 bits are 0x02, and rule out disp32 (rm==0x5)
+                        */
+                        ((((*(pc - 1) >> 3) == 0x02) && ((*(pc - 1) & 0x3) != 0x5)) ||
+                        /* indirect through reg: 0xff /2 (mod==3)
                         *   => top 5 bits are 0xd0 (0x3 << 3 | 0x2)
                         */
-                       ((*(pc - 1) & 0xf8) == 0xd0))) ||
-                     /* indirect through mem: 0xff /2 + disp8 (mod==1) */
-                     (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
-                     /* indirect through mem: 0xff /2 + disp32 (mod==2) */
-                     (*(pc - 6) == OP_CALL_IND &&
-                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)
-                      /* i#1217: rule out WOW64 syscall from DR code invoked on app
-                       * stack by -replace_malloc.  We always have a syscall
-                       * in an app_loc_t so we should never need it in a frame.
-                       */
-                      IF_NOT_X64(&& (*(uint*)(pc - 4) != WOW64_SYSOFFS ||
-                                     *(pc - 7) != OP_SEG_FS))
-                      ) ||
-                     /* indirect through mem: 0xff /2 + sib (w/o sib reg=5) */
-                     (*(pc - 3) == OP_CALL_IND &&
-                      (*(pc - 2) == 0x14 && ((*(pc - 1) & 0x3) != 5))));
-            }, {
-                match =
-                    (is_thumb &&
-                     /* T32 bl <label> */
-                     ((((*(pc - 3) & 0xf0) == 0xf0) &&
-                       ((*(pc - 1) & 0xd0) == 0xd0)) ||
-                      /* T32 blx <label> */
-                      (((*(pc - 3) & 0xf0) == 0xf0) &&
-                       ((*(pc - 1) & 0xd0) == 0xc0)) ||
-                      /* T32 blx <reg> */
-                      (*(pc - 1) == 0x47 &&
-                       ((*(pc - 2) & 0x87) == 0x80)))) ||
-                    (!is_thumb &&
-                     /* A32 bl <label> */
-                     (((*(pc - 1) & 0x0f) == 0x0b) ||
-                      /* A32 blx <label> */
-                      ((*(pc - 1) & 0xfe) == 0xfa) ||
-                      /* A32 blx <reg> */
-                      (((*(pc - 1) & 0x0f) == 0x01) &&
-                       *(pc - 2) == 0x2f &&
-                       *(pc - 3) == 0xff &&
-                       ((*(pc - 4) & 0xf0) == 0x30))));
-            })
+                        ((*(pc - 1) & 0xf8) == 0xd0))) ||
+                        /* indirect through mem: 0xff /2 + disp8 (mod==1) */
+                        (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
+                        /* indirect through mem: 0xff /2 + disp32 (mod==2) */
+                        (*(pc - 6) == OP_CALL_IND &&
+                        ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)
+                        /* i#1217: rule out WOW64 syscall from DR code invoked on app
+                        * stack by -replace_malloc.  We always have a syscall
+                        * in an app_loc_t so we should never need it in a frame.
+                        */
+                        IF_NOT_X64(&& (*(uint*)(pc - 4) != WOW64_SYSOFFS ||
+                                        *(pc - 7) != OP_SEG_FS))
+                        ) ||
+                        /* indirect through mem: 0xff /2 + sib (w/o sib reg=5) */
+                        (*(pc - 3) == OP_CALL_IND &&
+                        (*(pc - 2) == 0x14 && ((*(pc - 1) & 0x3) != 5))));
+                }, {
+                    match =
+                        (is_thumb &&
+                        /* T32 bl <label> */
+                        ((((*(pc - 3) & 0xf0) == 0xf0) &&
+                        ((*(pc - 1) & 0xd0) == 0xd0)) ||
+                        /* T32 blx <label> */
+                        (((*(pc - 3) & 0xf0) == 0xf0) &&
+                        ((*(pc - 1) & 0xd0) == 0xc0)) ||
+                        /* T32 blx <reg> */
+                        (*(pc - 1) == 0x47 &&
+                        ((*(pc - 2) & 0x87) == 0x80)))) ||
+                        (!is_thumb &&
+                        /* A32 bl <label> */
+                        (((*(pc - 1) & 0x0f) == 0x0b) ||
+                        /* A32 blx <label> */
+                        ((*(pc - 1) & 0xfe) == 0xfa) ||
+                        /* A32 blx <reg> */
+                        (((*(pc - 1) & 0x0f) == 0x01) &&
+                        *(pc - 2) == 0x2f &&
+                        *(pc - 3) == 0xff &&
+                        ((*(pc - 4) & 0xf0) == 0x30))));
+            }))
         }, { /* EXCEPT */
             match = false;
             /* If we end up with a lot of these we could either cache
@@ -1240,49 +1251,56 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr, bool fp_walk
              * system calls (i#1436).
              */
             DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-                IF_X86_ELSE({
-                    if (*(pc - 5) == OP_CALL_DIR) {
-                        pc = *(int*)(pc - 4) + pc;
-                        /* Follow "call; jmp*", where jmp* is 0xff /4.
-                         * Allow endbr{32,64} before.
-                         */
-                        if (*(int*)pc == IF_X64_ELSE(ENDBR64,ENDBR32))
-                            pc += 4;
-                        if (*pc != OP_JMP_IND ||
-                            ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
-                            res = false;
+                IF_AARCH64_ELSE({
+                    /* A64 bl <label>: 100101xxxxxxxxxxxxxxxxxxxxxxxxxx */
+                    if (((*((int*)(pc - 4))) & 0x94000000) == 0x94000000) {
+                        /* TODO i#2016: Rule out call;jmp*. */
+                        res = false;
                     }
                 }, {
-                    /* We assume the PLT is always ARM and looks sthg like this:
-                     *    0xe28fc600  add     r12, pc, #0, 12
-                     *    0xe28cca08  add     r12, r12, #8, 20        ; 0x8000
-                     *    0xe5bcfaf4  ldr     pc, [r12, #2804]!       ; 0xaf4
-                     */
-                    if ((is_thumb &&
-                         /* T32 bl <label> */
-                         ((*(pc - 3) & 0xf0) == 0xf0) &&
-                         ((*(pc - 1) & 0xd0) == 0xd0)) ||
-                        (!is_thumb &&
-                         /* A32 blx <reg> */
-                         ((*(pc - 1) & 0x0f) == 0x01) &&
-                         *(pc - 2) == 0x2f &&
-                         *(pc - 3) == 0xff &&
-                         ((*(pc - 4) & 0xf0) == 0x30)))
-                        res = false;
-                    else if ((is_thumb &&
-                         /* T32 blx <label> */
-                         ((*(pc - 3) & 0xf0) == 0xf0) &&
-                         ((*(pc - 1) & 0xd0) == 0xc0)) ||
-                        (!is_thumb &&
-                         /* A32 bl <label> */
-                         ((*(pc - 1) & 0x0f) == 0x09))) {
-                        pc = get_call_target(pc - 4, is_thumb);
-                        LOG(4, "%s: call tgt is "PFX"\n", __FUNCTION__, pc);
-                        /* Just look for an add -- rare in func prologue 1st instr */
-                        if (((*(uint*)pc) & 0xe2800000) == 0xe2800000)
+                    IF_X86_ELSE({
+                        if (*(pc - 5) == OP_CALL_DIR) {
+                            pc = *(int*)(pc - 4) + pc;
+                            /* Follow "call; jmp*", where jmp* is 0xff /4.
+                             * Allow endbr{32,64} before.
+                             */
+                            if (*(int*)pc == IF_X64_ELSE(ENDBR64,ENDBR32))
+                                pc += 4;
+                            if (*pc != OP_JMP_IND ||
+                                ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
+                                res = false;
+                        }
+                    }, {
+                        /* We assume the PLT is always ARM and looks sthg like this:
+                        *    0xe28fc600  add     r12, pc, #0, 12
+                        *    0xe28cca08  add     r12, r12, #8, 20        ; 0x8000
+                        *    0xe5bcfaf4  ldr     pc, [r12, #2804]!       ; 0xaf4
+                        */
+                        if ((is_thumb &&
+                            /* T32 bl <label> */
+                            ((*(pc - 3) & 0xf0) == 0xf0) &&
+                            ((*(pc - 1) & 0xd0) == 0xd0)) ||
+                            (!is_thumb &&
+                            /* A32 blx <reg> */
+                            ((*(pc - 1) & 0x0f) == 0x01) &&
+                            *(pc - 2) == 0x2f &&
+                            *(pc - 3) == 0xff &&
+                            ((*(pc - 4) & 0xf0) == 0x30)))
                             res = false;
-                    }
-                })
+                        else if ((is_thumb &&
+                            /* T32 blx <label> */
+                            ((*(pc - 3) & 0xf0) == 0xf0) &&
+                            ((*(pc - 1) & 0xd0) == 0xc0)) ||
+                            (!is_thumb &&
+                            /* A32 bl <label> */
+                            ((*(pc - 1) & 0x0f) == 0x09))) {
+                            pc = get_call_target(pc - 4, is_thumb);
+                            LOG(4, "%s: call tgt is "PFX"\n", __FUNCTION__, pc);
+                            /* Just look for an add -- rare in func prologue 1st instr */
+                            if (((*(uint*)pc) & 0xe2800000) == 0xe2800000)
+                                res = false;
+                        }
+                })})
             }, { /* EXCEPT */
                 res = false;
                 LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
@@ -1773,7 +1791,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     }
 #endif
 
-    if (MC_SP_REG(mc) != 0 &&
+    /* XXX i#2016: Does frame walk code work for a64?  Disabling for now. */
+    if (IF_AARCH64(false &&) MC_SP_REG(mc) != 0 &&
         (!ALIGNED(MC_FP_REG(mc), sizeof(void*)) ||
          MC_FP_REG(mc) < MC_SP_REG(mc) ||
          MC_FP_REG(mc) - MC_SP_REG(mc) > ops.stack_swap_threshold ||

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2022 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -70,7 +70,7 @@ check_mcontext(void *drcontext)
     mc_DR.size = sizeof(mc_DR);
     mc_DR.flags = DR_MC_INTEGER|DR_MC_CONTROL;
     dr_get_mcontext(drcontext, &mc_DR);
-    /* i#2016 aarch64: TODO: add more asserts for aarch64? */
+    /* XXX i#2016: Add more asserts for aarch64? */
     ASSERT(mc->IF_AARCHXX_ELSE(r7,xdi) == mc_DR.IF_AARCHXX_ELSE(r7,xdi), "mc check");
     ASSERT(mc->IF_AARCHXX_ELSE(r6,xsi) == mc_DR.IF_AARCHXX_ELSE(r6,xsi), "mc check");
     ASSERT(mc->IF_AARCHXX_ELSE(r5,xbp) == mc_DR.IF_AARCHXX_ELSE(r5,xbp), "mc check");
