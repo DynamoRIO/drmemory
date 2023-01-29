@@ -40,6 +40,7 @@ import sys
 from os import listdir
 from os.path import isfile, join
 import argparse
+import operator
 
 types_map = {"BYTE":"BYTE",
 "WORD":"WORD",
@@ -613,12 +614,512 @@ types_map = {"BYTE":"BYTE",
 "FONTINFO":"FONTINFO",
 "EXTTEXTMETRIC":"EXTTEXTMETRIC",
 "CLIPLINE":"CLIPLINE",
-"BLENDOBJ":"BLENDOBJ",}
+"BLENDOBJ":"BLENDOBJ",
+"LRESULT":"LRESULT",
+"HSZ":"HSZ",
+"INT_PTR":"int",
+"DLGPROC":"DLGPROC",
+"LPMSG":"MSG*",
+"HCURSOR":"HCURSOR",
+"HCONV":"HCONV",
+"PUINT":"UINT*",
+"HOOKPROC":"HOOKPROC",
+"HDDEDATA":"HDDEDATA",
+"QS_INPUT":"QS_INPUT",
+"SHORT":"SHORT",
+"LPACCEL":"ACCEL*",
+"WNDENUMPROC":"WNDENUMPROC",
+"HGESTUREINFO":"HGESTUREINFO",
+"HCONVLIST":"HCONVLIST",
+"MSG":"MSG",
+"TIMERPROC":"TIMERPROC",
+"LPIMEPROA":"IMEPROA*",
+"LPIMEPROW":"IMEPROW*",
+"HDEVNOTIFY":"HDEVNOTIFY",
+"PBSMINFO":"BSMINFO*",
+"SIZE":"SIZE",
+"WNDPROC":"WNDPROC",
+"FARPROC":"FARPROC",
+"PCHANGEFILTERSTRUCT":"CHANGEFILTERSTRUCT*",
+"HTOUCHINPUT":"HTOUCHINPUT",
+"LPCDLGTEMPLATEA":"DLGTEMPLATEA*",
+"LPCDLGTEMPLATEW":"DLGTEMPLATEW*",
+"PICONINFO":"ICONINFO*",
+"PCONVCONTEXT":"CONVCONTEXT*",
+"PFNCALLBACK":"FNCALLBACK*",
+"PRAWINPUT":"RAWINPUT*",
+"DISPLAYCONFIG_DEVICE_INFO_HEADER":"DISPLAYCONFIG_DEVICE_INFO_HEADER",
+"DRAWSTATEPROC":"DRAWSTATEPROC",
+"LPDRAWTEXTPARAMS":"DRAWTEXTPARAMS*",
+"LPCRECT":"RECT*",
+"PALTTABINFO":"ALTTABINFO*",
+"PGESTURECONFIG":"GESTURECONFIG*",
+"LPMONITORINFO":"MONITORINFO*",
+"LPMOUSEMOVEPOINT":"MOUSEMOVEPOINT*",
+"PSECURITY_INFORMATION":"SECURITY_INFORMATION*",
+"WINDOWPLACEMENT":"WINDOWPLACEMENT",
+"GRAYSTRINGPROC":"GRAYSTRINGPROC",
+"LPCMENUITEMINFOA":"MENUITEMINFOA*",
+"LPCMENUITEMINFOW":"MENUITEMINFOW*",
+"DISPLAYCONFIG_PATH_INFO":"DISPLAYCONFIG_PATH_INFO",
+"DISPLAYCONFIG_MODE_INFO":"DISPLAYCONFIG_MODE_INFO",
+"HPOWERNOTIFY":"HPOWERNOTIFY",
+"SENDASYNCPROC":"SENDASYNCPROC",
+"HWINEVENTHOOK":"HWINEVENTHOOK",
+"PUINT_PTR":"UINT_PTR*",
+"LPPAINTSTRUCT":"PAINTSTRUCT*",
+"PCONVINFO":"CONVINFO*",
+"SECURITY_QUALITY_OF_SERVICE":"SECURITY_QUALITY_OF_SERVICE",
+"PSECURITY_QUALITY_OF_SERVICE":"SECURITY_QUALITY_OF_SERVICE*",
+"PAINTSTRUCT":"PAINTSTRUCT",
+"DESKTOPENUMPROCA":"DESKTOPENUMPROCA",
+"DESKTOPENUMPROCW":"DESKTOPENUMPROCW",
+"PDISPLAY_DEVICEA":"DISPLAY_DEVICEA*",
+"PDISPLAY_DEVICEW":"DISPLAY_DEVICEW*",
+"MONITORENUMPROC":"MONITORENUMPROC",
+"PROPENUMPROCA":"PROPENUMPROCA",
+"PROPENUMPROCEXA":"PROPENUMPROCEXA",
+"PROPENUMPROCEXW":"PROPENUMPROCEXW",
+"PROPENUMPROCW":"PROPENUMPROCW",
+"WINSTAENUMPROCA":"WINSTAENUMPROCA",
+"WINSTAENUMPROCW":"WINSTAENUMPROCW",
+"PFLASHWINFO":"FLASHWINFO*",
+"LPWNDCLASSA":"WNDCLASSA*",
+"LPWNDCLASSEXA":"WNDCLASSEXA*",
+"LPWNDCLASSEXW":"WNDCLASSEXW*",
+"LPWNDCLASSW":"WNDCLASSW*",
+"PCOMBOBOXINFO":"COMBOBOXINFO*",
+"PCURSORINFO":"CURSORINFO*",
+"PGUITHREADINFO":"GUITHREADINFO*",
+"PGESTUREINFO":"GESTUREINFO*",
+"PICONINFOEXA":"ICONINFOEXA*",
+"PICONINFOEXW":"ICONINFOEXW*",
+"PLASTINPUTINFO":"LASTINPUTINFO*",
+"PMENUBARINFO":"MENUBARINFO*",
+"LPMENUINFO":"MENUINFO*",
+"LPMENUITEMINFOA":"MENUITEMINFOA*",
+"LPMENUITEMINFOW":"MENUITEMINFOW*",
+"HRAWINPUT":"HRAWINPUT",
+"PRAWINPUTDEVICELIST":"RAWINPUTDEVICELIST*",
+"PRAWINPUTDEVICE":"RAWINPUTDEVICE*",
+"PSCROLLBARINFO":"SCROLLBARINFO*",
+"LPSCROLLINFO":"SCROLLINFO*",
+"PTITLEBARINFO":"TITLEBARINFO*",
+"PWINDOWINFO":"WINDOWINFO*",
+"MENUTEMPLATEA":"MENUTEMPLATEA",
+"MENUTEMPLATEW":"MENUTEMPLATEW",
+"MSGBOXPARAMSA":"MSGBOXPARAMSA",
+"MSGBOXPARAMSW":"MSGBOXPARAMSW",
+"DISPLAYCONFIG_TOPOLOGY_ID":"DISPLAYCONFIG_TOPOLOGY_ID",
+"WNDCLASSA":"WNDCLASSA",
+"WNDCLASSEXA":"WNDCLASSEXA",
+"WNDCLASSEXW":"WNDCLASSEXW",
+"WNDCLASSW":"WNDCLASSW",
+"PCRAWINPUTDEVICE":"CRAWINPUTDEVICE*",
+"LPINPUT":"INPUT*",
+"LPCMENUINFO":"MENUINFO*",
+"LPCSCROLLINFO":"SCROLLINFO*",
+"WINEVENTPROC":"WINEVENTPROC",
+"LPTRACKMOUSEEVENT":"TRACKMOUSEEVENT*",
+"LPTPMPARAMS":"TPMPARAMS*",
+"UPDATELAYEREDWINDOWINFO":"UPDATELAYEREDWINDOWINFO",
+"PRUNTIME_FUNCTION": "RUNTIME_FUNCTION*",
+"POEM_STRING": "OEM_STRING*",
+"in_addr": "in_addr",
+"in6_addr": "in6_addr",
+"PCUNICODE_STRING": "UNICODE_STRING*",
+"PWCH": "wchar*",
+"BOOLAPI": "bool",
+"HINTERNET":"HINTERNET",
+"GROUPID":"GROUPID",
+"LPINTERNET_CACHE_ENTRY_INFOA":"INTERNET_CACHE_ENTRY_INFOA*",
+"LPINTERNET_CACHE_ENTRY_INFOW":"INTERNET_CACHE_ENTRY_INFOW*",
+"LPINTERNET_BUFFERSA":"INTERNET_BUFFERSA*",
+"LPINTERNET_BUFFERSW":"INTERNET_BUFFERSW*",
+"INTERNET_PORT":"INTERNET_PORT",
+"PCCERT_CHAIN_CONTEXT":"CERT_CHAIN_CONTEXT*",
+"INTERNET_STATUS_CALLBACK":"INTERNET_STATUS_CALLBACK",
+"PDWORDLONG":"DWORDLONG*",
+"P3PHANDLE":"void*",
+"LPINTERNET_CACHE_CONTAINER_INFOA":"INTERNET_CACHE_CONTAINER_INFOA*",
+"LPINTERNET_CACHE_CONTAINER_INFOW":"INTERNET_CACHE_CONTAINER_INFOW*",
+"LPINTERNET_CACHE_CONFIG_INFOA":"INTERNET_CACHE_CONFIG_INFOA*",
+"LPINTERNET_CACHE_CONFIG_INFOW":"INTERNET_CACHE_CONFIG_INFOW*",
+"LPINTERNET_CACHE_GROUP_INFOA":"INTERNET_CACHE_GROUP_INFOA*",
+"LPINTERNET_CACHE_GROUP_INFOW":"INTERNET_CACHE_GROUP_INFOW*",
+"GOPHER_ATTRIBUTE_ENUMERATOR":"GOPHER_ATTRIBUTE_ENUMERATOR",
+"LPURL_COMPONENTSA":"URL_COMPONENTSA*",
+"LPURL_COMPONENTSW":"URL_COMPONENTSW*",
+"CACHE_OPERATOR":"CACHE_OPERATOR",
+"P3PURL":"char*",
+"P3PCURL":"char*",
+"P3PCXSL":"BSTR",
+"WPAD_CACHE_DELETE":"WPAD_CACHE_DELETE",
+"CLSID":"CLSID",
+"LPGOPHER_FIND_DATAA":"GOPHER_FIND_DATAA*",
+"LPGOPHER_FIND_DATAW":"GOPHER_FIND_DATAW*",
+"INTERNET_SCHEME":"INTERNET_SCHEME",
+"LPINTERNET_SECURITY_INFO":"INTERNET_SECURITY_INFO*",
+"BSTR":"BSTR",
+"SOCKET":"SOCKET",
+"SOCK_STREAM":"SOCK_STREAM",
+"SOCK_SEQPACKET":"SOCK_SEQPACKET",
+"SOCK_DGRAM":"SOCK_DGRAM",
+"IPV6STRICT":"IPV6STRICT",
+"SOCKADDR":"SOCKADDR",
+"MIDL":"MIDL",
+"LPWSADATA":"LPWSADATA",
+"FRAME_POINTERS":"FRAME_POINTERS",
+"fd_set": "fd_set",
+"sockaddr": "sockaddr",
+"u_long": "ulong",
+"u_short": "ushort",
+"u_int": "uint",
+"hostent": "hostent",
+"protoent": "protoent",
+"servent": "servent",
+"LPSERVICE_ASYNC_INFO": "SERVICE_ASYNC_INFO*",
+"LPSERVICE_INFOA": "SERVICE_INFOA*",
+"LPSERVICE_INFOW": "SERVICE_INFOW*",
+"LPTRANSMIT_FILE_BUFFERS": "TRANSMIT_FILE_BUFFERS*",
+"PCONTEXT_EX":"CONTEXT_EX*",
+"PUNICODE_STRING":"UNICODE_STRING*",
+"PRTL_RUN_ONCE":"RTL_RUN_ONCE*",
+"PIO_STATUS_BLOCK":"IO_STATUS_BLOCK*",
+"PCSZ":"char*",
+"PANSI_STRING":"ANSI_STRING*",
+"PUNWIND_HISTORY_TABLE":"UNWIND_HISTORY_TABLE*",
+"POBJECT_ATTRIBUTES":"OBJECT_ATTRIBUTES*",
+"PGET_RUNTIME_FUNCTION_CALLBACK":"GET_RUNTIME_FUNCTION_CALLBACK*",
+"PDWORD64":"DWORD64*",
+"_EXCEPTION_RECORD":"_EXCEPTION_RECORD",
+"PKNONVOLATILE_CONTEXT_POINTERS":"KNONVOLATILE_CONTEXT_POINTERS*",
+"PIO_APC_ROUTINE":"IO_APC_ROUTINE*",
+"PROCESSINFOCLASS":"PROCESSINFOCLASS",
+"THREADINFOCLASS":"THREADINFOCLASS",
+"OBJECT_INFORMATION_CLASS":"OBJECT_INFORMATION_CLASS",
+"SYSTEM_INFORMATION_CLASS":"SYSTEM_INFORMATION_CLASS",
+"PCANSI_STRING":"ANSI_STRING*",
+"SLIST_HEADER":"SLIST_HEADER",
+"PSTRING":"STRING*",
+"PRTL_RUN_ONCE_INIT_FN":"RTL_RUN_ONCE_INIT_FN*",
+"PEXCEPTION_ROUTINE":"EXCEPTION_ROUTINE*",
+"PFRAME_POINTERS":"FRAME_POINTERS*",
+"DL_EUI48":"DL_EUI48",
+"LPWSABUF":"WSABUF*",
+"LPWSAOVERLAPPED":"WSAOVERLAPPED*",
+"LPSOCKADDR":"SOCKADDR*",
+"LPWSAPROTOCOL_INFOW":"WSAPROTOCOL_INFOW*",
+"LPQOS":"QOS*",
+"LPWSAOVERLAPPED_COMPLETION_ROUTINE":"WSAOVERLAPPED_COMPLETION_ROUTINE*",
+"LPWSAPROTOCOL_INFOA":"WSAPROTOCOL_INFOA*",
+"LPLOOKUPSERVICE_COMPLETION_ROUTINE":"LOOKUPSERVICE_COMPLETION_ROUTINE*",
+"LPBLOB":"BLOB*",
+"LPWSAQUERYSETA":"WSAQUERYSETA*",
+"LPWSAQUERYSETW":"WSAQUERYSETW*",
+"PADDRINFOEXA":"ADDRINFOEXA*",
+"PADDRINFOEXW":"ADDRINFOEXW*",
+"PADDRINFOW":"ADDRINFOW*",
+"SOCKET_ADDRESS":"SOCKET_ADDRESS",
+"LPWSASERVICECLASSINFOA":"WSASERVICECLASSINFOA*",
+"LPWSASERVICECLASSINFOW":"WSASERVICECLASSINFOW*",
+"WSC_PROVIDER_INFO_TYPE":"WSC_PROVIDER_INFO_TYPE",
+"PADDRINFOA":"ADDRINFOA*",
+"PCHAR":"char*",
+"PMIB_IPNET_ROW2":"MIB_IPNET_ROW2*",
+"ADDRINFOEXA":"ADDRINFOEXA",
+"ADDRINFOEXW":"ADDRINFOEXW",
+"ADDRINFOW":"ADDRINFOW",
+"LPCONDITIONPROC":"CONDITIONPROC*",
+"LPCNSPV2_ROUTINE":"NSPV2_ROUTINE*",
+"PSOCKET_ADDRESS_LIST":"SOCKET_ADDRESS_LIST*",
+"LPWSANAMESPACE_INFOA":"WSANAMESPACE_INFOA*",
+"LPWSANAMESPACE_INFOEXA":"WSANAMESPACE_INFOEXA*",
+"LPWSANAMESPACE_INFOEXW":"WSANAMESPACE_INFOEXW*",
+"LPWSANAMESPACE_INFOW":"WSANAMESPACE_INFOW*",
+"LPWSANETWORKEVENTS":"WSANETWORKEVENTS*",
+"ADDRINFOA":"ADDRINFOA",
+"timeval": "timeval",
+"socklen_t": "socklen_t",
+"size_t": "size_t",
+"WSAEVENT": "WSAEVENT",
+"LPWSACOMPLETION": "WSACOMPLETION*",
+"LPWSAPOLLFD": "WSAPOLLFD*",
+"LPWSAMSG": "WSAMSG*",
+"WSAESETSERVICEOP": "WSAESETSERVICEOP",
+"GROUP": "GROUP",
+"VARIANT":"VARIANT",
+"LPSAFEARRAY":"SAFEARRAY*",
+"LPVARIANT":"VARIANT*",
+"DATE":"DATE",
+"LONG64":"LONG64",
+"SAFEARRAY":"SAFEARRAY",
+"VARIANT_BOOL":"VARIANT_BOOL",
+"DECIMAL":"DECIMAL",
+"LPDECIMAL":"DECIMAL*",
+"VARTYPE":"VARTYPE",
+"VARIANTARG":"VARIANTARG",
+"LPCY":"LPCY",
+"CY":"CY",
+"OLECHAR":"OLECHAR",
+"REFGUID":"REFGUID",
+"SYSKIND":"SYSKIND",
+"REFIID":"REFIID",
+"SAFEARRAYBOUND":"SAFEARRAYBOUND",
+"UDATE":"UDATE",
+"LPDISPATCH":"DISPATCH*",
+"DISPPARAMS":"DISPPARAMS",
+"DISPID":"DISPID",
+"REFCLSID":"REFCLSID",
+"NUMPARSE":"NUMPARSE",
+"LPBSTR":"BSTR*",
+"LPSTREAM":"STREAM*",
+"LPUNKNOWN":"UNKNOWN*",
+"OLE_COLOR":"OLE_COLOR",
+"HUGEP":"HUGEP",
+"EXCEPINFO":"EXCEPINFO",
+"INTERFACEDATA":"INTERFACEDATA",
+"CALLCONV":"CALLCONV",
+"LPCUSTDATA":"CUSTDATA*",
+"REGKIND":"REGKIND",
+"LPOCPFIPARAMS":"OCPFIPARAMS*",
+"LPCLSID":"CLSID*",
+"LPPICTDESC":"PICTDESC*",
+"LPFONTDESC":"FONTDESC*",
+"WINOLEAUTAPI":"HRESULT",
+"WINOLECTLAPI":"HRESULT",
+"STDAPI":"HRESULT",
+"float":"float",
+"double":"double",
+"IDispatch":"IDispatch",
+"ulong": "ulong",
+"uchar": "uchar",
+"ITypeInfo":"ITypeInfo",
+"IUnknown":"IUnknown",
+"IRecordInfo":"IRecordInfo",
+"ICreateTypeLib":"ICreateTypeLib",
+"ITypeLib":"ITypeLib",
+"ICreateTypeLib2":"ICreateTypeLib2",
+"IErrorInfo":"IErrorInfo",
+"ICreateErrorInfo":"ICreateErrorInfo",
+"CLIPFORMAT":"CLIPFORMAT",
+"LPSTORAGE":"STORAGE*",
+"LPMONIKER":"MONIKER*",
+"STGMEDIUM":"STGMEDIUM",
+"LPOLECLIENTSITE":"OLECLIENTSITE*",
+"LPFORMATETC":"FORMATETC*",
+"LPDATAOBJECT":"DATAOBJECT*",
+"PROPVARIANT":"PROPVARIANT",
+"LPOLEOBJECT":"OLEOBJECT*",
+"SNB":"SNB",
+"OLESTATUS":"OLESTATUS",
+"COSERVERINFO":"COSERVERINFO",
+"MULTI_QI":"MULTI_QI",
+"LPDATAADVISEHOLDER":"DATAADVISEHOLDER*",
+"LPOLECLIENT":"OLECLIENT*",
+"LHCLIENTDOC":"LHCLIENTDOC",
+"SERIALIZEDPROPERTYVALUE":"SERIALIZEDPROPERTYVALUE",
+"SOLE_AUTHENTICATION_SERVICE":"SOLE_AUTHENTICATION_SERVICE",
+"RPC_AUTH_IDENTITY_HANDLE":"RPC_AUTH_IDENTITY_HANDLE",
+"LPMESSAGEFILTER":"MESSAGEFILTER*",
+"LPBC":"LPBC",
+"LPLOCKBYTES":"LOCKBYTES*",
+"FMTID":"FMTID",
+"OLEOPT_RENDER":"OLEOPT_RENDER",
+"OLECLIPFORMAT":"OLECLIPFORMAT",
+"HOLEMENU":"HOLEMENU",
+"LPOLESTREAM":"OLESTREAM*",
+"LPOLEINPLACEFRAME":"OLEINPLACEFRAME*",
+"REFFMTID":"REFFMTID",
+"STGOPTIONS":"STGOPTIONS",
+"REFPROPVARIANT":"REFPROPVARIANT",
+"PROPVAR_CHANGE_FLAGS":"PROPVAR_CHANGE_FLAGS",
+"DDERR_NOTINITIALIZED":"DDERR_NOTINITIALIZED",
+"CO_E_NOTINITIALIZED":"CO_E_NOTINITIALIZED",
+"CLSCTX_INPROC_SERVER":"CLSCTX_INPROC_SERVER",
+"APTTYPE":"APTTYPE",
+"APTTYPEQUALIFIER":"APTTYPEQUALIFIER",
+"LPMALLOC":"MALLOC*",
+"BIND_OPTS":"BIND_OPTS",
+"LPMARSHAL":"MARSHAL*",
+"COMSD":"COMSD",
+"QUERYCONTEXT":"QUERYCONTEXT",
+"RPC_AUTHZ_HANDLE":"RPC_AUTHZ_HANDLE",
+"LPINITIALIZESPY":"INITIALIZESPY*",
+"LPMALLOCSPY":"MALLOCSPY*",
+"LPSURROGATE":"SURROGATE*",
+"LPOLEADVISEHOLDER":"OLEADVISEHOLDER*",
+"LPDROPSOURCE":"DROPSOURCE*",
+"LPRUNNINGOBJECTTABLE":"RUNNINGOBJECTTABLE*",
+"LPIID":"IID*",
+"LPCLASSFACTORY":"CLASSFACTORY*",
+"LPOLEMENUGROUPWIDTHS":"OLEMENUGROUPWIDTHS*",
+"LPENUMFORMATETC":"ENUMFORMATETC*",
+"LPENUMOLEVERB":"ENUMOLEVERB*",
+"LPPERSISTSTORAGE":"PERSISTSTORAGE*",
+"LPPERSISTSTREAM":"PERSISTSTREAM*",
+"LPOLEINPLACEACTIVEOBJECT":"OLEINPLACEACTIVEOBJECT*",
+"LPOLEINPLACEFRAMEINFO":"OLEINPLACEFRAMEINFO*",
+"LPDROPTARGET":"DROPTARGET*",
+"LPSTGMEDIUM":"STGMEDIUM*",
+"PROPID":"PROPID",
+"WINOLEAPI":"HRESULT",
+"uchar*":"uchar*",
+"PSSTDAPI":"HRESULT",
+"IBindCtx":"IBindCtx",
+"uCLSSPEC":"uCLSSPEC",
+"IChannelHook":"IChannelHook",
+"IBindStatusCallback":"IBindStatusCallback",
+"IAdviseSink":"IAdviseSink",
+"PMemoryAllocator":"PMemoryAllocator*",
+"IPropertySetStorage":"IPropertySetStorage",
+"IStorage":"IStorage",
+"SERIALIZEDPROPERTYVALUE":"SERIALIZEDPROPERTYVALUE",
+"IFillLockBytes":"IFillLockBytes",
+"SHSTDAPI":"HRESULT",
+"PCIDLIST_ABSOLUTE":"ITEMIDLIST_ABSOLUTE*",
+"PIDLIST_ABSOLUTE":"ITEMIDLIST_ABSOLUTE*",
+"PCUIDLIST_RELATIVE":"ITEMIDLIST_RELATIVE*",
+"PCUITEMID_CHILD":"ITEMID_CHILD*",
+"PIDLIST_RELATIVE":"IDLIST_RELATIVE*",
+"REFKNOWNFOLDERID":"REFKNOWNFOLDERID",
+"HDROP":"HDROP",
+"PCUITEMID_CHILD_ARRAY":"ITEMID_CHILD_ARRAY*",
+"SHFOLDERAPI":"HRESULT",
+"PUIDLIST_RELATIVE":"IDLIST_RELATIVE*",
+"HIMAGELIST":"HIMAGELIST",
+"HPSXA":"HPSXA",
+"PITEMID_CHILD":"ITEMID_CHILD*",
+"LPFNADDPROPSHEETPAGE":"FNADDPROPSHEETPAGE*",
+"GETPROPERTYSTOREFLAGS":"GETPROPERTYSTOREFLAGS",
+"REFPROPERTYKEY":"REFPROPERTYKEY",
+"SFGAOF":"SFGAOF",
+"LPSHQUERYRBINFO":"SHQUERYRBINFO*",
+"CABINETSTATE":"CABINETSTATE",
+"PROPSPEC":"PROPSPEC",
+"PUITEMID_CHILD":"ITEMID_CHILD*",
+"PZPCWSTR":"wchar**",
+"LPSHELLSTATE":"SHELLSTATE*",
+"SFVM_SETITEMPOS":"SFVM_SETITEMPOS",
+"FORMATETC":"FORMATETC",
+"PCUIDLIST_RELATIVE_ARRAY":"IDLIST_RELATIVE_ARRAY*",
+"RESTRICTIONS":"RESTRICTIONS",
+"AUTO_SCROLL_DATA":"AUTO_SCROLL_DATA",
+"LPCSHITEMID":"SHITEMID*",
+"LPCTSTR":"TCHAR*",
+"LPCSFV":"CSFV*",
+"ASSOCIATIONELEMENT":"ASSOCIATIONELEMENT",
+"PROPERTYKEY":"PROPERTYKEY",
+"LPWSTR*":"wchar**",
+"SFV_CREATE":"SFV_CREATE",
+"PAPPBARDATA":"APPBARDATA*",
+"ASSOC_FILTER":"ASSOC_FILTER",
+"LPBROWSEINFOA":"BROWSEINFOA*",
+"LPBROWSEINFOW":"BROWSEINFOW*",
+"DEFCONTEXTMENU":"DEFCONTEXTMENU",
+"PSHCREATEPROCESSINFOW":"SHCREATEPROCESSINFOW*",
+"PCIDLIST_ABSOLUTE_ARRAY":"LPCITEMIDLIST*",
+"LPSHFILEOPSTRUCTA":"SHFILEOPSTRUCTA*",
+"LPSHFILEOPSTRUCTW":"SHFILEOPSTRUCTW*",
+"SHFILEINFOA":"SHFILEINFOA",
+"SHFILEINFOW":"SHFILEINFOW",
+"DATAOBJ_GET_ITEM_FLAGS":"DATAOBJ_GET_ITEM_FLAGS",
+"SIGDN":"SIGDN",
+"GPFIDL_FLAGS":"int",
+"SHELLFLAGSTATE":"SHELLFLAGSTATE",
+"SHSTOCKICONID":"SHSTOCKICONID",
+"SHSTOCKICONINFO":"SHSTOCKICONINFO",
+"OPENASINFO":"OPENASINFO",
+"DEFINE_GUID":"DEFINE_GUID",
+"CLSID_WPD_NAMESPACE_EXTENSION":"CLSID_WPD_NAMESPACE_EXTENSION",
+"QUERY_USER_NOTIFICATION_STATE":"QUERY_USER_NOTIFICATION_STATE",
+"LIBRARYMANAGEDIALOGOPTIONS":"LIBRARYMANAGEDIALOGOPTIONS",
+"SHELLEXECUTEINFOA":"SHELLEXECUTEINFOA",
+"SHELLEXECUTEINFOW":"SHELLEXECUTEINFOW",
+"PNOTIFYICONDATAA":"NOTIFYICONDATAA*",
+"NOTIFYICONIDENTIFIER":"NOTIFYICONIDENTIFIER",
+"PNOTIFYICONDATAW":"NOTIFYICONDATAW*",
+"LPFNDFMCALLBACK":"FNDFMCALLBACK*",
+"LPSHFOLDERCUSTOMSETTINGS":"SHFOLDERCUSTOMSETTINGS*",
+"IShellFolder":"IShellFolder",
+"IShellItem":"IShellItem",
+"IDataObject":"IDataObject",
+"IPropertyStorage":"IPropertyStorage",
+"IStream":"IStream",
+"IShellView":"IShellView",
+"IShellItemArray":"IShellItemArray",
+"IEnumFORMATETC":"IEnumFORMATETC",
+"IShellBrowser":"IShellBrowser",
+"IStream*":"IStream*",
+"IDropSource":"IDropSource",
+"IContextMenu*":"IContextMenu*",
+"IPropertyStore":"IPropertyStore",
+"IEnumAssocHandlers":"IEnumAssocHandlers",
+"IFileOperation":"IFileOperation",
+"IFileOperationProgressSink":"IFileOperationProgressSink",
+"IContextMenu":"IContextMenu",
+"SHChangeNotifyEntry":"SHChangeNotifyEntry",
+"SHGetPathFromIDListEx":"SHGetPathFromIDListEx",
+"IShellFolder":"IShellFolder",
+"SCNRT_STATUS": "SCNRT_STATUS",
+"LWSTDAPI":"HRESULT",
+"HUSKEY":"HUSKEY",
+"ASSOCF":"ASSOCF",
+"SHREGENUM_FLAGS":"SHREGENUM_FLAGS",
+"STRRET":"STRRET",
+"ASSOCSTR":"ASSOCSTR",
+"SRRF":"SRRF",
+"PHUSKEY":"HUSKEY*",
+"SHREGDEL_FLAGS":"SHREGDEL_FLAGS",
+"STIF_FLAGS":"STIF_FLAGS",
+"SHGLOBALCOUNTER":"SHGLOBALCOUNTER",
+"SHCT_FLAGS":"SHCT_FLAGS",
+"ASSOCKEY":"ASSOCKEY",
+"URLIS":"URLIS",
+"PARSEDURLA":"PARSEDURLA",
+"PARSEDURLW":"PARSEDURLW",
+"IConnectionPoint":"IConnectionPoint",
+"LPCQITAB":"QITAB*",
+"IQueryAssociations":"IQueryAssociations",
+"PERCEIVED":"PERCEIVED",
+"PERCEIVEDFLAG":"PERCEIVEDFLAG",
+"PZPCSTR":"char**",
+"SFBS_FLAGS":"SFBS_FLAGS",
+"PFNALLOC":"FNALLOC*",
+"PFNFREE":"FNFREE*",
+"FNFREE":"FNFREE",
+"FNALLOC":"FNALLOC",
+"LPTSTR":"LPTSTR",
+"PERF":"PERF",
+"PFNWRITE":"FNWRITE*",
+"LPALLOCATEBUFFER":"ALLOCATEBUFFER*",
+"LPFREEBUFFER":"FREEBUFFER*",
+"PFNFCIFILEPLACED":"FNFCIFILEPLACED*",
+"PFNFCIALLOC":"FNFCIALLOC*",
+"PFNFCIFREE":"FNFCIFREE*",
+"PFNFCIOPEN":"FNFCIOPEN*",
+"PFNFCIREAD":"FNFCIREAD*",
+"PFNFCIWRITE":"FNFCIWRITE*",
+"PFNFCICLOSE":"FNFCICLOSE*",
+"PFNFCISEEK":"FNFCISEEK*",
+"PFNFCIDELETE":"FNFCIDELETE*",
+"PFNFCIGETTEMPFILE":"FNFCIGETTEMPFILE*",
+"PCCAB":"CCAB*",
+"PFNOPEN":"FNOPEN*",
+"PFNREAD":"FNREAD*",
+"PFNCLOSE":"FNCLOSE*",
+"PFNSEEK":"FNSEEK*",
+"uint":"uint"
+}
 
 
 tokens_ignore_prefix = {"APIENTRY", "virtual", "DECLSPEC_NORETURN", "__kernel_entry",
 "W32KAPI", "WINGDIAPI", "__gdi_entry", "WMIAPI", "EXTERN_C", "WINADVAPI", "extern",
-"D2D1FORCEINLINE", "__kernel_entry"}
+"D2D1FORCEINLINE", "__kernel_entry", "WINUSERAPI",  "WSAAPI", "__checkReturn",
+"WINSOCK_API_LINKAGE", "WINGDIPAPI", "WINAPI", "PASCAL", "FAR", "NTAPI",
+"WSPAPI", "__RPC_USER", "WINSHELLAPI", "UNALIGNED"}
+
+types_in_parentheses = {"SHSTDAPI_", "LWSTDAPIV_", "STDAPI_"}
 
 unknown_types = dict() # We use this dictionary to save and print a list of unknown types.
 
@@ -645,22 +1146,37 @@ def parse_return_type(line):
     @in line - a string with a type to find.
     @out - returning type.
     '''
+    # There are return types that defined in parentheses (e.g. SHSTDAPI_(BOOL)).
+    for type_in_parentheses in types_in_parentheses:
+        if type_in_parentheses in line:
+            line = line[line.find('_')+1:]
+            line = line.replace("(", "")
+            line = line.replace(")", "")
+            break
+
     if ")" in line:
         line = remove_internal_parentheses(line)
 
     line = line.split(" ")
     func_type = None
     type_token_count = 0
+    uprefix = ""
     for element in line:
         if element in tokens_ignore_prefix or element == "" or "__" in element\
-           or (("WIN" in element or "NT" in element) and "API" in element):
+           or "//" in element or "/*" in element or "*\\" in element:
+            continue
+        if get_type(element) == None and ("WIN" in element or "NT" in element)\
+           and "API" in element:
+            continue
+        if "unsigned" in element:
+            uprefix = 'u'
             continue
         # Let's return "None" if we have more than 2 tokens that look like candidates for
         # the return type.
         if type_token_count >= 1:
-            print "Warning. Failed to parse line %s (%s)" % (line, element)
+            print("Warning. Failed to parse line %s (%s)" % (line, element))
             return "None"
-        func_type = element
+        func_type = uprefix + element
         type_token_count += 1
 
     if func_type != None:
@@ -738,7 +1254,7 @@ def parse_line(line, name):
     @in name - a name of WinAPI function.
     @out - a string with a function return type, name and arguments separated by |.
     '''
-
+    line = line.replace(" *", "*")
     prefix = line[:line.find(name)]
     suffix = line[line.find(name)+len(name) + 1:]
     new_prefix = parse_return_type(prefix)
@@ -756,10 +1272,24 @@ def check_api_exist(api_name, prototype_line):
     prototype_line = prototype_line[:-1]
     prototype_line = prototype_line.split(" ")
     for element in prototype_line:
-        element = element[:element.find("(")]
-        if element == api_name or element == "NtGdi" + api_name:
+        if element.find("(") != -1:
+            element = element[:element.find("(")]
+        if element == api_name or element == "NtGdi" + api_name or \
+        element == "NtUser" + api_name:
             return 1
     return 0
+
+def api_already_added(api_name, apis_added):
+    return api_name in apis_added
+
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = "The script is used for searching of"
@@ -769,19 +1299,29 @@ if __name__ == "__main__":
     default = "results\\")
     parser.add_argument('-parse_specific_file', help = "The option is used to specify for"
 " the script only a single file")
-
+    parser.add_argument("--skip_duplicates", type=str2bool, nargs='?', const=True, default=False,
+                        help="If specified the script will not parse API calls that exist in the config.")
     args = parser.parse_args()
 
     export_files = list()
     if args.parse_specific_file == None:
-        print "Parsing all files from %s" % args.results_path
+        print("Parsing all files from %s" % args.results_path)
         export_files = [f for f in listdir(args.results_path) if isfile(join(args.results_path, f))]
     else:
-        print "Parsing %s from %s" % (args.parse_specific_file, args.results_path)
+        print("Parsing %s from %s" % (args.parse_specific_file, args.results_path))
         if not args.parse_specific_file.endswith(".headers_out"):
-            print "File should end with *.headers_out"
+            print("File should end with *.headers_out")
             sys.exit(-1)
         export_files.append(args.parse_specific_file)
+
+    apis_added = list()
+    if args.skip_duplicates == True:
+        config = open("drltrace_win.config" , 'r').readlines()
+
+        for line in config:
+            if "|" not in line or line.startswith("#"):
+                continue
+            apis_added.append(line.split("|")[1])
 
     for file in export_files:
         if not file.endswith(".headers_out"): # parse only output of headers_parser.py
@@ -811,14 +1351,19 @@ if __name__ == "__main__":
             # check_api_entries function.
             if check_api_exist(name, function_str) == 0:
                 continue
+            # There are exported functions that were already added in the config. The user has
+            # option to skip parsing and outputing of such entries.
+            if args.skip_duplicates == True and api_already_added(name, apis_added):
+                print("Skipping duplicate %s" % name)
+                continue
             final_str = parse_line(function_str, name)
             file_write.write(line + "\n")
             file_write.write(final_str + "\n\n")
 
-    result = sorted( ((v,k) for k,v in unknown_types.iteritems()), reverse=True)
+    result = sorted(unknown_types.items(), key=operator.itemgetter(1), reverse = True)
     final_line = ""
-    for count, element in result:
-        if element.isupper(): # Types in Windows are usually in uppercase.
+    for element, count in result:
+        if element.isupper() or element.startswith("I") or element.startswith("SH"): # Types in Windows are usually in uppercase.
             final_line += "\"%s\":\"%s\", " % (element, element)
     file_write.write(final_line + "\n")
     file_write.close()

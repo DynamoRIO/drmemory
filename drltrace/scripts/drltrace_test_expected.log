@@ -1,0 +1,94 @@
+~~~~ ADVAPI32.dll!RegOpenKeyExW
+    arg 0: type=<unknown>
+    arg 1: SOFTWARE\Microsoft\Windows\CurrentVersion\Run type=wchar_t*
+    arg 2: 0x0 type=DWORD
+    arg 3: type=<unknown>
+~~~~ ADVAPI32.dll!RegQueryValueExW
+    arg 0: type=<unknown>
+    arg 1: TestKey type=wchar_t*
+    arg 2: 0x00000000 type=DWORD*
+    arg 5: => 0x400 type=DWORD*
+~~~~ ADVAPI32.dll!RegCloseKey
+    arg 0: type=<unknown>
+~~~~ USER32.dll!RegisterClassW
+    arg 0: type=<unknown>*
+~~~~ USER32.dll!CreateWindowExW
+    arg 0: 0x0 type=DWORD
+    arg 1: Sample Window Class type=wchar_t*
+    arg 2: Test Window type=wchar_t*
+    arg 3: type=DWORD
+    arg 4: type=int
+    arg 5: type=int
+~~~~ USER32.dll!BeginPaint
+    arg 0: type=<unknown>
+~~~~ GDI32.dll!CreateFontA
+    arg 0: 0x30 type=int
+    arg 1: 0x0 type=int
+    arg 2: 0x0 type=int
+    arg 3: 0x0 type=int
+    arg 4: 0x0 type=int
+    arg 5: 0x0 type=DWORD
+    arg 6: 0x1 type=DWORD
+    arg 7: 0x0 type=DWORD
+    arg 8: 0x1 type=DWORD
+    arg 9: 0x8 type=DWORD
+    arg 10: type=DWORD
+    arg 11: 0x5 type=DWORD
+    arg 12: 0x2 type=DWORD
+    arg 13: Test CreateFont type=char*
+~~~~ GDI32.dll!SelectObject
+    arg 0: type=<unknown>
+    arg 1: type=<unknown>
+~~~~ USER32.dll!SetRect
+    arg 1: 0x64 type=int
+    arg 2: 0x64 type=int
+    arg 3: 0x2bc type=int
+    arg 4: 0xc8 type=int
+~~~~ GDI32.dll!SetTextColor
+    arg 0: type=<unknown>
+    arg 1: type=<unknown>
+~~~~ USER32.dll!DrawTextW
+    arg 0: type=<unknown>
+    arg 1: Test Text type=wchar_t*
+    arg 2: 0xffffffff type=int
+    arg 3: type=<unknown>*
+    arg 4: type=uint
+~~~~ GDI32.dll!DeleteObject
+    arg 0: type=<unknown>
+~~~~ USER32.dll!DestroyWindow
+    arg 0: type=<unknown>
+~~~~ USER32.dll!UnregisterClassW
+    arg 0: Sample Window Class type=wchar_t*
+    arg 1: type=<unknown>
+~~~~ WININET.dll!InternetCreateUrlW
+    arg 0: type=<unknown>*
+    arg 1: type=DWORD
+    arg 3: => 0x400 type=DWORD*
+~~~~ WININET.dll!InternetCanonicalizeUrlW
+    arg 0: http://drmemory.org/ docs type=wchar_t*
+    arg 2: => 0x400 type=DWORD*
+    arg 3: 0x80000000 type=DWORD
+~~~~ WS2_32.dll!gethostbyname
+    arg 0: http://drmemory.org type=char*
+~~~~ WS2_32.dll!WSAGetLastError
+    arg 0: type=void size=0x0
+~~~~ MSWSOCK.dll!GetTypeByNameA
+    arg 0: TEST SERVER type=char*
+    arg 1: type=<unknown>*
+~~~~ KERNEL32.dll!GetThreadLocale
+    arg 0: type=void size=0x0
+~~~~ OLEAUT32.dll!VarI4FromStr
+    arg 0: 01453 type=wchar_t*
+    arg 1: type=LCID
+    arg 2: type=<unknown>
+~~~~ ole32.dll!OleInitialize
+    arg 0: 0x00000000 => 0x00000000 type=void*
+~~~~ ole32.dll!OleSetClipboard
+    arg 0: <null> type=<unknown>*
+~~~~ ole32.dll!OleUninitialize
+    arg 0: 0x00000000 type=void
+~~~~ SHELL32.dll!PathIsExe
+    arg 0: C:\Windows\System32\calc.exe type=wchar_t*
+~~~~ SHLWAPI.dll!ParseURLW
+    arg 0: http://drmemory.org/docs type=wchar_t*
+    arg 1: type=<unknown>*

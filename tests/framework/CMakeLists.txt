@@ -146,6 +146,11 @@ if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
   set_property(TEST strace_test APPEND PROPERTY DEPENDS hello)
 endif ()
 
+# drltrace tests
+if (WIN32)
+  add_drmf_test_app(drltrace_test_app drltrace_test_app.cpp)
+endif ()
+
 # drfuzz tests
 add_drmf_test_app(drfuzz_app_empty drfuzz_app_empty.c)
 add_drmf_test(drfuzz_test_empty drfuzz_app_empty drfuzz_client_empty.c

@@ -168,10 +168,10 @@ if (BUILD_TOOL_TESTS)
   get_target_path_for_execution(drltrace_path drltrace)
   get_target_path_for_execution(app_path drsyscall_app)
   prefix_cmd_if_necessary(drltrace_path OFF ${drltrace_path})
+
   add_test(drltrace ${drltrace_path} -- ${app_path})
   add_test(drltrace_libcalls ${drltrace_path} -logdir - -print_ret_addr -- ${app_path})
   add_test(drltrace_symargs ${drltrace_path} -logdir - -num_max_args 4 -- ${app_path})
-
   add_test(drltrace_libargs ${drltrace_path} -logdir - -only_from_app -- ${app_path})
 
   #regex strings for libcalls and arguments printing test
@@ -199,11 +199,34 @@ else ()
 
   set(libcall_name1 "~~([0-9a-f]+)~~ libc.so.6!puts\n")
   set(libcall_name2 "~~([0-9a-f]+)~~ libc.so.6!open\n")
-endif(WIN32)
+endif (WIN32)
   set_tests_properties(drltrace_libcalls PROPERTIES PASS_REGULAR_EXPRESSION
                        ${libcall_name1}${libcall_args1_01}${libcall_args1_02}${libcall_ret})
   set_tests_properties(drltrace_symargs PROPERTIES PASS_REGULAR_EXPRESSION
                        ${libcall_name2}${libcall_args2_0}${libcall_args2_1})
   set_tests_properties(drltrace_libargs PROPERTIES PASS_REGULAR_EXPRESSION
                        ${libcall_both_variants})
+
+if (WIN32)
+  # We use an external python script here to have a flexible mechanism for
+  # drltrace log file checking. The python script called test_drltrace_out.py
+  # launches drltrace and searches for expected API calls and their arguments
+  # listed in external file drltrace_test_expected.log. See description in
+  # test_drltrace_out.py for additional details.
+  find_program(PYTHON_PATH "python")
+if (PYTHON_PATH)
+  get_target_path_for_execution(drltrace_test_app_path drltrace_test_app)
+  set(python_test_script_out ${PROJECT_BINARY_DIR}/${BUILD_BIN}/test_drltrace_out.py)
+  set(expected_log_path_out ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drltrace_test_expected.log)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_drltrace_out.py
+                 ${python_test_script_out} COPYONLY)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/drltrace_test_expected.log
+                 ${expected_log_path_out} COPYONLY)
+  add_test(drltrace_test_all_libcalls ${PYTHON_PATH} ${python_test_script_out}
+           ${expected_log_path_out} ${drltrace_path} ${drltrace_test_app_path})
+else ()
+  message("Python not found. Some tests for drltrace will not be active.")
+endif (PYTHON_PATH)
+endif (WIN32)
+
 endif (BUILD_TOOL_TESTS)
