@@ -229,7 +229,7 @@ endif (APPLE)
 
 # N.B.: When updating this, update all instances in .github/workflows/ci-package.yml.
 # We should find a way to share (xref DRi#1565).
-set(VERSION_NUMBER_DEFAULT "2.5.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "2.6.${VERSION_NUMBER_PATCHLEVEL}")
 # Do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # Avoid "VERSION_NUMBER" name since conflics w/ DR's var.
@@ -812,7 +812,7 @@ else ()
 endif ()
 
 # when updating this, also update the git submodule
-set(DynamoRIO_VERSION_REQUIRED "8.0.18915")
+set(DynamoRIO_VERSION_REQUIRED "10.0.0")
 
 set(DR_install_dir "dynamorio")
 
