@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2023 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -228,14 +228,15 @@ but should eliminate skipped frames.
 ********************
 \section sec_prep_linux Linux
 
-Dr. Memory currently only supports DWARF2 line information, not stabs.
-DWARF2 is the default for modern versions of \p gcc.
+Dr. Memory currently only supports DWARF2 through DWARF4 line information, not
+stabs nor DWARF5.  DWARF4 can be requested from the compiler with the `-gdwarf-4`
+flag.
 
 Here is a sample command line for compiling your application that combines
 all of the above recommendations:
 
 \verbatim
-g++ -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+g++ -g -gdwarf-4 -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 \endverbatim
 
 ********************
@@ -243,14 +244,15 @@ g++ -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 
 Ensure your compiler is able to build 32-bit applications.
 
-Dr. Memory currently only supports DWARF2 line information, not stabs.
-DWARF2 is the default for modern versions of \p gcc as well as \p clang.
+Dr. Memory currently only supports DWARF2 through DWARF4 line information, not
+stabs nor DWARF5.  DWARF4 can be requested from the compiler with the `-gdwarf-4`
+flag.
 
 Here is a sample command line for compiling your application that combines
 all of the above recommendations:
 
 \verbatim
-c++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+c++ -m32 -g -gdwarf-4 -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 \endverbatim
 
 ********************

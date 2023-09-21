@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2022 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2023 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -226,7 +226,18 @@ struct rlimit64 {
  * each (-> 8 bytes vs. 128 bytes)
  */
 #define MAX_SIGNUM  64
-#define _NSIG_WORDS (MAX_SIGNUM / sizeof(unsigned long))
+/* size of long */
+#ifdef X64
+#    define _NSIG_BPW 64
+#else
+#    define _NSIG_BPW 32
+#endif
+#ifdef LINUX
+#    define _NSIG_WORDS (MAX_SIGNUM / _NSIG_BPW)
+#else
+#    define _NSIG_WORDS 1 /* avoid 0 */
+#endif
+
 typedef struct _kernel_sigset_t {
     unsigned long sig[_NSIG_WORDS];
 } kernel_sigset_t;

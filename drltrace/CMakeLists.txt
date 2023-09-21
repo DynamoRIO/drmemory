@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.    All rights reserved.
+# Copyright (c) 2010-2023 Google, Inc.    All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.    All rights reserved.
 # **********************************************************
 
@@ -194,11 +194,11 @@ else ()
   set(libcall_both_variants "    arg 0: done \\(type=char\\*, size=0x([0-9a-f]+)\\)\n")
   set(libcall_args1_01 ${libcall_both_variants})
 
-  set(libcall_args2_0 "    arg 0: /dev/null \\(type=char \\*\\*, size=0x([0-9a-f]+)\\)\n")
-  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=<unknown>\\*, size=0x([0-9a-f]+)\\)\n")
+  set(libcall_args2_0 "    arg 0: /dev/null \\(type=char\\*, size=0x([0-9a-f]+)\\)\n")
+  set(libcall_args2_1 "    arg 1: 0x([0-9a-f]+) \\(type=int, size=0x([0-9a-f]+)\\)\n")
 
-  set(libcall_name1 "~~([0-9a-f]+)~~ libc.so.6!puts\n")
-  set(libcall_name2 "~~([0-9a-f]+)~~ libc.so.6!open\n")
+  set(libcall_name1 "~~([0-9a-f]+)~~ libc.so.6!.*puts\n")
+  set(libcall_name2 "~~([0-9a-f]+)~~ libc.so.6!.*open\n")
 endif(WIN32)
   set_tests_properties(drltrace_libcalls PROPERTIES PASS_REGULAR_EXPRESSION
                        ${libcall_name1}${libcall_args1_01}${libcall_args1_02}${libcall_ret})

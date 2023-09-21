@@ -50,7 +50,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        submodules: recursive
 
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
@@ -121,7 +121,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        submodules: recursive
 
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
@@ -170,7 +170,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        submodules: recursive
 
     - name: Fetch Sources
       run: git fetch --no-tags --depth=1 origin master
@@ -246,7 +246,7 @@ jobs:
       # We need a checkout to run git log for the version.
     - uses: actions/checkout@v2
       with:
-        submodules: true
+        submodules: recursive
 
     - name: Get Version
       id: version

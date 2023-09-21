@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # **********************************************************
-# Copyright (c) 2017 Google, Inc.    All rights reserved.
+# Copyright (c) 2017-2023 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Redistribution and use in source and binary forms, with or without
@@ -41,11 +41,11 @@ has_remote=$(git ls-remote origin ${branch})
 if test -z "${has_remote}"; then
     echo "No remote: updating with rebase from master."
     git pull --rebase --prune
-    git submodule update --init
+    git submodule update --init --recursive
 else
     echo "First, updating with rebase from remote ${branch}."
     git pull --rebase origin ${branch}
     echo -e "\nNow, merging changes from master."
     git pull --no-rebase --prune
-    git submodule update --init
+    git submodule update --init --recursive
 fi
