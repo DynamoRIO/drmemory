@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2023 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -60,7 +60,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 2.4.0 include:
+The changes between \TOOL_VERSION and version 2.5.0 include:
+ - Added glibc 2.34+ support on Linux.
+
+The changes between 2.5.0 and version 2.4.0 include:
  - Added better callstack walking on Linux via -callstack_use_unwind which
    is on by default.
 
