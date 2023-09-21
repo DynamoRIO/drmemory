@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2017-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2017-2023 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -45,6 +45,10 @@
 #undef TESTANY
 #include "utils.h"
 #include <string.h>
+
+using ::dynamorio::droption::droption_parser_t;
+using ::dynamorio::droption::DROPTION_SCOPE_ALL;
+using ::dynamorio::droption::DROPTION_SCOPE_FRONTEND;
 
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 

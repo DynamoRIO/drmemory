@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2023 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -32,6 +32,14 @@
 
 #include "droption.h"
 #include "drltrace_options.h"
+
+using ::dynamorio::droption::DROPTION_FLAG_ACCUMULATE;
+using ::dynamorio::droption::DROPTION_FLAG_INTERNAL;
+using ::dynamorio::droption::DROPTION_FLAG_SWEEP;
+using ::dynamorio::droption::DROPTION_SCOPE_ALL;
+using ::dynamorio::droption::DROPTION_SCOPE_CLIENT;
+using ::dynamorio::droption::DROPTION_SCOPE_FRONTEND;
+using ::dynamorio::droption::droption_t;
 
 /* Frontend scope is defined here because if logdir is a forbidden path we have to change
  * it and provide for our client manually.

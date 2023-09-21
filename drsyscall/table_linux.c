@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2022 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2023 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1100,7 +1100,14 @@ syscall_info_t syscall_info[] = {
     {{PACKNUM(299,337,365,AARCH64_recvmmsg),0},"recvmmsg", UNKNOWN, RLONG, 0, },
     {{PACKNUM(300,338,367,AARCH64_fanotify_init),0},"fanotify_init", UNKNOWN, RLONG, 0, },
     {{PACKNUM(301,339,368,AARCH64_fanotify_mark),0},"fanotify_mark", UNKNOWN, RLONG, 0, },
-    {{PACKNUM(302,340,369,AARCH64_prlimit64),0},"prlimit64", UNKNOWN, RLONG, 0, },
+    {{PACKNUM(302,340,369,AARCH64_prlimit64),0},"prlimit64", OK, RLONG, 4,
+     {
+         {0, sizeof(pid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(struct rlimit), R},
+         {3, sizeof(struct rlimit), W},
+     }
+    },
     {{PACKNUM(303,341,370,AARCH64_name_to_handle_at),0},"name_to_handle_at", UNKNOWN, RLONG, 0, },
     {{PACKNUM(304,342,371,AARCH64_open_by_handle_at),0},"open_by_handle_at", UNKNOWN, RLONG, 0, },
     {{PACKNUM(305,343,372,AARCH64_clock_adjtime),0},"clock_adjtime", UNKNOWN, RLONG, 0, },
@@ -1137,6 +1144,22 @@ syscall_info_t syscall_info[] = {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, 0, R|CT, CSTRING},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    /* TODO: Fill in the ones in between. */
+    {{PACKNUM(318,355,384,AARCH64_getrandom),0},"getrandom", OK, RLONG, 3,
+     {
+         {0, -1, W},
+         {1, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{PACKNUM(334,386,398,AARCH64_rseq),0},"rseq", OK, RLONG, 4,
+     {
+         {0, -1, R},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
 

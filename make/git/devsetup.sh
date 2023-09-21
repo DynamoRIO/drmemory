@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # **********************************************************
-# Copyright (c) 2014-2017 Google, Inc.    All rights reserved.
+# Copyright (c) 2014-2023 Google, Inc.    All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -24,7 +24,7 @@
 # immediately after cloning.
 
 # Set up submodules
-git submodule update --init
+git submodule update --init --recursive
 
 # Convert CRLF to LF on commit but not checkout:
 git config core.autocrlf input
