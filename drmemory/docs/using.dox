@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2023 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -204,10 +204,10 @@ These cross-platform steps apply to Linux, Mac, and Windows.
 
 In order to obtain line number information, compile your target
 application with debugging information enabled.
-On Linux, Dr. Memory supports ELF files with DWARF2 line information.
-On Mac, Dr. Memory supports Mach-O files with DWARF2 line information.  On
+On Linux, Dr. Memory supports ELF files with DWARF line information.
+On Mac, Dr. Memory supports Mach-O files with DWARF line information.  On
 Windows, Dr. Memory supports PDB debug information (produced by Visual
-Studio) as well as PECOFF files with DWARF2 line information (produced by
+Studio) as well as PECOFF files with DWARF line information (produced by
 MinGW gcc).
 
 ********************
@@ -228,15 +228,11 @@ but should eliminate skipped frames.
 ********************
 \section sec_prep_linux Linux
 
-Dr. Memory currently only supports DWARF2 through DWARF4 line information, not
-stabs nor DWARF5.  DWARF4 can be requested from the compiler with the `-gdwarf-4`
-flag.
-
 Here is a sample command line for compiling your application that combines
 all of the above recommendations:
 
 \verbatim
-g++ -g -gdwarf-4 -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+g++ -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
 \endverbatim
 
 ********************
@@ -244,9 +240,9 @@ g++ -g -gdwarf-4 -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o 
 
 Ensure your compiler is able to build 32-bit applications.
 
-Dr. Memory currently only supports DWARF2 through DWARF4 line information, not
-stabs nor DWARF5.  DWARF4 can be requested from the compiler with the `-gdwarf-4`
-flag.
+Dr. Memory currently only supports DWARF2 through DWARF4 line information on
+Mac, not stabs nor DWARF5.  DWARF4 can be requested from the compiler with the
+`-gdwarf-4` flag.
 
 Here is a sample command line for compiling your application that combines
 all of the above recommendations:
@@ -324,10 +320,10 @@ cl /Zi /MT /EHsc /Oy- /Ob0 /Femyapp.exe *.cpp
 \section sec_prep_mingw Windows MinGW
 
 Dr. Memory supports applications compiled with the MinGW gcc or g++
-compilers, but will only provide line number information if DWARF2
+compilers, but will only provide line number information if DWARF
 debugging information is present.  The default for MinGW gcc prior to
 version 4.3 is to use the stabs format, which is not supported by
-Dr. Memory.  Pass the \p -ggdb option to gcc to generate DWARF2 format
+Dr. Memory.  Pass the \p -ggdb option to gcc to generate DWARF format
 instead.
 
 You install the MinGW compiler in a Cygwin installation by running the
