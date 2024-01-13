@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1293,7 +1293,7 @@ insert_instr_counter(void *drcontext, instrlist_t *bb,
 
 static dr_emit_flags_t
 event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                         bool for_trace, bool translating, void **user_data OUT)
+                         bool for_trace, bool translating, void **user_data DR_PARAM_OUT)
 {
     /* we pass bi among all 4 phases */
     instru_info_t *ii = thread_alloc(drcontext, sizeof(*ii), HEAPSTAT_PERBB);

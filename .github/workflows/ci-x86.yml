@@ -78,7 +78,7 @@ jobs:
         sudo rsync -av ../extract/usr/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
         sudo rsync -av ../extract/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
         sudo rsync -av ../extract/usr/include/i386-linux-gnu/ /usr/include/
-        popd
+        rm *.deb
 
     # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
     - name: Downgrade cmake
