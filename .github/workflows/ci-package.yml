@@ -69,8 +69,8 @@ jobs:
           zlib1g:i386 zlib1g-dev:i386
         mkdir ../extract
         for i in *.deb; do dpkg-deb -x $i ../extract; done
-        sudo rsync -av ../extract/usr/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
-        sudo rsync -av ../extract/lib/i386-linux-gnu/ /usr/lib/i386-linux-gnu/
+        sudo rsync -av ../extract/usr/lib/i386-linux-gnu/ /lib32/
+        sudo rsync -av ../extract/lib/i386-linux-gnu/ /lib32/
         sudo rsync -av ../extract/usr/include/i386-linux-gnu/ /usr/include/
         rm *.deb
 
