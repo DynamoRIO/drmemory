@@ -66,8 +66,6 @@ jobs:
         sudo apt-get -y install doxygen jsonlint \
           g++-arm-linux-gnueabihf g++-aarch64-linux-gnu
         sudo add-apt-repository 'deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports focal main'
-        mkdir ../extract
-        pushd ../extract
         apt download libunwind8:armhf libunwind-dev:armhf liblzma5:armhf \
           zlib1g:armhf zlib1g-dev:armhf
         mkdir ../extract
