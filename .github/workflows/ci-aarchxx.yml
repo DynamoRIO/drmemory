@@ -73,6 +73,7 @@ jobs:
         for i in include lib; do sudo rsync -av ../extract/usr/${i}/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/${i}/; done
         sudo rsync -av ../extract/usr/include/ /usr/arm-linux-gnueabihf/include/
         sudo rsync -av ../extract/lib/arm-linux-gnueabihf/ /usr/arm-linux-gnueabihf/lib/
+        rm *.deb
 
     - name: Run Suite
       working-directory: ${{ github.workspace }}
