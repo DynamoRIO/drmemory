@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -138,7 +138,7 @@ set_brk(byte *new_val)
 #endif
 
 static void
-alloc_hook(void *wrapcxt, INOUT void **user_data);
+alloc_hook(void *wrapcxt, DR_PARAM_INOUT void **user_data);
 
 static void
 handle_alloc_post(void *wrapcxt, void *user_data);
@@ -967,7 +967,7 @@ replace_realloc_size_app(void *p)
 }
 
 static void
-replace_realloc_size_pre(void *wrapcxt, OUT void **user_data)
+replace_realloc_size_pre(void *wrapcxt, DR_PARAM_OUT void **user_data)
 {
     cls_alloc_t *pt = (cls_alloc_t *)
         drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_alloc);
@@ -1594,7 +1594,7 @@ modname_is_libc_or_libcpp(const char *modname)
 
 static bool
 distinguish_operator_by_decoding(routine_type_t generic_type,
-                                 routine_type_t *specific_type OUT,
+                                 routine_type_t *specific_type DR_PARAM_OUT,
                                  const char *name, const module_data_t *mod,
                                  size_t modoffs)
 {
@@ -1691,7 +1691,7 @@ distinguish_operator_by_decoding(routine_type_t generic_type,
  */
 static bool
 distinguish_operator_no_argtypes(routine_type_t generic_type,
-                                 routine_type_t *specific_type OUT,
+                                 routine_type_t *specific_type DR_PARAM_OUT,
                                  const char *name, const module_data_t *mod,
                                  size_t modoffs)
 {
@@ -2588,10 +2588,10 @@ malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *
  */
 
 #ifdef WINDOWS
-typedef size_t (__stdcall *rtl_size_func_t)(IN reg_t /*really HANDLE*/ Heap,
-                                            IN ULONG flags,
-                                            IN PVOID ptr);
-typedef size_t (*dbg_size_func_t)(IN byte *pc, int blocktype);
+typedef size_t (__stdcall *rtl_size_func_t)(DR_PARAM_IN reg_t /*really HANDLE*/ Heap,
+                                            DR_PARAM_IN ULONG flags,
+                                            DR_PARAM_IN PVOID ptr);
+typedef size_t (*dbg_size_func_t)(DR_PARAM_IN byte *pc, int blocktype);
 #else
 /* points at libc's version, used in initial heap walk */
 alloc_size_func_t libc_malloc_usable_size;
@@ -2944,7 +2944,7 @@ malloc_entry_redzone_size(malloc_entry_t *e)
 }
 
 static void
-malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info OUT)
+malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info DR_PARAM_OUT)
 {
     info->struct_size = sizeof(*info);
     info->base = e->start;
@@ -6391,23 +6391,23 @@ handle_userinfo_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     /* 3 related routines here:
      *   BOOLEAN NTAPI
      *   RtlGetUserInfoHeap(
-     *       IN PVOID HeapHandle,
-     *       IN ULONG Flags,
-     *       IN PVOID BaseAddress,
-     *       OUT PVOID *UserValue,
-     *       OUT PULONG UserFlags);
+     *       DR_PARAM_IN PVOID HeapHandle,
+     *       DR_PARAM_IN ULONG Flags,
+     *       DR_PARAM_IN PVOID BaseAddress,
+     *       DR_PARAM_OUT PVOID *UserValue,
+     *       DR_PARAM_OUT PULONG UserFlags);
      *   BOOLEAN NTAPI
      *   RtlSetUserValueHeap(
-     *       IN PVOID HeapHandle,
-     *       IN ULONG Flags,
-     *       IN PVOID BaseAddress,
-     *       IN PVOID UserValue);
+     *       DR_PARAM_IN PVOID HeapHandle,
+     *       DR_PARAM_IN ULONG Flags,
+     *       DR_PARAM_IN PVOID BaseAddress,
+     *       DR_PARAM_IN PVOID UserValue);
      *   BOOLEAN NTAPI
      *   RtlSetUserFlagsHeap(
-     *       IN PVOID HeapHandle,
-     *       IN ULONG Flags,
-     *       IN PVOID BaseAddress,
-     *       IN ULONG UserFlags);
+     *       DR_PARAM_IN PVOID HeapHandle,
+     *       DR_PARAM_IN ULONG Flags,
+     *       DR_PARAM_IN PVOID BaseAddress,
+     *       DR_PARAM_IN ULONG UserFlags);
      */
     app_pc base = (app_pc) drwrap_get_arg(wrapcxt, 2);
     if (malloc_is_native(base, pt, true))
@@ -6526,7 +6526,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     alloc_routine_entry_t *routine);
 
 static void
-alloc_hook(void *wrapcxt, INOUT void **user_data)
+alloc_hook(void *wrapcxt, DR_PARAM_INOUT void **user_data)
 {
     app_pc pc = drwrap_get_func(wrapcxt);
     /* XXX: for -conservative we should do a lookup and not trust *user_data
@@ -6957,7 +6957,7 @@ malloc_large_remove(byte *start)
 }
 
 bool
-malloc_large_lookup(byte *addr, byte **start OUT, size_t *size OUT)
+malloc_large_lookup(byte *addr, byte **start DR_PARAM_OUT, size_t *size DR_PARAM_OUT)
 {
     bool res = false;
     rb_node_t *node;

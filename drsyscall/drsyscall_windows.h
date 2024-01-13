@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -35,7 +35,7 @@ name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw, bool dup_n
 bool
 syscall_num_from_name(void *drcontext, const module_data_t *info,
                       const char *name, const char *optional_prefix,
-                      bool sym_lookup, drsys_sysnum_t *num_out OUT);
+                      bool sym_lookup, drsys_sysnum_t *num_out DR_PARAM_OUT);
 
 bool
 read_sysnum_file(void *drcontext, const char *sysnum_file, module_data_t *ntdll_data);
@@ -82,6 +82,6 @@ wingdi_process_arg(sysarg_iter_info_t *iter_info,
  */
 bool
 wingdi_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res,
-                         bool *success OUT);
+                         bool *success DR_PARAM_OUT);
 
 #endif /* _DRSYSCALL_WINDOWS_H_ */

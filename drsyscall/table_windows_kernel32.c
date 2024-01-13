@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -40,7 +40,7 @@
  */
 
 syscall_info_t syscall_kernel32_info[] = {
-    /* wchar_t *locale OUT, size_t locale_sz (assuming size in bytes) */
+    /* wchar_t *locale DR_PARAM_OUT, size_t locale_sz (assuming size in bytes) */
     {{0,0},"NtWow64CsrBasepNlsGetUserInfo", OK, RNTST, 2,
      {
          {0, -1, W|CT, SYSARG_TYPE_CSTRING_WIDE},

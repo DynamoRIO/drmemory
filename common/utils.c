@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -699,16 +699,16 @@ typedef struct _THREAD_BASIC_INFORMATION { // Information Class 0
 
 #define OBJ_CASE_INSENSITIVE    0x00000040L
 
-GET_NTDLL(NtQueryInformationThread, (IN HANDLE ThreadHandle,
-                                     IN THREADINFOCLASS ThreadInformationClass,
-                                     OUT PVOID ThreadInformation,
-                                     IN ULONG ThreadInformationLength,
-                                     OUT PULONG ReturnLength OPTIONAL));
+GET_NTDLL(NtQueryInformationThread, (DR_PARAM_IN HANDLE ThreadHandle,
+                                     DR_PARAM_IN THREADINFOCLASS ThreadInformationClass,
+                                     DR_PARAM_OUT PVOID ThreadInformation,
+                                     DR_PARAM_IN ULONG ThreadInformationLength,
+                                     DR_PARAM_OUT PULONG ReturnLength OPTIONAL));
 
-GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
-                         IN ACCESS_MASK DesiredAccess,
-                         IN POBJECT_ATTRIBUTES ObjectAttributes,
-                         IN PCLIENT_ID ClientId));
+GET_NTDLL(NtOpenThread, (DR_PARAM_OUT PHANDLE ThreadHandle,
+                         DR_PARAM_IN ACCESS_MASK DesiredAccess,
+                         DR_PARAM_IN POBJECT_ATTRIBUTES ObjectAttributes,
+                         DR_PARAM_IN PCLIENT_ID ClientId));
 
 TEB *
 get_TEB(void)
@@ -940,7 +940,7 @@ get_windows_version(void)
 }
 
 void
-get_windows_version_string(char *buf OUT, size_t bufsz)
+get_windows_version_string(char *buf DR_PARAM_OUT, size_t bufsz)
 {
     if (os_version.version == 0)
         init_os_version();
@@ -950,10 +950,10 @@ get_windows_version_string(char *buf OUT, size_t bufsz)
     buf[bufsz - 1] = '\0';
 }
 
-GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
-                                     OUT PVOID  info,
-                                     IN  ULONG  info_size,
-                                     OUT PULONG bytes_received));
+GET_NTDLL(NtQuerySystemInformation, (DR_PARAM_IN  SYSTEM_INFORMATION_CLASS info_class,
+                                     DR_PARAM_OUT PVOID  info,
+                                     DR_PARAM_IN  ULONG  info_size,
+                                     DR_PARAM_OUT PULONG bytes_received));
 
 app_pc
 get_highest_user_address(void)

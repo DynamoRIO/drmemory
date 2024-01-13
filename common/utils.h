@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -917,7 +917,7 @@ dr_os_version_t
 get_windows_version(void);
 
 void
-get_windows_version_string(char *buf OUT, size_t bufsz);
+get_windows_version_string(char *buf DR_PARAM_OUT, size_t bufsz);
 
 app_pc
 get_highest_user_address(void);
@@ -1037,8 +1037,8 @@ text_contains_any_string(const char *text, const char *patterns, bool ignore_cas
  * in "sol" and the end of the line (prior to any whitespace, if skip_ws) in "eol".
  */
 const char *
-find_next_line(const char *start, const char *eof, const char **sol OUT,
-               const char **eol OUT, bool skip_ws);
+find_next_line(const char *start, const char *eof, const char **sol DR_PARAM_OUT,
+               const char **eol DR_PARAM_OUT, bool skip_ws);
 
 /***************************************************************************
  * REGISTER CONVERSION UTILITIES

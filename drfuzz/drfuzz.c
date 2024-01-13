@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /*
@@ -196,7 +196,7 @@ bb_event(void *drcontext, void *tag, instrlist_t *bb,
          bool for_trace, bool translating);
 
 static void
-pre_fuzz_handler(void *wrapcxt, INOUT void **user_data);
+pre_fuzz_handler(void *wrapcxt, DR_PARAM_INOUT void **user_data);
 
 static void
 post_fuzz_handler(void *wrapcxt, void *user_data);
@@ -547,7 +547,7 @@ drfuzz_get_target_num_bbs(generic_func_t func_pc, uint64 *num_bbs)
 
 DR_EXPORT drmf_status_t
 drfuzz_get_arg(void *fuzzcxt, generic_func_t target_pc, int arg, bool original,
-               OUT void **arg_value)
+               DR_PARAM_OUT void **arg_value)
 {
     fuzz_pass_context_t *fp = (fuzz_pass_context_t *) fuzzcxt;
     pass_target_t *target;
@@ -580,7 +580,7 @@ drfuzz_set_arg(void *fuzzcxt, int arg, void *val)
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_get_target_user_data(IN generic_func_t target_pc, OUT void **user_data)
+drfuzz_get_target_user_data(DR_PARAM_IN generic_func_t target_pc, DR_PARAM_OUT void **user_data)
 {
     fuzz_target_t *target = hashtable_lookup(&fuzz_target_htable, target_pc);
 
@@ -592,8 +592,8 @@ drfuzz_get_target_user_data(IN generic_func_t target_pc, OUT void **user_data)
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_set_target_user_data(IN generic_func_t target_pc, IN void *user_data,
-                            IN void (*delete_callback)(void *user_data))
+drfuzz_set_target_user_data(DR_PARAM_IN generic_func_t target_pc, DR_PARAM_IN void *user_data,
+                            DR_PARAM_IN void (*delete_callback)(void *user_data))
 {
     fuzz_target_t *target = hashtable_lookup(&fuzz_target_htable, target_pc);
 
@@ -606,8 +606,8 @@ drfuzz_set_target_user_data(IN generic_func_t target_pc, IN void *user_data,
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_get_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
-                                       OUT void **user_data)
+drfuzz_get_target_per_thread_user_data(DR_PARAM_IN void *fuzzcxt, DR_PARAM_IN generic_func_t target_pc,
+                                       DR_PARAM_OUT void **user_data)
 {
     fuzz_pass_context_t *fp = (fuzz_pass_context_t *) fuzzcxt;
     pass_target_t *target;
@@ -626,9 +626,9 @@ drfuzz_get_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t targe
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_set_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
-                                       IN void *user_data,
-                                       IN void (*delete_callback)(void *fuzzcxt,
+drfuzz_set_target_per_thread_user_data(DR_PARAM_IN void *fuzzcxt, DR_PARAM_IN generic_func_t target_pc,
+                                       DR_PARAM_IN void *user_data,
+                                       DR_PARAM_IN void (*delete_callback)(void *fuzzcxt,
                                                                   void *user_data))
 {
     fuzz_pass_context_t *fp = (fuzz_pass_context_t *) fuzzcxt;
@@ -649,7 +649,7 @@ drfuzz_set_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t targe
 }
 
 static void
-pre_fuzz_handler(void *wrapcxt, INOUT void **user_data)
+pre_fuzz_handler(void *wrapcxt, DR_PARAM_INOUT void **user_data)
 {
     void *dcontext = drwrap_get_drcontext(wrapcxt);
     app_pc target_to_fuzz = drwrap_get_func(wrapcxt);
@@ -1058,7 +1058,7 @@ static drfuzz_mutator_api_t default_mutator = {
 };
 
 DR_EXPORT drmf_status_t
-drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api)
+drfuzz_mutator_load(DR_PARAM_IN const char *lib_path, DR_PARAM_INOUT drfuzz_mutator_api_t *api)
 {
     int *ver_compat, *ver_cur;
     char *func;
@@ -1112,7 +1112,7 @@ drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api)
 }
 
 DR_EXPORT drmf_status_t
-drfuzz_mutator_unload(IN drfuzz_mutator_api_t *api)
+drfuzz_mutator_unload(DR_PARAM_IN drfuzz_mutator_api_t *api)
 {
     if (api == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;

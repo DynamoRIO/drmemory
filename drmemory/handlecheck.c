@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -83,15 +83,15 @@ static hashtable_t gdi_handle_table;
 static hashtable_t user_handle_table;
 
 /* handle enumeration data structures and routines */
-GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
-                                     OUT PVOID  info,
-                                     IN  ULONG  info_size,
-                                     OUT PULONG bytes_received));
-GET_NTDLL(NtQueryInformationProcess, (IN HANDLE ProcessHandle,
-                                      IN PROCESSINFOCLASS ProcessInformationClass,
-                                      OUT PVOID ProcessInformation,
-                                      IN ULONG ProcessInformationLength,
-                                      OUT PULONG ReturnLength OPTIONAL));
+GET_NTDLL(NtQuerySystemInformation, (DR_PARAM_IN  SYSTEM_INFORMATION_CLASS info_class,
+                                     DR_PARAM_OUT PVOID  info,
+                                     DR_PARAM_IN  ULONG  info_size,
+                                     DR_PARAM_OUT PULONG bytes_received));
+GET_NTDLL(NtQueryInformationProcess, (DR_PARAM_IN HANDLE ProcessHandle,
+                                      DR_PARAM_IN PROCESSINFOCLASS ProcessInformationClass,
+                                      DR_PARAM_OUT PVOID ProcessInformation,
+                                      DR_PARAM_IN ULONG ProcessInformationLength,
+                                      DR_PARAM_OUT PULONG ReturnLength OPTIONAL));
 
 #define SYSTEM_HANDLE_INFORMATION_SIZE_INIT 0x10000
 #define SYSTEM_HANDLE_INFORMATION_LIST_SIZE(x) \
@@ -127,7 +127,7 @@ print_handle_list(SYSTEM_HANDLE_INFORMATION *list)
 
 /* the caller must free the list by calling free_system_handle_list */
 static SYSTEM_HANDLE_INFORMATION *
-get_system_handle_list(OUT size_t *size_out)
+get_system_handle_list(DR_PARAM_OUT size_t *size_out)
 {
     NTSTATUS res;
     SYSTEM_HANDLE_INFORMATION *list;
@@ -450,7 +450,7 @@ handlecheck_handle_add(hashtable_t *table, HANDLE handle,
 /* the caller must hold the handle table lock */
 static bool
 handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
-                          handle_callstack_info_t **hci OUT)
+                          handle_callstack_info_t **hci DR_PARAM_OUT)
 {
     bool res;
 

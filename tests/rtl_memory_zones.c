@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -31,8 +31,8 @@
 
 NTSTATUS
 (NTAPI *RtlGetProcessHeaps)(
-    IN ULONG count,
-    OUT HANDLE *Heaps
+    DR_PARAM_IN ULONG count,
+    DR_PARAM_OUT HANDLE *Heaps
     );
 
 static int

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -66,7 +66,7 @@ enum {
     MEMREF_WRITE              = 0x001,
     MEMREF_PUSHPOP            = 0x002, /* the stack slot mem ref of push/pop */
     MEMREF_CHECK_DEFINEDNESS  = 0x004,
-    MEMREF_USE_VALUES         = 0x008, /* for read, OUT; for write, IN */
+    MEMREF_USE_VALUES         = 0x008, /* for read, OUT; for write, DR_PARAM_IN */
     MEMREF_SINGLE_BYTE        = 0x010, /* keep using 1st byte in array */
     MEMREF_SINGLE_WORD        = 0x020, /* keep using 1st 2 bytes in array */
     MEMREF_SINGLE_DWORD       = 0x040, /* keep using 1st 4 bytes in array */

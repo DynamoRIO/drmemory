@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -120,7 +120,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsymcache_is_initialized(OUT bool *initialized);
+drsymcache_is_initialized(DR_PARAM_OUT bool *initialized);
 
 DR_EXPORT
 /**
@@ -132,7 +132,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsymcache_module_is_cached(const module_data_t *mod, OUT bool *cached);
+drsymcache_module_is_cached(const module_data_t *mod, DR_PARAM_OUT bool *cached);
 
 DR_EXPORT
 /**
@@ -146,7 +146,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsymcache_module_has_debug_info(const module_data_t *mod, OUT bool *has_debug);
+drsymcache_module_has_debug_info(const module_data_t *mod, DR_PARAM_OUT bool *has_debug);
 
 DR_EXPORT
 /**
@@ -203,8 +203,8 @@ DR_EXPORT
  */
 drmf_status_t
 drsymcache_lookup(const module_data_t *mod, const char *symbol,
-                  OUT size_t **offs_array, OUT uint *num_entries,
-                  OUT size_t *offs_single);
+                  DR_PARAM_OUT size_t **offs_array, DR_PARAM_OUT uint *num_entries,
+                  DR_PARAM_OUT size_t *offs_single);
 
 DR_EXPORT
 /**

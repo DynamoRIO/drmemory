@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -545,7 +545,7 @@ syscall_num_from_wrapper(void *drcontext, byte *entry)
 bool
 syscall_num_from_name(void *drcontext, const module_data_t *info,
                       const char *name, const char *optional_prefix,
-                      bool sym_lookup, drsys_sysnum_t *num_out OUT)
+                      bool sym_lookup, drsys_sysnum_t *num_out DR_PARAM_OUT)
 {
     app_pc entry = (app_pc) dr_get_proc_address(info->handle, name);
     int num = -1;
@@ -585,7 +585,7 @@ syscall_num_from_name(void *drcontext, const module_data_t *info,
 }
 
 bool
-os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT)
+os_syscall_get_num(const char *name, drsys_sysnum_t *num DR_PARAM_OUT)
 {
     name2num_entry_t *e = (name2num_entry_t *)
         hashtable_lookup(&name2num_table, (void *)name);
@@ -626,7 +626,7 @@ check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *
 
 static bool
 get_primary_syscall_num(void *drcontext, const module_data_t *info,
-                        syscall_info_t *syslist OUT, const char *optional_prefix)
+                        syscall_info_t *syslist DR_PARAM_OUT, const char *optional_prefix)
 {
     bool ok = false;
     /* Windows version-specific entry feature */
@@ -1236,7 +1236,7 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, cls_syscall_t 
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
+drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || type == NULL)
@@ -2016,11 +2016,11 @@ typedef struct _PROCESS_BASIC_INFORMATION {
 } PROCESS_BASIC_INFORMATION;
 typedef PROCESS_BASIC_INFORMATION *PPROCESS_BASIC_INFORMATION;
 
-GET_NTDLL(NtQueryInformationProcess, (IN HANDLE ProcessHandle,
-                                      IN PROCESSINFOCLASS ProcessInformationClass,
-                                      OUT PVOID ProcessInformation,
-                                      IN ULONG ProcessInformationLength,
-                                      OUT PULONG ReturnLength OPTIONAL));
+GET_NTDLL(NtQueryInformationProcess, (DR_PARAM_IN HANDLE ProcessHandle,
+                                      DR_PARAM_IN PROCESSINFOCLASS ProcessInformationClass,
+                                      DR_PARAM_OUT PVOID ProcessInformation,
+                                      DR_PARAM_IN ULONG ProcessInformationLength,
+                                      DR_PARAM_OUT PULONG ReturnLength OPTIONAL));
 
 static TEB *
 get_TEB(void)
@@ -2656,16 +2656,16 @@ handle_TraceControl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 /*
 NTSYSAPI NTSTATUS NTAPI
 ZwDeviceIoControlFile(
-    IN HANDLE FileHandle,
-    IN HANDLE Event OPTIONAL,
-    IN PIO_APC_ROUTINE ApcRoutine OPTIONAL,
-    IN PVOID ApcContext OPTIONAL,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN ULONG IoControlCode,
-    IN PVOID InputBuffer OPTIONAL,
-    IN ULONG InputBufferLength,
-    OUT PVOID OutputBuffer OPTIONAL,
-    IN ULONG OutputBufferLength
+    DR_PARAM_IN HANDLE FileHandle,
+    DR_PARAM_IN HANDLE Event OPTIONAL,
+    DR_PARAM_IN PIO_APC_ROUTINE ApcRoutine OPTIONAL,
+    DR_PARAM_IN PVOID ApcContext OPTIONAL,
+    DR_PARAM_OUT PIO_STATUS_BLOCK IoStatusBlock,
+    DR_PARAM_IN ULONG IoControlCode,
+    DR_PARAM_IN PVOID InputBuffer OPTIONAL,
+    DR_PARAM_IN ULONG InputBufferLength,
+    DR_PARAM_OUT PVOID OutputBuffer OPTIONAL,
+    DR_PARAM_IN ULONG OutputBufferLength
     );
 */
 

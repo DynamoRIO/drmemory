@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -99,7 +99,7 @@ extern uint num_nudges;
 #endif /* STATISTICS */
 
 bool
-obtain_configfile_path(char *buf OUT, size_t bufsz, const char *fname);
+obtain_configfile_path(char *buf DR_PARAM_OUT, size_t bufsz, const char *fname);
 
 #ifdef UNIX
 

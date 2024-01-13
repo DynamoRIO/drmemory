@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -309,15 +309,15 @@ DR_EXPORT
  * @param[out]  map_out  The mapping options.
  */
 drmf_status_t
-umbra_create_mapping(IN  umbra_map_options_t *ops,
-                     OUT umbra_map_t **map_out);
+umbra_create_mapping(DR_PARAM_IN  umbra_map_options_t *ops,
+                     DR_PARAM_OUT umbra_map_t **map_out);
 
 DR_EXPORT
 /**
  * Destroy a shadow memory mapping \p map created by umbra_create_mapping.
  */
 drmf_status_t
-umbra_destroy_mapping(IN  umbra_map_t *map);
+umbra_destroy_mapping(DR_PARAM_IN  umbra_map_t *map);
 
 DR_EXPORT
 /**
@@ -343,12 +343,12 @@ DR_EXPORT
  * on \p map creation.
  */
 drmf_status_t
-umbra_create_shadow_memory(IN  umbra_map_t *map,
-                           IN  umbra_shadow_memory_flags_t flags,
-                           IN  app_pc       app_addr,
-                           IN  size_t       app_size,
-                           IN  ptr_uint_t   value,
-                           IN  size_t       value_size);
+umbra_create_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  umbra_shadow_memory_flags_t flags,
+                           DR_PARAM_IN  app_pc       app_addr,
+                           DR_PARAM_IN  size_t       app_size,
+                           DR_PARAM_IN  ptr_uint_t   value,
+                           DR_PARAM_IN  size_t       value_size);
 
 DR_EXPORT
 /**
@@ -367,9 +367,9 @@ DR_EXPORT
  * which will be set to the value specified on \p map creation instead.
  */
 drmf_status_t
-umbra_delete_shadow_memory(IN  umbra_map_t *map,
-                           IN  app_pc       app_addr,
-                           IN  size_t       app_size);
+umbra_delete_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  app_pc       app_addr,
+                           DR_PARAM_IN  size_t       app_size);
 
 DR_EXPORT
 /**
@@ -380,7 +380,7 @@ DR_EXPORT
  * @param[out]  num_regs  Number of scratch register required for translation.
  */
 drmf_status_t
-umbra_num_scratch_regs_for_translation(OUT  int *num_regs);
+umbra_num_scratch_regs_for_translation(DR_PARAM_OUT  int *num_regs);
 
 DR_EXPORT
 /**
@@ -410,13 +410,13 @@ DR_EXPORT
  * and after this method is called, e.g. with \p drreg_reserve_aflags().
  */
 drmf_status_t
-umbra_insert_app_to_shadow(IN  void        *drcontext,
-                           IN  umbra_map_t *map,
-                           IN  instrlist_t *ilist,
-                           IN  instr_t     *where,
-                           IN  reg_id_t     addr_reg,
-                           IN  reg_id_t    *scratch_regs,
-                           IN  int          num_scratch_regs);
+umbra_insert_app_to_shadow(DR_PARAM_IN  void        *drcontext,
+                           DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  instrlist_t *ilist,
+                           DR_PARAM_IN  instr_t     *where,
+                           DR_PARAM_IN  reg_id_t     addr_reg,
+                           DR_PARAM_IN  reg_id_t    *scratch_regs,
+                           DR_PARAM_IN  int          num_scratch_regs);
 
 DR_EXPORT
 /**
@@ -434,11 +434,11 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_read_shadow_memory(IN    umbra_map_t *map,
-                         IN    app_pc  app_addr,
-                         IN    size_t  app_size,
-                         INOUT size_t *shadow_size,
-                         OUT   byte   *buffer);
+umbra_read_shadow_memory(DR_PARAM_IN    umbra_map_t *map,
+                         DR_PARAM_IN    app_pc  app_addr,
+                         DR_PARAM_IN    size_t  app_size,
+                         DR_PARAM_INOUT size_t *shadow_size,
+                         DR_PARAM_OUT   byte   *buffer);
 
 DR_EXPORT
 /**
@@ -456,11 +456,11 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_write_shadow_memory(IN  umbra_map_t *map,
-                          IN  app_pc  app_addr,
-                          IN  size_t  app_size,
-                          INOUT size_t *shadow_size,
-                          IN  byte   *buffer);
+umbra_write_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                          DR_PARAM_IN  app_pc  app_addr,
+                          DR_PARAM_IN  size_t  app_size,
+                          DR_PARAM_INOUT size_t *shadow_size,
+                          DR_PARAM_IN  byte   *buffer);
 
 DR_EXPORT
 /**
@@ -479,12 +479,12 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_shadow_set_range(IN   umbra_map_t *map,
-                       IN   app_pc       app_addr,
-                       IN   size_t       app_size,
-                       OUT  size_t      *shadow_size,
-                       IN   ptr_uint_t   value,
-                       IN   size_t       value_size);
+umbra_shadow_set_range(DR_PARAM_IN   umbra_map_t *map,
+                       DR_PARAM_IN   app_pc       app_addr,
+                       DR_PARAM_IN   size_t       app_size,
+                       DR_PARAM_OUT  size_t      *shadow_size,
+                       DR_PARAM_IN   ptr_uint_t   value,
+                       DR_PARAM_IN   size_t       value_size);
 
 DR_EXPORT
 /**
@@ -504,11 +504,11 @@ DR_EXPORT
  * \note: Overlap is allowed.
  */
 drmf_status_t
-umbra_shadow_copy_range(IN  umbra_map_t *map,
-                        IN  app_pc  app_src,
-                        IN  app_pc  app_dst,
-                        IN  size_t  app_size,
-                        OUT size_t *shadow_size);
+umbra_shadow_copy_range(DR_PARAM_IN  umbra_map_t *map,
+                        DR_PARAM_IN  app_pc  app_src,
+                        DR_PARAM_IN  app_pc  app_dst,
+                        DR_PARAM_IN  size_t  app_size,
+                        DR_PARAM_OUT size_t *shadow_size);
 
 DR_EXPORT
 /**
@@ -529,12 +529,12 @@ DR_EXPORT
  * for invalid addresses, returns DRMF_ERROR_INVALID_ADDRESS.
  */
 drmf_status_t
-umbra_value_in_shadow_memory(IN    umbra_map_t *map,
-                             INOUT app_pc      *app_addr,
-                             IN    size_t       app_size,
-                             IN    ptr_uint_t   value,
-                             IN    size_t       value_size,
-                             OUT   bool        *found);
+umbra_value_in_shadow_memory(DR_PARAM_IN    umbra_map_t *map,
+                             DR_PARAM_INOUT app_pc      *app_addr,
+                             DR_PARAM_IN    size_t       app_size,
+                             DR_PARAM_IN    ptr_uint_t   value,
+                             DR_PARAM_IN    size_t       value_size,
+                             DR_PARAM_OUT   bool        *found);
 
 DR_EXPORT
 /**
@@ -545,8 +545,8 @@ DR_EXPORT
  * @param[out] size  The shadow memory block size.
  */
 drmf_status_t
-umbra_get_shadow_block_size(IN  umbra_map_t *map,
-                            OUT size_t *size);
+umbra_get_shadow_block_size(DR_PARAM_IN  umbra_map_t *map,
+                            DR_PARAM_OUT size_t *size);
 
 DR_EXPORT
 /**
@@ -562,9 +562,9 @@ DR_EXPORT
  * since they are not considered as part of DynamoRIO internal or client memory.
  */
 drmf_status_t
-umbra_iterate_app_memory(IN  umbra_map_t *map,
-                         IN  void *user_data,
-                         IN  bool (*iter_func)(umbra_map_t *map,
+umbra_iterate_app_memory(DR_PARAM_IN  umbra_map_t *map,
+                         DR_PARAM_IN  void *user_data,
+                         DR_PARAM_IN  bool (*iter_func)(umbra_map_t *map,
                                                const dr_mem_info_t *info,
                                                void  *user_data));
 
@@ -589,9 +589,9 @@ DR_EXPORT
  *                        It can return false to stop the iteration.
  */
 drmf_status_t
-umbra_iterate_shadow_memory(IN  umbra_map_t *map,
-                            IN  void  *user_data,
-                            IN  shadow_iterate_func_t iter_func);
+umbra_iterate_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                            DR_PARAM_IN  void  *user_data,
+                            DR_PARAM_IN  shadow_iterate_func_t iter_func);
 
 DR_EXPORT
 /**
@@ -605,9 +605,9 @@ DR_EXPORT
  * shadow memory to determine the shadow memory type for \p shadow_addr.
  */
 drmf_status_t
-umbra_get_shadow_memory_type(IN  umbra_map_t *map,
-                             IN  byte *shadow_addr,
-                             OUT umbra_shadow_memory_type_t *shadow_type);
+umbra_get_shadow_memory_type(DR_PARAM_IN  umbra_map_t *map,
+                             DR_PARAM_IN  byte *shadow_addr,
+                             DR_PARAM_OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
 /**
@@ -631,9 +631,9 @@ DR_EXPORT
  *
  */
 drmf_status_t
-umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
-                              IN  byte *shadow_addr,
-                              OUT umbra_shadow_memory_type_t *shadow_type);
+umbra_shadow_memory_is_shared(DR_PARAM_IN  umbra_map_t *map,
+                              DR_PARAM_IN  byte *shadow_addr,
+                              DR_PARAM_OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
 /**
@@ -668,10 +668,10 @@ DR_EXPORT
  *
  */
 drmf_status_t
-umbra_get_shadow_memory(IN    umbra_map_t *map,
-                        IN    app_pc app_addr,
-                        OUT   byte **shadow_addr,
-                        INOUT umbra_shadow_memory_info_t *shadow_info);
+umbra_get_shadow_memory(DR_PARAM_IN    umbra_map_t *map,
+                        DR_PARAM_IN    app_pc app_addr,
+                        DR_PARAM_OUT   byte **shadow_addr,
+                        DR_PARAM_INOUT umbra_shadow_memory_info_t *shadow_info);
 
 DR_EXPORT
 /**
@@ -685,9 +685,9 @@ DR_EXPORT
  * @param[out] shadow_addr  Return the replaced shadow memory address.
  */
 drmf_status_t
-umbra_replace_shared_shadow_memory(IN  umbra_map_t *map,
-                                   IN  app_pc       app_addr,
-                                   OUT byte       **shadow_addr);
+umbra_replace_shared_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                                   DR_PARAM_IN  app_pc       app_addr,
+                                   DR_PARAM_OUT byte       **shadow_addr);
 
 DR_EXPORT
 /**
@@ -707,10 +707,10 @@ DR_EXPORT
  * implementation and always returns DRMF_ERROR_FEATURE_NOT_AVAILABLE.
  */
 drmf_status_t
-umbra_create_shared_shadow_block(IN  umbra_map_t *map,
-                                 IN  ptr_uint_t   value,
-                                 IN  size_t       value_size,
-                                 OUT byte       **block);
+umbra_create_shared_shadow_block(DR_PARAM_IN  umbra_map_t *map,
+                                 DR_PARAM_IN  ptr_uint_t   value,
+                                 DR_PARAM_IN  size_t       value_size,
+                                 DR_PARAM_OUT byte       **block);
 
 DR_EXPORT
 /**
@@ -727,10 +727,10 @@ DR_EXPORT
  * implementation and always returns DRMF_ERROR_FEATURE_NOT_AVAILABLE.
  */
 drmf_status_t
-umbra_get_shared_shadow_block(IN  umbra_map_t *map,
-                              IN  ptr_uint_t   value,
-                              IN  size_t       value_size,
-                              OUT byte       **block);
+umbra_get_shared_shadow_block(DR_PARAM_IN  umbra_map_t *map,
+                              DR_PARAM_IN  ptr_uint_t   value,
+                              DR_PARAM_IN  size_t       value_size,
+                              DR_PARAM_OUT byte       **block);
 
 /** Convenience routine for initializing umbra_shadow_memory_info. */
 static inline void
@@ -773,7 +773,7 @@ DR_EXPORT
  *                              or up.
  */
 drmf_status_t
-umbra_get_granularity(const umbra_map_t *map, OUT int *scale,
+umbra_get_granularity(const umbra_map_t *map, DR_PARAM_OUT int *scale,
                       bool *is_scale_down);
 
 /*@}*/ /* end doxygen group */

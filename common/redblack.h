@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -54,7 +54,8 @@ rb_tree_destroy(rb_tree_t *tree);
 
 /* Retrieve copies of fields.  The node pointer is then no longer needed. */
 void
-rb_node_fields(rb_node_t *node, byte **base OUT, size_t *size OUT, void **client OUT);
+rb_node_fields(rb_node_t *node, byte **base DR_PARAM_OUT, size_t *size DR_PARAM_OUT,
+               void **client DR_PARAM_OUT);
 
 /* Modify the client field of a node. */
 void

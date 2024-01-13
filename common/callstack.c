@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -290,10 +290,12 @@ static hashtable_t retaddr_table;
 
 static dr_emit_flags_t
 event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                           bool for_trace, bool translating, OUT void **user_data);
+                           bool for_trace, bool translating,
+                           DR_PARAM_OUT void **user_data);
 
 static bool
-module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name OUT);
+module_lookup(byte *pc, app_pc *start DR_PARAM_OUT, size_t *size DR_PARAM_OUT,
+              modname_info_t **name DR_PARAM_OUT);
 
 static void
 modname_info_free(void *p);
@@ -497,7 +499,8 @@ callstack_thread_exit(void *drcontext)
 
 static dr_emit_flags_t
 event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                           bool for_trace, bool translating, OUT void **user_data)
+                           bool for_trace, bool translating,
+                           DR_PARAM_OUT void **user_data)
 {
     instr_t *instr;
     ASSERT(!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags), "hashtable not init!");
@@ -517,7 +520,7 @@ event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
 /***************************************************************************/
 
 static void
-init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
+init_symbolized_frame(symbolized_frame_t *frame DR_PARAM_OUT, uint frame_num)
 {
     memset(frame, 0, sizeof(*frame));
     frame->num = frame_num;
@@ -527,8 +530,8 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
 
 /* Symbol lookup: i#44/PR 243532 */
 static void
-lookup_func_and_line(symbolized_frame_t *frame OUT,
-                     modname_info_t *name_info IN, size_t modoffs)
+lookup_func_and_line(symbolized_frame_t *frame DR_PARAM_OUT,
+                     modname_info_t *name_info DR_PARAM_IN, size_t modoffs)
 {
     drsym_error_t symres;
     drsym_info_t sym;
@@ -672,7 +675,7 @@ dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t a
 #endif
 
 static bool
-frame_include_srcfile(symbolized_frame_t *frame IN)
+frame_include_srcfile(symbolized_frame_t *frame DR_PARAM_IN)
 {
     return (frame->fname[0] != '\0' &&
             /* i#589: support hiding source files matching pattern */
@@ -694,7 +697,7 @@ frame_include_srcfile(symbolized_frame_t *frame IN)
  *  5  KERNEL32.dll!BaseProcessStart+0x27 (0x7d4e9982 <KERNEL32.dll+0x29982>)
  */
 static void
-print_file_and_line(symbolized_frame_t *frame IN,
+print_file_and_line(symbolized_frame_t *frame DR_PARAM_IN,
                     char *buf, size_t bufsz, size_t *sofar,
                     uint print_flags, const char *prefix,
                     bool include_srcfile)
@@ -754,7 +757,7 @@ print_file_and_line(symbolized_frame_t *frame IN,
 #endif
 
 static void
-print_frame(symbolized_frame_t *frame IN,
+print_frame(symbolized_frame_t *frame DR_PARAM_IN,
             char *buf, size_t bufsz, size_t *sofar,
             bool use_custom_flags, uint custom_flags,
             size_t max_func_len, const char *prefix)
@@ -867,7 +870,8 @@ print_frame(symbolized_frame_t *frame IN,
  * sub1_sym is for PR 543863: subtract one from retaddrs in callstacks
  */
 static bool
-address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
+address_to_frame(symbolized_frame_t *frame DR_PARAM_OUT,
+                 packed_callstack_t *pcs DR_PARAM_OUT,
                  app_pc pc, module_data_t *mod_in /*optional*/,
                  bool skip_non_module, bool sub1_sym, uint frame_num)
 {
@@ -961,7 +965,7 @@ static bool
 print_address_common(char *buf, size_t bufsz, size_t *sofar,
                      app_pc pc, module_data_t *mod_in /*optional*/,
                      bool skip_non_module, bool sub1_sym, bool for_log,
-                     bool *last_frame OUT, uint frame_num)
+                     bool *last_frame DR_PARAM_OUT, uint frame_num)
 {
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
@@ -2197,7 +2201,8 @@ packed_callstack_first_frame_retaddr(packed_callstack_t *pcs)
 /* Returns false if a syscall.  If returns true, also fills in the OUT params. */
 static bool
 packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
-                               modname_info_t **name_info OUT, size_t *modoffs OUT)
+                               modname_info_t **name_info DR_PARAM_OUT,
+                               size_t *modoffs DR_PARAM_OUT)
 {
     modname_info_t *info = NULL;
     size_t offs = 0;
@@ -2241,8 +2246,8 @@ packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
 }
 
 static void
-packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame OUT,
-                           uint idx)
+packed_frame_to_symbolized(packed_callstack_t *pcs DR_PARAM_IN,
+                           symbolized_frame_t *frame DR_PARAM_OUT, uint idx)
 {
     modname_info_t *info = NULL;
     size_t offs;
@@ -2327,8 +2332,8 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
 }
 
 void
-packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
-                               symbolized_callstack_t *scs OUT)
+packed_callstack_to_symbolized(packed_callstack_t *pcs DR_PARAM_IN,
+                               symbolized_callstack_t *scs DR_PARAM_OUT)
 {
     uint i;
     STATS_INC(callstacks_symbolized);
@@ -2598,7 +2603,7 @@ packed_callstack_add_to_table(hashtable_t *table, packed_callstack_t *pcs
  */
 
 void
-symbolized_callstack_print(const symbolized_callstack_t *scs IN,
+symbolized_callstack_print(const symbolized_callstack_t *scs DR_PARAM_IN,
                            char *buf, size_t bufsz, size_t *sofar,
                            const char *prefix, bool for_log)
 {
@@ -2841,7 +2846,7 @@ callstack_module_remove_region(app_pc start, app_pc end)
 
 static void
 callstack_module_get_text_bounds(const module_data_t *info, bool loaded,
-                                 app_pc *start OUT, app_pc *end OUT)
+                                 app_pc *start DR_PARAM_OUT, app_pc *end DR_PARAM_OUT)
 {
     ASSERT(loaded, "only supports fully loaded modules");
 #ifdef UNIX
@@ -2968,7 +2973,8 @@ callstack_module_unload(void *drcontext, const module_data_t *info)
 }
 
 static bool
-module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name)
+module_lookup(byte *pc, app_pc *start DR_PARAM_OUT, size_t *size DR_PARAM_OUT,
+              modname_info_t **name)
 {
     rb_node_t *node;
     bool res = false;
@@ -3053,7 +3059,7 @@ module_lookup_preferred_name(byte *pc)
 }
 
 void *
-module_lookup_user_data(byte *pc, app_pc *start OUT, size_t *size OUT)
+module_lookup_user_data(byte *pc, app_pc *start DR_PARAM_OUT, size_t *size DR_PARAM_OUT)
 {
     modname_info_t *name_info;
     bool found = module_lookup(pc, NULL, NULL, &name_info);

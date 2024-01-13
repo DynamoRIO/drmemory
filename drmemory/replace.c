@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1227,7 +1227,7 @@ find_syms_regex(sym_enum_data_t *edata, const char *regex)
  * RPC_STATUS UuidCreate(UUID __RPC_FAR *Uuid);
  */
 static void
-wrap_UuidCreate_pre(void *wrapcxt, OUT void **user_data)
+wrap_UuidCreate_pre(void *wrapcxt, DR_PARAM_OUT void **user_data)
 {
     /* Save arg to mark as initialized afterwards. */
     *user_data = drwrap_get_arg(wrapcxt, 0);

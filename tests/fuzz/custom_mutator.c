@@ -46,8 +46,10 @@ typedef struct _mutator_t {
 #define DEFAULT_TOADD 0xf0f00a0a
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
-                     IN size_t size, IN int argc, IN const char *argv[])
+drfuzz_mutator_start(DR_PARAM_OUT drfuzz_mutator_t **mutator_out,
+                     DR_PARAM_IN void *input_seed,
+                     DR_PARAM_IN size_t size, DR_PARAM_IN int argc,
+                     DR_PARAM_IN const char *argv[])
 {
     mutator_t *mutator;
     int i;
@@ -94,7 +96,8 @@ drfuzz_mutator_has_next_value(drfuzz_mutator_t *mutator_in)
 }
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_get_current_value(IN drfuzz_mutator_t *mutator_in, OUT void *buffer)
+drfuzz_mutator_get_current_value(DR_PARAM_IN drfuzz_mutator_t *mutator_in,
+                                 DR_PARAM_OUT void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
     memcpy(buffer, mutator->current_value, mutator->size);
@@ -102,7 +105,7 @@ drfuzz_mutator_get_current_value(IN drfuzz_mutator_t *mutator_in, OUT void *buff
 }
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, IN void *buffer)
+drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, DR_PARAM_IN void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
     int val = *(int *)mutator->current_value;

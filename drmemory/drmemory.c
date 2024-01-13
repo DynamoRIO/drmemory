@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -150,7 +150,7 @@ up_one_dir(const char *string)
  *   dr_get_client_path()/../fname
  */
 bool
-obtain_configfile_path(char *buf OUT, size_t bufsz, const char *fname)
+obtain_configfile_path(char *buf DR_PARAM_OUT, size_t bufsz, const char *fname)
 {
     const char *mypath = dr_get_client_path(client_id);
     /* Windows kernel doesn't like paths with .. (0xc0000033 =
@@ -354,7 +354,7 @@ typedef struct _persist_data_t {
 
 static size_t
 event_persist_ro_size(void *drcontext, void *perscxt, size_t file_offs,
-                      void **user_data OUT)
+                      void **user_data DR_PARAM_OUT)
 {
     return sizeof(persist_data_t) +
         instrument_persist_ro_size(drcontext, perscxt);
@@ -376,7 +376,7 @@ event_persist_ro(void *drcontext, void *perscxt, file_t fd, void *user_data)
 }
 
 static bool
-event_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
+event_resurrect_ro(void *drcontext, void *perscxt, byte **map DR_PARAM_INOUT)
 {
     persist_data_t *pd = (persist_data_t *) *map;
     *map += sizeof(*pd);

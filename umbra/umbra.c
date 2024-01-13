@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -373,8 +373,8 @@ umbra_exit(void)
 
 DR_EXPORT
 drmf_status_t
-umbra_create_mapping(IN  umbra_map_options_t *ops,
-                     OUT umbra_map_t **map_out)
+umbra_create_mapping(DR_PARAM_IN  umbra_map_options_t *ops,
+                     DR_PARAM_OUT umbra_map_t **map_out)
 {
     drmf_status_t res;
     if (!umbra_initialized)
@@ -389,7 +389,7 @@ umbra_create_mapping(IN  umbra_map_options_t *ops,
 
 DR_EXPORT
 drmf_status_t
-umbra_destroy_mapping(IN  umbra_map_t *map)
+umbra_destroy_mapping(DR_PARAM_IN  umbra_map_t *map)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -415,12 +415,12 @@ umbra_destroy_mapping(IN  umbra_map_t *map)
  */
 DR_EXPORT
 drmf_status_t
-umbra_create_shadow_memory(IN  umbra_map_t *map,
-                           IN  uint         flags,
-                           IN  app_pc       app_addr,
-                           IN  size_t       app_size,
-                           IN  ptr_uint_t   value,
-                           IN  size_t       value_size)
+umbra_create_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  umbra_shadow_memory_flags_t flags,
+                           DR_PARAM_IN  app_pc       app_addr,
+                           DR_PARAM_IN  size_t       app_size,
+                           DR_PARAM_IN  ptr_uint_t   value,
+                           DR_PARAM_IN  size_t       value_size)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -438,9 +438,9 @@ umbra_create_shadow_memory(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_delete_shadow_memory(IN  umbra_map_t *map,
-                           IN  app_pc       app_addr,
-                           IN  size_t       app_size)
+umbra_delete_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  app_pc       app_addr,
+                           DR_PARAM_IN  size_t       app_size)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -453,7 +453,7 @@ umbra_delete_shadow_memory(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_num_scratch_regs_for_translation(OUT  int *num_regs)
+umbra_num_scratch_regs_for_translation(DR_PARAM_OUT  int *num_regs)
 {
     if (num_regs == NULL) {
         ASSERT(false, "num_regs must not be NULL");
@@ -465,13 +465,13 @@ umbra_num_scratch_regs_for_translation(OUT  int *num_regs)
 
 DR_EXPORT
 drmf_status_t
-umbra_insert_app_to_shadow(IN  void        *drcontext,
-                           IN  umbra_map_t *map,
-                           IN  instrlist_t *ilist,
-                           IN  instr_t     *where,
-                           IN  reg_id_t     addr_reg,
-                           IN  reg_id_t    *scratch_regs,
-                           IN  int          num_scratch_regs)
+umbra_insert_app_to_shadow(DR_PARAM_IN  void        *drcontext,
+                           DR_PARAM_IN  umbra_map_t *map,
+                           DR_PARAM_IN  instrlist_t *ilist,
+                           DR_PARAM_IN  instr_t     *where,
+                           DR_PARAM_IN  reg_id_t     addr_reg,
+                           DR_PARAM_IN  reg_id_t    *scratch_regs,
+                           DR_PARAM_IN  int          num_scratch_regs)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -487,11 +487,11 @@ umbra_insert_app_to_shadow(IN  void        *drcontext,
 
 DR_EXPORT
 drmf_status_t
-umbra_read_shadow_memory(IN  umbra_map_t *map,
-                         IN  app_pc  app_addr,
-                         IN  size_t  app_size,
-                         OUT size_t *shadow_size,
-                         IN  byte    *buffer)
+umbra_read_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                         DR_PARAM_IN  app_pc  app_addr,
+                         DR_PARAM_IN  size_t  app_size,
+                         DR_PARAM_OUT size_t *shadow_size,
+                         DR_PARAM_IN  byte    *buffer)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -513,11 +513,11 @@ umbra_read_shadow_memory(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_write_shadow_memory(IN  umbra_map_t *map,
-                          IN  app_pc  app_addr,
-                          IN  size_t  app_size,
-                          OUT size_t *shadow_size,
-                          IN  byte   *buffer)
+umbra_write_shadow_memory(DR_PARAM_IN  umbra_map_t *map,
+                          DR_PARAM_IN  app_pc  app_addr,
+                          DR_PARAM_IN  size_t  app_size,
+                          DR_PARAM_OUT size_t *shadow_size,
+                          DR_PARAM_IN  byte   *buffer)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -536,12 +536,12 @@ umbra_write_shadow_memory(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_shadow_set_range(IN   umbra_map_t *map,
-                       IN   app_pc       app_addr,
-                       IN   size_t       app_size,
-                       OUT  size_t      *shadow_size,
-                       IN   ptr_uint_t   value,
-                       IN   size_t       value_size)
+umbra_shadow_set_range(DR_PARAM_IN   umbra_map_t *map,
+                       DR_PARAM_IN   app_pc       app_addr,
+                       DR_PARAM_IN   size_t       app_size,
+                       DR_PARAM_OUT  size_t      *shadow_size,
+                       DR_PARAM_IN   ptr_uint_t   value,
+                       DR_PARAM_IN   size_t       value_size)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -562,11 +562,11 @@ umbra_shadow_set_range(IN   umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_shadow_copy_range(IN  umbra_map_t *map,
-                        IN  app_pc  app_src,
-                        IN  app_pc  app_dst,
-                        IN  size_t  app_size,
-                        OUT size_t *shadow_size)
+umbra_shadow_copy_range(DR_PARAM_IN  umbra_map_t *map,
+                        DR_PARAM_IN  app_pc  app_src,
+                        DR_PARAM_IN  app_pc  app_dst,
+                        DR_PARAM_IN  size_t  app_size,
+                        DR_PARAM_OUT size_t *shadow_size)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -584,12 +584,12 @@ umbra_shadow_copy_range(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_value_in_shadow_memory(IN    umbra_map_t *map,
-                             INOUT app_pc *app_addr,
-                             IN    size_t  app_size,
-                             IN    ptr_uint_t value,
-                             IN    size_t value_size,
-                             OUT   bool   *found)
+umbra_value_in_shadow_memory(DR_PARAM_IN    umbra_map_t *map,
+                             DR_PARAM_INOUT app_pc *app_addr,
+                             DR_PARAM_IN    size_t  app_size,
+                             DR_PARAM_IN    ptr_uint_t value,
+                             DR_PARAM_IN    size_t value_size,
+                             DR_PARAM_OUT   bool   *found)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -607,8 +607,8 @@ umbra_value_in_shadow_memory(IN    umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_shadow_block_size(IN  umbra_map_t *map,
-                            OUT size_t *size)
+umbra_get_shadow_block_size(DR_PARAM_IN  umbra_map_t *map,
+                            DR_PARAM_OUT size_t *size)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -621,9 +621,9 @@ umbra_get_shadow_block_size(IN  umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_iterate_app_memory(IN  umbra_map_t *map,
-                         IN  void *user_data,
-                         IN  bool (*iter_func)(umbra_map_t *map,
+umbra_iterate_app_memory(DR_PARAM_IN  umbra_map_t *map,
+                         DR_PARAM_IN  void *user_data,
+                         DR_PARAM_IN  bool (*iter_func)(umbra_map_t *map,
                                                const dr_mem_info_t *info,
                                                void  *user_data))
 {
@@ -668,9 +668,9 @@ umbra_iterate_shadow_memory(umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_shadow_memory_type(IN  umbra_map_t *map,
-                             IN  byte *shadow_addr,
-                             OUT umbra_shadow_memory_type_t *shadow_type)
+umbra_get_shadow_memory_type(DR_PARAM_IN  umbra_map_t *map,
+                             DR_PARAM_IN  byte *shadow_addr,
+                             DR_PARAM_OUT umbra_shadow_memory_type_t *shadow_type)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -682,9 +682,9 @@ umbra_get_shadow_memory_type(IN  umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
-                              IN  byte *shadow_addr,
-                              OUT umbra_shadow_memory_type_t *shadow_type)
+umbra_shadow_memory_is_shared(DR_PARAM_IN  umbra_map_t *map,
+                              DR_PARAM_IN  byte *shadow_addr,
+                              DR_PARAM_OUT umbra_shadow_memory_type_t *shadow_type)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -697,10 +697,10 @@ umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_shadow_memory(IN    umbra_map_t *map,
-                        IN    app_pc app_addr,
-                        OUT   byte **shadow_addr,
-                        INOUT umbra_shadow_memory_info_t *shadow_info)
+umbra_get_shadow_memory(DR_PARAM_IN    umbra_map_t *map,
+                        DR_PARAM_IN    app_pc app_addr,
+                        DR_PARAM_OUT   byte **shadow_addr,
+                        DR_PARAM_INOUT umbra_shadow_memory_info_t *shadow_info)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -731,10 +731,10 @@ umbra_replace_shared_shadow_memory(umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_create_shared_shadow_block(IN  umbra_map_t *map,
-                                 IN  ptr_uint_t   value,
-                                 IN  size_t       value_size,
-                                 OUT byte       **block)
+umbra_create_shared_shadow_block(DR_PARAM_IN  umbra_map_t *map,
+                                 DR_PARAM_IN  ptr_uint_t   value,
+                                 DR_PARAM_IN  size_t       value_size,
+                                 DR_PARAM_OUT byte       **block)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -747,10 +747,10 @@ umbra_create_shared_shadow_block(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_shared_shadow_block(IN  umbra_map_t *map,
-                              IN  ptr_uint_t   value,
-                              IN  size_t       value_size,
-                              OUT byte       **block)
+umbra_get_shared_shadow_block(DR_PARAM_IN  umbra_map_t *map,
+                              DR_PARAM_IN  ptr_uint_t   value,
+                              DR_PARAM_IN  size_t       value_size,
+                              DR_PARAM_OUT byte       **block)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -763,7 +763,7 @@ umbra_get_shared_shadow_block(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_granularity(const umbra_map_t *map, OUT int *scale, OUT bool *is_scale_down)
+umbra_get_granularity(const umbra_map_t *map, DR_PARAM_OUT int *scale, DR_PARAM_OUT bool *is_scale_down)
 {
     if (map == NULL || scale == NULL || is_scale_down == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;

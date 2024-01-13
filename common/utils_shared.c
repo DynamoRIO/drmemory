@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -113,7 +113,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type)
 /* see description in header */
 const char *
 find_next_line(const char *start, const char *eof, const char **sol,
-               const char **eol OUT, bool skip_ws)
+               const char **eol DR_PARAM_OUT, bool skip_ws)
 {
     const char *line = start, *newline, *next_line;
     /* First, set "line" to start of line and "newline" to end (pre-whitespace) */

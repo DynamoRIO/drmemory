@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -47,7 +47,7 @@ dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info);
 
 bool
-mmap_anon_lookup(byte *addr, byte **start OUT, size_t *size OUT);
+mmap_anon_lookup(byte *addr, byte **start DR_PARAM_OUT, size_t *size DR_PARAM_OUT);
 #endif
 
 void
@@ -67,14 +67,14 @@ check_reachability(bool at_exit);
  */
 bool
 overlaps_delayed_free(byte *start, byte *end,
-                      byte **free_start OUT, /* app base */
-                      byte **free_end OUT,   /* app request size */
-                      packed_callstack_t **pcs OUT,
+                      byte **free_start DR_PARAM_OUT, /* app base */
+                      byte **free_end DR_PARAM_OUT,   /* app request size */
+                      packed_callstack_t **pcs DR_PARAM_OUT,
                       bool delayed_only);
 
 bool
 is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
-                  bool *now_addressable OUT);
+                  bool *now_addressable DR_PARAM_OUT);
 
 /* check if region [addr, addr + size) overlaps with any malloc redzone,
  * - if overlaps, return true and fill all the passed in parameters,
@@ -82,11 +82,11 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
  */
 bool
 region_in_redzone(byte *addr, size_t size,
-                  packed_callstack_t **alloc_pcs OUT,
-                  app_pc *app_start OUT,
-                  app_pc *app_end OUT,
-                  app_pc *redzone_start OUT,
-                  app_pc *redzone_end OUT);
+                  packed_callstack_t **alloc_pcs DR_PARAM_OUT,
+                  app_pc *app_start DR_PARAM_OUT,
+                  app_pc *app_end DR_PARAM_OUT,
+                  app_pc *redzone_start DR_PARAM_OUT,
+                  app_pc *redzone_end DR_PARAM_OUT);
 
 /* Synchronizes access to malloc callstacks (malloc_get_client_data()) */
 void

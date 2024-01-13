@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -91,7 +91,7 @@ bool first_bb = true;
 #ifdef TOOL_DR_MEMORY
 static dr_emit_flags_t
 instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                        bool for_trace, bool translating, OUT void **user_data);
+                        bool for_trace, bool translating, DR_PARAM_OUT void **user_data);
 
 static dr_emit_flags_t
 instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
@@ -481,7 +481,7 @@ populate_us2app_table(void)
 #endif
 
 bool
-instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
+instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map DR_PARAM_INOUT)
 {
     bool ok = true;
     if (!INSTRUMENT_MEMREFS())
@@ -931,7 +931,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
 /* Conversions to app code itself that should happen before instrumentation */
 static dr_emit_flags_t
 instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                        bool for_trace, bool translating, OUT void **user_data)
+                        bool for_trace, bool translating, DR_PARAM_OUT void **user_data)
 {
     bb_info_t *bi;
 

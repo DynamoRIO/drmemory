@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -58,7 +58,7 @@
  *   - need to add post-syscall write size entries: I put in a handful.
  *     should look at all OUT params whose (requested) size comes from an IN param.
  *     e.g., NtQueryValueKey: should use IN param to check addressability, but
- *     OUT ResultLength for what was actually written to.
+ *     DR_PARAM_OUT ResultLength for what was actually written to.
  *     The strategy for these is to use a double entry with the second typically
  *     using WI to indicate that the OUT size needs to be dereferenced (PR 408536).
  *     E.g.:

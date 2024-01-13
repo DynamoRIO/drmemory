@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2017-2024 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -48,7 +48,7 @@ static umbra_map_t *umbra_map;
 
 static dr_emit_flags_t
 event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                   bool for_trace, bool translating, OUT void **user_data);
+                   bool for_trace, bool translating, DR_PARAM_OUT void **user_data);
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -144,7 +144,7 @@ instrument_mem(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t ref,
 
 static dr_emit_flags_t
 event_app_analysis(void *drcontext, void *tag, instrlist_t *bb,
-                   bool for_trace, bool translating, OUT void **user_data)
+                   bool for_trace, bool translating, DR_PARAM_OUT void **user_data)
 {
     instr_t *inst;
     bool prev_was_mov_const = false;
