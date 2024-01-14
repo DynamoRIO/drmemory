@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -88,10 +88,10 @@ struct _umbra_map_t {
  * indirect call per loop iter, and an iterator would have call costs
  * as well.  These loops can be performance-critical parts of Dr. Memory.
  *
- * Usage: APP_RANGE_LOOP(IN app_pc app_addr, IN size_t app_size,
- *                       OUT app_pc app_blk_base, OUT app_pc app_blk_end,
- *                       OUT app_pc app_src_end,
- *                       OUT app_pc start, OUT app_pc end, OUT size_t iter_size,
+ * Usage: APP_RANGE_LOOP(DR_PARAM_IN app_pc app_addr, DR_PARAM_IN size_t app_size,
+ *                       DR_PARAM_OUT app_pc app_blk_base, DR_PARAM_OUT app_pc app_blk_end,
+ *                       DR_PARAM_OUT app_pc app_src_end,
+ *                       DR_PARAM_OUT app_pc start, DR_PARAM_OUT app_pc end, DR_PARAM_OUT size_t iter_size,
  *                       { loop_body... })
  *
  * Each iteration operates on the app address range [start, end].
@@ -204,19 +204,19 @@ umbra_write_shadow_memory_arch(umbra_map_t *map,
                                byte   *buffer);
 
 drmf_status_t
-umbra_shadow_set_range_arch(IN   umbra_map_t *map,
-                            IN   app_pc       app_addr,
-                            IN   size_t       app_size,
-                            OUT  size_t      *shadow_size,
-                            IN   ptr_uint_t   value,
-                            IN   size_t       value_size);
+umbra_shadow_set_range_arch(DR_PARAM_IN   umbra_map_t *map,
+                            DR_PARAM_IN   app_pc       app_addr,
+                            DR_PARAM_IN   size_t       app_size,
+                            DR_PARAM_OUT  size_t      *shadow_size,
+                            DR_PARAM_IN   ptr_uint_t   value,
+                            DR_PARAM_IN   size_t       value_size);
 
 drmf_status_t
-umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
-                             IN  app_pc  app_src,
-                             IN  app_pc  app_dst,
-                             IN  size_t  app_size,
-                             OUT size_t *shadow_size);
+umbra_shadow_copy_range_arch(DR_PARAM_IN  umbra_map_t *map,
+                             DR_PARAM_IN  app_pc  app_src,
+                             DR_PARAM_IN  app_pc  app_dst,
+                             DR_PARAM_IN  size_t  app_size,
+                             DR_PARAM_OUT size_t *shadow_size);
 
 drmf_status_t
 umbra_iterate_shadow_memory_arch(umbra_map_t *map,
@@ -252,16 +252,16 @@ umbra_replace_shared_shadow_memory_arch(umbra_map_t *map,
                                         byte **shadow_addr);
 
 drmf_status_t
-umbra_create_shared_shadow_block_arch(IN  umbra_map_t *map,
-                                      IN  ptr_uint_t   value,
-                                      IN  size_t       value_size,
-                                      OUT byte       **block);
+umbra_create_shared_shadow_block_arch(DR_PARAM_IN  umbra_map_t *map,
+                                      DR_PARAM_IN  ptr_uint_t   value,
+                                      DR_PARAM_IN  size_t       value_size,
+                                      DR_PARAM_OUT byte       **block);
 
 drmf_status_t
-umbra_get_shared_shadow_block_arch(IN  umbra_map_t *map,
-                                   IN  ptr_uint_t   value,
-                                   IN  size_t       value_size,
-                                   OUT byte       **block);
+umbra_get_shared_shadow_block_arch(DR_PARAM_IN  umbra_map_t *map,
+                                   DR_PARAM_IN  ptr_uint_t   value,
+                                   DR_PARAM_IN  size_t       value_size,
+                                   DR_PARAM_OUT byte       **block);
 
 bool
 umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,

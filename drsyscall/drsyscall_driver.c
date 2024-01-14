@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -38,16 +38,16 @@
  */
 #define MAX_WRITES_TO_RECORD 64
 
-GET_NTDLL(NtDeviceIoControlFile, (IN HANDLE FileHandle,
-                                  IN HANDLE Event OPTIONAL,
-                                  IN PIO_APC_ROUTINE ApcRoutine OPTIONAL,
-                                  IN PVOID ApcContext OPTIONAL,
-                                  OUT PIO_STATUS_BLOCK IoStatusBlock,
-                                  IN ULONG IoControlCode,
-                                  IN PVOID InputBuffer OPTIONAL,
-                                  IN ULONG InputBufferLength,
-                                  OUT PVOID OutputBuffer OPTIONAL,
-                                  IN ULONG OutputBufferLength));
+GET_NTDLL(NtDeviceIoControlFile, (DR_PARAM_IN HANDLE FileHandle,
+                                  DR_PARAM_IN HANDLE Event OPTIONAL,
+                                  DR_PARAM_IN PIO_APC_ROUTINE ApcRoutine OPTIONAL,
+                                  DR_PARAM_IN PVOID ApcContext OPTIONAL,
+                                  DR_PARAM_OUT PIO_STATUS_BLOCK IoStatusBlock,
+                                  DR_PARAM_IN ULONG IoControlCode,
+                                  DR_PARAM_IN PVOID InputBuffer OPTIONAL,
+                                  DR_PARAM_IN ULONG InputBufferLength,
+                                  DR_PARAM_OUT PVOID OutputBuffer OPTIONAL,
+                                  DR_PARAM_IN ULONG OutputBufferLength));
 
 /* from winioctl.h */
 #define FILE_ANY_ACCESS                 0

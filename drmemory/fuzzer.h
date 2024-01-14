@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -88,7 +88,7 @@ fuzzer_set_singleton_input(const char *input_value);
  * true if any thread was fuzzing; i.e., if anything was written to user_message.
  */
 size_t
-fuzzer_error_report(IN void *dcontext, OUT char *user_message, IN size_t size,
-                    int error_id);
+fuzzer_error_report(DR_PARAM_IN void *dcontext, DR_PARAM_OUT char *user_message,
+                    DR_PARAM_IN size_t size, int error_id);
 
 #endif /* _FUZZER_H_ */

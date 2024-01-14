@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -173,27 +173,27 @@ shadow_get_special(app_pc addr, uint *val);
  */
 /* it also has the racy problem on accessing partial byte, xref i#271 */
 uint
-shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+shadow_get_byte(DR_PARAM_INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 /* Returns the byte that shadows the 4-byte-aligned address */
 /* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 uint
-shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+shadow_get_dword(DR_PARAM_INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 #ifdef X64
 /* Returns the byte that shadows the 8-byte-aligned address */
 /* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 uint
-shadow_get_qword(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+shadow_get_qword(DR_PARAM_INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 #endif
 
 uint
-shadow_get_ptrsz(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
+shadow_get_ptrsz(DR_PARAM_INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 /* Sets the two bits for the byte at the passed-in address */
 /* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 void
-shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val);
+shadow_set_byte(DR_PARAM_INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val);
 
 /* Converts the special shadow block for addr to non-special
  * and returns a pointer to the same offset within the new

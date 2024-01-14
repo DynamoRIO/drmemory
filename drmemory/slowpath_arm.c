@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2018 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -230,7 +230,7 @@ opc_dst_subreg_nonlow(int opc)
  * what's already there.
  */
 void
-map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint shadow)
+map_src_to_dst(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, int src_bytenum, uint shadow)
 {
     ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
 }
@@ -247,7 +247,7 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
 /* Returns whether the definedness values changed at all */
 bool
 check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                    shadow_combine_t *comb INOUT, app_pc next_pc)
+                    shadow_combine_t *comb DR_PARAM_INOUT, app_pc next_pc)
 {
     ASSERT_NOT_IMPLEMENTED(); /* FIXME i#1726: NYI */
     return false;
@@ -255,7 +255,7 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 
 /* Returns whether to skip the general integration */
 bool
-integrate_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum,
+integrate_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum,
                                reg_id_t reg, uint shadow, bool pushpop)
 {
     return false;
@@ -263,8 +263,8 @@ integrate_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum,
 
 /* Returns whether to skip the general assignment code */
 bool
-assign_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
-                            reg_id_t reg, bool pushpop, uint *shift INOUT)
+assign_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, opnd_t opnd,
+                            reg_id_t reg, bool pushpop, uint *shift DR_PARAM_INOUT)
 {
     return false;
 }
@@ -300,7 +300,7 @@ slowpath_update_app_loc_arch(uint opc, app_pc decode_pc, app_loc_t *loc)
 
 bool
 check_mem_opnd_arch(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT)
+                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb DR_PARAM_INOUT)
 {
     return false;
 }

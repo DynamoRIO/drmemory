@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -41,7 +41,7 @@ get_ntdll_base(void);
 #endif
 
 app_pc
-get_libc_base(app_pc *libc_end OUT);
+get_libc_base(app_pc *libc_end DR_PARAM_OUT);
 
 bool
 pc_is_in_libc(app_pc pc);

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -134,22 +134,22 @@ register_shadow_mark_defined(reg_id_t reg, size_t sz);
  * what's already there.
  */
 void
-map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint shadow);
+map_src_to_dst(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, int src_bytenum, uint shadow);
 
 /* Returns whether the definedness values changed at all */
 bool
 check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                    shadow_combine_t *comb INOUT, app_pc next_pc);
+                    shadow_combine_t *comb DR_PARAM_INOUT, app_pc next_pc);
 
 /* Returns whether to skip the general integration */
 bool
-integrate_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum,
+integrate_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum,
                                reg_id_t reg, uint shadow, bool pushpop);
 
 /* Returns whether to skip the general assignment code */
 bool
-assign_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
-                            reg_id_t reg, bool pushpop, uint *shift INOUT);
+assign_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, opnd_t opnd,
+                            reg_id_t reg, bool pushpop, uint *shift DR_PARAM_INOUT);
 
 /* Returns whether it handled the instruction */
 bool
@@ -160,11 +160,11 @@ slowpath_update_app_loc_arch(uint opc, app_pc decode_pc, app_loc_t *loc);
 
 bool
 check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT);
+               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb DR_PARAM_INOUT);
 
 bool
 check_mem_opnd_arch(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT);
+                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb DR_PARAM_INOUT);
 
 bool
 check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr,

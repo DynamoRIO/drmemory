@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -957,8 +957,8 @@ opc_dst_subreg_nonlow(int opc)
  * allowing for use on packed shifts as well as GPR shifts.
  */
 static bool
-map_src_to_dst_shift(shadow_combine_t *comb INOUT, uint opc, int opnum, int src_bytenum,
-                     uint src_offs, uint opsz, uint shadow)
+map_src_to_dst_shift(shadow_combine_t *comb DR_PARAM_INOUT, uint opc, int opnum,
+                     int src_bytenum, uint src_offs, uint opsz, uint shadow)
 {
     reg_t shift;
     /* Be sure to use opsz, the element size, NOT comb->opsz; similarly, use
@@ -1044,7 +1044,8 @@ map_src_to_dst_shift(shadow_combine_t *comb INOUT, uint opc, int opnum, int src_
  * what's already there.
  */
 void
-map_src_to_dst(shadow_combine_t *comb INOUT, int opnum, int src_bytenum, uint shadow)
+map_src_to_dst(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, int src_bytenum,
+               uint shadow)
 {
     int opc = comb->opcode;
     uint opsz = comb->opsz;
@@ -1586,7 +1587,7 @@ xor_bitfield_mark_defined(opnd_t op, dr_mcontext_t *mc, opnd_t and_src, opnd_t a
 
 static bool
 xor_bitfield_check_instr(void *drcontext, dr_mcontext_t *mc, instr_t *and, instr_t *xor,
-                         shadow_combine_t *comb INOUT, size_t sz)
+                         shadow_combine_t *comb DR_PARAM_INOUT, size_t sz)
 {
     bool matches = false;
     /* While someone could construct an L4 OP_and where src0==dst0 (or
@@ -1626,7 +1627,7 @@ xor_bitfield_check_instr(void *drcontext, dr_mcontext_t *mc, instr_t *and, instr
 
 static bool
 check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                   shadow_combine_t *comb INOUT, size_t sz, app_pc next_pc)
+                   shadow_combine_t *comb DR_PARAM_INOUT, size_t sz, app_pc next_pc)
 {
     bool matches = false;
     instr_t xor;
@@ -1753,7 +1754,7 @@ check_and_not_test(void *drcontext, dr_mcontext_t *mc, instr_t *and, app_pc next
 
 
 static bool
-check_andor_bitmask_immed(int opc, size_t sz, reg_t immed, bool *byte_bounds OUT)
+check_andor_bitmask_immed(int opc, size_t sz, reg_t immed, bool *byte_bounds DR_PARAM_OUT)
 {
     /* For i#849, we're looking for OP_and with a constant that sets a contiguous
      * sequence of bits to 0 and leaves the rest alone: used to initialize
@@ -1809,7 +1810,7 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed, bool *byte_bounds OUT
 /* Returns whether the definedness values changed at all */
 bool
 check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
-                    shadow_combine_t *comb INOUT, app_pc next_pc)
+                    shadow_combine_t *comb DR_PARAM_INOUT, app_pc next_pc)
 {
     /* The two sources have been laid out side-by-side in comb->dst.
      * We need to combine, with special rules that suppress undefinedness
@@ -1956,7 +1957,7 @@ check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 
 /* Returns whether to skip the general integration */
 bool
-integrate_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum,
+integrate_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum,
                                reg_id_t reg, uint shadow, bool pushpop)
 {
     uint opc = comb->opcode;
@@ -1968,8 +1969,8 @@ integrate_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum,
 
 /* Returns whether to skip the general assignment code */
 bool
-assign_register_shadow_arch(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
-                            reg_id_t reg, bool pushpop, uint *shift INOUT)
+assign_register_shadow_arch(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, opnd_t opnd,
+                            reg_id_t reg, bool pushpop, uint *shift DR_PARAM_INOUT)
 {
     int opc = comb->opcode;
 
@@ -2373,7 +2374,7 @@ get_stringop_range(reg_t base, reg_t count, reg_t eflags, uint opsz,
 
 bool
 check_mem_opnd_arch(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT)
+                    dr_mcontext_t *mc, int opnum, shadow_combine_t *comb DR_PARAM_INOUT)
 {
     app_pc addr = NULL, end;
     if (opc_is_stringop_loop(opc) &&

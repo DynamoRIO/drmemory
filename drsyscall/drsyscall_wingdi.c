@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -2137,7 +2137,7 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
 
 bool
 wingdi_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res,
-                         bool *success OUT)
+                         bool *success DR_PARAM_OUT)
 {
     /* Custom success criteria */
     if (drsys_sysnums_equal(&sysnum, &sysnum_GdiDescribePixelFormat)) {

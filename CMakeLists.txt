@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2023 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -336,10 +336,12 @@ if (UNIX)
         "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie -Wl,--export-dynamic")
     endif ()
   endif ()
-  # TODO i#2485: Add DWARF-5 support.
-  CHECK_C_COMPILER_FLAG("-gdwarf-5" have_dwarf5)
-  if (have_dwarf5)
-    set(EXTRA_FLAGS "${EXTRA_FLAGS} -gdwarf-4")
+  if (APPLE)
+    # TODO i#2485: Add DWARF-5 support to Mac.
+    CHECK_C_COMPILER_FLAG("-gdwarf-5" have_dwarf5)
+    if (have_dwarf5)
+      set(EXTRA_FLAGS "${EXTRA_FLAGS} -gdwarf-4")
+    endif ()
   endif ()
   # We use C++11.
   set(EXTRA_CXXFLAGS "-std=c++11")

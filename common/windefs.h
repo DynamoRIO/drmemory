@@ -815,17 +815,17 @@ typedef struct _KEY_VALUE_ENTRY {
 typedef
 VOID
 (*PKNORMAL_ROUTINE) (
-    IN PVOID NormalContext,
-    IN PVOID SystemArgument1,
-    IN PVOID SystemArgument2
+    DR_PARAM_IN PVOID NormalContext,
+    DR_PARAM_IN PVOID SystemArgument1,
+    DR_PARAM_IN PVOID SystemArgument2
     );
 
 typedef
 VOID
 (NTAPI *PIO_APC_ROUTINE) (
-    IN PVOID ApcContext,
-    IN PIO_STATUS_BLOCK IoStatusBlock,
-    IN ULONG Reserved
+    DR_PARAM_IN PVOID ApcContext,
+    DR_PARAM_IN PIO_STATUS_BLOCK IoStatusBlock,
+    DR_PARAM_IN ULONG Reserved
     );
 
 #ifdef X64
@@ -981,7 +981,7 @@ typedef enum { /* NOTE - these are speculative */
     THREAD_INFO_ELEMENT_NT_PATH_TO_EXE  = 0x5, /* buffer is wchar * path to exe
                                                 * [ i.e. L"\??\c:\foo.exe" ] - IN */
     THREAD_INFO_ELEMENT_EXE_STUFF       = 0x6, /* buffer is exe_stuff_t (see above)
-                                                * - INOUT */
+                                                * - DR_PARAM_INOUT */
     THREAD_INFO_ELEMENT_UNKNOWN_1       = 0x9, /* Unknown - ptr_uint_t sized
                                                 * [ observed 1 ] - IN */
 } thread_info_elm_buf_type_t;
@@ -994,7 +994,7 @@ typedef struct _thread_info_element_t { /* NOTE - this is speculative */
 } thread_info_elm_t;
 
 typedef struct _exe_stuff_t { /* NOTE - this is speculative */
-    OUT void *exe_entrypoint_addr; /* Entry point to the exe being started. */
+    DR_PARAM_OUT void *exe_entrypoint_addr; /* Entry point to the exe being started. */
     // ratio of uint32 to ptr_uint_t assumes no larger changes between 32 and 64-bit
     ptr_uint_t unknown1[3]; // possibly intermixed with uint32s below IN? OUT?
     uint unknown2[8];       // possible intermixed with ptr_uint_ts above IN? OUT?

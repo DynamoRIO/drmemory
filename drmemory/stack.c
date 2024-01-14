@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -100,7 +100,7 @@ check_stack_size_vs_threshold(void *drcontext, size_t stack_size)
  * If addr is in a small malloc this routine will fail.
  */
 static bool
-get_stack_region_bounds(byte *addr, byte **base OUT, size_t *size OUT)
+get_stack_region_bounds(byte *addr, byte **base DR_PARAM_OUT, size_t *size DR_PARAM_OUT)
 {
     if (is_in_heap_region(addr)) {
         return malloc_large_lookup(addr, base, size);

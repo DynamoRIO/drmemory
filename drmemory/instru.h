@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -52,7 +52,7 @@ bool
 instrument_persist_ro(void *drcontext, void *perscxt, file_t fd);
 
 bool
-instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT);
+instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map DR_PARAM_INOUT);
 
 void
 bb_save_add_entry(app_pc key, bb_saved_info_t *save);

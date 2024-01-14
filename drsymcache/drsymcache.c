@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -706,7 +706,7 @@ drsymcache_init(client_id_t client_id,
 
 DR_EXPORT
 drmf_status_t
-drsymcache_is_initialized(bool *is_initialized OUT)
+drsymcache_is_initialized(bool *is_initialized DR_PARAM_OUT)
 {
     if (is_initialized == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
@@ -954,7 +954,8 @@ drsymcache_add(const module_data_t *mod, const char *symbol, size_t offs)
 DR_EXPORT
 drmf_status_t
 drsymcache_lookup(const module_data_t *mod, const char *symbol,
-                  size_t **offs_array OUT, uint *num_entries OUT, size_t *offs_single OUT)
+                  size_t **offs_array DR_PARAM_OUT, uint *num_entries DR_PARAM_OUT,
+                  size_t *offs_single DR_PARAM_OUT)
 {
     offset_list_t *olist;
     offset_entry_t *e;

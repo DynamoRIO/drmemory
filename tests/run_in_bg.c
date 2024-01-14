@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2016-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -140,11 +140,11 @@ typedef struct _PROCESS_BASIC_INFORMATION {
 } PROCESS_BASIC_INFORMATION;
 
 NTSYSAPI NTSTATUS NTAPI
-NtQueryInformationProcess(IN HANDLE ProcessHandle,
-                          IN ULONG ProcessInformationClass,
-                          OUT PVOID ProcessInformation,
-                          IN ULONG ProcessInformationLength,
-                          OUT PULONG ReturnLength OPTIONAL);
+NtQueryInformationProcess(DR_PARAM_IN HANDLE ProcessHandle,
+                          DR_PARAM_IN ULONG ProcessInformationClass,
+                          DR_PARAM_OUT PVOID ProcessInformation,
+                          DR_PARAM_IN ULONG ProcessInformationLength,
+                          DR_PARAM_OUT PULONG ReturnLength OPTIONAL);
 
 static int
 process_id_from_handle(HANDLE h)

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -75,7 +75,8 @@ ptrmax(byte *val1, byte *val2)
 
 /* Retrieve copies of fields.  The node pointer is then no longer needed. */
 void
-rb_node_fields(rb_node_t *node, byte **base OUT, size_t *size OUT, void **client OUT)
+rb_node_fields(rb_node_t *node, byte **base DR_PARAM_OUT, size_t *size DR_PARAM_OUT,
+               void **client DR_PARAM_OUT)
 {
     ASSERT(node != NULL, "invalid param");
     if (base != NULL)

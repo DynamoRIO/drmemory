@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -551,7 +551,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_name_to_syscall(const char *name, OUT drsys_syscall_t **syscall);
+drsys_name_to_syscall(const char *name, DR_PARAM_OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -567,7 +567,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_number_to_syscall(drsys_sysnum_t sysnum, OUT drsys_syscall_t **syscall);
+drsys_number_to_syscall(drsys_sysnum_t sysnum, DR_PARAM_OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -582,7 +582,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_name(drsys_syscall_t *syscall, OUT const char **name);
+drsys_syscall_name(drsys_syscall_t *syscall, DR_PARAM_OUT const char **name);
 
 DR_EXPORT
 /**
@@ -597,7 +597,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_number(drsys_syscall_t *syscall, OUT drsys_sysnum_t *sysnum);
+drsys_syscall_number(drsys_syscall_t *syscall, DR_PARAM_OUT drsys_sysnum_t *sysnum);
 
 DR_EXPORT
 /**
@@ -612,7 +612,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_type(drsys_syscall_t *syscall, OUT drsys_syscall_type_t *type);
+drsys_syscall_type(drsys_syscall_t *syscall, DR_PARAM_OUT drsys_syscall_type_t *type);
 
 DR_EXPORT
 /**
@@ -627,7 +627,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_is_known(drsys_syscall_t *syscall, OUT bool *known);
+drsys_syscall_is_known(drsys_syscall_t *syscall, DR_PARAM_OUT bool *known);
 
 DR_EXPORT
 /**
@@ -657,7 +657,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, OUT bool *success);
+drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, DR_PARAM_OUT bool *success);
 
 DR_EXPORT
 /**
@@ -678,7 +678,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_return_type(drsys_syscall_t *syscall, OUT drsys_param_type_t *type);
+drsys_syscall_return_type(drsys_syscall_t *syscall, DR_PARAM_OUT drsys_param_type_t *type);
 
 #ifdef WINDOWS
 DR_EXPORT
@@ -747,7 +747,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_cur_syscall(void *drcontext, OUT drsys_syscall_t **syscall);
+drsys_cur_syscall(void *drcontext, DR_PARAM_OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -779,8 +779,8 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
-                         OUT uint *error_code);
+drsys_cur_syscall_result(void *drcontext, DR_PARAM_OUT bool *success, DR_PARAM_OUT uint64 *value,
+                         DR_PARAM_OUT uint *error_code);
 
 DR_EXPORT
 /**
@@ -807,7 +807,7 @@ DR_EXPORT
  * slot.
  */
 drmf_status_t
-drsys_pre_syscall_arg(void *drcontext, uint argnum, OUT ptr_uint_t *value);
+drsys_pre_syscall_arg(void *drcontext, uint argnum, DR_PARAM_OUT ptr_uint_t *value);
 
 DR_EXPORT
 /**
@@ -829,7 +829,7 @@ DR_EXPORT
  * slot.
  */
 drmf_status_t
-drsys_pre_syscall_arg64(void *drcontext, uint argnum, OUT uint64 *value);
+drsys_pre_syscall_arg64(void *drcontext, uint argnum, DR_PARAM_OUT uint64 *value);
 
 DR_EXPORT
 /**
@@ -851,7 +851,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_get_mcontext(void *drcontext, OUT dr_mcontext_t **mc);
+drsys_get_mcontext(void *drcontext, DR_PARAM_OUT dr_mcontext_t **mc);
 
 
 /***************************************************************************
@@ -1000,7 +1000,8 @@ DR_EXPORT
  * \note Windows-only.
  */
 drmf_status_t
-drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_libs);
+drsys_find_sysnum_libs(DR_PARAM_OUT char **sysnum_lib_paths,
+                       DR_PARAM_INOUT size_t *num_sysnum_libs);
 
 DR_EXPORT
 /**

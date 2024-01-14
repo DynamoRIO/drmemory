@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -329,7 +329,7 @@ shadow_combine_init(shadow_combine_t *comb, instr_t *inst, uint opcode, uint max
  * comb->dst to be assigned to the destination.
  */
 static void
-integrate_register_shadow(shadow_combine_t *comb INOUT, int opnum,
+integrate_register_shadow(shadow_combine_t *comb DR_PARAM_INOUT, int opnum,
                           reg_id_t reg, uint shadow, bool pushpop)
 {
     uint i, sz;
@@ -374,7 +374,7 @@ integrate_register_shadow(shadow_combine_t *comb INOUT, int opnum,
 
 /* Assigns the array of source shadow_vals to the destination register shadow */
 static void
-assign_register_shadow(shadow_combine_t *comb INOUT, int opnum, opnd_t opnd,
+assign_register_shadow(shadow_combine_t *comb DR_PARAM_INOUT, int opnum, opnd_t opnd,
                        reg_id_t reg, bool pushpop)
 {
     uint shift = 0;
@@ -1425,7 +1425,7 @@ bool
 handle_mem_ref_internal(uint flags, app_loc_t *loc, app_pc addr, size_t sz,
                         dr_mcontext_t *mc,
                         /* these 2 are required for MEMREF_USE_VALUES */
-                        int opnum, shadow_combine_t *comb INOUT)
+                        int opnum, shadow_combine_t *comb DR_PARAM_INOUT)
 {
     uint i;
     bool allgood = true;
@@ -1760,7 +1760,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
 
 bool
 check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
-               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb INOUT)
+               dr_mcontext_t *mc, int opnum, shadow_combine_t *comb DR_PARAM_INOUT)
 {
     app_pc addr = NULL;
 #ifdef TOOL_DR_MEMORY

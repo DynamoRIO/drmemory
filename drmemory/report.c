@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -587,7 +587,7 @@ suppress_spec_finish(suppress_spec_t *spec,
 static bool
 suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
                           const char *line_in, size_t line_len, int brace_line,
-                          const char *line, bool *skip OUT)
+                          const char *line, bool *skip DR_PARAM_OUT)
 {
     const char *c;
     if (skip != NULL)
@@ -1110,7 +1110,7 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
 
 static bool
 on_suppression_list_helper(uint type, error_callstack_t *ecs,
-                           suppress_spec_t **matched OUT)
+                           suppress_spec_t **matched DR_PARAM_OUT)
 {
     suppress_spec_t *spec;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
@@ -1134,7 +1134,7 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
 }
 
 static bool
-on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched OUT)
+on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched DR_PARAM_OUT)
 {
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     if (on_suppression_list_helper(type, ecs, matched))
@@ -2215,7 +2215,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
  * This two-part scheme allows putting heap info in the error title (i#1593).
  */
 static void
-gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
+gather_heap_info(DR_PARAM_INOUT error_toprint_t *etp, app_pc addr, size_t sz)
 {
     byte *start, *end;
     ssize_t size;
@@ -2404,8 +2404,9 @@ gather_heap_info(INOUT error_toprint_t *etp, app_pc addr, size_t sz)
  * XXX PR 423750: provide this info on dups not just 1st unique.
  */
 static void
-report_heap_info(IN error_toprint_t *etp, OUT char *buf, size_t bufsz, size_t *sofar,
-                 app_pc addr, size_t sz, bool invalid_heap_arg, bool for_log)
+report_heap_info(DR_PARAM_IN error_toprint_t *etp, DR_PARAM_OUT char *buf, size_t bufsz,
+                 size_t *sofar, app_pc addr, size_t sz, bool invalid_heap_arg,
+                 bool for_log)
 {
     void *drcontext = dr_get_current_drcontext();
     ssize_t len = 0;

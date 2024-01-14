@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -449,7 +449,7 @@ os_syscall_ret_small_write_last(syscall_info_t *info, ptr_int_t res);
 #endif
 
 bool
-os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT);
+os_syscall_get_num(const char *name, drsys_sysnum_t *num DR_PARAM_OUT);
 
 uint
 sysnum_hash(void *val);
