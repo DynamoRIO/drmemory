@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2003-2008 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -395,7 +395,8 @@ static const char * const syscall_dlls[] = {
 
 DR_EXPORT
 drmf_status_t
-drsys_find_sysnum_libs(OUT char **sysnum_lib_paths, INOUT size_t *num_sysnum_libs)
+drsys_find_sysnum_libs(OUT char **sysnum_lib_paths,
+                       DR_PARAM_INOUT size_t *num_sysnum_libs)
 {
     if (num_sysnum_libs == nullptr)
         return DRMF_ERROR_INVALID_PARAMETER;
