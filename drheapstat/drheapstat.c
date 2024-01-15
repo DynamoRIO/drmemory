@@ -965,7 +965,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
 app_pc
 client_handle_free(malloc_info_t *info, byte *tofree, dr_mcontext_t *mc,
                    app_pc free_routine, void *routine_set_data, bool for_reuse
-                   _IF_WINDOWS(ptr_int_t *auxarg INOUT))
+                   _IF_WINDOWS(ptr_int_t *auxarg DR_PARAM_INOUT))
 {
     return tofree;
 }
