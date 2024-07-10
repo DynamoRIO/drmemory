@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -383,7 +383,7 @@ module_lookup_preferred_name(byte *pc);
  * Optionally returns the module bounds as well.
  */
 void *
-module_lookup_user_data(byte *pc, app_pc *start OUT, size_t *size OUT);
+module_lookup_user_data(byte *pc, app_pc *start DR_PARAM_OUT, size_t *size DR_PARAM_OUT);
 
 /* Warns once about modules that don't have symbols, and records them in a
  * logfile so they can be fetched at the end of execution.
@@ -411,11 +411,11 @@ typedef struct _symbolized_callstack_t {
 } symbolized_callstack_t;
 
 void
-packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
-                               symbolized_callstack_t *scs OUT);
+packed_callstack_to_symbolized(packed_callstack_t *pcs DR_PARAM_IN,
+                               symbolized_callstack_t *scs DR_PARAM_OUT);
 
 void
-symbolized_callstack_print(const symbolized_callstack_t *scs IN,
+symbolized_callstack_print(const symbolized_callstack_t *scs DR_PARAM_IN,
                            char *buf, size_t bufsz, size_t *sofar,
                            const char *prefix, bool for_log);
 

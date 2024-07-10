@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1139,7 +1139,7 @@ arena_delayed_list_full(arena_header_t *arena)
 
 static inline chunk_header_t *
 next_chunk_forward(arena_header_t *arena, chunk_header_t *head,
-                   arena_header_t **container_out OUT)
+                   arena_header_t **container_out DR_PARAM_OUT)
 {
     arena_header_t *container;
     byte *start = ptr_from_header(head);
@@ -2396,11 +2396,11 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 
 static bool
 overlap_helper(chunk_header_t *head,
-               malloc_info_t *info INOUT,
+               malloc_info_t *info DR_PARAM_INOUT,
                uint positive_flags,
                uint negative_flags)
 {
-    /* XXX: this is the one INOUT case of this structure.  Once we extend it,
+    /* XXX: this is the one DR_PARAM_INOUT case of this structure.  Once we extend it,
      * we need to handle back-compat struct size here.  For now, header_to_info()
      * is used here and by above internal code that doesn't set struct-size.
      */
@@ -2421,7 +2421,7 @@ overlap_helper(chunk_header_t *head,
 /* Considers alloc_size to overlap, but returns request size in *found_end */
 static bool
 alloc_replace_overlaps_region(byte *start, byte *end,
-                              malloc_info_t *info INOUT,
+                              malloc_info_t *info DR_PARAM_INOUT,
                               uint positive_flags,
                               uint negative_flags)
 {
@@ -2514,21 +2514,21 @@ alloc_replace_overlaps_region(byte *start, byte *end,
 
 bool
 alloc_replace_overlaps_delayed_free(byte *start, byte *end,
-                                    malloc_info_t *info OUT)
+                                    malloc_info_t *info DR_PARAM_OUT)
 {
     return alloc_replace_overlaps_region(start, end, info, CHUNK_DELAY_FREE, 0);
 }
 
 bool
 alloc_replace_overlaps_any_free(byte *start, byte *end,
-                                malloc_info_t *info OUT)
+                                malloc_info_t *info DR_PARAM_OUT)
 {
     return alloc_replace_overlaps_region(start, end, info, CHUNK_FREED, 0);
 }
 
 bool
 alloc_replace_overlaps_malloc(byte *start, byte *end,
-                              malloc_info_t *info OUT)
+                              malloc_info_t *info DR_PARAM_OUT)
 {
     return alloc_replace_overlaps_region(start, end, info, 0, CHUNK_FREED);
 }
@@ -3574,7 +3574,7 @@ replace_context_exit(void *drcontext, bool thread_exit)
 }
 
 static void
-replace_start_nosy_sequence(void *wrapcxt, OUT void **user_data)
+replace_start_nosy_sequence(void *wrapcxt, DR_PARAM_OUT void **user_data)
 {
     cls_replace_t *data = (cls_replace_t *)
         drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_replace);
@@ -3588,7 +3588,7 @@ replace_start_nosy_sequence(void *wrapcxt, OUT void **user_data)
 }
 
 static void
-replace_stop_nosy_sequence(void *wrapcxt, OUT void **user_data)
+replace_stop_nosy_sequence(void *wrapcxt, DR_PARAM_OUT void **user_data)
 {
     cls_replace_t *data = (cls_replace_t *)
         drmgr_get_cls_field(dr_get_current_drcontext(), cls_idx_replace);
@@ -4201,7 +4201,8 @@ replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
  * RtlHeap iteration replacement routines
  */
 
-typedef NTSTATUS (*PHEAP_ENUMERATION_ROUTINE)(IN PVOID HeapHandle, IN PVOID UserParam);
+typedef NTSTATUS (*PHEAP_ENUMERATION_ROUTINE)(DR_PARAM_IN PVOID HeapHandle,
+                                              DR_PARAM_IN PVOID UserParam);
 
 typedef struct _getheaps_data_t {
     ULONG actual_len;
@@ -4700,7 +4701,8 @@ alloc_entering_replace_routine(app_pc pc)
 
 static bool
 func_interceptor(routine_type_t type, bool check_mismatch, bool check_winapi_match,
-                 void **routine OUT, bool *at_entry OUT, uint *stack OUT)
+                 void **routine DR_PARAM_OUT, bool *at_entry DR_PARAM_OUT,
+                 uint *stack DR_PARAM_OUT)
 {
     /* almost everything is at the callee entry */
     *at_entry = true;

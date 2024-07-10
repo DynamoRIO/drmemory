@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2019 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2024 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -58,6 +58,9 @@
  *   a clean call via drwrap, and so we'll want our own hashtable of
  *   the library entries.
  */
+
+using ::dynamorio::droption::droption_parser_t;
+using ::dynamorio::droption::DROPTION_SCOPE_CLIENT;
 
 /* Where to write the trace */
 static file_t outf;
@@ -232,7 +235,7 @@ print_symbolic_args(const char *name, void *wrapcxt, app_pc func)
  */
 
 static void
-lib_entry(void *wrapcxt, INOUT void **user_data)
+lib_entry(void *wrapcxt, DR_PARAM_INOUT void **user_data)
 {
     const char *name = (const char *) *user_data;
     const char *modname = NULL;

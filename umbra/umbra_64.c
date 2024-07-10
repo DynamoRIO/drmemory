@@ -1032,11 +1032,11 @@ umbra_delete_shadow_memory_arch(umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_read_shadow_memory_arch(IN    umbra_map_t *map,
-                              IN    app_pc  app_addr,
-                              IN    size_t  app_size,
-                              INOUT size_t *shadow_size,
-                              IN    byte    *buffer)
+umbra_read_shadow_memory_arch(DR_PARAM_IN    umbra_map_t *map,
+                              DR_PARAM_IN    app_pc  app_addr,
+                              DR_PARAM_IN    size_t  app_size,
+                              DR_PARAM_INOUT size_t *shadow_size,
+                              DR_PARAM_IN    byte    *buffer)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
@@ -1075,11 +1075,11 @@ umbra_read_shadow_memory_arch(IN    umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_write_shadow_memory_arch(IN    umbra_map_t *map,
-                               IN    app_pc  app_addr,
-                               IN    size_t  app_size,
-                               INOUT size_t *shadow_size,
-                               IN    byte   *buffer)
+umbra_write_shadow_memory_arch(DR_PARAM_IN    umbra_map_t *map,
+                               DR_PARAM_IN    app_pc  app_addr,
+                               DR_PARAM_IN    size_t  app_size,
+                               DR_PARAM_INOUT size_t *shadow_size,
+                               DR_PARAM_IN    byte   *buffer)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
@@ -1118,12 +1118,12 @@ umbra_write_shadow_memory_arch(IN    umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_shadow_set_range_arch(IN   umbra_map_t *map,
-                            IN   app_pc       app_addr,
-                            IN   size_t       app_size,
-                            OUT  size_t      *shadow_size,
-                            IN   ptr_uint_t   value,
-                            IN   size_t       value_size)
+umbra_shadow_set_range_arch(DR_PARAM_IN   umbra_map_t *map,
+                            DR_PARAM_IN   app_pc       app_addr,
+                            DR_PARAM_IN   size_t       app_size,
+                            DR_PARAM_OUT  size_t      *shadow_size,
+                            DR_PARAM_IN   ptr_uint_t   value,
+                            DR_PARAM_IN   size_t       value_size)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
@@ -1160,11 +1160,11 @@ umbra_shadow_set_range_arch(IN   umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
-                             IN  app_pc  app_src,
-                             IN  app_pc  app_dst,
-                             IN  size_t  app_size_in,
-                             OUT size_t *shadow_size_out)
+umbra_shadow_copy_range_arch(DR_PARAM_IN  umbra_map_t *map,
+                             DR_PARAM_IN  app_pc  app_src,
+                             DR_PARAM_IN  app_pc  app_dst,
+                             DR_PARAM_IN  size_t  app_size_in,
+                             DR_PARAM_OUT size_t *shadow_size_out)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
@@ -1237,12 +1237,12 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
-                                  INOUT app_pc *app_addr,
-                                  IN    size_t  app_size,
-                                  IN    ptr_uint_t value,
-                                  IN    size_t value_size,
-                                  OUT   bool  *found)
+umbra_value_in_shadow_memory_arch(DR_PARAM_IN    umbra_map_t *map,
+                                  DR_PARAM_INOUT app_pc *app_addr,
+                                  DR_PARAM_IN    size_t  app_size,
+                                  DR_PARAM_IN    ptr_uint_t value,
+                                  DR_PARAM_IN    size_t value_size,
+                                  DR_PARAM_OUT   bool  *found)
 {
     /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
@@ -1335,16 +1335,14 @@ umbra_insert_app_to_shadow_arch(void *drcontext,
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->mask));
     PRE(ilist, where, INSTR_CREATE_and(drcontext,
-                                       opnd_create_reg(reg_addr),
-                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
 
     instru_insert_mov_pc(drcontext, ilist, where, opnd_create_reg(tmp),
                          OPND_CREATE_INT64(map->disp));
 
     PRE(ilist, where, INSTR_CREATE_add(drcontext,
-                                       opnd_create_reg(reg_addr),
-                                       opnd_create_reg(reg_addr),
+                                       opnd_create_reg(reg_addr), opnd_create_reg(reg_addr),
                                        opnd_create_reg(tmp)));
     if (map->options.scale == UMBRA_MAP_SCALE_UP_2X) {
         /* XXX: Use INSTR_CREATE_lsl or an xinst variant when DR provides it. */
@@ -1423,9 +1421,9 @@ umbra_iterate_shadow_memory_arch(umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_shadow_memory_is_shared_arch(IN  umbra_map_t *map,
-                                   IN  byte *shadow_addr,
-                                   OUT umbra_shadow_memory_type_t *shadow_type)
+umbra_shadow_memory_is_shared_arch(DR_PARAM_IN  umbra_map_t *map,
+                                   DR_PARAM_IN  byte *shadow_addr,
+                                   DR_PARAM_OUT umbra_shadow_memory_type_t *shadow_type)
 {
     *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;
     return DRMF_SUCCESS;
@@ -1511,19 +1509,19 @@ umbra_replace_shared_shadow_memory_arch(umbra_map_t *map,
 }
 
 drmf_status_t
-umbra_create_shared_shadow_block_arch(IN  umbra_map_t *map,
-                                      IN  ptr_uint_t   value,
-                                      IN  size_t       value_size,
-                                      OUT byte       **block)
+umbra_create_shared_shadow_block_arch(DR_PARAM_IN  umbra_map_t *map,
+                                      DR_PARAM_IN  ptr_uint_t   value,
+                                      DR_PARAM_IN  size_t       value_size,
+                                      DR_PARAM_OUT byte       **block)
 {
     return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
 }
 
 drmf_status_t
-umbra_get_shared_shadow_block_arch(IN  umbra_map_t *map,
-                                   IN  ptr_uint_t   value,
-                                   IN  size_t       value_size,
-                                   OUT byte       **block)
+umbra_get_shared_shadow_block_arch(DR_PARAM_IN  umbra_map_t *map,
+                                   DR_PARAM_IN  ptr_uint_t   value,
+                                   DR_PARAM_IN  size_t       value_size,
+                                   DR_PARAM_OUT byte       **block)
 {
     *block = NULL;
     return DRMF_ERROR_FEATURE_NOT_AVAILABLE;

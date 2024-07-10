@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -194,7 +194,7 @@ malloc_add(app_pc start, app_pc end, app_pc real_end,
 
 /* Looks up mallocs in the "large malloc table" (for mallocs used as stacks) */
 bool
-malloc_large_lookup(byte *addr, byte **start OUT, size_t *size OUT);
+malloc_large_lookup(byte *addr, byte **start DR_PARAM_OUT, size_t *size DR_PARAM_OUT);
 
 bool
 malloc_is_pre_us_ex(app_pc start, bool ok_if_invalid);
@@ -275,17 +275,17 @@ alloc_replace_in_cur_arena(byte *addr);
 /* overlap check includes redzone */
 bool
 alloc_replace_overlaps_delayed_free(byte *start, byte *end,
-                                    malloc_info_t *info INOUT);
+                                    malloc_info_t *info DR_PARAM_INOUT);
 
 /* overlap check includes redzone */
 bool
 alloc_replace_overlaps_any_free(byte *start, byte *end,
-                                malloc_info_t *info INOUT);
+                                malloc_info_t *info DR_PARAM_INOUT);
 
 /* overlap check includes redzone */
 bool
 alloc_replace_overlaps_malloc(byte *start, byte *end,
-                              malloc_info_t *info INOUT);
+                              malloc_info_t *info DR_PARAM_INOUT);
 
 /* Allocate application memory for clients.
  * This function can only be used with -replace_malloc and
@@ -379,7 +379,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
  * For wrapping:
  *   Up to the caller to delay, via its return value.
  *   Returns the value to pass to free().  Return "tofree" for no change.
- *   The Windows heap param is INOUT so it can be changed as well.
+ *   The Windows heap param is DR_PARAM_INOUT so it can be changed as well.
  *   client_data is from client_add_malloc_routine().
  * For replacing:
  *   The return value is ignored.  Frees are always delayed, unless
@@ -394,7 +394,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
 app_pc
 client_handle_free(malloc_info_t *info, byte *tofree, dr_mcontext_t *mc,
                    app_pc free_routine, void *routine_set_data, bool for_reuse
-                   _IF_WINDOWS(ptr_int_t *auxarg INOUT));
+                   _IF_WINDOWS(ptr_int_t *auxarg DR_PARAM_INOUT));
 
 /* For wrapping:
  *   Never called.

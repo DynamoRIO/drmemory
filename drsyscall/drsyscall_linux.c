@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -182,7 +182,7 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
 }
 
 bool
-os_syscall_get_num(const char *name, drsys_sysnum_t *num_out OUT)
+os_syscall_get_num(const char *name, drsys_sysnum_t *num_out DR_PARAM_OUT)
 {
     drsys_sysnum_t *num = (drsys_sysnum_t *)
         hashtable_lookup(&name2num_table, (void *)name);
@@ -246,7 +246,7 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
 }
 
 drmf_status_t
-drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
+drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type DR_PARAM_OUT)
 {
     if (syscall == NULL || type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;

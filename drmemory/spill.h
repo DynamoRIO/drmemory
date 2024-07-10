@@ -68,20 +68,20 @@ spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead);
 reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
                  drvector_t *reg_allowed,
-                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out);
+                 DR_PARAM_INOUT fastpath_info_t *mi, DR_PARAM_OUT reg_id_t *reg_out);
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-                   INOUT fastpath_info_t *mi, bool force_restore_now);
+                   DR_PARAM_INOUT fastpath_info_t *mi, bool force_restore_now);
 
 /* For translation sharing we reserve the same register across the whole bb. */
 void
 reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                        drvector_t *reg_allowed, INOUT fastpath_info_t *mi);
+                        drvector_t *reg_allowed, DR_PARAM_INOUT fastpath_info_t *mi);
 
 void
 unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi);
+                          DR_PARAM_INOUT fastpath_info_t *mi, DR_PARAM_INOUT bb_info_t *bi);
 
 void
 spill_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
@@ -178,10 +178,10 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 #ifdef AARCH64
 bool
-instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT);
+instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled DR_PARAM_OUT);
 
 bool
-instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored OUT);
+instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored DR_PARAM_OUT);
 #endif
 
 #endif /* _SPILL_H_ */

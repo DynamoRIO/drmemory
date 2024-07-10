@@ -1471,7 +1471,7 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
 reg_id_t
 reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
                  drvector_t *reg_allowed,
-                 INOUT fastpath_info_t *mi, OUT reg_id_t *reg_out)
+                 DR_PARAM_INOUT fastpath_info_t *mi, DR_PARAM_OUT reg_id_t *reg_out)
 {
     reg_id_t reg;
     IF_DEBUG(drreg_status_t res =)
@@ -1482,7 +1482,7 @@ reserve_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
-                   INOUT fastpath_info_t *mi, bool force_restore_now)
+                   DR_PARAM_INOUT fastpath_info_t *mi, bool force_restore_now)
 {
     IF_DEBUG(drreg_status_t res =)
         drreg_unreserve_register(drcontext, ilist, where, reg);
@@ -1502,7 +1502,7 @@ unreserve_register(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t
 
 void
 reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                        drvector_t *reg_allowed, INOUT fastpath_info_t *mi)
+                        drvector_t *reg_allowed, DR_PARAM_INOUT fastpath_info_t *mi)
 {
     ASSERT(mi != NULL && mi->bb != NULL, "shared register requires fastpath & bb info");
     if (mi->reg1.reg == DR_REG_NULL) {
@@ -1519,7 +1519,7 @@ reserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 void
 unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
-                          INOUT fastpath_info_t *mi, INOUT bb_info_t *bi)
+                          DR_PARAM_INOUT fastpath_info_t *mi, DR_PARAM_INOUT bb_info_t *bi)
 {
     ASSERT(bi != NULL, "shared register requires fastpath && bb info");
     if (bi->shared_reg != DR_REG_NULL) {
@@ -1534,7 +1534,7 @@ unreserve_shared_register(void *drcontext, instrlist_t *ilist, instr_t *where,
 
 #ifdef AARCH64
 bool
-instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT)
+instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled DR_PARAM_OUT)
 {
     bool spill;
     drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, &spill,
@@ -1544,7 +1544,7 @@ instr_is_spill(void *drcontext, instr_t *inst, reg_id_t *reg_spilled OUT)
 }
 
 bool
-instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored OUT)
+instr_is_restore(void *drcontext, instr_t *inst, reg_id_t *reg_restored DR_PARAM_OUT)
 {
     bool restore;
     drreg_status_t res = drreg_is_instr_spill_or_restore(drcontext, inst, NULL,

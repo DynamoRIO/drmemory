@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -327,7 +327,7 @@ mmap_tree_remove(byte *base, size_t size)
 }
 
 bool
-mmap_anon_lookup(byte *addr, byte **start OUT, size_t *size OUT)
+mmap_anon_lookup(byte *addr, byte **start DR_PARAM_OUT, size_t *size DR_PARAM_OUT)
 {
     dr_mutex_lock(mmap_tree_lock);
     bool res = false;
@@ -718,7 +718,7 @@ print_free_tree(rb_node_t *node, void *data)
  * pointer.  Caller must hold lock.
  */
 static app_pc
-next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT),
+next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg DR_PARAM_OUT),
              const char *reason)
 {
     app_pc pass_to_free = NULL;
@@ -765,12 +765,12 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
 }
 
 /* Returns the value to pass to free().  Return "tofree" for no change.
- * The auxarg param is INOUT so it can be changed as well.
+ * The auxarg param is DR_PARAM_INOUT so it can be changed as well.
  */
 app_pc
 client_handle_free(malloc_info_t *mal, byte *tofree, dr_mcontext_t *mc,
                    app_pc free_routine, void *routine_set_data, bool for_reuse
-                   _IF_WINDOWS(ptr_int_t *auxarg INOUT))
+                   _IF_WINDOWS(ptr_int_t *auxarg DR_PARAM_INOUT))
 {
     report_malloc(mal->base, mal->base + mal->request_size, "free", mc);
 
@@ -1016,9 +1016,9 @@ client_handle_heap_destroy(void *drcontext, HANDLE heap, void *client_data)
 
 bool
 overlaps_delayed_free(byte *start, byte *end,
-                      byte **free_start OUT, /* app base */
-                      byte **free_end OUT,   /* app request size */
-                      packed_callstack_t **pcs OUT,
+                      byte **free_start DR_PARAM_OUT, /* app base */
+                      byte **free_end DR_PARAM_OUT,   /* app request size */
+                      packed_callstack_t **pcs DR_PARAM_OUT,
                       bool delayed_only)
 {
     bool res = false;
@@ -1663,7 +1663,7 @@ event_kernel_xfer(void *drcontext, const dr_kernel_xfer_info_t *info)
 #ifdef X86 /* replacement should avoid needing to port this to ARM */
 static bool
 is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-                     app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
+                     app_pc addr, uint sz, instr_t *inst, bool *now_addressable DR_PARAM_OUT)
 {
     /* PR 406535: glibc's rawmemchr does some bit tricks that can end
      * up using unaddressable or undefined values.  The erroneous load
@@ -1763,7 +1763,7 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 
 bool
 is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
-                  bool *now_addressable OUT)
+                  bool *now_addressable DR_PARAM_OUT)
 {
     /* Check for alloca probes to trigger guard pages.
      * So far we've seen just a handful of different sequences:
@@ -1974,7 +1974,7 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
 #ifdef X86 /* replacement should avoid needing to port this to ARM */
 static bool
 is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-                  app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
+                  app_pc addr, uint sz, instr_t *inst, bool *now_addressable DR_PARAM_OUT)
 {
     /* Check for intel\strlen.asm case where it reads 4 bytes for efficiency:
      * it only does so if aligned, so no danger of touching next page, and
@@ -2074,7 +2074,7 @@ is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 
 static bool
 is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-                  app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
+                  app_pc addr, uint sz, instr_t *inst, bool *now_addressable DR_PARAM_OUT)
 {
     instr_t next;
     app_pc dpc = next_pc;
@@ -2148,7 +2148,7 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 
 static bool
 is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-            app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT,
+            app_pc addr, uint sz, instr_t *inst, bool *now_addressable DR_PARAM_OUT,
             app_loc_t *loc, dr_mcontext_t *mc)
 {
     /* i#585: prefetch should not raise an unaddr error, only a warning */
@@ -2171,7 +2171,7 @@ is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 #ifdef WINDOWS
 static bool
 is_heap_seh(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-            app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT,
+            app_pc addr, uint sz, instr_t *inst, bool *now_addressable DR_PARAM_OUT,
             app_loc_t *loc, dr_mcontext_t *mc)
 {
     /* i#689: Rtl*Heap SEH finalizer reads Heap to unlock the Heap's critsec.
@@ -2645,11 +2645,11 @@ region_overlap_with_malloc_block(malloc_iter_data_t *iter_data)
  */
 bool
 region_in_redzone(byte *addr, size_t size,
-                  packed_callstack_t **alloc_pcs OUT,
-                  app_pc *app_start OUT,
-                  app_pc *app_end OUT,
-                  app_pc *redzone_start OUT,
-                  app_pc *redzone_end OUT)
+                  packed_callstack_t **alloc_pcs DR_PARAM_OUT,
+                  app_pc *app_start DR_PARAM_OUT,
+                  app_pc *app_end DR_PARAM_OUT,
+                  app_pc *redzone_start DR_PARAM_OUT,
+                  app_pc *redzone_end DR_PARAM_OUT)
 {
     malloc_iter_data_t iter_data = {addr, size, NULL, NULL, NULL, false, false};
     if (options.replace_malloc) {

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1309,7 +1309,7 @@ malloc_iterate_build_tree_cb(malloc_info_t *info, void *iter_data)
 }
 
 static void
-prepare_thread_for_scan(void *drcontext, bool *was_app_state OUT)
+prepare_thread_for_scan(void *drcontext, bool *was_app_state DR_PARAM_OUT)
 {
     ASSERT(was_app_state != NULL, "invalid param");
     *was_app_state = dr_using_app_state(drcontext);

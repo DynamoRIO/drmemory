@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -386,7 +386,7 @@ DR_EXPORT
  * fuzzing function in the case of nested fuzzing.
  */
 drmf_status_t
-drfuzz_get_target_num_bbs(IN generic_func_t target_pc, OUT uint64 *num_bbs);
+drfuzz_get_target_num_bbs(DR_PARAM_IN generic_func_t target_pc, DR_PARAM_OUT uint64 *num_bbs);
 
 DR_EXPORT
 /**
@@ -404,7 +404,7 @@ DR_EXPORT
  */
 drmf_status_t
 drfuzz_get_arg(void *fuzzcxt, generic_func_t target_pc, int arg, bool original,
-               OUT void **arg_value);
+               DR_PARAM_OUT void **arg_value);
 
 DR_EXPORT
 /**
@@ -422,7 +422,7 @@ DR_EXPORT
  * Get the user data associated with the \p target_pc.
  */
 drmf_status_t
-drfuzz_get_target_user_data(IN generic_func_t target_pc, OUT void **user_data);
+drfuzz_get_target_user_data(DR_PARAM_IN generic_func_t target_pc, DR_PARAM_OUT void **user_data);
 
 DR_EXPORT
 /**
@@ -432,8 +432,8 @@ DR_EXPORT
  * \note: Only one slot is provided for the data, so multiple writes will overwrite.
  */
 drmf_status_t
-drfuzz_set_target_user_data(IN generic_func_t target_pc, IN void *user_data,
-                            IN void (*delete_callback)(void *user_data));
+drfuzz_set_target_user_data(DR_PARAM_IN generic_func_t target_pc, DR_PARAM_IN void *user_data,
+                            DR_PARAM_IN void (*delete_callback)(void *user_data));
 
 DR_EXPORT
 /**
@@ -441,8 +441,8 @@ DR_EXPORT
  * \p fuzzcxt is NULL, the fuzzcxt for the current thread will be used (if any).
  */
 drmf_status_t
-drfuzz_get_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
-                                       OUT void **user_data);
+drfuzz_get_target_per_thread_user_data(DR_PARAM_IN void *fuzzcxt, DR_PARAM_IN generic_func_t target_pc,
+                                       DR_PARAM_OUT void **user_data);
 
 DR_EXPORT
 /**
@@ -454,9 +454,9 @@ DR_EXPORT
  * \note: Only one slot is provided for the data, so multiple writes will overwrite.
  */
 drmf_status_t
-drfuzz_set_target_per_thread_user_data(IN void *fuzzcxt, IN generic_func_t target_pc,
-                                       IN void *user_data,
-                                       IN void (*delete_callback)(void *fuzzcxt,
+drfuzz_set_target_per_thread_user_data(DR_PARAM_IN void *fuzzcxt, DR_PARAM_IN generic_func_t target_pc,
+                                       DR_PARAM_IN void *user_data,
+                                       DR_PARAM_IN void (*delete_callback)(void *fuzzcxt,
                                                                   void *user_data));
 
 DR_EXPORT
@@ -506,14 +506,14 @@ DR_EXPORT
  * DRMF_SUCCESS on success.
  */
 drmf_status_t
-drfuzz_mutator_load(IN const char *lib_path, INOUT drfuzz_mutator_api_t *api);
+drfuzz_mutator_load(DR_PARAM_IN const char *lib_path, DR_PARAM_INOUT drfuzz_mutator_api_t *api);
 
 DR_EXPORT
 /**
  * Unloads a custom mutator library.  Returns DRMF_SUCCESS on success.
  */
 drmf_status_t
-drfuzz_mutator_unload(IN drfuzz_mutator_api_t *lib);
+drfuzz_mutator_unload(DR_PARAM_IN drfuzz_mutator_api_t *lib);
 
 
 /*@}*/ /* end doxygen group */

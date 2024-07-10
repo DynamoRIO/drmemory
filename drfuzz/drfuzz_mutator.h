@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -103,8 +103,10 @@ LIB_EXPORT
  * @param[in]   argv        An array of \p argc arguments to customize the mutator.
  */
 drmf_status_t
-LIBFUNC(drfuzz_mutator_start)(OUT drfuzz_mutator_t **mutator, IN void *input_seed,
-                              IN size_t size, IN int argc, IN const char *argv[]);
+LIBFUNC(drfuzz_mutator_start)(DR_PARAM_OUT drfuzz_mutator_t **mutator,
+                              DR_PARAM_IN void *input_seed,
+                              DR_PARAM_IN size_t size, DR_PARAM_IN int argc,
+                              DR_PARAM_IN const char *argv[]);
 
 LIB_EXPORT
 /**
@@ -119,14 +121,16 @@ LIB_EXPORT
  * Provides a copy of the current mutator value. Returns DRMF_SUCCESS on success.
  */
 drmf_status_t
-LIBFUNC(drfuzz_mutator_get_current_value)(IN drfuzz_mutator_t *mutator, OUT void *buffer);
+LIBFUNC(drfuzz_mutator_get_current_value)(DR_PARAM_IN drfuzz_mutator_t *mutator,
+                                          DR_PARAM_OUT void *buffer);
 
 LIB_EXPORT
 /**
  * Writes the next fuzz value to the provided buffer. Returns DRMF_SUCCESS on success.
  */
 drmf_status_t
-LIBFUNC(drfuzz_mutator_get_next_value)(drfuzz_mutator_t *mutator, OUT void *buffer);
+LIBFUNC(drfuzz_mutator_get_next_value)(drfuzz_mutator_t *mutator,
+                                       DR_PARAM_OUT void *buffer);
 
 LIB_EXPORT
 /**

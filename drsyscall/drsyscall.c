@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -122,7 +122,7 @@ static int drsys_init_count;
 void *systable_lock;
 
 static drsys_param_type_t
-map_to_exported_type(uint sysarg_type, size_t *sz_out OUT);
+map_to_exported_type(uint sysarg_type, size_t *sz_out DR_PARAM_OUT);
 
 /***************************************************************************
  * SYSTEM CALLS
@@ -216,7 +216,7 @@ check_syscall_gateway(instr_t *inst)
 
 DR_EXPORT
 drmf_status_t
-drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT)
+drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = syscall_lookup(sysnum, true/*resolve 2ndary*/);
     if (syscall == NULL)
@@ -232,7 +232,7 @@ drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
+drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall DR_PARAM_OUT)
 {
     drsys_sysnum_t sysnum;
     syscall_info_t *sysinfo;
@@ -331,7 +331,7 @@ static const syscall_info_t unknown_info_template =
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_is_known(drsys_syscall_t *syscall, bool *known OUT)
+drsys_syscall_is_known(drsys_syscall_t *syscall, bool *known DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || known == NULL)
@@ -418,7 +418,7 @@ handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                 sysnum.number, sysnum.secondary, i, start);
             if (ALIGNED(start, 4) && is_byte_addressable(start)) {
                 /* This looks like a memory parameter.  It might contain OUT
-                 * values mixed with IN, so we do not stop at the first undefined
+                 * values mixed with DR_PARAM_IN, so we do not stop at the first undefined
                  * byte: instead we stop at an unaddr or at the max size.
                  * We need two passes to know how far we can safely read,
                  * so we go ahead and use dynamically sized memory as well.
@@ -621,7 +621,7 @@ get_cur_syscall(cls_syscall_t *pt)
 
 DR_EXPORT
 drmf_status_t
-drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall OUT)
+drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall DR_PARAM_OUT)
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     if (drcontext == NULL || syscall == NULL)
@@ -632,7 +632,7 @@ drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT)
+drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success DR_PARAM_OUT)
 {
 #ifdef MACOS
     /* XXX: we actually could return a value for Mach syscalls */
@@ -651,7 +651,8 @@ drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OU
 
 static void
 get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
-                   OUT bool *success, OUT uint64 *value, OUT uint *error_code)
+                   DR_PARAM_OUT bool *success, DR_PARAM_OUT uint64 *value,
+                   DR_PARAM_OUT uint *error_code)
 {
     bool res = os_syscall_succeeded(sysinfo->num, sysinfo, pt);
     dr_mcontext_t *mc = &pt->mc;
@@ -684,8 +685,8 @@ get_syscall_result(syscall_info_t *sysinfo, cls_syscall_t *pt,
 
 DR_EXPORT
 drmf_status_t
-drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
-                         OUT uint *error_code)
+drsys_cur_syscall_result(void *drcontext, DR_PARAM_OUT bool *success,
+                         DR_PARAM_OUT uint64 *value, DR_PARAM_OUT uint *error_code)
 {
     cls_syscall_t *pt;
     syscall_info_t *sysinfo;
@@ -699,7 +700,7 @@ drsys_cur_syscall_result(void *drcontext, OUT bool *success, OUT uint64 *value,
 
 DR_EXPORT
 drmf_status_t
-drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT)
+drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value DR_PARAM_OUT)
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     if (value == NULL || argnum >= SYSCALL_NUM_ARG_STORE)
@@ -710,7 +711,7 @@ drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_pre_syscall_arg64(void *drcontext, uint argnum, uint64 *value OUT)
+drsys_pre_syscall_arg64(void *drcontext, uint argnum, uint64 *value DR_PARAM_OUT)
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     if (value == NULL || argnum >= SYSCALL_NUM_ARG_STORE)
@@ -721,7 +722,7 @@ drsys_pre_syscall_arg64(void *drcontext, uint argnum, uint64 *value OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_name(drsys_syscall_t *syscall, const char **name OUT)
+drsys_syscall_name(drsys_syscall_t *syscall, const char **name DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || name == NULL)
@@ -732,7 +733,7 @@ drsys_syscall_name(drsys_syscall_t *syscall, const char **name OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum OUT)
+drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || sysnum == NULL)
@@ -743,7 +744,7 @@ drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT)
+drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc DR_PARAM_OUT)
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     if (mc == NULL)
@@ -754,7 +755,7 @@ drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type OUT)
+drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     if (syscall == NULL || type == NULL)
@@ -851,7 +852,7 @@ mode_from_flags(uint arg_flags)
 }
 
 static drsys_param_type_t
-map_to_exported_type(uint sysarg_type, size_t *sz_out OUT)
+map_to_exported_type(uint sysarg_type, size_t *sz_out DR_PARAM_OUT)
 {
     size_t sz = 0;
     drsys_param_type_t type = (drsys_param_type_t) sysarg_type;
@@ -1609,7 +1610,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 
 static syscall_info_t *
 get_sysinfo(void *drcontext, cls_syscall_t *pt, int initial_num,
-            drsys_sysnum_t *sysnum OUT)
+            drsys_sysnum_t *sysnum DR_PARAM_OUT)
 {
     syscall_info_t *sysinfo;
     ASSERT(sysnum != NULL, "invalid param");

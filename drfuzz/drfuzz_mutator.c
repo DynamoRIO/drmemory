@@ -1,5 +1,5 @@
 /* **************************************************************
- * Copyright (c) 2015-2016 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **************************************************************/
 
 /*
@@ -443,8 +443,10 @@ drfuzz_mutator_set_options(drfuzz_mutator_t *mutator_in,
  */
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_start(OUT drfuzz_mutator_t **mutator_out, IN void *input_seed,
-                     IN size_t size, IN int argc, IN const char *argv[])
+drfuzz_mutator_start(DR_PARAM_OUT drfuzz_mutator_t **mutator_out,
+                     DR_PARAM_IN void *input_seed,
+                     DR_PARAM_IN size_t size, DR_PARAM_IN int argc,
+                     DR_PARAM_IN const char *argv[])
 {
     mutator_t *mutator;
     drmf_status_t res;
@@ -505,7 +507,8 @@ drfuzz_mutator_has_next_value(drfuzz_mutator_t *mutator_in)
 }
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_get_current_value(IN drfuzz_mutator_t *mutator_in, OUT void *buffer)
+drfuzz_mutator_get_current_value(DR_PARAM_IN drfuzz_mutator_t *mutator_in,
+                                 DR_PARAM_OUT void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
     memcpy(buffer, mutator->current_value, mutator->size);
@@ -683,7 +686,7 @@ get_next_random_value(mutator_t *mutator, void *buffer)
 }
 
 LIB_EXPORT drmf_status_t
-drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, IN void *buffer)
+drfuzz_mutator_get_next_value(drfuzz_mutator_t *mutator_in, DR_PARAM_IN void *buffer)
 {
     mutator_t *mutator = (mutator_t *) mutator_in;
     drmf_status_t res;

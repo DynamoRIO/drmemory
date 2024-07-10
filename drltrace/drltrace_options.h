@@ -32,20 +32,20 @@
 
 #include "droption.h"
 
-extern droption_t<std::string> op_logdir;
-extern droption_t<bool> op_only_from_app;
-extern droption_t<bool> op_follow_children;
-extern droption_t<bool> op_print_ret_addr;
-extern droption_t<unsigned int> op_unknown_args;
-extern droption_t<int> op_max_args;
-extern droption_t<bool> op_config_file_default;
-extern droption_t<std::string> op_config_file;
-extern droption_t<std::string> op_sysnum_file;
-extern droption_t<std::string> op_symcache_dir;
-extern droption_t<bool> op_ignore_underscore;
-extern droption_t<std::string> op_only_to_lib;
-extern droption_t<bool> op_help;
-extern droption_t<bool> op_version;
-extern droption_t<unsigned int> op_verbose;
-extern droption_t<bool> op_use_config;
-extern droption_t<std::string> op_ltracelib_ops;
+extern dynamorio::droption::droption_t<std::string> op_logdir;
+extern dynamorio::droption::droption_t<bool> op_only_from_app;
+extern dynamorio::droption::droption_t<bool> op_follow_children;
+extern dynamorio::droption::droption_t<bool> op_print_ret_addr;
+extern dynamorio::droption::droption_t<unsigned int> op_unknown_args;
+extern dynamorio::droption::droption_t<int> op_max_args;
+extern dynamorio::droption::droption_t<bool> op_config_file_default;
+extern dynamorio::droption::droption_t<std::string> op_config_file;
+extern dynamorio::droption::droption_t<std::string> op_sysnum_file;
+extern dynamorio::droption::droption_t<std::string> op_symcache_dir;
+extern dynamorio::droption::droption_t<bool> op_ignore_underscore;
+extern dynamorio::droption::droption_t<std::string> op_only_to_lib;
+extern dynamorio::droption::droption_t<bool> op_help;
+extern dynamorio::droption::droption_t<bool> op_version;
+extern dynamorio::droption::droption_t<unsigned int> op_verbose;
+extern dynamorio::droption::droption_t<bool> op_use_config;
+extern dynamorio::droption::droption_t<std::string> op_ltracelib_ops;

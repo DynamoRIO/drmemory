@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -185,7 +185,7 @@ get_ntdll_base(void)
  * just one libc.
  */
 app_pc
-get_libc_base(app_pc *libc_end_out OUT)
+get_libc_base(app_pc *libc_end_out DR_PARAM_OUT)
 {
     static app_pc libc_base, libc_end; /* cached values */
     if (libc_base == NULL) {
@@ -293,15 +293,15 @@ static app_pc ld_so_data_end;
 #endif
 
 #ifdef WINDOWS
-DECLARE_NTDLL(RtlLockHeap, (IN HANDLE Heap));
-DECLARE_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
-DECLARE_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
-                                   OUT HANDLE *Heaps));
-DECLARE_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
-                            OUT rtl_process_heap_entry_t *Info));
-DECLARE_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
-                            IN ULONG flags,
-                            IN PVOID ptr));
+DECLARE_NTDLL(RtlLockHeap, (DR_PARAM_IN HANDLE Heap));
+DECLARE_NTDLL(RtlUnlockHeap, (DR_PARAM_IN HANDLE Heap));
+DECLARE_NTDLL(RtlGetProcessHeaps, (DR_PARAM_IN ULONG count,
+                                   DR_PARAM_OUT HANDLE *Heaps));
+DECLARE_NTDLL(RtlWalkHeap, (DR_PARAM_IN HANDLE Heap,
+                            DR_PARAM_OUT rtl_process_heap_entry_t *Info));
+DECLARE_NTDLL(RtlSizeHeap, (DR_PARAM_IN HANDLE Heap,
+                            DR_PARAM_IN ULONG flags,
+                            DR_PARAM_IN PVOID ptr));
 
 static void
 heap_walk_init(void)
@@ -329,7 +329,7 @@ static void
 walk_individual_heap(byte *heap,
                      void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
                      void (*cb_chunk)(app_pc,app_pc),
-                     byte **allocated_end OUT)
+                     byte **allocated_end DR_PARAM_OUT)
 {
     rtl_process_heap_entry_t heap_info;
     size_t size, commit_size, sub_size;

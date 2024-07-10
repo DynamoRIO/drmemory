@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2015-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2015-2024 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -823,7 +823,8 @@ log_target_buffer(void *dcontext, uint loglevel, fuzz_state_t *thread)
 }
 
 size_t
-fuzzer_error_report(IN void *dcontext, OUT char *notify, IN size_t notify_size, int eid)
+fuzzer_error_report(DR_PARAM_IN void *dcontext, DR_PARAM_OUT char *notify,
+                    DR_PARAM_IN size_t notify_size, int eid)
 {
     ssize_t len = 0;
     size_t sofar = 0;
@@ -1096,7 +1097,7 @@ create_shadow_state(void *dcontext)
 }
 
 static bool
-init_thread_shadow_state(OUT shadow_state_t **shadow_out)
+init_thread_shadow_state(DR_PARAM_OUT shadow_state_t **shadow_out)
 {
     drmf_status_t res;
     shadow_state_t *shadow;
@@ -1824,8 +1825,8 @@ tokenizer_exit_with_usage_error()
 }
 
 static bool
-tokenizer_copy_to(IN tokenizer_t *t, IN const char *to, OUT size_t *len,
-                  OUT char **token)
+tokenizer_copy_to(DR_PARAM_IN tokenizer_t *t, DR_PARAM_IN const char *to,
+                  DR_PARAM_OUT size_t *len, DR_PARAM_OUT char **token)
 {
     *len = (to + 1/*null-term*/ - t->src);
     *token = global_alloc(*len, t->type);
@@ -1840,7 +1841,7 @@ tokenizer_copy_to(IN tokenizer_t *t, IN const char *to, OUT size_t *len,
 }
 
 static bool
-tokenizer_has_next(IN tokenizer_t *t, IN char delimiter)
+tokenizer_has_next(DR_PARAM_IN tokenizer_t *t, DR_PARAM_IN char delimiter)
 {
     const char *next_ptr = NULL;
 
@@ -1851,8 +1852,9 @@ tokenizer_has_next(IN tokenizer_t *t, IN char delimiter)
 }
 
 static bool
-tokenizer_find_next(IN tokenizer_t *t, OUT const char **src_ptr_out, IN char delim,
-                    IN char raw_delim, IN const char *field_name)
+tokenizer_find_next(DR_PARAM_IN tokenizer_t *t, DR_PARAM_OUT const char **src_ptr_out,
+                    DR_PARAM_IN char delim, DR_PARAM_IN char raw_delim,
+                    DR_PARAM_IN const char *field_name)
 {
     const char *src_ptr = NULL;
 
@@ -1875,8 +1877,9 @@ tokenizer_find_next(IN tokenizer_t *t, OUT const char **src_ptr_out, IN char del
 }
 
 static bool
-tokenizer_copy_next(IN tokenizer_t *t, OUT size_t *len, OUT char **token,
-                    IN char delimiter, IN const char *field_name)
+tokenizer_copy_next(DR_PARAM_IN tokenizer_t *t, DR_PARAM_OUT size_t *len,
+                    DR_PARAM_OUT char **token, DR_PARAM_IN char delimiter,
+                    DR_PARAM_IN const char *field_name)
 {
     const char *src_ptr = NULL;
 
@@ -1887,8 +1890,9 @@ tokenizer_copy_next(IN tokenizer_t *t, OUT size_t *len, OUT char **token,
 }
 
 static bool
-tokenizer_next_int(IN tokenizer_t *t, OUT byte *dst, IN char delimiter,
-                   IN bool hex, IN bool is_64, IN const char *field_name)
+tokenizer_next_int(DR_PARAM_IN tokenizer_t *t, DR_PARAM_OUT byte *dst,
+                   DR_PARAM_IN char delimiter, DR_PARAM_IN bool hex,
+                   DR_PARAM_IN bool is_64, DR_PARAM_IN const char *field_name)
 {
     size_t len;
     char *src;
@@ -1909,7 +1913,8 @@ tokenizer_next_int(IN tokenizer_t *t, OUT byte *dst, IN char delimiter,
  * `chrs`. If found, return true and point `res` to that character within `t->src`.
  */
 static bool
-tokenizer_strchrs(IN tokenizer_t *t, OUT const char **res, IN const char *chrs)
+tokenizer_strchrs(DR_PARAM_IN tokenizer_t *t, DR_PARAM_OUT const char **res,
+                  DR_PARAM_IN const char *chrs)
 {
     const char *c, *c_ptr, *first_match = NULL;
     uint first_match_len = 0xffffffff;
