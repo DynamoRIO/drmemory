@@ -323,7 +323,7 @@ Dr. Memory supports applications compiled with the MinGW gcc or g++
 compilers, but will only provide line number information if DWARF
 debugging information is present.  The default for MinGW gcc prior to
 version 4.3 is to use the stabs format, which is not supported by
-Dr. Memory.  Pass the \p -ggdb option to gcc to generate DWARF format
+Dr. Memory.  Pass the \p -gdwarf-2 option to gcc to generate DWARF format
 instead.
 
 You install the MinGW compiler in a Cygwin installation by running the
@@ -342,7 +342,7 @@ GCC for Win32 (i686-w64-mingw32) toolchain (C++)" Cygwin package (this is a
 32-bit compiler available for both 32-bit and 64-bit Cygwin):
 
 \verbatim
-i686-w64-mingw32-g++.exe -static-libgcc -static-libstdc++ -ggdb -o myapp.exe myfile1.cpp myfile2.cpp
+i686-w64-mingw32-g++.exe -static-libgcc -static-libstdc++ -gdwarf-2 -o myapp.exe myfile1.cpp myfile2.cpp
 \endverbatim
 
 ********************
