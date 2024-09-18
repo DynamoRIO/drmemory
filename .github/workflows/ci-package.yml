@@ -113,7 +113,8 @@ jobs:
         DEPLOY_DOCS: no
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: linux-tarball
         path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
@@ -179,13 +180,15 @@ jobs:
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
 
     - name: Upload Zip
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: windows-zip
         path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
 
     - name: Upload Msi
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: windows-msi
         path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
@@ -196,10 +199,10 @@ jobs:
   # succeeds and the others fail: there is no check in the create-release
   # action to use an existing release if it already exists.
   # Thus, our strategy is to share files from the build jobs with this
-  # single relese job via artifacts.
+  # single release job via artifacts.
 
   create_release:
-    needs: [x86, osx, windows]
+    needs: [x86, windows]
     runs-on: ubuntu-20.04
 
     steps:
@@ -245,7 +248,8 @@ jobs:
         prerelease: false
 
     - name: Download Linux
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: linux-tarball
     - name: Upload Linux
@@ -259,23 +263,9 @@ jobs:
         asset_name: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
         asset_content_type: application/x-gzip
 
-    - name: Download Mac
-      uses: actions/download-artifact@v2
-      with:
-        name: mac-tarball
-    - name: Upload Mac
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        # This action doesn't seem to support a glob so we need the exact name.
-        asset_path: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
-        asset_name: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
-        asset_content_type: application/x-gzip
-
     - name: Download Zip
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: windows-zip
     - name: Upload Zip
@@ -290,7 +280,8 @@ jobs:
         asset_content_type: application/zip
 
     - name: Download Msi
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: windows-msi
     - name: Upload Msi
