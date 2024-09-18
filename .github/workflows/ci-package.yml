@@ -244,7 +244,7 @@ jobs:
   # single relese job via artifacts.
 
   create_release:
-    needs: [x86, osx, windows]
+    needs: [x86, windows]
     runs-on: ubuntu-20.04
 
     steps:
@@ -302,21 +302,6 @@ jobs:
         # This action doesn't seem to support a glob so we need the exact name.
         asset_path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
         asset_name: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
-        asset_content_type: application/x-gzip
-
-    - name: Download Mac
-      uses: actions/download-artifact@v2
-      with:
-        name: mac-tarball
-    - name: Upload Mac
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        # This action doesn't seem to support a glob so we need the exact name.
-        asset_path: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
-        asset_name: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
         asset_content_type: application/x-gzip
 
     - name: Download Zip
