@@ -113,59 +113,15 @@ jobs:
         DEPLOY_DOCS: no
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: linux-tarball
         path: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
 
   ###########################################################################
   # Mac tarball with x86-64 build:
-  osx:
-    runs-on: macos-11
-
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: recursive
-
-    - name: Fetch Sources
-      run: git fetch --no-tags --depth=1 origin master
-
-    - name: Create Build Environment
-      run: brew install nasm zlib snappy lz4
-
-    - name: Get Version
-      id: version
-      # XXX: See x86 job comments on sharing the default ver# with CMakeLists.txt.
-      run: |
-        if test -z "${{ github.event.inputs.version }}"; then
-          export PATCHLEVEL=$((`git log -n 1 --format=%ct` / (60*60*24)))
-          export PATCHLEVEL=$(((PATCHLEVEL %200) + 56))
-          export VERSION_NUMBER="2.6.${PATCHLEVEL}"
-          export PREFIX="cronbuild-"
-        else
-          export VERSION_NUMBER=${{ github.event.inputs.version }}
-          export PREFIX="release_"
-        fi
-        if [ "${{ github.event.inputs.build }}" -ne 0 ]; then
-          export VERSION_NUMBER="${VERSION_NUMBER}-${{ github.event.inputs.build }}"
-        fi
-        echo "::set-output name=version_number::${VERSION_NUMBER}"
-
-    - name: Build Package
-      working-directory: ${{ github.workspace }}
-      run: ./tests/runsuite_wrapper.pl travis
-      env:
-        CI_TARGET: package
-        VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
-        # See ci-osx.yml comments: we need to set the xcode version.
-        DEVELOPER_DIR: /Applications/Xcode_13.2.1.app/Contents/Developer
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: mac-tarball
-        path: DrMemory-MacOS-${{ steps.version.outputs.version_number }}.tar.gz
+  # TODO i#2511: re-enable once it works on macos-12.
 
   ###########################################################################
   # Windows .zip and .msi with 32-bit and 64-bit x86 builds:
@@ -224,13 +180,15 @@ jobs:
         VERSION_NUMBER: ${{ steps.version.outputs.version_number }}
 
     - name: Upload Zip
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: windows-zip
         path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.zip
 
     - name: Upload Msi
-      uses: actions/upload-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/upload-artifact@v4
       with:
         name: windows-msi
         path: DrMemory-Windows-${{ steps.version.outputs.version_number }}.msi
@@ -241,10 +199,10 @@ jobs:
   # succeeds and the others fail: there is no check in the create-release
   # action to use an existing release if it already exists.
   # Thus, our strategy is to share files from the build jobs with this
-  # single relese job via artifacts.
+  # single release job via artifacts.
 
   create_release:
-    needs: [x86, osx, windows]
+    needs: [x86, windows]
     runs-on: ubuntu-20.04
 
     steps:
@@ -290,7 +248,8 @@ jobs:
         prerelease: false
 
     - name: Download Linux
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: linux-tarball
     - name: Upload Linux
@@ -304,23 +263,9 @@ jobs:
         asset_name: DrMemory-Linux-${{ steps.version.outputs.version_number }}.tar.gz
         asset_content_type: application/x-gzip
 
-    - name: Download Mac
-      uses: actions/download-artifact@v2
-      with:
-        name: mac-tarball
-    - name: Upload Mac
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        # This action doesn't seem to support a glob so we need the exact name.
-        asset_path: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
-        asset_name: DrMemory-MacOS-${{ steps.version.outputs.osx_version_number }}.tar.gz
-        asset_content_type: application/x-gzip
-
     - name: Download Zip
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: windows-zip
     - name: Upload Zip
@@ -335,7 +280,8 @@ jobs:
         asset_content_type: application/zip
 
     - name: Download Msi
-      uses: actions/download-artifact@v2
+      # This points to the latest v4.x.x.
+      uses: actions/download-artifact@v4
       with:
         name: windows-msi
     - name: Upload Msi
