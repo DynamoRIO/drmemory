@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -486,6 +486,7 @@ static const TCHAR * const known_libs[] = {
     L"apphelp.dll",
     L"cryptbase.dll",
     L"bcryptprimitives.dll",
+    L"bcrypt.dll",
     L"sspicli.dll",
     L"rpcrt4.dll",
     L"advapi32.dll",
