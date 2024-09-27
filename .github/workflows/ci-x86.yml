@@ -86,7 +86,7 @@ jobs:
 
     # Downgrade from cmake 3.20 to avoid 32-bit toolchain problems (DRi#4830).
     - name: Downgrade cmake
-      uses: jwlawson/actions-setup-cmake@v1.8
+      uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: '3.19.7'
 
