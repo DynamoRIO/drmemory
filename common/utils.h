@@ -1011,7 +1011,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
 #define MAX_OPTION_LEN DR_MAX_OPTIONS_LENGTH
 
 #if !defined(MACOS) && !defined(ANDROID) && !defined(NOLINK_STRCASESTR)
-const char *
+char *
 strcasestr(const char *text, const char *pattern);
 #endif
 
