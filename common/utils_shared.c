@@ -51,7 +51,7 @@ strnchr(const char *str, int find, size_t max)
  * want a libc dependence.
  */
 #if !defined(MACOS) && !defined(ANDROID) && !defined(NOLINK_STRCASESTR)
-const char *
+char *
 strcasestr(const char *text, const char *pattern)
 {
     const char *cur_text, *cur_pattern, *root;
@@ -60,7 +60,7 @@ strcasestr(const char *text, const char *pattern)
     cur_pattern = pattern;
     while (true) {
         if (*cur_pattern == '\0')
-            return root;
+            return (char *) root;
         if (*cur_text == '\0')
             return NULL;
         /* XXX DRi#943: toupper is better, for int18n, and we need to call
