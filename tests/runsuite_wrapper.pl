@@ -212,12 +212,6 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'leak_string' => 1,
                 # TODO i#2375: Fix DR to avoid test failures.
                 'umbra_client_faulty_redzone' => 1,
-                # TODO i#2491: AMD 32-bit assert.
-                'selfmod' => 1,
-                'clone' => 1,
-                'syscalls_unix' => 1,
-                'pthread_test' => 1,
-                'realloc' => 1,
                 );
             # FIXME i#2180: ignoring certain AppVeyor x64-full-mode failures until
             # we get all tests passing.
@@ -266,6 +260,12 @@ for (my $i = 0; $i <= $#lines; ++$i) {
         } else {
             %ignore_failures_32 = ('pcache-use' => 1, # i#2202
                                    'fuzz_threads' => 1, # i#2242
+                                   # TODO i#2491: AMD 32-bit assert.
+                                   'selfmod' => 1,
+                                   'clone' => 1,
+                                   'syscalls_unix' => 1,
+                                   'pthread_test' => 1,
+                                   'realloc' => 1,
                                    # XXX: We should probably drop wrap_ support as we
                                    # do not have the resources to maintain it.
                                    'wrap_cs2bug' => 1,
