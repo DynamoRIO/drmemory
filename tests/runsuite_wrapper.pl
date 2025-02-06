@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2021 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2025 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -260,6 +260,12 @@ for (my $i = 0; $i <= $#lines; ++$i) {
         } else {
             %ignore_failures_32 = ('pcache-use' => 1, # i#2202
                                    'fuzz_threads' => 1, # i#2242
+                                   # TODO i#2491: AMD 32-bit assert.
+                                   'selfmod' => 1,
+                                   'clone' => 1,
+                                   'syscalls_unix' => 1,
+                                   'pthread_test' => 1,
+                                   'realloc' => 1,
                                    # XXX: We should probably drop wrap_ support as we
                                    # do not have the resources to maintain it.
                                    'wrap_cs2bug' => 1,
