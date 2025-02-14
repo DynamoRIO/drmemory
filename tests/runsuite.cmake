@@ -372,7 +372,7 @@ if (UNIX AND ARCH_IS_X86)
     TOOL_DR_MEMORY:BOOL=ON
     ${DR_entry}
     CMAKE_BUILD_TYPE:STRING=Debug
-    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android-gcc.cmake
     ${android_extra_dbg}
     " OFF OFF "")
   if (cross_android_only OR NOT TEST_LONG)
@@ -383,7 +383,7 @@ if (UNIX AND ARCH_IS_X86)
     TOOL_DR_MEMORY:BOOL=ON
     ${DR_entry}
     CMAKE_BUILD_TYPE:STRING=Release
-    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android.cmake
+    CMAKE_TOOLCHAIN_FILE:PATH=${CTEST_SOURCE_DIRECTORY}/dynamorio/make/toolchain-android-gcc.cmake
     ${android_extra_rel}
     " OFF OFF "")
   set(run_tests ${prev_run_tests}) # restore

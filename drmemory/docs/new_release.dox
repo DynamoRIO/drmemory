@@ -159,7 +159,7 @@ Android:
 
 ```
 cd /work/drmemory/build_package/
-ctest -D CMAKE_SYSTEM_PROCESSOR=arm -V -S /work/drmemory_package/package.cmake,drmem_only\;32_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cacheappend=CMAKE_TOOLCHAIN_FILE=/work/drmemory/git/src/dynamorio/make/toolchain-android.cmake\;cacheappend=ANDROID_TOOLCHAIN=/work/toolchain/android-ndk-21\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-ARM-Android-EABI-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
+ctest -D CMAKE_SYSTEM_PROCESSOR=arm -V -S /work/drmemory_package/package.cmake,drmem_only\;32_only\;build=2\;cacheappend=TOOL_VERSION_NUMBER:STRING=1.11.0\;cacheappend=DRMF_VERSION:STRING=1.0.0\;cacheappend=CMAKE_TOOLCHAIN_FILE=/work/drmemory/git/src/dynamorio/make/toolchain-android-gcc.cmake\;cacheappend=ANDROID_TOOLCHAIN=/work/toolchain/android-ndk-21\;cpackappend=set\(CPACK_PACKAGE_FILE_NAME\ DrMemory-ARM-Android-EABI-1.11.0-2\)\;cacheappend=VERSION_NUMBER:STRING=6.2.0
 ```
 
 On MacOS:
