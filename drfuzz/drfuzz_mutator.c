@@ -208,8 +208,8 @@ static bool
 drfuzz_parse_dictionary(const char *file, mutator_t *mutator)
 {
     const char *line, *next_line, *eof;
-    uint64 map_size;
-    size_t actual_size;
+    uint64 map_size = 0;
+    size_t actual_size = 0;
     bool res = false;
     void *map = NULL;
     file_t f;
