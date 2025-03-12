@@ -131,7 +131,7 @@ opc_is_stringop(uint opc)
     return (opc_is_stringop_loop(opc) ||
             opc == OP_ins || opc == OP_outs || opc == OP_movs ||
             opc == OP_stos || opc == OP_lods || opc == OP_cmps ||
-            opc == OP_cmps || opc == OP_scas || opc == OP_scas);
+            opc == OP_scas);
 }
 
 bool
