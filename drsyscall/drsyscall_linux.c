@@ -973,12 +973,12 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     /* int semctl(int semid, int semnum, int cmd, union semun arg) */
     uint cmd;
     ptr_int_t arg_val;
-    union semun *arg;
+    union semun *arg_ptr;
     int semid;
     ASSERT(argnum_semid + 3 < SYSCALL_NUM_ARG_STORE, "index too high");
     cmd = (uint) pt->sysarg[argnum_semid + 2];
     arg_val = (ptr_int_t) pt->sysarg[argnum_semid + 3];
-    arg = (union semun *)arg_val;
+    arg_ptr = (union semun *)arg_val;
     semid = (int) pt->sysarg[argnum_semid];
     if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
@@ -995,7 +995,7 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
         if (ii->arg->pre) {
             if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
                 return;
-            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg->buf,
+            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg_ptr->buf,
                                     sizeof(struct semid_ds), "semctl.IPC_SET",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
@@ -1007,7 +1007,7 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
             if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
                 return;
         }
-        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg->buf,
+        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg_ptr->buf,
                                 sizeof(struct semid_ds),
                                 (cmd == IPC_STAT) ? "semctl.IPC_STAT" : "semctl.SEM_STAT",
                                 DRSYS_TYPE_STRUCT, NULL))
@@ -1021,20 +1021,20 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
             if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
                 return;
         }
-        if (!report_memarg_type(ii,argnum_semid + 3,  SYSARG_WRITE, (app_pc) arg->__buf,
+        if (!report_memarg_type(ii,argnum_semid + 3,  SYSARG_WRITE, (app_pc) arg_ptr->__buf,
                                 sizeof(struct seminfo),
                                 (cmd == IPC_INFO) ? "semctl.IPC_INFO" : "semctl.SEM_INFO",
                                 DRSYS_TYPE_STRUCT, NULL))
             return;
         break;
     case GETALL: {
-        /* we must query to get the length of arg.array */
+        /* we must query to get the length of arg->array */
         uint semlen = ipc_sem_len(semid);
         if (ii->arg->pre) {
             if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
                 return;
         }
-        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg->array,
+        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg_ptr->array,
                                 semlen*sizeof(short), "semctl.GETALL",
                                 DRSYS_TYPE_STRUCT, NULL))
             return;
@@ -1042,11 +1042,11 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     }
     case SETALL: {
         if (ii->arg->pre) {
-            /* we must query to get the length of arg.array */
+            /* we must query to get the length of arg_ptr->array */
             uint semlen = ipc_sem_len(semid);
             if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
                 return;
-            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg->array,
+            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg_ptr->array,
                                     semlen*sizeof(short), "semctl.SETALL",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
