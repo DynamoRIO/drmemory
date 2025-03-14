@@ -978,6 +978,7 @@ handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     ASSERT(argnum_semid + 3 < SYSCALL_NUM_ARG_STORE, "index too high");
     cmd = (uint) pt->sysarg[argnum_semid + 2];
     arg_val = (ptr_int_t) pt->sysarg[argnum_semid + 3];
+    /* XXX i#2547: Use safe_read to de-reference below. */
     arg_ptr = (union semun *)arg_val;
     semid = (int) pt->sysarg[argnum_semid];
     if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
