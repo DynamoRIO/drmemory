@@ -66,7 +66,7 @@ if (NOT TARGET dynamorio)
 endif ()
 
 # If DRMF package is already set up, the "drsyscall" target should exist.
-if (NOT TARGET drsyscall)
+if (NOT TARGET drmf_drsyscall)
   # For a combined DR+DRMF package we don't need this step.
   # For a separate DRMF package we do.
   if (NOT DEFINED DrMemoryFramework_DIR)
@@ -90,10 +90,10 @@ if (WIN32 OR ANDROID)                                       # NON-COMBINED
 endif ()                                                    # NON-COMBINED
 configure_DynamoRIO_client(strace)
 use_DynamoRIO_extension(strace drmgr)
-use_DynamoRIO_extension(strace drsyscall)
+use_DynamoRIO_extension(strace drmf_drsyscall)
 # Set link flags after configure_DynamoRIO_client.          # NON-COMBINED
 if (NOT WIN32)                                              # NON-COMBINED
-  DynamoRIO_add_rel_rpaths(strace drsyscall)                # NON-COMBINED
+  DynamoRIO_add_rel_rpaths(strace drmf_drsyscall)           # NON-COMBINED
 endif ()                                                    # NON-COMBINED
 
 ###########################################################################
@@ -132,7 +132,7 @@ if (BUILD_TOOL_TESTS)
   set(drrun_path ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun)
   convert_local_path_to_device_path(drrun_path ${drrun_path})
   prefix_cmd_if_necessary(drrun_path OFF ${drrun_path})
-  add_test(strace_sample
+  add_test(drmf_strace_sample
     ${drrun_path} ${drrun_extra}
     -client ${client_path} 0 ""
     -msgbox_mask 0
