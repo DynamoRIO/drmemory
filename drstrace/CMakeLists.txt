@@ -67,10 +67,10 @@ use_DynamoRIO_extension(drstracelib drsyms_static)
 # While we seem to need the drmf_ prefix here for shared drsyscall, for static
 # that doesn't work while this does -- go figure (and we can't use drmf_ w/
 # cmake 3.+ anyway: i#1652):
-use_DynamoRIO_extension(drstracelib drsyscall_static)
+use_DynamoRIO_extension(drstracelib drmf_drsyscall_static)
 use_DynamoRIO_extension(drstracelib drmgr_static)
 use_DynamoRIO_extension(drstracelib drx_static)
-add_dependencies(drstracelib drsyscall)
+add_dependencies(drstracelib drmf_drsyscall)
 
 if (WIN32)
   # i#1805: to avoid strtol dup symbol errors (libcmt vs ntdll_imports) we just
@@ -140,7 +140,7 @@ if (WIN32)
 endif ()
 add_executable(drstrace ${front_srcs})
 configure_DynamoRIO_standalone(drstrace)
-target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
+target_link_libraries(drstrace drinjectlib drconfiglib drfrontendlib drmf_drsyscall_static)
 set_library_version(drstrace ${DRMF_VERSION})
 if (WIN32)
   _DR_append_property_list(TARGET drstrace COMPILE_DEFINITIONS
@@ -166,7 +166,7 @@ if (WIN32)
     ${DEFINES_NO_D} DRSTRACE_UNIT_TESTS RC_IS_DRSTRACE_UNIT_TESTS
     SYMBOL_DLL_PATH="${symfetch_path}")
   configure_DynamoRIO_standalone(drstrace_unit_tests)
-  use_DynamoRIO_extension(drstrace_unit_tests drsyscall_static)
+  use_DynamoRIO_extension(drstrace_unit_tests drmf_drsyscall_static)
   use_DynamoRIO_extension(drstrace_unit_tests drmgr_static)
   use_DynamoRIO_extension(drstrace_unit_tests drx_static)
   use_DynamoRIO_extension(drstrace_unit_tests drsyms_static)

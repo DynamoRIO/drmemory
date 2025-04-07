@@ -68,7 +68,7 @@ configure_DynamoRIO_client(drltracelib)
 use_DynamoRIO_extension(drltracelib drmgr_static)
 use_DynamoRIO_extension(drltracelib drwrap_static)
 use_DynamoRIO_extension(drltracelib drx_static)
-use_DynamoRIO_extension(drltracelib drsyscall_static)
+use_DynamoRIO_extension(drltracelib drmf_drsyscall_static)
 use_DynamoRIO_extension(drltracelib drcovlib_static)
 use_DynamoRIO_extension(drltracelib droption)
 
@@ -121,7 +121,7 @@ add_executable(drltrace ${front_srcs})
 configure_DynamoRIO_standalone(drltrace)
 use_DynamoRIO_extension(drltrace droption)
 
-target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib drsyscall_static)
+target_link_libraries(drltrace drinjectlib drconfiglib drfrontendlib drmf_drsyscall_static)
 
 set_library_version(drltrace ${DRMF_VERSION})
 
