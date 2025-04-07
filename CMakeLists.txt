@@ -1373,7 +1373,7 @@ set(DynamoRIO_RPATH ON)
 configure_DynamoRIO_standalone(${toolname})
 set(DynamoRIO_RPATH ${old_rpath})
 target_link_libraries(${toolname} drinjectlib drconfiglib drfrontendlib
-  drsyscall_static)
+  drmf_drsyscall_static)
 if (WIN32)
   set_target_properties(${toolname} PROPERTIES
     VERSION ${TOOL_VERSION_NUMBER})
@@ -1763,7 +1763,7 @@ endif ()
 configure_file(framework/drmf.cmake.in
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   @ONLY)
-foreach (ext drsyscall umbra drfuzz)
+foreach (ext drmf_drsyscall umbra drfuzz)
   file(APPEND ${framework_dir}/DrMemoryFrameworkConfig.cmake "
 set(DynamoRIO_EXT_${ext}_INC \${drmf_cwd}/include)
 ")
@@ -1829,8 +1829,8 @@ include_directories(drsyscall)
 add_subdirectory(drsyscall)
 
 # XXX: change this and include_directories above to
-# find_package() + use_DynamoRIO_extension(drsyscall)
-target_link_libraries(${client_target} drsyscall_int)
+# find_package() + use_DynamoRIO_extension(drmf_drsyscall)
+target_link_libraries(${client_target} drmf_drsyscall_int)
 
 add_subdirectory(drsymcache)
 include_directories(drsymcache)
@@ -1908,7 +1908,7 @@ if (BUILD_TOOL_TESTS)
       use_DynamoRIO_extension(unit_tests drcallstack_static)
     endif ()
     use_DynamoRIO_extension(unit_tests drcovlib_static)
-    target_link_libraries(unit_tests drsyscall_int)
+    target_link_libraries(unit_tests drmf_drsyscall_int)
     target_link_libraries(unit_tests umbra_int)
     target_link_libraries(unit_tests drsymcache_int)
     target_link_libraries(unit_tests drfuzz_int)

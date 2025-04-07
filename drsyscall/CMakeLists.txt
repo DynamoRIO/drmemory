@@ -116,16 +116,16 @@ endmacro(export_drsyscall_target)
 
 # For the exported version, we don't want to print to stderr or raise
 # msgboxes, so we link in globals to suppress notification in drmf_utils.c.
-add_library(drsyscall SHARED ${srcs} ${external_srcs})
+add_library(drmf_drsyscall SHARED ${srcs} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 set(PREFERRED_BASE 0x77000000)
-configure_DynamoRIO_client(drsyscall)
-use_DynamoRIO_extension(drsyscall drmgr)
-use_DynamoRIO_extension(drsyscall drcontainers)
-use_DynamoRIO_extension(drsyscall drsyms)
-set_library_version(drsyscall ${DRMF_VERSION_MAJOR_MINOR})
-configure_drsyscall_target(drsyscall)
-export_drsyscall_target(drsyscall "drmgr" "drsyms")
+configure_DynamoRIO_client(drmf_drsyscall)
+use_DynamoRIO_extension(drmf_drsyscall drmgr)
+use_DynamoRIO_extension(drmf_drsyscall drcontainers)
+use_DynamoRIO_extension(drmf_drsyscall drsyms)
+set_library_version(drmf_drsyscall ${DRMF_VERSION_MAJOR_MINOR})
+configure_drsyscall_target(drmf_drsyscall)
+export_drsyscall_target(drmf_drsyscall "drmgr" "drsyms")
 # Make a build-dir copy for the drmf_proj test.
 configure_file(drsyscall.h "${framework_incdir}/drsyscall.h" @ONLY)
 install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
@@ -135,26 +135,26 @@ install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 # use this same extension.
 # But, we also provide a static version with a different name for those
 # who want it, in the style of DR's side-by-side static extensions.
-add_library(drsyscall_static STATIC ${srcs_static} ${external_srcs})
-configure_DynamoRIO_client(drsyscall_static)
-use_DynamoRIO_extension(drsyscall_static drmgr_static)
-use_DynamoRIO_extension(drsyscall_static drcontainers)
-use_DynamoRIO_extension(drsyscall_static drsyms_static)
-configure_drsyscall_target(drsyscall_static)
-add_static_lib_debug_info(drsyscall_static ${DRMF_INSTALL_BIN})
-export_drsyscall_target(drsyscall_static "drmgr_static" "drsyms_static")
+add_library(drmf_drsyscall_static STATIC ${srcs_static} ${external_srcs})
+configure_DynamoRIO_client(drmf_drsyscall_static)
+use_DynamoRIO_extension(drmf_drsyscall_static drmgr_static)
+use_DynamoRIO_extension(drmf_drsyscall_static drcontainers)
+use_DynamoRIO_extension(drmf_drsyscall_static drsyms_static)
+configure_drsyscall_target(drmf_drsyscall_static)
+add_static_lib_debug_info(drmf_drsyscall_static ${DRMF_INSTALL_BIN})
+export_drsyscall_target(drmf_drsyscall_static "drmgr_static" "drsyms_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
-add_library(drsyscall_int STATIC ${srcs_static})
-configure_DynamoRIO_client(drsyscall_int)
-use_DynamoRIO_extension(drsyscall_int drmgr_static)
-use_DynamoRIO_extension(drsyscall_int drcontainers)
+add_library(drmf_drsyscall_int STATIC ${srcs_static})
+configure_DynamoRIO_client(drmf_drsyscall_int)
+use_DynamoRIO_extension(drmf_drsyscall_int drmgr_static)
+use_DynamoRIO_extension(drmf_drsyscall_int drcontainers)
 if (STATIC_DRSYMS)
-  use_DynamoRIO_extension(drsyscall_int drsyms_static)
+  use_DynamoRIO_extension(drmf_drsyscall_int drsyms_static)
 else ()
-  use_DynamoRIO_extension(drsyscall_int drsyms)
+  use_DynamoRIO_extension(drmf_drsyscall_int drsyms)
 endif ()
-configure_drsyscall_target(drsyscall_int)
+configure_drsyscall_target(drmf_drsyscall_int)
 
 # Documentation is handled as part of the main tool docs processing.

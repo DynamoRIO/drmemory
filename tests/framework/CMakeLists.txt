@@ -135,15 +135,15 @@ endfunction()
 set(symcache_dir "${PROJECT_BINARY_DIR}/logs/symcache")
 
 add_drmf_test_app(drsyscall_app drsyscall_app.c)
-add_drmf_test(drsyscall_test drsyscall_app drsyscall_client.c
-  drsyscall "" "${symcache_dir}" "done\nTEST PASSED\n$")
+add_drmf_test(drmf_drsyscall_test drsyscall_app drsyscall_client.c
+  drmf_drsyscall "" "${symcache_dir}" "done\nTEST PASSED\n$")
 if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
-  set_property(TEST drsyscall_test APPEND PROPERTY DEPENDS hello)
+  set_property(TEST drmf_drsyscall_test APPEND PROPERTY DEPENDS hello)
 endif ()
-add_drmf_test(strace_test drsyscall_app strace_client.c
-  drsyscall "" "${symcache_dir}" "done\n.*TEST PASSED\n$")
+add_drmf_test(drmf_strace_test drsyscall_app strace_client.c
+  drmf_drsyscall "" "${symcache_dir}" "done\n.*TEST PASSED\n$")
 if (NOT ANDROID) # XXX i#1860: Android tests not enabled yet.
-  set_property(TEST strace_test APPEND PROPERTY DEPENDS hello)
+  set_property(TEST drmf_strace_test APPEND PROPERTY DEPENDS hello)
 endif ()
 
 # drfuzz tests
