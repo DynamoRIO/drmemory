@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2025 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -328,7 +328,14 @@ if (UNIX)
     endif ()
   endif ()
   if (ARM)
-    set(EXTRA_FLAGS "${EXTRA_FLAGS} -mthumb -march=armv7-a")
+    # On newer gcc versions such as 11.2 we need an explicit +fp to denote our
+    # gnueablihf hardware-fp-capabilities target.
+    CHECK_C_COMPILER_FLAG("-march=armv7-a+fp" armv7_fp_available)
+    if (armv7_fp_available)
+      set(EXTRA_FLAGS "${EXTRA_FLAGS} -mthumb -march=armv7-a+fp")
+    else ()
+      set(EXTRA_FLAGS "${EXTRA_FLAGS} -mthumb -march=armv7-a")
+    endif ()
     if (ANDROID OR CMAKE_C_LIBRARY_ARCHITECTURE MATCHES "gnueabi$")
       set(EXTRA_FLAGS "${EXTRA_FLAGS} -mfloat-abi=softfp")
       # Android requires PIE.  We export symbols to match our test assumptions.
