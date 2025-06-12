@@ -174,7 +174,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAccessCheckByType", OK, RNTST, 11,
+    {{WIN2K,0},"NtAccessCheckByType", OK, RNTST, 11,
      {
          {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
          {1, sizeof(SID), R},
@@ -189,7 +189,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
      }
     },
-    {{0,0},"NtAccessCheckByTypeAndAuditAlarm", OK, RNTST, 16,
+    {{WIN2K,0},"NtAccessCheckByTypeAndAuditAlarm", OK, RNTST, 16,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -209,7 +209,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {15, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAccessCheckByTypeResultList", OK, RNTST, 11,
+    {{WIN2K,0},"NtAccessCheckByTypeResultList", OK, RNTST, 11,
      {
          {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
          {1, sizeof(SID), R},
@@ -224,7 +224,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
      }
     },
-    {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarm", OK, RNTST, 16,
+    {{WIN2K,0},"NtAccessCheckByTypeResultListAndAuditAlarm", OK, RNTST, 16,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -244,7 +244,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {15, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", OK, RNTST, 17,
+    {{WIN2K,0},"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", OK, RNTST, 17,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -265,20 +265,20 @@ syscall_info_t syscall_ntdll_info[] = {
          {16, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAddAtom", OK, RNTST, 3,
+    {{WINNT,0},"NtAddAtom", OK, RNTST, 3,
      {
          {0, -1, R|HT, DRSYS_TYPE_CWSTRING},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ATOM), W|HT, DRSYS_TYPE_ATOM},
      }
     },
-    {{0,0},"NtAddBootEntry", OK, RNTST, 2,
+    {{WINXP,0},"NtAddBootEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtAddDriverEntry", OK, RNTST, 2,
+    {{WIN2K3,0},"NtAddDriverEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -322,7 +322,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(LUID), W},
      }
     },
-    {{0,0},"NtAllocateUserPhysicalPages", OK, RNTST, 3,
+    {{WIN2K,0},"NtAllocateUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -347,19 +347,19 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "PAGE_NOACCESS"},
      }
     },
-    {{0,0},"NtApphelpCacheControl", OK, RNTST, 2,
+    {{WIN2K3,0},"NtApphelpCacheControl", OK, RNTST, 2,
      {
          {0, sizeof(APPHELPCACHESERVICECLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtAreMappedFilesTheSame", OK, RNTST, 2,
+    {{WIN2K,0},"NtAreMappedFilesTheSame", OK, RNTST, 2,
      {
          {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_POINTER},
      }
     },
-    {{0,0},"NtAssignProcessToJobObject", OK, RNTST, 2,
+    {{WIN2K,0},"NtAssignProcessToJobObject", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -372,7 +372,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
      }
     },
-    {{0,WINVISTA},"NtCancelDeviceWakeupRequest", OK, RNTST, 1,
+    {{WIN2K,WINVISTA},"NtCancelDeviceWakeupRequest", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -406,13 +406,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtCompactKeys", OK, RNTST, 2,
+    {{WINXP,0},"NtCompactKeys", OK, RNTST, 2,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtCompareTokens", OK, RNTST, 3,
+    {{WINXP,0},"NtCompareTokens", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -424,7 +424,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtCompressKey", OK, RNTST, 1,
+    {{WINXP,0},"NtCompressKey", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -452,13 +452,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,WINXP},"NtCreateChannel", OK, RNTST, 2,
+    {{WINNT,WIN2K},"NtCreateChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtCreateDebugObject", OK, RNTST, 4,
+    {{WINXP,0},"NtCreateDebugObject", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -512,14 +512,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtCreateJobObject", OK, RNTST, 3,
+    {{WIN2K,0},"NtCreateJobObject", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtCreateJobSet", OK, RNTST, 3,
+    {{WINXP,0},"NtCreateJobSet", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(JOB_SET_ARRAY), R},
@@ -537,7 +537,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtCreateKeyedEvent", OK, RNTST, 4,
+    {{WINXP,0},"NtCreateKeyedEvent", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -612,7 +612,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtCreateProcessEx", OK, RNTST, 9,
+    {{WINXP,0},"NtCreateProcessEx", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -678,7 +678,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_CreateThread
     },
-    {{0,0},"NtCreateThreadEx", OK, RNTST, 11,
+    {{WINVISTA,0},"NtCreateThreadEx", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -718,7 +718,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {12, sizeof(TOKEN_SOURCE), R},
      }
     },
-    {{0,0},"NtCreateUserProcess", OK, RNTST, 11,
+    {{WINVISTA,0},"NtCreateUserProcess", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -733,7 +733,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
      }, &sysnum_CreateUserProcess
     },
-    {{0,0},"NtCreateWaitablePort", OK, RNTST, 5,
+    {{WIN2K,0},"NtCreateWaitablePort", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
@@ -742,13 +742,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtDebugActiveProcess", OK, RNTST, 2,
+    {{WINXP,0},"NtDebugActiveProcess", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtDebugContinue", OK, RNTST, 3,
+    {{WINXP,0},"NtDebugContinue", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(CLIENT_ID), R},
@@ -761,18 +761,18 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtDeleteAtom", OK, RNTST, 1,
+    {{WINNT,0},"NtDeleteAtom", OK, RNTST, 1,
      {
          {0, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
      }
     },
-    {{0,0},"NtDeleteBootEntry", OK, RNTST, 2,
+    {{WINXP,0},"NtDeleteBootEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtDeleteDriverEntry", OK, RNTST, 2,
+    {{WIN2K3,0},"NtDeleteDriverEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -788,7 +788,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtDeleteObjectAuditAlarm", OK, RNTST, 3,
+    {{WINNT,0},"NtDeleteObjectAuditAlarm", OK, RNTST, 3,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -841,13 +841,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtEnumerateBootEntries", OK, RNTST, 2,
+    {{WINXP,0},"NtEnumerateBootEntries", OK, RNTST, 2,
      {
          {0, -1, WI},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtEnumerateDriverEntries", OK, RNTST, 2,
+    {{WIN2K3,0},"NtEnumerateDriverEntries", OK, RNTST, 2,
      {
          {0, -1, WI},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -858,7 +858,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2,}
      }, (drsys_sysnum_t *)syscall_EnumerateKey_info
     },
-    {{0,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
+    {{WINXP,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, -2, WI},
@@ -876,7 +876,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtFilterToken", OK, RNTST, 6,
+    {{WIN2K,0},"NtFilterToken", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -886,7 +886,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtFindAtom", OK, RNTST, 3,
+    {{WINNT,0},"NtFindAtom", OK, RNTST, 3,
      {
          {0, -1, R|HT, DRSYS_TYPE_CWSTRING},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -920,7 +920,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,0},"NtFlushWriteBuffer", OK, RNTST, 0, },
-    {{0,0},"NtFreeUserPhysicalPages", OK, RNTST, 3,
+    {{WIN2K,0},"NtFreeUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -955,8 +955,8 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(CONTEXT), W|CT, SYSARG_TYPE_CONTEXT},
      }
     },
-    {{0,0},"NtGetCurrentProcessorNumber", OK, RNTST, 0, },
-    {{0,0},"NtGetDevicePowerState", OK, RNTST, 2,
+    {{WIN2K3,0},"NtGetCurrentProcessorNumber", OK, RNTST, 0, },
+    {{WIN2K,0},"NtGetDevicePowerState", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(DEVICE_POWER_STATE), W|HT, DRSYS_TYPE_SIGNED_INT},
@@ -971,7 +971,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     /* BufferEntries is #elements, not #bytes */
-    {{0,0},"NtGetWriteWatch", OK, RNTST, 7,
+    {{WIN2K,0},"NtGetWriteWatch", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -982,7 +982,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtImpersonateAnonymousToken", OK, RNTST, 1,
+    {{WIN2K,0},"NtImpersonateAnonymousToken", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -1005,7 +1005,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtInitiatePowerAction", OK, RNTST, 4,
+    {{WIN2K,0},"NtInitiatePowerAction", OK, RNTST, 4,
      {
          {0, sizeof(POWER_ACTION), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, sizeof(SYSTEM_POWER_STATE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1013,14 +1013,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtIsProcessInJob", OK, RNTST, 2,
+    {{WINXP,0},"NtIsProcessInJob", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtIsSystemResumeAutomatic", OK, RNTST, 0, },
-    {{0,WINXP},"NtListenChannel", OK, RNTST, 2,
+    {{WIN2K,0},"NtIsSystemResumeAutomatic", OK, RNTST, 0, },
+    {{WINNT,WIN2K},"NtListenChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(CHANNEL_MESSAGE), W},
@@ -1043,14 +1043,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtLoadKey2", OK, RNTST, 3,
+    {{WINNT,0},"NtLoadKey2", OK, RNTST, 3,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtLoadKeyEx", OK, RNTST, 4,
+    {{WIN2K3,0},"NtLoadKeyEx", OK, RNTST, 4,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
@@ -1072,13 +1072,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtLockProductActivationKeys", OK, RNTST, 2,
+    {{WINXP,0},"NtLockProductActivationKeys", OK, RNTST, 2,
      {
          {0, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtLockRegistryKey", OK, RNTST, 1,
+    {{WINXP,0},"NtLockRegistryKey", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -1091,7 +1091,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtMakePermanentObject", OK, RNTST, 1,
+    {{WINXP,0},"NtMakePermanentObject", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -1101,21 +1101,21 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtMapCMFModule", OK, RNTST, 6,
+    {{WINVISTA,0},"NtMapCMFModule", OK, RNTST, 6,
      {
          /* XXX DRi#415 not all known */
          {4, sizeof(PVOID), W|HT, DRSYS_TYPE_POINTER},
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtMapUserPhysicalPages", OK, RNTST, 3,
+    {{WIN2K,0},"NtMapUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_POINTER},
          {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtMapUserPhysicalPagesScatter", OK, RNTST, 3,
+    {{WIN2K,0},"NtMapUserPhysicalPagesScatter", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), R|HT, DRSYS_TYPE_POINTER},
          {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -1136,13 +1136,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "PAGE_NOACCESS"},
      }
     },
-    {{0,0},"NtModifyBootEntry", OK, RNTST, 2,
+    {{WINXP,0},"NtModifyBootEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtModifyDriverEntry", OK, RNTST, 2,
+    {{WIN2K3,0},"NtModifyDriverEntry", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -1175,7 +1175,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtNotifyChangeMultipleKeys", OK, RNTST, 12,
+    {{WIN2K,0},"NtNotifyChangeMultipleKeys", OK, RNTST, 12,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1191,7 +1191,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {11, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,WINXP},"NtOpenChannel", OK, RNTST, 2,
+    {{WINNT,WIN2K},"NtOpenChannel", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
@@ -1235,7 +1235,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenJobObject", OK, RNTST, 3,
+    {{WIN2K,0},"NtOpenJobObject", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1249,7 +1249,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenKeyEx", OK, RNTST, 4,
+    {{WIN7,0},"NtOpenKeyEx", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1257,7 +1257,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT, "REG_OPTION_RESERVED"},
      }
     },
-    {{0,0},"NtOpenKeyedEvent", OK, RNTST, 3,
+    {{WINXP,0},"NtOpenKeyedEvent", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1303,7 +1303,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtOpenProcessTokenEx", OK, RNTST, 4,
+    {{WINXP,0},"NtOpenProcessTokenEx", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1348,7 +1348,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtOpenThreadTokenEx", OK, RNTST, 5,
+    {{WINXP,0},"NtOpenThreadTokenEx", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1372,7 +1372,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtPowerInformation", OK, RNTST, 5,
+    {{WIN2K,0},"NtPowerInformation", OK, RNTST, 5,
      {
          {0, sizeof(POWER_INFORMATION_LEVEL), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          /* Some info classes do not need to define every field of the input buffer
@@ -1432,19 +1432,19 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(FILE_BASIC_INFORMATION), W},
      }
     },
-    {{0,0},"NtQueryBootEntryOrder", OK, RNTST, 2,
+    {{WINXP,0},"NtQueryBootEntryOrder", OK, RNTST, 2,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryBootOptions", OK, RNTST, 2,
+    {{WINXP,0},"NtQueryBootOptions", OK, RNTST, 2,
      {
          {0, -1, WI},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT}
      }
     },
-    {{0,0},"NtQueryDebugFilterState", OK, RNTST, 2,
+    {{WINXP,0},"NtQueryDebugFilterState", OK, RNTST, 2,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1456,7 +1456,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LCID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryDefaultUILanguage", OK, RNTST, 1,
+    {{WIN2K,0},"NtQueryDefaultUILanguage", OK, RNTST, 1,
      {
          {0, sizeof(LANGID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -1478,7 +1478,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryDriverEntryOrder", OK, RNTST, 2,
+    {{WIN2K3,0},"NtQueryDriverEntryOrder", OK, RNTST, 2,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -1502,13 +1502,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {1,}
      }, (drsys_sysnum_t *)syscall_QueryEvent_info
     },
-    {{0,0},"NtQueryFullAttributesFile", OK, RNTST, 2,
+    {{WINNT,0},"NtQueryFullAttributesFile", OK, RNTST, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(FILE_NETWORK_OPEN_INFORMATION), W},
      }
     },
-    {{0,0},"NtQueryInformationAtom", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINNT,0},"NtQueryInformationAtom", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_QueryInformationAtom_info
@@ -1518,7 +1518,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4,}
      }, (drsys_sysnum_t *)syscall_QueryInformationFile_info
     },
-    {{0,0},"NtQueryInformationJobObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
+    {{WIN2K,0},"NtQueryInformationJobObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(JOBOBJECTINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1563,7 +1563,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryInstallUILanguage", OK, RNTST, 1,
+    {{WIN2K,0},"NtQueryInstallUILanguage", OK, RNTST, 1,
      {
          {0, sizeof(LANGID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -1584,7 +1584,7 @@ syscall_info_t syscall_ntdll_info[] = {
        {1,}
      }, (drsys_sysnum_t *)syscall_QueryKey_info
     },
-    {{0,0},"NtQueryMultipleValueKey", OK, RNTST, 6,
+    {{WINNT,0},"NtQueryMultipleValueKey", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(KEY_VALUE_ENTRY), R|W},
@@ -1609,7 +1609,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,WINNT},"NtQueryOleDirectoryFile", OK, RNTST, 11,
+    {{WINNT,WINNT},"NtQueryOleDirectoryFile", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -1624,13 +1624,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtQueryOpenSubKeys", OK, RNTST, 2,
+    {{WIN2K,0},"NtQueryOpenSubKeys", OK, RNTST, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryOpenSubKeysEx", OK, RNTST, 4,
+    {{WIN2K3,0},"NtQueryOpenSubKeysEx", OK, RNTST, 4,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1644,8 +1644,8 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtQueryPortInformationProcess", OK, RNTST, 0, },
-    {{0,0},"NtQueryQuotaInformationFile", OK, RNTST, 9,
+    {{WINXP,0},"NtQueryPortInformationProcess", OK, RNTST, 0, },
+    {{WIN2K,0},"NtQueryQuotaInformationFile", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
@@ -1707,7 +1707,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQuerySystemEnvironmentValueEx", OK, RNTST, 5,
+    {{WINXP,0},"NtQuerySystemEnvironmentValueEx", OK, RNTST, 5,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(GUID), R},
@@ -1775,7 +1775,7 @@ syscall_info_t syscall_ntdll_info[] = {
        {4,}
      }, (drsys_sysnum_t *)syscall_QueryVolumeInformationFile_info
     },
-    {{0,0},"NtQueueApcThread", OK, RNTST, 5,
+    {{WINNT,0},"NtQueueApcThread", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PKNORMAL_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
@@ -1815,7 +1815,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtReadFileScatter", OK, RNTST, 9,
+    {{WINNT,0},"NtReadFileScatter", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -1854,7 +1854,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtReleaseKeyedEvent", OK, RNTST, 4,
+    {{WINXP,0},"NtReleaseKeyedEvent", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -1884,13 +1884,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtRemoveProcessDebug", OK, RNTST, 2,
+    {{WINXP,0},"NtRemoveProcessDebug", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtRenameKey", OK, RNTST, 2,
+    {{WINXP,0},"NtRenameKey", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -1917,7 +1917,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
-    {{0,0},"NtReplyWaitReceivePortEx", OK, RNTST, 5,
+    {{WIN2K,0},"NtReplyWaitReceivePortEx", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), W|HT, DRSYS_TYPE_UNKNOWN /* XXX: what type is this? */},
@@ -1932,14 +1932,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(PORT_MESSAGE), R|W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
-    {{0,WINXP},"NtReplyWaitSendChannel", OK, RNTST, 3,
+    {{WINNT,WIN2K},"NtReplyWaitSendChannel", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(CHANNEL_MESSAGE), W},
      }
     },
-    {{0,WINVISTA},"NtRequestDeviceWakeup", OK, RNTST, 1,
+    {{WIN2K,WINVISTA},"NtRequestDeviceWakeup", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -1966,7 +1966,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
-    {{0,WINVISTA},"NtRequestWakeupLatency", OK, RNTST, 1,
+    {{WIN2K,WINVISTA},"NtRequestWakeupLatency", OK, RNTST, 1,
      {
          {0, sizeof(LATENCY_TIME), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -1977,7 +1977,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtResetWriteWatch", OK, RNTST, 3,
+    {{WIN2K,0},"NtResetWriteWatch", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -1991,7 +1991,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtResumeProcess", OK, RNTST, 1,
+    {{WINXP,0},"NtResumeProcess", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -2008,21 +2008,21 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtSaveKeyEx", OK, RNTST, 3,
+    {{WINXP,0},"NtSaveKeyEx", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSaveMergedKeys", OK, RNTST, 3,
+    {{WIN2K,0},"NtSaveMergedKeys", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtSecureConnectPort", OK, RNTST, 9,
+    {{WIN2K,0},"NtSecureConnectPort", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -2035,7 +2035,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,WINXP},"NtSendWaitReplyChannel", OK, RNTST, 4,
+    {{WINNT,WIN2K},"NtSendWaitReplyChannel", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -2043,18 +2043,18 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(CHANNEL_MESSAGE), W},
      }
     },
-    {{0,0},"NtSetBootEntryOrder", OK, RNTST, 2,
+    {{WINXP,0},"NtSetBootEntryOrder", OK, RNTST, 2,
      {
          {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetBootOptions", OK, RNTST, 2,
+    {{WINXP,0},"NtSetBootOptions", OK, RNTST, 2,
      {
          {0, sizeof(BOOT_OPTIONS), R},
      }
     },
-    {{0,WINXP},"NtSetContextChannel", OK, RNTST, 1,
+    {{WINNT,WIN2K},"NtSetContextChannel", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -2065,7 +2065,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
      }
     },
-    {{0,0},"NtSetDebugFilterState", OK, RNTST, 3,
+    {{WINXP,0},"NtSetDebugFilterState", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2083,7 +2083,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LCID), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetDefaultUILanguage", OK, RNTST, 1,
+    {{WIN2K,0},"NtSetDefaultUILanguage", OK, RNTST, 1,
      {
          {0, sizeof(LANGID), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -2102,7 +2102,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetEventBoostPriority", OK, RNTST, 1,
+    {{WINXP,0},"NtSetEventBoostPriority", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -2118,7 +2118,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,WINNT},"NtSetHighWaitLowThread", OK, RNTST, 0},
-    {{0,0},"NtSetInformationDebugObject", OK, RNTST, 5,
+    {{WINXP,0},"NtSetInformationDebugObject", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(DEBUGOBJECTINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -2132,7 +2132,7 @@ syscall_info_t syscall_ntdll_info[] = {
        {4,}
      }, (drsys_sysnum_t *)syscall_SetInformationFile_info
     },
-    {{0,0},"NtSetInformationJobObject", OK, RNTST, 4,
+    {{WIN2K,0},"NtSetInformationJobObject", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(JOBOBJECTINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -2215,7 +2215,7 @@ syscall_info_t syscall_ntdll_info[] = {
      }
     },
     {{0,WINNT},"NtSetLowWaitHighThread", OK, RNTST, 0, },
-    {{0,0},"NtSetQuotaInformationFile", OK, RNTST, 4,
+    {{WIN2K,0},"NtSetQuotaInformationFile", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
@@ -2236,7 +2236,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtSetSystemEnvironmentValueEx", OK, RNTST, 2,
+    {{WINXP,0},"NtSetSystemEnvironmentValueEx", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(GUID), R},
@@ -2263,7 +2263,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtSetThreadExecutionState", OK, RNTST, 2,
+    {{WIN2K,0},"NtSetThreadExecutionState", OK, RNTST, 2,
      {
          {0, sizeof(EXECUTION_STATE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(EXECUTION_STATE), W|HT, DRSYS_TYPE_UNSIGNED_INT},
@@ -2287,7 +2287,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtSetUuidSeed", OK, RNTST, 1,
+    {{WIN2K,0},"NtSetUuidSeed", OK, RNTST, 1,
      {
          {0, sizeof(UCHAR), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -2312,7 +2312,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(SHUTDOWN_ACTION), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtSignalAndWaitForSingleObject", OK, RNTST, 4,
+    {{WINNT,0},"NtSignalAndWaitForSingleObject", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2330,7 +2330,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtSuspendProcess", OK, RNTST, 1,
+    {{WINXP,0},"NtSuspendProcess", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -2352,7 +2352,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtTerminateJobObject", OK, RNTST, 2,
+    {{WIN2K,0},"NtTerminateJobObject", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
@@ -2375,7 +2375,7 @@ syscall_info_t syscall_ntdll_info[] = {
      * separate params, and struct observed to be all uninit, so we
      * assume struct is all OUT
      */
-    {{0,0},"NtTraceEvent", OK, RNTST, 4,
+    {{WINXP,0},"NtTraceEvent", OK, RNTST, 4,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2383,7 +2383,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(EVENT_TRACE_HEADER), W},
      }
     },
-    {{0,0},"NtTranslateFilePath", OK, RNTST, 4,
+    {{WINXP,0},"NtTranslateFilePath", OK, RNTST, 4,
      {
          {0, sizeof(FILE_PATH), R},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2401,13 +2401,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtUnloadKey2", OK, RNTST, 2,
+    {{WIN2K3,0},"NtUnloadKey2", OK, RNTST, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUnloadKeyEx", OK, RNTST, 2,
+    {{WINXP,0},"NtUnloadKeyEx", OK, RNTST, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2454,7 +2454,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtWaitForDebugEvent", OK, RNTST, 4,
+    {{WINXP,0},"NtWaitForDebugEvent", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
@@ -2462,7 +2462,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(DBGUI_WAIT_STATE_CHANGE), W},
      }
     },
-    {{0,0},"NtWaitForKeyedEvent", OK, RNTST, 4,
+    {{WINXP,0},"NtWaitForKeyedEvent", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -2479,7 +2479,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtWaitForMultipleObjects32", OK, RNTST, 5,
+    {{WIN2K3,0},"NtWaitForMultipleObjects32", OK, RNTST, 5,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
@@ -2518,7 +2518,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtWriteFileGather", OK, RNTST, 9,
+    {{WINNT,0},"NtWriteFileGather", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2550,11 +2550,11 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtYieldExecution", OK, RNTST, 0, },
+    {{WINNT,0},"NtYieldExecution", OK, RNTST, 0, },
 
     /***************************************************/
     /* added in Windows 2003 */
-    {{0,0},"NtSetDriverEntryOrder", OK, RNTST, 2,
+    {{WIN2K3,0},"NtSetDriverEntryOrder", OK, RNTST, 2,
      {
         {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2606,14 +2606,15 @@ syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* added in Windows Vista SP0 */
     /* XXX: add min OS version: but we have to distinguish the service packs! */
-    {{0,0},"NtAcquireCMFViewOwnership", OK, RNTST, 3,
+    /* Included in all Windows Vista SP */
+    {{WINVISTA,WINVISTA},"NtAcquireCMFViewOwnership", OK, RNTST, 3,
      {
          {0, sizeof(ULONGLONG), W|HT, DRSYS_TYPE_STRUCT},
          {1, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAlpcAcceptConnectPort", OK, RNTST, 9,
+    {{WINVISTA,0},"NtAlpcAcceptConnectPort", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2626,14 +2627,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtAlpcCancelMessage", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcCancelMessage", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ALPC_CONTEXT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_CONTEXT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcConnectPort", OK, RNTST, 11,
+    {{WINVISTA,0},"NtAlpcConnectPort", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -2648,14 +2649,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtAlpcCreatePort", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcCreatePort", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {2, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcCreatePortSection", OK, RNTST, 6,
+    {{WINVISTA,0},"NtAlpcCreatePortSection", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2665,7 +2666,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtAlpcCreateResourceReserve", OK, RNTST, 4,
+    {{WINVISTA,0},"NtAlpcCreateResourceReserve", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2673,28 +2674,28 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtAlpcCreateSectionView", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcCreateSectionView", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ALPC_DATA_VIEW), R|W|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtAlpcCreateSecurityContext", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcCreateSecurityContext", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ALPC_SECURITY_ATTRIBUTES), R|W|CT, SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcDeletePortSection", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcDeletePortSection", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtAlpcDeleteResourceReserve", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcDeleteResourceReserve", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2704,34 +2705,34 @@ syscall_info_t syscall_ntdll_info[] = {
     /* XXX: ok for shadowing purposes, but we should look at tracking
      * the allocation once we understand NtAlpcCreateSectionView
      */
-    {{0,0},"NtAlpcDeleteSectionView", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcDeleteSectionView", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtAlpcDeleteSecurityContext", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcDeleteSecurityContext", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtAlpcDisconnectPort", OK, RNTST, 2,
+    {{WINVISTA,0},"NtAlpcDisconnectPort", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtAlpcImpersonateClientOfPort", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcImpersonateClientOfPort", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
          {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtAlpcOpenSenderProcess", OK, RNTST, 6,
+    {{WINVISTA,0},"NtAlpcOpenSenderProcess", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2741,7 +2742,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcOpenSenderThread", OK, RNTST, 6,
+    {{WINVISTA,0},"NtAlpcOpenSenderThread", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2751,17 +2752,17 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcQueryInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINVISTA,0},"NtAlpcQueryInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_AlpcQueryInformation_info
     },
-    {{0,0},"NtAlpcQueryInformationMessage", OK|SYSINFO_SECONDARY_TABLE, RNTST, 6,
+    {{WINVISTA,0},"NtAlpcQueryInformationMessage", OK|SYSINFO_SECONDARY_TABLE, RNTST, 6,
      {
          {2,}
      }, (drsys_sysnum_t *)syscall_AlpcQueryInformationMessage_info
     },
-    {{0,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3,
+    {{WINVISTA,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2774,7 +2775,7 @@ syscall_info_t syscall_ntdll_info[] = {
      * The issue is w/ synchronous calls where the same PORT_MESSAGE buffer is used
      * for both receive/send.
      */
-    {{0,0},"NtAlpcSendWaitReceivePort", UNKNOWN, RNTST, 8,
+    {{WINVISTA,0},"NtAlpcSendWaitReceivePort", UNKNOWN, RNTST, 8,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2786,46 +2787,46 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtAlpcSetInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
+    {{WINVISTA,0},"NtAlpcSetInformation", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_AlpcSetInformation_info
     },
-    {{0,0},"NtCancelIoFileEx", OK, RNTST, 3,
+    {{WINVISTA,0},"NtCancelIoFileEx", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(IO_STATUS_BLOCK), R|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
-    {{0,0},"NtCancelSynchronousIoFile", OK, RNTST, 3,
+    {{WINVISTA,0},"NtCancelSynchronousIoFile", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(IO_STATUS_BLOCK), R|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
-    {{0,0},"NtClearAllSavepointsTransaction", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtClearSavepointTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCommitComplete", OK, RNTST, 2,
+    {{WINVISTA,WINVISTA},"NtClearAllSavepointsTransaction", UNKNOWN, RNTST, 1, },
+    {{WINVISTA,WINVISTA},"NtClearSavepointTransaction", UNKNOWN, RNTST, 2, },
+    {{WINVISTA,0},"NtCommitComplete", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtCommitEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtCommitEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtCommitTransaction", OK, RNTST, 2,
+    {{WINVISTA,0},"NtCommitTransaction", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtCreateEnlistment", OK, RNTST, 8,
+    {{WINVISTA,0},"NtCreateEnlistment", OK, RNTST, 8,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2837,7 +2838,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtCreateKeyTransacted", OK, RNTST, 8,
+    {{WINVISTA,0},"NtCreateKeyTransacted", OK, RNTST, 8,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2849,7 +2850,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtCreatePrivateNamespace", OK, RNTST, 4,
+    {{WINVISTA,0},"NtCreatePrivateNamespace", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2857,7 +2858,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtCreateResourceManager", OK, RNTST, 7,
+    {{WINVISTA,0},"NtCreateResourceManager", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2868,7 +2869,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtCreateTransaction", OK, RNTST, 10,
+    {{WINVISTA,0},"NtCreateTransaction", OK, RNTST, 10,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2882,7 +2883,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(UNICODE_STRING), R|HT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtCreateTransactionManager", OK, RNTST, 6,
+    {{WINVISTA,0},"NtCreateTransactionManager", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2892,7 +2893,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtCreateWorkerFactory", OK, RNTST, 10,
+    {{WINVISTA,0},"NtCreateWorkerFactory", OK, RNTST, 10,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2906,12 +2907,12 @@ syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtDeletePrivateNamespace", OK, RNTST, 1,
+    {{WINVISTA,0},"NtDeletePrivateNamespace", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtEnumerateTransactionObject", OK, RNTST, 5,
+    {{WINVISTA,0},"NtEnumerateTransactionObject", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(KTMOBJECT_TYPE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2921,32 +2922,32 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtFlushInstallUILanguage", OK, RNTST, 2,
+    {{WINVISTA,0},"NtFlushInstallUILanguage", OK, RNTST, 2,
      {
          {0, sizeof(LANGID), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtFlushProcessWriteBuffers", OK, RNTST, 0, },
-    {{0,0},"NtFreezeRegistry", OK, RNTST, 1,
+    {{WINVISTA,0},"NtFlushProcessWriteBuffers", OK, RNTST, 0, },
+    {{WINVISTA,0},"NtFreezeRegistry", OK, RNTST, 1,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtFreezeTransactions", OK, RNTST, 2,
+    {{WINVISTA,0},"NtFreezeTransactions", OK, RNTST, 2,
      {
          {0, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtGetMUIRegistryInfo", OK, RNTST, 3,
+    {{WINVISTA,0},"NtGetMUIRegistryInfo", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {2, -1, WI|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtGetNextProcess", OK, RNTST, 5,
+    {{WINVISTA,0},"NtGetNextProcess", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2955,7 +2956,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtGetNextThread", OK, RNTST, 6,
+    {{WINVISTA,0},"NtGetNextThread", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -2965,7 +2966,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtGetNlsSectionPtr", OK, RNTST, 5,
+    {{WINVISTA,0},"NtGetNlsSectionPtr", OK, RNTST, 5,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -2974,7 +2975,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtGetNotificationResourceManager", OK, RNTST, 7,
+    {{WINVISTA,0},"NtGetNotificationResourceManager", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, -2, W|HT, DRSYS_TYPE_STRUCT},
@@ -2986,17 +2987,17 @@ syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtInitializeNlsFiles", OK, RNTST, 3,
+    {{WINVISTA,0},"NtInitializeNlsFiles", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), W|HT, DRSYS_TYPE_POINTER},
          {1, sizeof(LCID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtIsUILanguageComitted", OK, RNTST, 0, },
-    {{0,0},"NtListTransactions", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtMarshallTransaction", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtOpenEnlistment", OK, RNTST, 5,
+    {{WINVISTA,0},"NtIsUILanguageComitted", OK, RNTST, 0, },
+    {{WINVISTA,WINVISTA},"NtListTransactions", UNKNOWN, RNTST, 3, },
+    {{WINVISTA,WINVISTA},"NtMarshallTransaction", UNKNOWN, RNTST, 6, },
+    {{WINVISTA,0},"NtOpenEnlistment", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3005,7 +3006,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenKeyTransacted", OK, RNTST, 4,
+    {{WINVISTA,0},"NtOpenKeyTransacted", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3013,7 +3014,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtOpenPrivateNamespace", OK, RNTST, 4,
+    {{WINVISTA,0},"NtOpenPrivateNamespace", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3021,7 +3022,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtOpenResourceManager", OK, RNTST, 5,
+    {{WINVISTA,0},"NtOpenResourceManager", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3030,14 +3031,14 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenSession", OK, RNTST, 3,
+    {{WINVISTA,0},"NtOpenSession", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtOpenTransaction", OK, RNTST, 5,
+    {{WINVISTA,0},"NtOpenTransaction", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3047,7 +3048,7 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtOpenTransactionManager", OK, RNTST, 6,
+    {{WINVISTA,0},"NtOpenTransactionManager", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3057,31 +3058,31 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtPrepareComplete", OK, RNTST, 2,
+    {{WINVISTA,0},"NtPrepareComplete", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtPrepareEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtPrepareEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtPrePrepareComplete", OK, RNTST, 2,
+    {{WINVISTA,0},"NtPrePrepareComplete", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtPrePrepareEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtPrePrepareEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtPropagationComplete", OK, RNTST, 4,
+    {{WINVISTA,0},"NtPropagationComplete", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3089,35 +3090,35 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, -2, R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtPropagationFailed", OK, RNTST, 3,
+    {{WINVISTA,0},"NtPropagationFailed", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
      }
     },
-    {{0,0},"NtPullTransaction", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtQueryInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINVISTA,WINVISTA},"NtPullTransaction", UNKNOWN, RNTST, 7, },
+    {{WINVISTA,0},"NtQueryInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_QueryInformationEnlistment_info
     },
-    {{0,0},"NtQueryInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINVISTA,0},"NtQueryInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_QueryInformationResourceManager_info
     },
-    {{0,0},"NtQueryInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINVISTA,0},"NtQueryInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_QueryInformationTransaction_info
     },
-    {{0,0},"NtQueryInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
+    {{WINVISTA,0},"NtQueryInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 5,
      {
          {1,}
      },  (drsys_sysnum_t *)syscall_QueryInformationTransactionManager_info
     },
-    {{0,0},"NtQueryInformationWorkerFactory", OK, RNTST, 5,
+    {{WINVISTA,0},"NtQueryInformationWorkerFactory", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(WORKERFACTORYINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -3127,30 +3128,30 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtQueryLicenseValue", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtReadOnlyEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtQueryLicenseValue", UNKNOWN, RNTST, 5, },
+    {{WINVISTA,0},"NtReadOnlyEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtRecoverEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtRecoverEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
-    {{0,0},"NtRecoverResourceManager", OK, RNTST, 1,
+    {{WINVISTA,0},"NtRecoverResourceManager", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtRecoverTransactionManager", OK, RNTST, 1,
+    {{WINVISTA,0},"NtRecoverTransactionManager", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtRegisterProtocolAddressInformation", OK, RNTST, 5,
+    {{WINVISTA,0},"NtRegisterProtocolAddressInformation", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(CRM_PROTOCOL_ID), R|HT, DRSYS_TYPE_STRUCT},
@@ -3159,13 +3160,13 @@ syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtReleaseCMFViewOwnership", OK, RNTST, 0, },
-    {{0,0},"NtReleaseWorkerFactoryWorker", OK, RNTST, 1,
+    {{WINVISTA,WINVISTA},"NtReleaseCMFViewOwnership", OK, RNTST, 0, },
+    {{WINVISTA,0},"NtReleaseWorkerFactoryWorker", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtRemoveIoCompletionEx", OK, RNTST, 6,
+    {{WINVISTA,0},"NtRemoveIoCompletionEx", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(FILE_IO_COMPLETION_INFORMATION)},
@@ -3175,54 +3176,54 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtRollbackComplete", OK, RNTST, 2,
+    {{WINVISTA,0},"NtRollbackComplete", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      },
     },
-    {{0,0},"NtRollbackEnlistment", OK, RNTST, 2,
+    {{WINVISTA,0},"NtRollbackEnlistment", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtRollbackSavepointTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRollbackTransaction", OK, RNTST, 2,
+    {{WINVISTA,WINVISTA},"NtRollbackSavepointTransaction", UNKNOWN, RNTST, 2, },
+    {{WINVISTA,0},"NtRollbackTransaction", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtRollforwardTransactionManager", OK, RNTST, 2,
+    {{WINVISTA,0},"NtRollforwardTransactionManager", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtSavepointComplete", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtSavepointTransaction", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtSetInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
+    {{WINVISTA,WINVISTA},"NtSavepointComplete", UNKNOWN, RNTST, 2, },
+    {{WINVISTA,WINVISTA},"NtSavepointTransaction", UNKNOWN, RNTST, 3, },
+    {{WINVISTA,0},"NtSetInformationEnlistment", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_SetInformationEnlistment_info
     },
-    {{0,0},"NtSetInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
+    {{WINVISTA,0},"NtSetInformationResourceManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_SetInformationResourceManager_info
     },
-    {{0,0},"NtSetInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
+    {{WINVISTA,0},"NtSetInformationTransaction", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_SetInformationTransaction_info
     },
-    {{0,0},"NtSetInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
+    {{WINVISTA,0},"NtSetInformationTransactionManager", OK|SYSINFO_SECONDARY_TABLE, RNTST, 4,
      {
          {1,}
      }, (drsys_sysnum_t *)syscall_SetInformationTransactionManager_info
     },
-    {{0,0},"NtSetInformationWorkerFactory", OK, RNTST, 4,
+    {{WINVISTA,0},"NtSetInformationWorkerFactory", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(WORKERFACTORYINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -3230,22 +3231,22 @@ syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtShutdownWorkerFactory", OK, RNTST, 2,
+    {{WINVISTA,0},"NtShutdownWorkerFactory", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LONG), R|W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtSinglePhaseReject", OK, RNTST, 2,
+    {{WINVISTA,0},"NtSinglePhaseReject", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
-    {{0,0},"NtStartTm", OK, RNTST, 0, },
-    {{0,0},"NtThawRegistry", OK, RNTST, 0, },
-    {{0,0},"NtThawTransactions", OK, RNTST, 0, },
-    {{0,0},"NtTraceControl", OK, RNTST, 6,
+    {{WINVISTA,WINVISTA},"NtStartTm", OK, RNTST, 0, },
+    {{WINVISTA,0},"NtThawRegistry", OK, RNTST, 0, },
+    {{WINVISTA,0},"NtThawTransactions", OK, RNTST, 0, },
+    {{WINVISTA,0},"NtTraceControl", OK, RNTST, 6,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          /* The "{1, -2, R|HT, DRSYS_TYPE_STRUCT}" entry is specially handled */
@@ -3256,15 +3257,15 @@ syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_TraceControl
     },
-    {{0,WIN7},"NtWaitForWorkViaWorkerFactory", OK, RNTST, 2,
+    {{WINVISTA,0},"NtWaitForWorkViaWorkerFactory", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(FILE_IO_COMPLETION_INFORMATION), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{WIN8,WIN8},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
-    {{WIN81,0},  "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtWorkerFactoryWorkerReady", OK, RNTST, 1,
+    {{WINVISTA,0},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
+    {{WINVISTA,0},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 5, },
+    {{WINVISTA,0},"NtWorkerFactoryWorkerReady", OK, RNTST, 1,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
@@ -3273,13 +3274,13 @@ syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* added in Windows Vista SP1 */
     /* XXX: add min OS version: but we have to distinguish the service packs! */
-    {{0,0},"NtRenameTransactionManager", OK, RNTST, 2,
+    {{WINVISTA,0},"NtRenameTransactionManager", OK, RNTST, 2,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtReplacePartitionUnit", OK, RNTST, 3,
+    {{WINVISTA,0},"NtReplacePartitionUnit", OK, RNTST, 3,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -3572,7 +3573,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {{WIN13,0},"NtAcquireProcessActivityReference", UNKNOWN, RNTST, 3, },
     {{WIN13,0},"NtCompareSigningLevels", UNKNOWN, RNTST, 2, },
     {{WIN13,0},"NtConvertBetweenAuxiliaryCounterAndPerformanceCounter,NONE,", UNKNOWN, RNTST, 1, },
-    {{WIN13,0},"NtLoadHotPatch", UNKNOWN, RNTST, 2, },
+    {{WIN13,WIN15},"NtLoadHotPatch", UNKNOWN, RNTST, 2, },
     {{WIN13,0},"NtQueryAuxiliaryCounterFrequency", UNKNOWN, RNTST, 1, },
     {{WIN13,0},"NtQueryInformationByName", UNKNOWN, RNTST, 5, },
     /* Added in Windows 10 1709 */
