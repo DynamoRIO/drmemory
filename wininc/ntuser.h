@@ -2494,7 +2494,7 @@ BOOL
 NTAPI
 NtUserOpenClipboard(
   HWND hWnd,
-  DWORD Unknown1);
+  PBOOL pfEmptyClient);
 
 HDESK
 NTAPI
