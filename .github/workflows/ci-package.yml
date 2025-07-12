@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2020-2024 Google, Inc.  All rights reserved.
+# Copyright (c) 2020-2025 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -45,7 +45,7 @@ jobs:
   ###########################################################################
   # Linux tarball with 64-bit and 32-bit builds:
   x86:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v2
@@ -126,7 +126,7 @@ jobs:
   ###########################################################################
   # Windows .zip and .msi with 32-bit and 64-bit x86 builds:
   windows:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
@@ -170,7 +170,7 @@ jobs:
         set PATH=c:\projects\install\ninja;%PATH%
         dir "c:\Program Files (x86)\WiX Toolset"*
         set PATH=C:\Program Files (x86)\WiX Toolset v3.14\bin;%PATH%
-        call "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
+        call "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars32.bat"
         echo ------ Running suite ------
         echo PATH is "%PATH%"
         echo Running in directory "%CD%"
@@ -203,7 +203,7 @@ jobs:
 
   create_release:
     needs: [x86, windows]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       # We need a checkout to run git log for the version.
