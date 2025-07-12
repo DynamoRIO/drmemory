@@ -98,6 +98,7 @@
 # include <sys/mman.h>
 #else
 # include "../wininc/crtdbg.h"
+# pragma warning(disable : 5287) /* "operands are different enum types" */
 #endif
 
 #ifdef UNIX
@@ -152,7 +153,7 @@ enum {
 
     /* meta-flags */
 #ifdef WINDOWS
-    ALLOCATOR_TYPE_FLAGS  = ((int)MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL |
+    ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL |
                              CHUNK_LAYER_NOCHECK),
 #else
     ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS),
