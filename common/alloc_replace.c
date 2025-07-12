@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2025 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -152,7 +152,7 @@ enum {
 
     /* meta-flags */
 #ifdef WINDOWS
-    ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL |
+    ALLOCATOR_TYPE_FLAGS  = ((int)MALLOC_ALLOCATOR_FLAGS | CHUNK_LAYER_RTL |
                              CHUNK_LAYER_NOCHECK),
 #else
     ALLOCATOR_TYPE_FLAGS  = (MALLOC_ALLOCATOR_FLAGS),
