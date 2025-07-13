@@ -98,6 +98,7 @@
 # include <sys/mman.h>
 #else
 # include "../wininc/crtdbg.h"
+# pragma warning(disable : 5286) /* "implicit conversion from enum type" */
 # pragma warning(disable : 5287) /* "operands are different enum types" */
 #endif
 
