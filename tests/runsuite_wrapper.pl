@@ -266,6 +266,8 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                                    'syscalls_unix' => 1,
                                    'pthread_test' => 1,
                                    'realloc' => 1,
+                                   'drmf_drsyscall_test' => 1,
+                                   'drmf_strace_test' => 1,
                                    # XXX: We should probably drop wrap_ support as we
                                    # do not have the resources to maintain it.
                                    'wrap_cs2bug' => 1,

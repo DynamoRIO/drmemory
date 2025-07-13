@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2025 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -98,6 +98,8 @@
 # include <sys/mman.h>
 #else
 # include "../wininc/crtdbg.h"
+# pragma warning(disable : 5286) /* "implicit conversion from enum type" */
+# pragma warning(disable : 5287) /* "operands are different enum types" */
 #endif
 
 #ifdef UNIX
