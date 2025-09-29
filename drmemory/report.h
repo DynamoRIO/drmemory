@@ -52,6 +52,9 @@ void
 report_summary(void);
 
 void
+report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool potential);
+
+void
 report_thread_init(void *drcontext);
 
 void

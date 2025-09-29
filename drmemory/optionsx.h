@@ -746,6 +746,10 @@ OPTION_CLIENT_SCOPE(drmemscope, fuzz_skip_initial, uint, 0, 0, UINT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, fuzz_stat_freq, uint, 0, 0, UINT_MAX,
                     "Enable fuzzer status logging with the specified frequency",
                     "Specify the fuzzer status log frequency in number of fuzz iterations (no status is logged when this option is not set).")
+OPTION_CLIENT_BOOL(drmemscope, fuzz_per_iter_leak_scan, false,
+                   "Saves the fuzz input that triggered a leak to the current log directory.",
+                   "Saves the fuzz input that triggered a leak to the current log directory. The name of the file is included in the error report summary.")
+
 #ifdef WINDOWS
 OPTION_CLIENT_BOOL(drmemscope, fuzz_mangled_names, false,
                    "Enable mangled names for fuzz targets on Windows",

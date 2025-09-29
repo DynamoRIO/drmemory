@@ -1586,6 +1586,8 @@ report_init(void)
 #endif
     ELOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
           dr_get_process_id(), dr_get_application_name());
+    ELOGF(0, f_fuzz, "Dr. Memory fuzzing errors for pid %d: \"%s\""NL,
+          dr_get_process_id(), dr_get_application_name());
     ELOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
           "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
     if ((options.lib_allowlist_frames > 0 && options.lib_allowlist[0] != '\0') ||
@@ -1750,7 +1752,7 @@ report_errors_found(void)
 /* N.B.: for PR 477013, postprocess.pl duplicates some of this syntax
  * exactly: try to keep the two in sync
  */
-static void
+void
 report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool potential)
 {
     uint i;
@@ -3445,7 +3447,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             } else {
                 /* num_unique was set to 0 after nudge */
 #ifdef STATISTICS /* for num_nudges */
-                ASSERT(err->id == 0 || num_nudges > 0 ||
+                ASSERT(err->id == 0 || num_nudges > 0 || option_specified.fuzz_per_iter_leak_scan ||
                        (maybe_reachable && !options.possible_leaks) ||
                        (reachable && !options.show_reachable),
                        "invalid dup error report!");

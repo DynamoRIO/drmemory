@@ -86,6 +86,7 @@ file_t f_results = INVALID_FILE;
 file_t f_missing_symbols;
 file_t f_suppress;
 file_t f_potential;
+file_t f_fuzz;
 static uint num_threads;
 
 #if defined(__DATE__) && defined(__TIME__)
@@ -488,6 +489,7 @@ event_exit(void)
     close_file(f_missing_symbols);
     close_file(f_suppress);
     close_file(f_potential);
+    close_file(f_fuzz);
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
 
@@ -1508,6 +1510,7 @@ create_global_logfile(void)
         f_suppress = open_logfile("suppress.txt", false, -1);
         f_potential = open_logfile(RESULTS_POTENTIAL_FNAME, false, -1);
         print_version(f_potential, true);
+        f_fuzz = open_logfile("fuzz_results.txt", false, -1);
     }
 }
 

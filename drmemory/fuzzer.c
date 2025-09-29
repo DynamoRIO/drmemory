@@ -30,6 +30,7 @@
 #include "drx.h"
 #include "drfuzz_mutator.h"
 #include "fuzzer.h"
+#include "alloc_drmem.h"
 #include "drmemory.h"
 #include "drvector.h"
 #include "alloc.h"
@@ -1602,6 +1603,20 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     }
 
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
+
+    if (option_specified.fuzz_per_iter_leak_scan) {
+        ELOGF(0, f_fuzz, NL"==========================================================================="NL"Thread %d report for inputs (%s, %d):",
+            fuzz_target.tid, fuzz_state->input_buffer, fuzz_state->input_size);
+
+        report_leak_stats_checkpoint();
+        check_reachability(false/*!at exit*/);
+
+        // Mainly to avoid bloating the console & other files through report_summary
+        report_summary_to_file(f_fuzz, false, false, false);
+        report_leak_stats_revert();
+
+        ELOGF(0, f_fuzz, NL"==========================================================================="NL);
+    }
 
     if (option_specified.fuzz_corpus)
         return post_fuzz_corpus(fuzzcxt, target_pc);
