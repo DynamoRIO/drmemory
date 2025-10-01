@@ -1586,7 +1586,7 @@ report_init(void)
 #endif
     ELOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
           dr_get_process_id(), dr_get_application_name());
-    ELOGF(0, f_fuzz, "Dr. Memory fuzzing errors for pid %d: \"%s\""NL,
+    ELOGF(0, f_fuzz, "Dr. Memory fuzzing leaks for pid %d (\"%s\")"NL,
           dr_get_process_id(), dr_get_application_name());
     ELOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
           "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
@@ -1752,7 +1752,7 @@ report_errors_found(void)
 /* N.B.: for PR 477013, postprocess.pl duplicates some of this syntax
  * exactly: try to keep the two in sync
  */
-void
+static void
 report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool potential)
 {
     uint i;
@@ -1904,8 +1904,25 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                         num_throttled_leaks);
         }
     }
+
+    NOTIFY_COND(notify && options.fuzz, f, "Fuzz details: %s%c%s"NL,
+        logsubdir, DIRSEP, FUZZ_FNAME);
+
     NOTIFY_COND(notify, f, "Details: %s%c%s"NL, logsubdir, DIRSEP,
                 potential ? RESULTS_POTENTIAL_FNAME : RESULTS_FNAME);
+}
+
+void
+report_all_leak_stats(file_t f, bool notify, bool potential) {
+    report_leak_stats(f, notify, potential, ERROR_LEAK);
+
+    if (options.possible_leaks) {
+        report_leak_stats(f, notify, potential, ERROR_POSSIBLE_LEAK);
+    }
+
+    if (options.show_reachable) {
+        report_leak_stats(f, notify, potential, ERROR_REACHABLE_LEAK);
+    }
 }
 
 void
