@@ -74,6 +74,7 @@ extern char logsubdir[MAXIMUM_PATH];
 
 #define RESULTS_FNAME "results.txt"
 #define RESULTS_POTENTIAL_FNAME "potential_errors.txt"
+#define FUZZ_FNAME "fuzz_results.txt"
 #define POTENTIAL_PREFIX        "potential"
 #define POTENTIAL_PREFIX_CAP    "Potential"
 #define POTENTIAL_PREFIX_ALLCAP "POTENTIAL"
