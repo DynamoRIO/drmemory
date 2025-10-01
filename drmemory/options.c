@@ -580,7 +580,8 @@ options_init(const char *opstr)
         option_specified.fuzz_buffer_offset ||
         option_specified.fuzz_skip_initial ||
         IF_WINDOWS(option_specified.fuzz_mangled_names ||)
-        option_specified.fuzz_stat_freq) {
+        option_specified.fuzz_stat_freq ||
+        option_specified.fuzz_per_iter_leak_scan) {
         options.fuzz = true;
         /* enable replace_buffer by default if fuzzing with input files */
         if ((option_specified.fuzz_corpus || option_specified.fuzz_input_file) &&
