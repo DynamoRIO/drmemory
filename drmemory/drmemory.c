@@ -489,7 +489,8 @@ event_exit(void)
     close_file(f_missing_symbols);
     close_file(f_suppress);
     close_file(f_potential);
-    close_file(f_fuzz);
+    if (options.fuzz) // If it was even created
+        close_file(f_fuzz);
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
 
@@ -1510,7 +1511,8 @@ create_global_logfile(void)
         f_suppress = open_logfile("suppress.txt", false, -1);
         f_potential = open_logfile(RESULTS_POTENTIAL_FNAME, false, -1);
         print_version(f_potential, true);
-        f_fuzz = open_logfile("fuzz_results.txt", false, -1);
+        if (options.fuzz)
+            f_fuzz = open_logfile(FUZZ_FNAME, false, -1);
     }
 }
 
