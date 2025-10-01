@@ -1605,14 +1605,17 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
 
     if (option_specified.fuzz_per_iter_leak_scan) {
-        ELOGF(0, f_fuzz, NL"==========================================================================="NL"Thread %d report for inputs (%s, %d):",
+        ELOGF(0, f_fuzz, NL"Thread %d report for inputs (%s, %d):"NL"==========================================================================="NL,
             fuzz_target.tid, fuzz_state->input_buffer, fuzz_state->input_size);
 
         report_leak_stats_checkpoint();
         check_reachability(false/*!at exit*/);
 
-        // Mainly to avoid bloating the console & other files through report_summary
-        report_summary_to_file(f_fuzz, false, false, false);
+        ELOGF(0, f_fuzz, NL"  LEAKS:"NL);
+        report_all_leak_stats(f_fuzz, false, false);
+        ELOGF(0, f_fuzz, NL"  POTENTIAL LEAKS:"NL);
+        report_all_leak_stats(f_fuzz, false, true);
+
         report_leak_stats_revert();
 
         ELOGF(0, f_fuzz, NL"==========================================================================="NL);
