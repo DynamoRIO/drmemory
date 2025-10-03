@@ -186,7 +186,8 @@ target function execution.
 
 Enabling this option is useful for precisely isolating the input iteration that
 causes a memory leak, which aids in reproduction and minimization. The outputs
-of these leak scans are stored in the fuzz_results.txt file.
+of these leak scans are stored in the fuzz_results.txt file. The types of leaks reported
+are additionally controlled by the \p -possible_leaks and \p -show_reachable options.
 
 For example, to fuzz the function \p DrMemFuzzFunc with per-iteration leak scanning enabled,
 you would specify the following command-line option to \p drmemory:
