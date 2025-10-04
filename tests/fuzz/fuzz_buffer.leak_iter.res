@@ -18,4 +18,17 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: LEAK 16 direct bytes
+Thread
+Iteration
+Report for inputs
+===========================================================================
+
+  LEAKS:
+      0 unique,     1 total,     16 byte(s) of leak(s)
+      0 unique,     0 total,      0 byte(s) of possible leak(s)
+
+  POTENTIAL LEAKS:
+      1 unique,     0 total,      0 byte(s) of potential leak(s)
+      0 unique,     0 total,      0 byte(s) of potential possible leak(s)
+
+===========================================================================

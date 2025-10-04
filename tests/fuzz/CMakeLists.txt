@@ -140,6 +140,7 @@ set(fuzz_buffer_drmem_ops
   "-no_fuzz_dump_on_error;-fuzz_target;${fuzz_buffer_symbol}|3|1|2|10${cpp_callconv}${enable_mangled_names}")
 set(fuzz_iter_leak_base_ops
         "-no_fuzz_dump_on_error;-fuzz_target;<main>!repeatme|2|0|1|10;-fuzz_per_iter_leak_scan")
+set(fuzz_buffer.leak_iter.resmark "Fuzz details:")
 newtest_nobuild_ex(fuzz_buffer.leak_iter fuzz_buffer
         "initialize;leak" "${fuzz_iter_leak_base_ops}" "" OFF "" 0 "")
 if (NOT X64) # test detection of errors that requires shadow-memory
