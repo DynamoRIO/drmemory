@@ -177,17 +177,23 @@ you would specify the following command-line option to \p drmemory:
 
     -fuzz_corpus /path/to/inputs -fuzz_corpus_out /path/to/min_corpus/
 
+\section sec_per_iter_leak_scan Per-Iteration Leak Scanning
+
 Dr. Memory's fuzz mode typically performs a leak scan only at the end of the entire
 fuzz run or on request. This option allows you to perform leak detection after every
 target function execution.
 
- - \p -fuzz_per_iter_leak_scan: whether to run a leak scan after **every**
+ - \p -fuzz_per_iter_leak_scan: whether to run a leak scan after every
    target function execution.
 
 Enabling this option is useful for precisely isolating the input iteration that
 causes a memory leak, which aids in reproduction and minimization. The outputs
 of these leak scans are stored in the fuzz_results.txt file. The types of leaks reported
 are additionally controlled by the \p -possible_leaks and \p -show_reachable options.
+
+Note that the leak scan results include all leaks found to date, which will overlap with
+leaks found in prior iterations. The user must currently infer manually which leaks
+are newly found in the displayed iteration.
 
 For example, to fuzz the function \p DrMemFuzzFunc with per-iteration leak scanning enabled,
 you would specify the following command-line option to \p drmemory:
