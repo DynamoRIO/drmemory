@@ -1605,9 +1605,10 @@ post_fuzz(void *fuzzcxt, generic_func_t target_pc)
     LOG(2, LOG_PREFIX" executing post-fuzz for "PIFX"\n", target_pc);
 
     if (option_specified.fuzz_per_iter_leak_scan) {
-        ELOGF(0, f_fuzz, NL"Thread %d report for inputs (%s, %d):"NL"==========================================================================="NL,
-            fuzz_target.tid, fuzz_state->input_buffer, fuzz_state->input_size);
+        ELOGF(0, f_fuzz, NL"[Thread (#%d) Iteration (#%d)]: Report for inputs (%s, %d):"NL"==========================================================================="NL,
+                    fuzz_target.tid, fuzz_state->repeat_index + 1, fuzz_state->input_buffer, fuzz_state->input_size);
 
+        /* XXX i#1797: Remove leaks seen in prior iterations to only display new leaks found in this iteration */
         report_leak_stats_checkpoint();
         check_reachability(false/*!at exit*/);
 
