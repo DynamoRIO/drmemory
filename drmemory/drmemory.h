@@ -74,6 +74,7 @@ extern char logsubdir[MAXIMUM_PATH];
 
 #define RESULTS_FNAME "results.txt"
 #define RESULTS_POTENTIAL_FNAME "potential_errors.txt"
+#define FUZZ_FNAME "fuzz_results.txt"
 #define POTENTIAL_PREFIX        "potential"
 #define POTENTIAL_PREFIX_CAP    "Potential"
 #define POTENTIAL_PREFIX_ALLCAP "POTENTIAL"
@@ -82,6 +83,7 @@ extern file_t f_results;
 extern file_t f_suppress;
 extern file_t f_missing_symbols;
 extern file_t f_potential;
+extern file_t f_fuzz;
 
 #ifdef WINDOWS
 extern app_pc ntdll_base;

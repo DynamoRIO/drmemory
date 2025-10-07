@@ -52,6 +52,9 @@ void
 report_summary(void);
 
 void
+report_all_leak_stats(file_t f, bool notify, bool potential);
+
+void
 report_thread_init(void *drcontext);
 
 void
