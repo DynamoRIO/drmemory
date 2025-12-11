@@ -66,5 +66,5 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
         DR_ASSERT_MSG(false, "fail to init umbra");
     if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "fail to create shadow memory mapping");
-    dr_register_exit_event(exit_event);
+    drmgr_register_exit_event(exit_event);
 }

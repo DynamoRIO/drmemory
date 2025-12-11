@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2025 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -317,7 +317,7 @@ umbra_init(client_id_t client_id)
     /* register event callbacks */
     if (!drmgr_init())
         return DRMF_ERROR;
-    dr_register_filter_syscall_event(umbra_event_filter_syscall);
+    drmgr_register_filter_syscall_event(umbra_event_filter_syscall);
     drmgr_register_pre_syscall_event(umbra_event_pre_syscall);
     drmgr_register_post_syscall_event(umbra_event_post_syscall);
 #ifdef WINDOWS
@@ -356,7 +356,7 @@ umbra_exit(void)
     umbra_arch_exit();
     dr_mutex_destroy(umbra_global_lock);
 
-    dr_unregister_filter_syscall_event(umbra_event_filter_syscall);
+    drmgr_unregister_filter_syscall_event(umbra_event_filter_syscall);
     drmgr_unregister_pre_syscall_event(umbra_event_pre_syscall);
     drmgr_unregister_post_syscall_event(umbra_event_post_syscall);
 #ifdef WINDOWS

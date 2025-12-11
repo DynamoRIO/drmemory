@@ -1,5 +1,5 @@
 /* ***************************************************************************
- * Copyright (c) 2013-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2025 Google, Inc.  All rights reserved.
  * ***************************************************************************/
 
 /*
@@ -482,7 +482,7 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drwrap_set_global_flags((drwrap_global_flags_t)
                             (DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS));
 
-    dr_register_exit_event(event_exit);
+    drmgr_register_exit_event(event_exit);
 #ifdef UNIX
     dr_register_fork_init_event(event_fork);
 #endif
