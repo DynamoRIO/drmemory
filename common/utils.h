@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2025 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -215,8 +215,10 @@ extern "C" {
  * struct have to be typedef-ed in two steps.
  * see example struct _packed_frame_t at common/callstack.c
  */
-# define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
-# define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
+# ifndef START_PACKED_STRUCTURE
+#  define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
+#  define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
+# endif
 #else /* UNIX */
 # define inline __inline__
 # define INLINE_FORCED inline
@@ -226,8 +228,10 @@ extern "C" {
 #   define DO_NOT_OPTIMIZE /* nothing */
 # endif
 # define END_DO_NOT_OPTIMIZE /* nothing */
-# define START_PACKED_STRUCTURE /* nothing */
-# define END_PACKED_STRUCTURE __attribute__ ((__packed__))
+# ifndef START_PACKED_STRUCTURE
+#  define START_PACKED_STRUCTURE /* nothing */
+#  define END_PACKED_STRUCTURE __attribute__ ((__packed__))
+# endif
 #endif
 #define INLINE_ONCE inline
 
