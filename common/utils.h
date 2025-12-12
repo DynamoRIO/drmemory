@@ -203,10 +203,12 @@ extern "C" {
 # define inline __inline
 # define INLINE_FORCED __forceinline
 /* Use special C99 operator _Pragma to generate a pragma from a macro */
-# if _MSC_VER <= 1200 /* XXX: __pragma may work w/ vc6: then don't need #if */
-#  define ACTUAL_PRAGMA(p) _Pragma ( #p )
-# else
-#   define ACTUAL_PRAGMA(p) __pragma ( p )
+# ifndef ACTUAL_PRAGMA
+#  if _MSC_VER <= 1200 /* XXX: __pragma may work w/ vc6: then don't need #if */
+#   define ACTUAL_PRAGMA(p) _Pragma ( #p )
+#  else
+#    define ACTUAL_PRAGMA(p) __pragma ( p )
+#  endif
 # endif
 # define DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", off) )
 # define END_DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", on) )
