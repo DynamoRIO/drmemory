@@ -51,5 +51,5 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drmgr_init();
     if (drfuzz_init(id) != DRMF_SUCCESS)
         DR_ASSERT_MSG(false, "drfuzz failed to init");
-    dr_register_exit_event(exit_event);
+    drmgr_register_exit_event(exit_event);
 }

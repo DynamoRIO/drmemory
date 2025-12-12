@@ -86,7 +86,7 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drmgr_init();
     if (drfuzz_init(id) != DRMF_SUCCESS)
         EXPECT(false, "drfuzz failed to init");
-    dr_register_exit_event(exit_event);
+    drmgr_register_exit_event(exit_event);
 
     /* fuzz repeatme */
     app = dr_get_main_module();

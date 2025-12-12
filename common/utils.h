@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2025 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -203,10 +203,12 @@ extern "C" {
 # define inline __inline
 # define INLINE_FORCED __forceinline
 /* Use special C99 operator _Pragma to generate a pragma from a macro */
-# if _MSC_VER <= 1200 /* XXX: __pragma may work w/ vc6: then don't need #if */
-#  define ACTUAL_PRAGMA(p) _Pragma ( #p )
-# else
-#   define ACTUAL_PRAGMA(p) __pragma ( p )
+# ifndef ACTUAL_PRAGMA
+#  if _MSC_VER <= 1200 /* XXX: __pragma may work w/ vc6: then don't need #if */
+#   define ACTUAL_PRAGMA(p) _Pragma ( #p )
+#  else
+#    define ACTUAL_PRAGMA(p) __pragma ( p )
+#  endif
 # endif
 # define DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", off) )
 # define END_DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", on) )
@@ -215,8 +217,10 @@ extern "C" {
  * struct have to be typedef-ed in two steps.
  * see example struct _packed_frame_t at common/callstack.c
  */
-# define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
-# define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
+# ifndef START_PACKED_STRUCTURE
+#  define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
+#  define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
+# endif
 #else /* UNIX */
 # define inline __inline__
 # define INLINE_FORCED inline
@@ -226,8 +230,10 @@ extern "C" {
 #   define DO_NOT_OPTIMIZE /* nothing */
 # endif
 # define END_DO_NOT_OPTIMIZE /* nothing */
-# define START_PACKED_STRUCTURE /* nothing */
-# define END_PACKED_STRUCTURE __attribute__ ((__packed__))
+# ifndef START_PACKED_STRUCTURE
+#  define START_PACKED_STRUCTURE /* nothing */
+#  define END_PACKED_STRUCTURE __attribute__ ((__packed__))
+# endif
 #endif
 #define INLINE_ONCE inline
 

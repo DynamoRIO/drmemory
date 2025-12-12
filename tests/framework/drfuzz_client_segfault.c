@@ -246,7 +246,7 @@ void dr_client_main(client_id_t id, int argc, const char *argv[])
 
     drmgr_init();
     drsym_init(0);
-    dr_register_exit_event(exit_event);
+    drmgr_register_exit_event(exit_event);
 
     if (drfuzz_init(id) != DRMF_SUCCESS)
         EXPECT(false, "drfuzz failed to init");

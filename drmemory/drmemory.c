@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2024 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2025 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1865,7 +1865,7 @@ dr_init(client_id_t id)
     ASSERT(app_base != NULL, "internal error finding executable base");
     LOG(2, "executable \"%s\" is "PFX"-"PFX"\n", app_path, app_base, app_end);
 
-    dr_register_exit_event(event_exit);
+    drmgr_register_exit_event(event_exit);
     drmgr_register_thread_init_event(event_thread_init);
     drmgr_register_thread_exit_event(event_thread_exit);
     drmgr_register_restore_state_ex_event(event_restore_state);
